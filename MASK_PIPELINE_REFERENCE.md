@@ -11,9 +11,12 @@ All global masks are computed at 1:8 resolution (6250x6250) and upscaled to 50k 
 | `hydro_floodplain.tif` | `rebuild_floodplain.py` | uint8 | **bilinear** | 0/1 (soft edges) | River corridor clearings |
 | `wind_windthrow.tif` | `rebuild_windthrow.py` | uint8 | **bilinear** | 0/1 (soft edges) | TPI ridge windthrow gaps |
 | `rock_exposure.tif` | `rebuild_rock_exposure.py` | uint8 | **bilinear** | 0-255 gradient | Treeline → alpine → bare rock |
+| `sand_dunes.tif` | `rebuild_sand_dunes.py` | uint8 | **bilinear** | 0/1 (soft edges) | Desert sand zones (Session 41) |
 | `hydro_lake_wl.tif` | `generate_lake_wl.py` | float32 | nearest | spill elevation | Per-lake water level |
 
 **All binary masks use bilinear upscale** for smooth edges (Session 39 decision). The `> 0.001` threshold in eco_gradients creates organic falloff at boundaries.
+
+**Physical Realism Layer pattern (Session 41 — STANDARD for all surface mask painting):** Replace noise-blob painting with physical signals from `eco_grads` (aspect, concavity, slope, flow) and `flow_tile`. Noise = ±10% edge jitter ONLY, never the primary discriminator. Layer-by-layer composition with the LAST step decisive. Use distinct blocks per layer to avoid double-counting. Reference: `_apply_desert_rock_palette()` in `core/surface_decorator.py:1617`. See `memory/feedback_physical_realism_layer.md`.
 
 ## Gap Mask System
 
@@ -35,6 +38,7 @@ Each type only claims `gap_mask == 0` pixels. Earlier types take priority.
 4 = floodplain corridor (river-width-modulated)
 5 = bare rock (above treeline, steep cliffs)
 6 = alpine meadow (treeline transition, wildflowers)
+8 = sand dunes (desert biomes, Session 41) — overrides 0/1/2/4, NOT alpine/rock/snow
 ```
 Value 3 was removed (bare patches superseded by rock_exposure gradient).
 

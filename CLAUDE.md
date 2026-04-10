@@ -590,7 +590,8 @@ Research-informed update of all 26 biome palettes:
 - `tools/validate_test_tile.py` — single-tile validator
 - `schematic_index.json` — schematic metadata (anchor_y, inset_depth, size)
 - `PLACEMENT_VARIATION_SPEC.md` — Y-variation rules for schematic placement
-- `PROJECT_BIBLE.md` — comprehensive reference (read this for full context)
+- `MASK_PIPELINE_REFERENCE.md` — quick-reference for gap/mask pipeline
+- `ARCHITECTURE_VISION.md` — destination/vision doc
 
 ## SLOPE THRESHOLDS (fixed Session 8)
 `config/thresholds.json`: `steep = 0.65`, `very_steep = 0.35` (NOT 0.95/0.85 — those were wrong)
