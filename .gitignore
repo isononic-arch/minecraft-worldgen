@@ -1,0 +1,17 @@
+# Large binary data
+*.tif
+*.tiff
+*.mca
+*.mcr
+*.schem
+*.litematic
+*.schematic
+
+# Build/output artifacts
+output/
+build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
