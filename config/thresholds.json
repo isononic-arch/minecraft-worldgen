@@ -3344,5 +3344,9 @@
       "shallow_group_from_surface": true,
       "deep_default_group": "granitic"
     }
+  },
+  "surface_pipeline": {
+    "shadow_mode": false,
+    "_comment": "Phase 0.75 (S45): when true, decorate_surface() calls run_passes([], ctx) at the end as a smoke test of the new SurfaceContext path. Output is discarded; production blocks are unchanged. Also gated by env VANDIR_SHADOW=1."
   }
 }

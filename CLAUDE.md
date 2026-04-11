@@ -2,7 +2,7 @@
 
 *Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`. For the physical-realism refactor plan + implementation log, see `PHYSICAL_REALISM_REFACTOR.md` (§18 is the running log).*
 
-**Current state:** Session 44 (2026-04-11) — Phase 0 + 0.5 of the physical-realism refactor landed together. New scaffolding: `core/layers/{protocol,noise_profiles,vegetation_blocks}.py`, `core/surface_pipeline.py`, `core/wind_model.py` (tradewind single source of truth, sign-pinned by `tests/unit/test_wind_model.py`), `core/meadow_clearing_field.py`, `core/tree_density_hint.py`. New precomputes: `masks/lithology.tif` (6250×6250 uint8 1..6, feature-flagged OFF via `config/thresholds.json → lithology.feature_flag_enabled`), `masks/wave_fetch.tif` (6250×6250 uint16). New tools: `tools/build_lithology.py`, `tools/build_wave_fetch.py`, `tools/extract_riparian_textures.py`, `tools/world_viewer.py` (PyQt6 MVP). 26 unit tests green. **NEXT:** Phase 1 — wire `run_passes()` into `decorate_surface()` in shadow mode (new pipeline runs, output ignored) to prove zero-impact path before Phase 2 pilot on tile (36, 20). Snapshot `tests/baselines/3x3/36_20/` **before** Phase 2 starts.
+**Current state:** Session 45 (2026-04-11) — **Phase 0.75 "shadow-mode hookup" LANDED.** Phases 0 + 0.5 (S44) already in. New in S45: `run_passes([], ctx)` wired into `decorate_surface()` behind `config/thresholds.json → surface_pipeline.shadow_mode` flag (default OFF) + `VANDIR_SHADOW=1` env override. Shadow call is `try/except`-wrapped and cannot mutate production output; empty layer list is structurally mutation-free (pinned by `tests/unit/test_shadow_hookup.py`). **Validation results:** 31 unit tests green (26 prior + 5 new); `validate_masks.py` 26/26 PASS; `validate_3x3` on 48_48 flag-OFF, 51_53 flag-OFF, and 48_48 flag-ON (`VANDIR_SHADOW=1`) all report zero new PASS→FAIL flips vs baselines; zero `[shadow] ERROR` lines on the flag-ON run. **Phase-plan reconciliation:** S44 handoff had called this "Phase 1" but §11 already used that for "Column additive path"; this session inserted a new **Phase 0.75** subsection in §11 in the same commit and added a session-kickoff pillar checkoff below to prevent future drift. **NEXT:** Phase 1 (column additive path per §11) OR Phase 2 pilot prep — user decides. **Prereq for both:** snapshot `tests/baselines/3x3/36_20/` **immediately before** the first edit that touches a code path 36_20 uniquely exercises.
 
 ---
 
@@ -77,6 +77,20 @@ For SOFT organic features (forest floor, moss, grass color), noise IS appropriat
 - **Slope math gotcha**: `np.gradient(sy)` returns dY per ARRAY INDEX. At 1:8 that's 8× the real slope. `rebuild_sand_dunes.py` uses corrected `/SCALE`. `rebuild_rock_exposure/windthrow/floodplain` + `core/eco_gradients.py` use OLD inflated math with thresholds tuned to it — **don't touch without retuning**. `slope.tif` from Gaea is non-linearly normalized; don't assume `slope_norm * 90 = degrees`.
 
 ### Workflow
+
+**Session kickoff pillar checkoff (run this FIRST, every session, no exceptions):**
+1. [ ] Read this CLAUDE.md **Current state** line.
+2. [ ] Read the most recent `§18 Implementation Log` entry in `PHYSICAL_REALISM_REFACTOR.md`.
+3. [ ] Read the referenced §11 phase spec for whatever phase CLAUDE.md + §18 say is NEXT.
+4. [ ] **Phase reconciliation check:** does §11's phase spec for NEXT match what CLAUDE.md + §18 describe as NEXT? If NO, STOP — surface the discrepancy to the user and ask which is canonical before writing any code. Do not guess. Do not silently pick one. The S44→S45 handoff drift (Phase 1 meant two different things in two docs) is the exact failure this check prevents.
+5. [ ] Replay back to the user: where we left off, what this session must accomplish, what I understand, before executing anything.
+
+**End-of-session reconciliation (run this LAST, every session):**
+- Before writing the `§18` entry, paste a three-line phase state block into the entry: "Landed this session: Phase X. §11 currently at: Phase Y. Next session starts: Phase Z." If X/Y/Z disagree with §11's phase list, edit §11 **in the same commit** — add a new decimal subsection (e.g. Phase 0.75, Phase 1.5) rather than renaming existing ones. §11 is the canonical phase map; CLAUDE.md + §18 reference §11 phase numbers verbatim.
+
+**Rule:** §11 is the single source of truth for phase numbering. New intermediate steps get decimal numbers (0.75, 1.5, …) inserted into §11 as new subsections, not by renaming existing phases.
+
+**Operational rules:**
 - **Render 3×3 top-down BEFORE generating .mca tiles.** Don't burn 18-min cycles blindly.
 - **Always copy generated `.mca` to test world** immediately: `C:\Users\nicho\AppData\Roaming\ModrinthApp\profiles\test\saves\Vandirtest10\region\` (NOT `.minecraft/saves/`).
 - **Failure logging**: after a failed fix, write timestamp + what + why to `memory/project_vandir_status.md` BEFORE retrying.

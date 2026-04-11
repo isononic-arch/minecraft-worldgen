@@ -1346,6 +1346,63 @@ def decorate_surface(
             surface_blocks[_final_meadow & ~_fm_coarse] = "grass_block"
             surface_blocks[_fm_coarse] = "coarse_dirt"
 
+    # ------------------------------------------------------------------
+    # Phase 0.75 shadow-mode hookup (S45)
+    # ------------------------------------------------------------------
+    # Run `core/surface_pipeline.run_passes()` against a SurfaceContext built
+    # from the finished production output, with an EMPTY layer list. This
+    # smoke-tests the SurfaceContext construction + protocol invariants on
+    # real tile data with zero impact — an empty layer list is structurally
+    # guaranteed not to mutate `prior_surface` (see run_passes source; the
+    # outer `for layers in passes:` loop iterates zero times). Phase 2 will
+    # replace the empty list with real temperate-mountain layers.
+    #
+    # Gate: cfg['surface_pipeline']['shadow_mode'] OR env VANDIR_SHADOW=1.
+    # Failure policy: any exception is logged to stdout and SWALLOWED — the
+    # production tuple below is never touched by this block. The try/except
+    # exists to contain bugs in context construction so a developer bug in
+    # the shadow path cannot regress production tiles.
+    _sp_cfg = cfg.get("surface_pipeline", {}) if isinstance(cfg, dict) else {}
+    _shadow_flag_on = bool(_sp_cfg.get("shadow_mode", False))
+    import os as _shadow_os
+    _shadow_env_on = _shadow_os.environ.get("VANDIR_SHADOW", "") == "1"
+    if _shadow_flag_on or _shadow_env_on:
+        try:
+            from core.surface_pipeline import run_passes as _shadow_run_passes
+            from core.layers.protocol import SurfaceContext as _ShadowCtx
+            _shadow_eco: dict = {}
+            if eco_grads is not None:
+                for _attr in (
+                    "moisture_index", "wind_exposure", "concavity_norm",
+                    "soil_depth", "gap_mask", "aspect",
+                    "riparian_proximity", "lake_fringe",
+                    "rock_exposure_gradient", "rock_tight_gradient",
+                    "snow_caps_gradient",
+                ):
+                    _v = getattr(eco_grads, _attr, None)
+                    if _v is not None:
+                        _shadow_eco[_attr] = _v
+            _shadow_ctx = _ShadowCtx(
+                tile_x=int(tile_x),
+                tile_z=int(tile_y),
+                biome_grid=biome_grid,
+                lithology_grid=None,  # Phase 0.5 flag still OFF
+                eco_grads=_shadow_eco,
+                column_output={"surface_y": surface_y},
+                prior_surface=surface_blocks.copy(),
+                prior_ownership=np.zeros((H, W), dtype=np.uint16),
+                overlay_touched=np.zeros((H, W), dtype=np.uint8),
+            )
+            _shadow_result = _shadow_run_passes([], _shadow_ctx, strict=True)
+            # Empty layer list guarantees _shadow_result.surface ==
+            # _shadow_ctx.prior_surface element-wise. Discarded on purpose.
+            del _shadow_result
+        except Exception as _shadow_exc:  # noqa: BLE001
+            print(
+                f"[shadow] ERROR tile=({tile_x},{tile_y}): "
+                f"{type(_shadow_exc).__name__}: {_shadow_exc}"
+            )
+
     return surface_blocks, subsurface_blocks, ground_cover
 
 

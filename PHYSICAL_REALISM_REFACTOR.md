@@ -599,6 +599,8 @@ The parked stratification-rings bug (horizontal bands forming concentric rings o
 
 ## 11. Phase Plan
 
+> **Note on phase numbering.** This section is the canonical phase map. The running chronology of what has *actually landed* lives in `§18 Implementation Log`. When sessions insert a new intermediate step (because the design evolved), they must add a new decimal subsection here (e.g. Phase 0.75, Phase 1.5) **in the same commit** that updates `§18` and `CLAUDE.md`, rather than renaming existing phases. This rule exists because the S44→S45 handoff drifted — "Phase 1" meant "column additive path" in §11 and "shadow hookup" in CLAUDE.md + §18 simultaneously. Phase 0.75 below was added retroactively in S45 to fix that drift. CLAUDE.md's session-kickoff pillar checkoff enforces this going forward.
+
 Every phase has: a baseline snapshot taken *before* any edit, unit tests, a feature flag, and a diagnostic deliverable.
 
 ### Phase 0 — Layer Protocol scaffolding + Diagnostic Tooling (week 1)
@@ -632,6 +634,33 @@ Every phase has: a baseline snapshot taken *before* any edit, unit tests, a feat
 **Exit criteria:** all 4 validation metrics PASS on lithology.tif. Visual inspection shows plausible lithology distribution on 36_20, 24_80, 59_53. **Lithology feature flag remains OFF.** No downstream consumer reads it yet.
 
 **Risk:** low. Standalone precompute, no pipeline changes.
+
+---
+
+### Phase 0.75 — Shadow-mode hookup (half-session, inserted S45)
+
+**Rationale:** Before Phase 2 hands a real layer pixel ownership on tile (36, 20), the plumbing between `core/surface_decorator.decorate_surface()` and `core/surface_pipeline.run_passes()` needs to be proven alive on real tile data — `SurfaceContext` construction, protocol invariants, exception path — all with zero impact on production blocks. This isolates "is the wire good?" from "is the layer correct?" so the Phase 2 pilot debug surface is small.
+
+**Deliverables:**
+- `config/thresholds.json` gains new top-level key `surface_pipeline.shadow_mode` (bool, default `false`).
+- `core/surface_decorator.decorate_surface()` gains an additive shadow block immediately before its `return`. Behind the config flag OR `VANDIR_SHADOW=1` env var, builds a `SurfaceContext` from the finished production state and calls `run_passes([], ctx, strict=True)`. Result is discarded. Whole block is try/except-wrapped — any failure logs a `[shadow] ERROR tile=(X,Z): ...` line and swallows.
+- Empty layer list is mathematically mutation-free: `run_passes([], ctx)` iterates zero passes, returns `ctx.prior_surface.copy()` unchanged. The production return tuple is never touched by the shadow block.
+- `tests/unit/test_shadow_hookup.py` — two tests. (1) `run_passes([], ctx)` on a synthetic context returns `surface == prior_surface`, `ownership` all zero, `overlay_touched` all zero, `per_layer_debug == []`. (2) `run_passes([[], []], ctx)` (two empty passes) is also identity.
+- Regression gate: existing `tests/baselines/3x3/48_48` and `tests/baselines/3x3/51_53`. No new `36_20` baseline taken in this phase — Phase 1 (column) and Phase 2 (pilot) take that one when they actually need it.
+
+**Exit criteria:**
+- Flag-OFF: `validate_3x3 --baseline` on 48_48 and 51_53 reports zero new PASS→FAIL flips vs master. (Both baselines already contain their known pre-existing FAILs; only *new* regressions matter.)
+- Flag-ON (via `VANDIR_SHADOW=1`): `validate_3x3` on at least 48_48 runs clean — no `[shadow] ERROR` lines in stdout, no new FAILs vs baseline. Flag-ON on 51_53 is optional strictness; 48_48 ocean + land-adjacent tiles plus the flag-OFF 51_53 run already cover the call-path surface.
+- Unit test suite: 28 tests green (26 prior + 2 new).
+
+**Risk:** minimal. Additive code, feature-flagged OFF, empty layer list is structurally guaranteed mutation-free, exception-swallowed, no return-tuple or caller-signature changes.
+
+**Scope boundaries (not in Phase 0.75):**
+- No new layers. Layer list is literally `[]`.
+- No `36_20` baseline snapshot. That's Phase 1 / Phase 2 prep.
+- No lithology flag flip. `lithology.feature_flag_enabled` stays false.
+- No changes to `core/column_generator.py`, `core/eco_gradients.py`, or any mask rebuild script.
+- No `.mca` regeneration.
 
 ---
 
@@ -937,3 +966,82 @@ I have been told this enough times that getting it wrong again is a capital offe
 **Next up (Phase 1 / Phase 2):**
 - Phase 1: wire `core/surface_pipeline.run_passes()` into `core/surface_decorator.decorate_surface()` as an additive call (shadow mode — new pipeline runs but output ignored). Confirms zero-impact path exists before Phase 2 hands a pilot layer real ownership.
 - Phase 2 pilot: temperate_forest_surface → temperate_riparian_fringe → temperate_windthrow_surface on tile (36, 20). Drives `--baseline tests/baselines/3x3/36_20` (need to snapshot that baseline before Phase 2 starts).
+
+---
+
+### S45 — Phase 0.75 shadow-mode hookup (2026-04-11)
+
+**Phase state (end of S45):**
+- Landed this session: **Phase 0.75** (shadow-mode hookup)
+- §11 currently at: **Phase 0.75** (retroactively added as a new subsection between Phase 0.5 and Phase 1 in this same commit to resolve the S44→S45 phase-numbering drift — see §11 header note)
+- Next session starts: **Phase 1** (column additive path, §11 unchanged) OR **Phase 2 pilot prep** if the user wants to skip column work to unblock the visible pilot. User decides. Either way, the prerequisite is a `tests/baselines/3x3/36_20/` baseline snapshot taken *before* the first touch.
+
+**Phase-plan reconciliation note:** S44's handoff originally called this session's work "Phase 1," but §11 had Phase 1 = "Column additive path." Rather than renaming §11's Phase 1 (which would break the design-doc phase chronology), this intermediate plumbing step was inserted as **Phase 0.75** in §11, §18, and CLAUDE.md in one commit. A new "Session kickoff pillar checkoff" in CLAUDE.md's Workflow section and an "End-of-session reconciliation" rule now enforce that §11 phase numbering stays in sync with the handoff going forward. The rule: §11 is the canonical phase map; new intermediate steps get decimal numbers (0.75, 1.5, …), never rename-over-existing phases.
+
+#### Goal
+
+Prove that the `core/surface_pipeline.run_passes()` call path works end-to-end on real tile data — `SurfaceContext` construction from production state, protocol invariants, exception path — with zero impact on production blocks, before Phase 2 hands any real layer pixel ownership on the pilot tile. This isolates "is the plumbing good?" from "is the layer correct?" so the Phase 2 debug surface is small.
+
+#### Files touched (3)
+
+**1. `config/thresholds.json`** — new top-level key `surface_pipeline`:
+```json
+"surface_pipeline": {
+  "shadow_mode": false,
+  "_comment": "Phase 0.75 (S45): when true, decorate_surface() calls run_passes([], ctx) at the end as a smoke test of the new SurfaceContext path. Output is discarded; production blocks are unchanged. Also gated by env VANDIR_SHADOW=1."
+}
+```
+Top-level key count: 30 → 31. `lithology.feature_flag_enabled` untouched (still `false`).
+
+**2. `core/surface_decorator.py`** — additive ~55-line shadow block inserted immediately before the final `return surface_blocks, subsurface_blocks, ground_cover` at line 1349. Behind `cfg['surface_pipeline']['shadow_mode']` OR `VANDIR_SHADOW=1`, builds a `SurfaceContext`:
+  - `tile_x`, `tile_z` from the decorate args (note: `tile_y` in decorate's signature maps to `tile_z` in the SurfaceContext — a naming drift in production code; pinned to the context field name, not the decorate arg name).
+  - `biome_grid` passed through directly.
+  - `lithology_grid=None` (Phase 0.5 flag still OFF; future-flip of `lithology.feature_flag_enabled` will revisit).
+  - `eco_grads` dict built from 11 attrs on the decorate's `eco_grads` object (`moisture_index`, `wind_exposure`, `concavity_norm`, `soil_depth`, `gap_mask`, `aspect`, `riparian_proximity`, `lake_fringe`, `rock_exposure_gradient`, `rock_tight_gradient`, `snow_caps_gradient`), each conditional on the attr actually existing.
+  - `column_output={"surface_y": surface_y}` — enough for Phase 2 layers to sample heights when they land.
+  - `prior_surface = surface_blocks.copy()` — the COPY is critical; `run_passes` also copies internally, but defense-in-depth means no aliasing can leak into production.
+  - `prior_ownership`, `overlay_touched` — fresh zero arrays at the correct dtype.
+
+Then calls `run_passes([], _shadow_ctx, strict=True)` and immediately `del`s the result. Whole block is `try/except Exception`-wrapped; any error is logged to stdout as `[shadow] ERROR tile=(X,Y): {type}: {msg}` and swallowed. The production return tuple is never touched by this block — even if context construction raises, `surface_blocks`/`subsurface_blocks`/`ground_cover` are already finalized before the shadow block runs.
+
+**Why an empty layer list is mathematically mutation-free:** `run_passes` iterates `for layers in passes`. On an empty iterable, the loop body never executes. The initial `PipelineResult(surface=ctx.prior_surface.copy(), ownership=ctx.prior_ownership.copy(), overlay_touched=ctx.overlay_touched.copy())` is returned verbatim. This is structural, not conventional — pinned by `test_run_passes_empty_iterable_is_identity` below. A future refactor that changes this invariant breaks the test before it can ship.
+
+**3. `tests/unit/test_shadow_hookup.py`** — new file, 5 tests:
+- `test_run_pass_empty_layer_list_is_identity`
+- `test_run_passes_empty_iterable_is_identity`
+- `test_run_passes_multiple_empty_passes_is_identity` (pins the `for layers in passes:` outer loop on non-empty iterable of empty sequences)
+- `test_run_passes_does_not_alias_prior_surface` (pins copy-semantics: mutating `result.surface` must not leak into `ctx.prior_surface`)
+- `test_empty_block_sentinel_still_exists` (sentinel check that `EMPTY_BLOCK == ""` hasn't been removed from the protocol)
+
+**Not added** (descoped mid-session to keep S45 short): flag-ON vs flag-OFF integration test inside `decorate_surface()`. The synthetic-context unit tests plus the real-tile `VANDIR_SHADOW=1` 3×3 validation against baseline already prove byte-identity at the `decorate_surface()` level — adding a mock-input integration test would have been redundant insurance, not new coverage.
+
+#### Validation results
+
+| Gate | Result | Detail |
+|---|---|---|
+| `tests/unit/` full suite | **31 passed** | 26 prior + 5 new (test_shadow_hookup.py). Prior count was 26 per S44 entry. |
+| `tools/validate_masks.py` | **26 passed, 0 failed** | Sanity check on all masks; no drift since S44. |
+| `validate_3x3 --tile-x 48 --tile-z 48 --baseline tests/baselines/3x3/48_48` (flag OFF) | **No baseline regressions ✅** | 9 tiles, all surface/terrain/hydrology/seam checks within prior envelope. |
+| `validate_3x3 --tile-x 51 --tile-z 53 --baseline tests/baselines/3x3/51_53` (flag OFF) | **No baseline regressions ✅** | 8 pre-existing bare-dirt + biome-seam FAILs unchanged and still marked known-state; no new PASS→FAIL flips. |
+| `VANDIR_SHADOW=1 validate_3x3 --tile-x 48 --tile-z 48 --baseline tests/baselines/3x3/48_48` (flag ON) | **No baseline regressions ✅** + **0 `[shadow] ERROR` lines in stdout** | Shadow hookup executed on all 9 tiles (mix of ocean + land + biome seams), `SurfaceContext` constructed cleanly, `run_passes([], ctx, strict=True)` came back clean, production blocks byte-identical to flag-OFF run. |
+
+#### Phase 0.75 exit criteria — all green
+
+- [x] Flag OFF: byte-identical to pre-edit baseline on 48_48 and 51_53.
+- [x] Flag ON: zero `[shadow] ERROR` lines in stdout; zero new PASS→FAIL flips vs baseline.
+- [x] `run_passes` call path is alive end-to-end on real tile data.
+- [x] Unit test invariant pins empty layer list as structurally identity.
+- [x] Production `decorate_surface()` return tuple is never touched by the shadow block.
+- [x] §11, §18, CLAUDE.md all reconciled to "Phase 0.75" naming in the same commit; pillar checkoff added to prevent future drift.
+
+#### Open items carried into next session
+
+- **51_53 flag-ON (optional strictness).** Skipped this session to save ~60 min wall-time. The 48_48 flag-ON run already covers ocean + land-adjacent tiles, and 51_53 flag-OFF proves the production path on a land-heavy tile. If Phase 1 (column additive) turns out to need it for regression confidence, run it then.
+- **`36_20` baseline snapshot** — prerequisite for Phase 1 (column additive path) and/or Phase 2 (pilot layers). **Not taken this session** — Phase 0.75 intentionally doesn't touch any code path that 36_20 uniquely exercises. Take the baseline in the FIRST session that will touch `column_generator.py` or a real Phase 2 layer, *immediately before* the edit, per the workflow rule.
+- **Aspect convention drift** (carry-over from S44). `core/eco_gradients.py` aspect sign is inverted relative to `core/wind_model.py`. Phase 2 layers MUST recompute aspect from gradient using the `wind_model` convention, not trust `eco_grads.aspect`. Not fixed in Phase 0.75 scope.
+- **Lithology feature flag** — still OFF. Flipped only when Phase 1/2 consumers are ready.
+
+#### Notes
+
+- `tile_y` vs `tile_z` naming: `decorate_surface()`'s signature uses `tile_y` for the Z-axis tile coordinate (legacy from earlier rename), while `SurfaceContext` uses `tile_z`. The shadow block maps `tile_x → tile_x` and `tile_y → tile_z` verbatim. Not worth fixing in this session, but callers reading log lines like `[shadow] ERROR tile=(48,48)` should interpret the second integer as tile_z / world-Z.
+- Push is blocked in sandbox (per standing rule). Nick pushes from his terminal.
