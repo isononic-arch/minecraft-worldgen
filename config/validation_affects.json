@@ -1,0 +1,61 @@
+{
+  "_doc": "Delta-validation affects-map + mask bounds. Consumed by tools/validate_3x3.py and tools/validate_masks.py. Edit this file to tune which tiles are re-validated after a given code/config change. Maintained manually — no auto-derivation.",
+
+  "_tile_reference": {
+    "24,80":  "desert rock + alpine reference (Session 41)",
+    "36,20":  "rock exposure / treeline",
+    "51,53":  "floodplain / lakes / schematic reference",
+    "59,53":  "windthrow",
+    "16,73":  "meander reference",
+    "25,72":  "flat sand desert",
+    "48,48":  "center sea tile (validator default)"
+  },
+
+  "affects": {
+    "core/biome_assignment.py":    "ALL",
+    "core/eco_gradients.py":       "ALL",
+    "core/column_generator.py":    "ALL",
+    "core/river_carver_v2.py":     [[16, 73], [51, 53]],
+    "core/surface_decorator.py":   "ALL",
+    "core/chunk_writer.py":        "ALL",
+    "core/tile_streamer.py":       "ALL",
+    "core/hydrology_precompute.py":"ALL",
+
+    "core/surface_decorator.py::_apply_desert_rock_palette":   [[24, 80], [25, 72]],
+    "core/surface_decorator.py::_apply_alpine_palette":        [[24, 80], [36, 20]],
+    "core/surface_decorator.py::_apply_windthrow_palette":     [[59, 53]],
+    "core/surface_decorator.py::_apply_floodplain_palette":    [[51, 53]],
+
+    "rebuild_centerline.py":    [[16, 73], [51, 53]],
+    "rebuild_floodplain.py":    [[51, 53]],
+    "rebuild_windthrow.py":     [[59, 53]],
+    "rebuild_rock_exposure.py": [[36, 20], [24, 80]],
+    "rebuild_sand_dunes.py":    [[24, 80], [25, 72]],
+    "generate_lake_wl.py":      [[51, 53]],
+
+    "config/thresholds.json":   "ALL"
+  },
+
+  "mask_bounds": {
+    "height":              {"kind": "dense",    "min_cov": 0.99, "max_cov": 1.00},
+    "slope":               {"kind": "dense",    "min_cov": 0.99, "max_cov": 1.00},
+    "erosion":             {"kind": "dense",    "min_cov": 0.99, "max_cov": 1.00},
+    "flow":                {"kind": "gradient", "min_cov": 0.01, "max_cov": 1.00},
+    "override":            {"kind": "discrete", "min_cov": 0.35, "max_cov": 0.50},
+    "shore":               {"kind": "discrete", "min_cov": 0.25, "max_cov": 0.40},
+    "river":               {"kind": "gradient", "min_cov": 0.001,"max_cov": 0.20},
+    "hydro_order":         {"kind": "discrete", "min_cov": 0.0,  "max_cov": 0.30},
+    "hydro_width":         {"kind": "gradient", "min_cov": 0.0,  "max_cov": 0.30},
+    "hydro_depth":         {"kind": "gradient", "min_cov": 0.0,  "max_cov": 0.30},
+    "hydro_lake":          {"kind": "gradient", "min_cov": 0.0,  "max_cov": 0.20},
+    "hydro_lkdep":         {"kind": "gradient", "min_cov": 0.0,  "max_cov": 0.20},
+    "hydro_lake_wl":       {"kind": "gradient", "min_cov": 0.0,  "max_cov": 0.20},
+    "hydro_centerline":    {"kind": "gradient", "min_cov": 0.0,  "max_cov": 0.05},
+    "hydro_floodplain":    {"kind": "gradient", "min_cov": 0.001,"max_cov": 0.25},
+    "wind_windthrow":      {"kind": "gradient", "min_cov": 0.01, "max_cov": 0.25},
+    "rock_exposure":       {"kind": "gradient", "min_cov": 0.01, "max_cov": 0.40},
+    "rock_exposure_tight": {"kind": "gradient", "min_cov": 0.0,  "max_cov": 0.30},
+    "snow_caps":           {"kind": "gradient", "min_cov": 0.0,  "max_cov": 0.25},
+    "sand_dunes":          {"kind": "gradient", "min_cov": 0.001,"max_cov": 0.25}
+  }
+}

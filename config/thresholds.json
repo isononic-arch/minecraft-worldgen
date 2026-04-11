@@ -1,0 +1,1968 @@
+{
+  "noise_seeds": {
+    "biome_patch": 42001,
+    "decoration_density": 42002,
+    "slope_mix": 42003,
+    "snow_line": 42004,
+    "dune_a": 42005,
+    "dune_b": 42006
+  },
+  "sea_level_16bit": 11602,
+  "terrain_class": {
+    "coastal_max_norm": 0.35,
+    "lowland_max_norm": 0.55,
+    "highland_max_norm": 0.72,
+    "alpine_max_norm": 0.88,
+    "slope_river_threshold": 0.08,
+    "slope_cliff_threshold": 0.65
+  },
+  "hydrology": {
+    "flow_river_threshold": 0.7,
+    "flow_wetland_threshold": 0.45,
+    "erosion_high": 0.6
+  },
+  "moisture": {
+    "flow_high": 0.55,
+    "flow_mid": 0.3,
+    "flow_low": 0.1
+  },
+  "biome_patch_noise": {
+    "scale": 300,
+    "octaves": 4
+  },
+  "decoration_density_noise": {
+    "scale": 40,
+    "octaves": 3,
+    "floor": 0.15
+  },
+  "slope_surface": {
+    "stone_hard_threshold": 0.65,
+    "grass_hard_threshold": 0.35,
+    "mix_zone_noise_scale": 40,
+    "gravel_chance": 0.3,
+    "stone_cliff_threshold_degrees": 55
+  },
+  "snow_cap": {
+    "snow_line_y": 320,
+    "snow_line_variation": 25,
+    "snow_noise_scale": 80,
+    "snow_noise_amplitude": 25,
+    "snow_slope_offset": 0.15
+  },
+  "scree": {
+    "enabled": true,
+    "slope_threshold": 0.55,
+    "noise_scale": 20
+  },
+  "terrain_spline": {
+    "gaea_in": [
+      0,
+      11602,
+      26921,
+      35435,
+      43437,
+      65496
+    ],
+    "mc_y_out": [
+      -64,
+      63,
+      120,
+      278,
+      398,
+      448
+    ]
+  },
+  "river_carving": {
+    "stream_threshold": 0.55,
+    "river_threshold": 0.75,
+    "stream_depth": 4,
+    "river_depth": 10,
+    "river_depth_min": 4,
+    "river_depth_max": 14,
+    "lake_depth_min": 6,
+    "lake_depth_max": 20,
+    "max_depth": 14,
+    "bank_width": 3,
+    "lake_threshold": 0.9
+  },
+  "lake": {
+    "flow_threshold": 0.85,
+    "max_depth": 20
+  },
+  "shoreline": {
+    "beach_width": 4,
+    "gravel_biomes": [
+      "COASTAL_HEATH",
+      "KARST_BARRENS",
+      "SCRUBBY_HEATHLAND",
+      "EASTERN_TEMPERATE_COAST"
+    ],
+    "sand_beach_width_blocks": 4
+  },
+  "cliff_banding": {
+    "enabled": true,
+    "band_scale_y": 12,
+    "band_noise_scale_xz": 20,
+    "cliff_deg_thr": 45.0,
+    "variants": [
+      "stone",
+      "gravel",
+      "tuff",
+      "cobblestone",
+      "stone"
+    ]
+  },
+  "geo_surface": {
+    "alpine_exposure_y": 340,
+    "alpine_exposure_noise_amp": 8,
+    "frost_ridge_y": 300,
+    "frost_ridge_deg": 35.0,
+    "frost_cobble_chance": 0.45
+  },
+  "ocean_depth": {
+    "min_depth": 15,
+    "transition_px": 30
+  },
+  "ocean_floor": {
+    "sand_max_depth": 8,
+    "gravel_max_depth": 20,
+    "stone_below": 20
+  },
+  "sand_dunes": {
+    "enabled": true,
+    "max_height": 15,
+    "scale_a": 40,
+    "scale_b": 18,
+    "max_height_add": 15,
+    "min_height_add": 0,
+    "amplitude_a": 1.0,
+    "amplitude_b": 0.5
+  },
+  "block_mixing": {
+    "erosion_high_threshold": 0.035,
+    "moisture_high_threshold": 0.179,
+    "noise_scale": 60,
+    "erosion_threshold": 0.004,
+    "erosion2_threshold": 0.01,
+    "moisture_threshold": 0.005,
+    "moisture2_threshold": 0.02,
+    "noise_threshold": 0.66,
+    "noise2_threshold": 0.684,
+    "noise3_threshold": 0.703,
+    "noise4_threshold": 0.731
+  },
+  "sparse_overrides": {
+    "ALPINE_MEADOW": {
+      "erosion": 0.82,
+      "erosion2": 0.9,
+      "moisture": 0.72,
+      "moisture2": 0.85
+    },
+    "ARCTIC_TUNDRA": {
+      "erosion": 0.8,
+      "erosion2": 0.88,
+      "moisture": 0.75
+    },
+    "SNOWY_BOREAL_TAIGA": {
+      "erosion": 0.78,
+      "erosion2": 0.87
+    },
+    "FROZEN_FLATS": {
+      "erosion": 0.83,
+      "erosion2": 0.91
+    },
+    "KARST_BARRENS": {
+      "erosion": 0.76,
+      "erosion2": 0.85,
+      "noise": 0.52,
+      "noise2": 0.56
+    },
+    "COASTAL_HEATH": {
+      "noise": 0.5,
+      "noise2": 0.54,
+      "erosion": 0.72
+    },
+    "EASTERN_TEMPERATE_COAST": {
+      "noise": 0.5,
+      "noise2": 0.54,
+      "moisture": 0.6
+    },
+    "TEMPERATE_RAINFOREST": {
+      "moisture": 0.55,
+      "moisture2": 0.7,
+      "noise": 0.54
+    },
+    "LUSH_RAINFOREST_COAST": {
+      "moisture": 0.52,
+      "moisture2": 0.68,
+      "noise": 0.52
+    }
+  },
+  "hydrology_engine": {
+    "min_stream_flow": 0.15,
+    "precompute_scale": 8,
+    "river_geometry": {
+      "width_min": 1,
+      "width_max": 24,
+      "depth_min": 2,
+      "depth_max": 16,
+      "discharge_exponent_w": 0.5,
+      "discharge_exponent_d": 0.4,
+      "slope_attenuation": 2.0
+    },
+    "rainfall_proxy": {
+      "TEMPERATE_RAINFOREST": 1.4,
+      "LUSH_RAINFOREST_COAST": 1.4,
+      "RAINFOREST_COAST": 1.3,
+      "TEMPERATE_DECIDUOUS": 1.0,
+      "MIXED_FOREST": 1.0,
+      "BIRCH_FOREST": 0.9,
+      "RIPARIAN_WOODLAND": 1.1,
+      "BOREAL_TAIGA": 0.8,
+      "SNOWY_BOREAL_TAIGA": 0.7,
+      "CONTINENTAL_STEPPE": 0.5,
+      "DRY_OAK_SAVANNA": 0.4,
+      "DRY_PINE_BARRENS": 0.5,
+      "DRY_WOODLAND_MAQUIS": 0.4,
+      "SEMI_ARID_SHRUBLAND": 0.3,
+      "DESERT_STEPPE_TRANSITION": 0.25,
+      "SAND_DUNE_DESERT": 0.15,
+      "KARST_BARRENS": 0.4,
+      "SCRUBBY_HEATHLAND": 0.6,
+      "COASTAL_HEATH": 0.8,
+      "EASTERN_TEMPERATE_COAST": 0.9,
+      "ALPINE_MEADOW": 0.7,
+      "ARCTIC_TUNDRA": 0.3,
+      "FROZEN_FLATS": 0.25,
+      "TIDAL_JUNGLE_FRINGE": 1.2,
+      "MANGROVE_COAST": 1.3,
+      "FRESHWATER_FEN": 1.0,
+      "_default": 0.8
+    },
+    "lake_detection": {
+      "min_area_src_px": 80,
+      "max_depth_blocks": 20,
+      "slope_percentile": 8,
+      "flow_percentile": 70,
+      "local_window": 31,
+      "pit_expand_px": 5
+    },
+    "riverbed_blocks": {
+      "shallow_max_depth": 3,
+      "mid_max_depth": 8,
+      "deep_max_depth": 15,
+      "shallow_block": "sand",
+      "mid_block": "gravel",
+      "deep_block": "clay",
+      "very_deep_block": "stone"
+    }
+  },
+  "noise_layers_biome": {
+    "ALPINE_MEADOW": [
+      {
+        "name": "grass_block",
+        "noise": "simplex",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "gravel (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "gravel",
+        "sub": "stone",
+        "coverage": 0.15,
+        "scale": 26,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "gravel",
+        "coverage": 0.24,
+        "scale": 9,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "moss_block (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "moss_block",
+        "sub": "dirt",
+        "coverage": 0.23,
+        "scale": 11,
+        "seed": 44,
+        "is_base": false
+      }
+    ],
+    "ARCTIC_TUNDRA": [
+      {
+        "name": "New Layer",
+        "noise": "mix",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "stone",
+        "coverage": 0.38,
+        "scale": 5,
+        "seed": 85737,
+        "is_base": false
+      },
+      {
+        "name": "snow_block",
+        "noise": "simplex",
+        "enabled": true,
+        "block": "snow_block",
+        "sub": "stone",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "gravel (erosion2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "gravel",
+        "sub": "stone",
+        "coverage": 0.28,
+        "scale": 15,
+        "seed": 243,
+        "is_base": false
+      },
+      {
+        "name": "tuff (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "tuff",
+        "sub": "andesite",
+        "coverage": 0.16,
+        "scale": 14,
+        "seed": 355,
+        "is_base": false
+      }
+    ],
+    "BIRCH_FOREST": [
+      {
+        "name": "grass_block",
+        "noise": "simplex",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "New Layer",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "stone",
+        "coverage": 0.39,
+        "scale": 6,
+        "seed": 84107,
+        "is_base": false
+      },
+      {
+        "name": "New Layer",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "stone",
+        "coverage": 0.46,
+        "scale": 168,
+        "seed": 32662,
+        "is_base": false
+      },
+      {
+        "name": "podzol (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "rooted_dirt",
+        "coverage": 0.46,
+        "scale": 12,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "dirt",
+        "coverage": 0.27,
+        "scale": 84,
+        "seed": 44,
+        "is_base": false
+      }
+    ],
+    "BOREAL_TAIGA": [
+      {
+        "name": "New Layer",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "stone",
+        "coverage": 0.28,
+        "scale": 5,
+        "seed": 21633,
+        "is_base": false
+      },
+      {
+        "name": "podzol",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "coarse_dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "coarse_dirt (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "coarse_dirt",
+        "coverage": 0.12,
+        "scale": 9,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "diorite (erosion2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "diorite",
+        "sub": "stone",
+        "coverage": 0.08,
+        "scale": 36,
+        "seed": 243,
+        "is_base": false
+      },
+      {
+        "name": "grass_block (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 0.34,
+        "scale": 50,
+        "seed": 44,
+        "is_base": false
+      }
+    ],
+    "COASTAL_HEATH": [
+      {
+        "name": "grass_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "coarse_dirt (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "gravel",
+        "coverage": 0.32,
+        "scale": 31,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "gravel (erosion2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "gravel",
+        "sub": "stone",
+        "coverage": 0.19,
+        "scale": 36,
+        "seed": 243,
+        "is_base": false
+      },
+      {
+        "name": "podzol (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "coarse_dirt",
+        "coverage": 0.3,
+        "scale": 20,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "sand (noise3)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "sand",
+        "sub": "sandstone",
+        "coverage": 0.38,
+        "scale": 42,
+        "seed": 1041,
+        "is_base": false
+      }
+    ],
+    "CONTINENTAL_STEPPE": [
+      {
+        "name": "grass_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "granite (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "granite",
+        "sub": "stone",
+        "coverage": 0.17,
+        "scale": 11,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "granite",
+        "coverage": 0.55,
+        "scale": 36,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "dirt",
+        "coverage": 0.46,
+        "scale": 84,
+        "seed": 44,
+        "is_base": false
+      }
+    ],
+    "DESERT_STEPPE_TRANSITION": [
+      {
+        "name": "coarse_dirt",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "sandstone",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "sand (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "sand",
+        "sub": "sandstone",
+        "coverage": 0.35,
+        "scale": 10,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "red_sand (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "red_sand",
+        "sub": "sandstone",
+        "coverage": 0.14,
+        "scale": 13,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "grass_block (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 0.5,
+        "scale": 15,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "New Layer",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "stone",
+        "coverage": 0.37,
+        "scale": 134,
+        "seed": 24439,
+        "is_base": false
+      },
+      {
+        "name": "New Layer",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "sand",
+        "sub": "stone",
+        "coverage": 0.48,
+        "scale": 147,
+        "seed": 80840,
+        "is_base": false
+      }
+    ],
+    "DRY_OAK_SAVANNA": [
+      {
+        "name": "coarse_dirt",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "terracotta",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "New Layer",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "stone",
+        "coverage": 0.35,
+        "scale": 15,
+        "seed": 25230,
+        "is_base": false
+      },
+      {
+        "name": "grass_block (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 0.43,
+        "scale": 38,
+        "seed": 44,
+        "is_base": false
+      }
+    ],
+    "DRY_PINE_BARRENS": [
+      {
+        "name": "coarse_dirt",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "sand",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "granite (erosion2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "granite",
+        "sub": "stone",
+        "coverage": 0.07,
+        "scale": 11,
+        "seed": 243,
+        "is_base": false
+      },
+      {
+        "name": "sand (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "sand",
+        "sub": "sandstone",
+        "coverage": 0.12,
+        "scale": 10,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "New Layer",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "stone",
+        "coverage": 0.35,
+        "scale": 20,
+        "seed": 99596,
+        "is_base": false
+      },
+      {
+        "name": "podzol (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "coarse_dirt",
+        "coverage": 0.47,
+        "scale": 84,
+        "seed": 44,
+        "is_base": false
+      }
+    ],
+    "DRY_WOODLAND_MAQUIS": [
+      {
+        "name": "coarse_dirt",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "terracotta",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "New Layer",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "stone",
+        "coverage": 0.22,
+        "scale": 5,
+        "seed": 74254,
+        "is_base": false
+      },
+      {
+        "name": "grass_block (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 0.36,
+        "scale": 21,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "terracotta (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "terracotta",
+        "sub": "orange_terracotta",
+        "coverage": 0.17,
+        "scale": 5,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "gravel (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "gravel",
+        "sub": "stone",
+        "coverage": 0.09,
+        "scale": 5,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "dripstone_block (noise3)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "dripstone_block",
+        "sub": "stone",
+        "coverage": 0.15,
+        "scale": 18,
+        "seed": 1041,
+        "is_base": false
+      }
+    ],
+    "EASTERN_TEMPERATE_COAST": [
+      {
+        "name": "grass_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "sand (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "sand",
+        "sub": "sandstone",
+        "coverage": 0.4,
+        "scale": 15,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "gravel (erosion2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "gravel",
+        "sub": "stone",
+        "coverage": 0.08,
+        "scale": 8,
+        "seed": 243,
+        "is_base": false
+      },
+      {
+        "name": "clay (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "clay",
+        "sub": "dirt",
+        "coverage": 0.13,
+        "scale": 8,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "gravel",
+        "coverage": 0.24,
+        "scale": 35,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "stone (noise3)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "andesite",
+        "coverage": 0.34,
+        "scale": 64,
+        "seed": 1041,
+        "is_base": false
+      }
+    ],
+    "FRESHWATER_FEN": [
+      {
+        "name": "mud",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "mud",
+        "sub": "mud",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "grass_block (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "mud",
+        "coverage": 0.36,
+        "scale": 14,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "clay (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "clay",
+        "sub": "mud",
+        "coverage": 0.08,
+        "scale": 40,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "moss_block (moisture2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "moss_block",
+        "sub": "mud",
+        "coverage": 0.24,
+        "scale": 84,
+        "seed": 444,
+        "is_base": false
+      },
+      {
+        "name": "podzol (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "rooted_dirt",
+        "coverage": 0.36,
+        "scale": 60,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "mud",
+        "coverage": 0.43,
+        "scale": 9,
+        "seed": 43,
+        "is_base": false
+      }
+    ],
+    "MANGROVE_COAST": [
+      {
+        "name": "mud",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "mud",
+        "sub": "mud",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "clay (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "clay",
+        "sub": "mud",
+        "coverage": 0.19,
+        "scale": 29,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "mud (moisture2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "mud",
+        "sub": "clay",
+        "coverage": 0.33,
+        "scale": 12,
+        "seed": 444,
+        "is_base": false
+      },
+      {
+        "name": "moss_block (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "moss_block",
+        "sub": "mud",
+        "coverage": 0.38,
+        "scale": 60,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "rooted_dirt (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "rooted_dirt",
+        "sub": "mud",
+        "coverage": 0.39,
+        "scale": 12,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "sand (noise3)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "sand",
+        "sub": "clay",
+        "coverage": 0.28,
+        "scale": 28,
+        "seed": 1041,
+        "is_base": false
+      }
+    ],
+    "MIXED_FOREST": [
+      {
+        "name": "grass_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "coarse_dirt (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "dirt",
+        "coverage": 0.42,
+        "scale": 7,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "podzol (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "rooted_dirt",
+        "coverage": 0.36,
+        "scale": 48,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "gravel (erosion2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "stone",
+        "coverage": 0.36,
+        "scale": 36,
+        "seed": 243,
+        "is_base": false
+      },
+      {
+        "name": "moss_block (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "moss_block",
+        "sub": "rooted_dirt",
+        "coverage": 0.26,
+        "scale": 34,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "rooted_dirt (moisture2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "rooted_dirt",
+        "sub": "dirt",
+        "coverage": 0.24,
+        "scale": 53,
+        "seed": 444,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (noise3)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "coarse_dirt",
+        "coverage": 0.33,
+        "scale": 63,
+        "seed": 1041,
+        "is_base": false
+      }
+    ],
+    "RAINFOREST_COAST": [
+      {
+        "name": "moss_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "moss_block",
+        "sub": "rooted_dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "mud (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "mud",
+        "sub": "mud",
+        "coverage": 0.26,
+        "scale": 12,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "mud (moisture2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "mud",
+        "sub": "clay",
+        "coverage": 0.25,
+        "scale": 54,
+        "seed": 444,
+        "is_base": false
+      },
+      {
+        "name": "podzol (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "rooted_dirt",
+        "coverage": 0.39,
+        "scale": 36,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "grass_block (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "rooted_dirt",
+        "coverage": 0.46,
+        "scale": 39,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "mossy_cobblestone (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "stone",
+        "coverage": 0.36,
+        "scale": 16,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "rooted_dirt (noise3)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "rooted_dirt",
+        "sub": "dirt",
+        "coverage": 0.43,
+        "scale": 37,
+        "seed": 1041,
+        "is_base": false
+      }
+    ],
+    "RIPARIAN_WOODLAND": [
+      {
+        "name": "grass_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "mud",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "moss_block (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "moss_block",
+        "sub": "mud",
+        "coverage": 0.38,
+        "scale": 60,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "clay (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "clay",
+        "sub": "mud",
+        "coverage": 0.13,
+        "scale": 24,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "mud (moisture2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "mud",
+        "sub": "clay",
+        "coverage": 0.21,
+        "scale": 28,
+        "seed": 444,
+        "is_base": false
+      },
+      {
+        "name": "cobblestone (erosion2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "gravel",
+        "coverage": 0.36,
+        "scale": 16,
+        "seed": 243,
+        "is_base": false
+      },
+      {
+        "name": "podzol (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "rooted_dirt",
+        "coverage": 0.37,
+        "scale": 36,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (noise3)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "dirt",
+        "coverage": 0.26,
+        "scale": 11,
+        "seed": 1041,
+        "is_base": false
+      }
+    ],
+    "SAND_DUNE_DESERT": [
+      {
+        "name": "sand",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "sand",
+        "sub": "sand",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "sand (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "sand",
+        "sub": "sandstone",
+        "coverage": 0.38,
+        "scale": 60,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "red_sand (noise3)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "sandstone",
+        "sub": "sandstone",
+        "coverage": 0.02,
+        "scale": 33,
+        "seed": 1041,
+        "is_base": false
+      }
+    ],
+    "SCRUBBY_HEATHLAND": [
+      {
+        "name": "grass_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "coarse_dirt (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "gravel",
+        "coverage": 0.42,
+        "scale": 25,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "tuff (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "tuff",
+        "sub": "andesite",
+        "coverage": 0.08,
+        "scale": 8,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "sand (noise4)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "sand",
+        "sub": "sandstone",
+        "coverage": 0.17,
+        "scale": 10,
+        "seed": 819,
+        "is_base": false
+      },
+      {
+        "name": "podzol (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "coarse_dirt",
+        "coverage": 0.44,
+        "scale": 20,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "gravel (erosion2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "stone",
+        "coverage": 0.45,
+        "scale": 64,
+        "seed": 243,
+        "is_base": false
+      }
+    ],
+    "SEMI_ARID_SHRUBLAND": [
+      {
+        "name": "coarse_dirt",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "sand (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "sand",
+        "sub": "sandstone",
+        "coverage": 0.38,
+        "scale": 12,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (noise3)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "gravel",
+        "coverage": 0.33,
+        "scale": 60,
+        "seed": 1041,
+        "is_base": false
+      },
+      {
+        "name": "grass_block (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 0.45,
+        "scale": 134,
+        "seed": 44,
+        "is_base": false
+      }
+    ],
+    "SNOWY_BOREAL_TAIGA": [
+      {
+        "name": "snow_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "podzol",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "coarse_dirt (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "gravel",
+        "coverage": 0.28,
+        "scale": 12,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "gravel (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "stone",
+        "coverage": 0.35,
+        "scale": 6,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "podzol (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "coarse_dirt",
+        "coverage": 0.46,
+        "scale": 60,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "snow_block (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "packed_ice",
+        "coverage": 0.72,
+        "scale": 116,
+        "seed": 44,
+        "is_base": false
+      }
+    ],
+    "TEMPERATE_DECIDUOUS": [
+      {
+        "name": "grass_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "moss_block (moisture2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "rooted_dirt",
+        "coverage": 0.41,
+        "scale": 16,
+        "seed": 444,
+        "is_base": false
+      },
+      {
+        "name": "gravel (erosion2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "gravel",
+        "sub": "stone",
+        "coverage": 0.07,
+        "scale": 9,
+        "seed": 243,
+        "is_base": false
+      },
+      {
+        "name": "rooted_dirt (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "rooted_dirt",
+        "sub": "dirt",
+        "coverage": 0.1,
+        "scale": 13,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "New Layer",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "stone",
+        "coverage": 0.52,
+        "scale": 7,
+        "seed": 82386,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (noise3)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "coarse_dirt",
+        "coverage": 0.22,
+        "scale": 13,
+        "seed": 1041,
+        "is_base": false
+      },
+      {
+        "name": "podzol (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "rooted_dirt",
+        "coverage": 0.51,
+        "scale": 145,
+        "seed": 42,
+        "is_base": false
+      }
+    ],
+    "TEMPERATE_RAINFOREST": [
+      {
+        "name": "moss_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "moss_block",
+        "sub": "rooted_dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "podzol (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "rooted_dirt",
+        "coverage": 0.44,
+        "scale": 20,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "mud (moisture2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "mud",
+        "sub": "mud",
+        "coverage": 0.34,
+        "scale": 15,
+        "seed": 444,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "coarse_dirt",
+        "coverage": 0.42,
+        "scale": 36,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "gravel (erosion2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "mud",
+        "sub": "stone",
+        "coverage": 0.27,
+        "scale": 72,
+        "seed": 243,
+        "is_base": false
+      },
+      {
+        "name": "grass_block (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "rooted_dirt",
+        "coverage": 0.64,
+        "scale": 60,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "rooted_dirt (noise3)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "rooted_dirt",
+        "sub": "dirt",
+        "coverage": 0.54,
+        "scale": 13,
+        "seed": 1041,
+        "is_base": false
+      }
+    ],
+    "TIDAL_JUNGLE_FRINGE": [
+      {
+        "name": "mud",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "mud",
+        "sub": "mud",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "moss_block (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "moss_block",
+        "sub": "mud",
+        "coverage": 0.44,
+        "scale": 10,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "clay (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "clay",
+        "sub": "mud",
+        "coverage": 0.08,
+        "scale": 61,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "mud (moisture2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "mud",
+        "sub": "clay",
+        "coverage": 0.24,
+        "scale": 84,
+        "seed": 444,
+        "is_base": false
+      },
+      {
+        "name": "podzol (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "rooted_dirt",
+        "coverage": 0.36,
+        "scale": 35,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "mud",
+        "coverage": 0.42,
+        "scale": 26,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "New Layer",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "stone",
+        "coverage": 0.4,
+        "scale": 109,
+        "seed": 46917,
+        "is_base": false
+      }
+    ],
+    "FROZEN_FLATS": [
+      {
+        "name": "snow_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "snow_block",
+        "sub": "packed_ice",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "gravel (erosion2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "gravel",
+        "sub": "stone",
+        "coverage": 0.16,
+        "scale": 8,
+        "seed": 243,
+        "is_base": false
+      },
+      {
+        "name": "stone (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "stone",
+        "sub": "stone",
+        "coverage": 0.21,
+        "scale": 12,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "dirt",
+        "coverage": 0.52,
+        "scale": 20,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "snow_block (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "snow_block",
+        "sub": "gravel",
+        "coverage": 0.65,
+        "scale": 131,
+        "seed": 43,
+        "is_base": false
+      }
+    ],
+    "KARST_BARRENS": [
+      {
+        "name": "stone",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "calcite",
+        "sub": "stone",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "calcite (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "dripstone_block",
+        "coverage": 0.24,
+        "scale": 5,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "stone",
+        "coverage": 0.16,
+        "scale": 9,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "dripstone_block (noise3)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "dripstone_block",
+        "sub": "stone",
+        "coverage": 0.24,
+        "scale": 11,
+        "seed": 1041,
+        "is_base": false
+      },
+      {
+        "name": "gravel (erosion2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "stone",
+        "sub": "calcite",
+        "coverage": 0.14,
+        "scale": 10,
+        "seed": 243,
+        "is_base": false
+      },
+      {
+        "name": "calcite (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "stone",
+        "coverage": 0.45,
+        "scale": 19,
+        "seed": 43,
+        "is_base": false
+      }
+    ],
+    "LUSH_RAINFOREST_COAST": [
+      {
+        "name": "moss_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "moss_block",
+        "sub": "rooted_dirt",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "mud (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "mud",
+        "sub": "clay",
+        "coverage": 0.47,
+        "scale": 15,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "podzol (moisture2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "rooted_dirt",
+        "coverage": 0.42,
+        "scale": 31,
+        "seed": 444,
+        "is_base": false
+      },
+      {
+        "name": "grass_block (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "rooted_dirt",
+        "coverage": 0.59,
+        "scale": 60,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "clay (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "clay",
+        "sub": "mud",
+        "coverage": 0.28,
+        "scale": 24,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "coarse_dirt",
+        "coverage": 0.02,
+        "scale": 10,
+        "seed": 43,
+        "is_base": false
+      }
+    ]
+  },
+  "eco_gradients": {
+    "moisture_weights": {"flow": 0.4, "concavity": 0.3, "north_factor": 0.3},
+    "soil_depth_slope_exponent": 1.5,
+    "riparian_max_distance_px": 32,
+    "lake_fringe_max_distance_px": 16
+  },
+  "eco_vegetation": {
+    "slope_penalty_start_deg": 30,
+    "slope_penalty_full_deg": 55,
+    "aspect_strength": 0.2,
+    "noise_amplitude": 0.2
+  },
+  "eco_ground_cover": {
+    "canopy_suppression_factor": 0.4,
+    "ecotone_width_px": 24,
+    "ecotone_sigmoid_sharpness": 4.0,
+    "colony_scale_px": 48,
+    "colony_density_boost": 1.8
+  },
+  "eco_riparian": {
+    "band_widths": [2, 6, 16, 32],
+    "strahler_width_scale": [1.0, 1.0, 1.5, 2.0, 3.0],
+    "lake_fringe_width_px": 12,
+    "moisture_stringer_strength": 0.3
+  },
+  "eco_placement": {
+    "eco_density_weights": {"soil_depth": 0.3, "moisture_index": 0.4, "concavity_norm": 0.3},
+    "eco_density_range": [0.5, 1.5],
+    "slope_penalty_start_deg": 30,
+    "slope_penalty_full_deg": 55,
+    "habitat_score_floor": 0.05
+  },
+  "species_habitats": {
+    "_doc": "Per-species habitat curves. Each gradient: [center, width] for sigmoid. cliff_deg_max: hard slope cutoff.",
+    "cedar":     {"moisture_index":[0.75,0.15],"soil_depth":[0.70,0.20],"wind_exposure":[0.20,0.15],"concavity_norm":[0.65,0.20],"riparian_proximity":[0.30,0.25],"cliff_deg_max":35},
+    "hemlock":   {"moisture_index":[0.55,0.20],"soil_depth":[0.50,0.25],"wind_exposure":[0.50,0.20],"concavity_norm":[0.45,0.25],"riparian_proximity":[0.10,0.30],"cliff_deg_max":40},
+    "sitka":     {"moisture_index":[0.50,0.25],"soil_depth":[0.40,0.25],"wind_exposure":[0.75,0.15],"concavity_norm":[0.35,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":45},
+    "dfir":      {"moisture_index":[0.45,0.20],"soil_depth":[0.45,0.25],"wind_exposure":[0.55,0.25],"concavity_norm":[0.40,0.30],"riparian_proximity":[0.10,0.30],"cliff_deg_max":40},
+    "maple":     {"moisture_index":[0.70,0.15],"soil_depth":[0.65,0.20],"wind_exposure":[0.25,0.20],"concavity_norm":[0.60,0.20],"riparian_proximity":[0.55,0.20],"cliff_deg_max":30},
+    "bspruce":   {"moisture_index":[0.50,0.30],"soil_depth":[0.50,0.30],"wind_exposure":[0.40,0.30],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.20,0.30],"cliff_deg_max":40},
+    "wspruce":   {"moisture_index":[0.65,0.20],"soil_depth":[0.55,0.25],"wind_exposure":[0.30,0.25],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.30,0.25],"cliff_deg_max":35},
+    "balfir":    {"moisture_index":[0.65,0.15],"soil_depth":[0.60,0.20],"wind_exposure":[0.20,0.15],"concavity_norm":[0.60,0.20],"riparian_proximity":[0.25,0.25],"cliff_deg_max":30},
+    "jpine":     {"moisture_index":[0.30,0.20],"soil_depth":[0.30,0.25],"wind_exposure":[0.65,0.20],"concavity_norm":[0.30,0.25],"riparian_proximity":[0.10,0.30],"cliff_deg_max":50},
+    "tamarack":  {"moisture_index":[0.80,0.15],"soil_depth":[0.55,0.25],"wind_exposure":[0.25,0.25],"concavity_norm":[0.70,0.20],"riparian_proximity":[0.50,0.20],"cliff_deg_max":30},
+    "spruce":    {"moisture_index":[0.45,0.30],"soil_depth":[0.45,0.30],"wind_exposure":[0.45,0.30],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":40},
+    "kspruce":   {"moisture_index":[0.35,0.25],"soil_depth":[0.30,0.25],"wind_exposure":[0.75,0.15],"concavity_norm":[0.30,0.25],"riparian_proximity":[0.10,0.30],"cliff_deg_max":55},
+    "salfir":    {"moisture_index":[0.60,0.20],"soil_depth":[0.55,0.25],"wind_exposure":[0.25,0.20],"concavity_norm":[0.65,0.20],"riparian_proximity":[0.20,0.25],"cliff_deg_max":35},
+    "kfir":      {"moisture_index":[0.35,0.25],"soil_depth":[0.25,0.25],"wind_exposure":[0.80,0.15],"concavity_norm":[0.30,0.25],"riparian_proximity":[0.10,0.30],"cliff_deg_max":55},
+    "sbirch":    {"moisture_index":[0.35,0.30],"soil_depth":[0.35,0.30],"wind_exposure":[0.60,0.25],"concavity_norm":[0.35,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":45},
+    "dbirch":    {"moisture_index":[0.65,0.20],"soil_depth":[0.55,0.25],"wind_exposure":[0.30,0.20],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.30,0.25],"cliff_deg_max":35},
+    "rowan":     {"moisture_index":[0.50,0.30],"soil_depth":[0.45,0.30],"wind_exposure":[0.50,0.30],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.20,0.30],"cliff_deg_max":45},
+    "eoak":      {"moisture_index":[0.55,0.25],"soil_depth":[0.65,0.20],"wind_exposure":[0.35,0.25],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.20,0.25],"cliff_deg_max":35},
+    "scotsp":    {"moisture_index":[0.30,0.25],"soil_depth":[0.30,0.25],"wind_exposure":[0.65,0.20],"concavity_norm":[0.30,0.30],"riparian_proximity":[0.10,0.30],"cliff_deg_max":50},
+    "lime":      {"moisture_index":[0.55,0.20],"soil_depth":[0.70,0.20],"wind_exposure":[0.25,0.20],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.25,0.25],"cliff_deg_max":30},
+    "ash":       {"moisture_index":[0.65,0.20],"soil_depth":[0.60,0.20],"wind_exposure":[0.30,0.25],"concavity_norm":[0.60,0.20],"riparian_proximity":[0.40,0.20],"cliff_deg_max":35},
+    "beech":     {"moisture_index":[0.55,0.20],"soil_depth":[0.70,0.15],"wind_exposure":[0.25,0.20],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.15,0.30],"cliff_deg_max":30},
+    "hornbeam":  {"moisture_index":[0.40,0.25],"soil_depth":[0.40,0.25],"wind_exposure":[0.45,0.25],"concavity_norm":[0.40,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":40},
+    "cherry":    {"moisture_index":[0.45,0.25],"soil_depth":[0.50,0.25],"wind_exposure":[0.50,0.25],"concavity_norm":[0.45,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":40},
+    "willow":    {"moisture_index":[0.80,0.15],"soil_depth":[0.65,0.20],"wind_exposure":[0.25,0.20],"concavity_norm":[0.65,0.20],"riparian_proximity":[0.75,0.15],"cliff_deg_max":25},
+    "cwillow":   {"moisture_index":[0.70,0.20],"soil_depth":[0.55,0.25],"wind_exposure":[0.30,0.25],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.65,0.20],"cliff_deg_max":30},
+    "wwillow":   {"moisture_index":[0.85,0.10],"soil_depth":[0.70,0.15],"wind_exposure":[0.15,0.15],"concavity_norm":[0.70,0.15],"riparian_proximity":[0.85,0.10],"cliff_deg_max":20},
+    "alder":     {"moisture_index":[0.70,0.20],"soil_depth":[0.55,0.25],"wind_exposure":[0.35,0.25],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.55,0.20],"cliff_deg_max":30},
+    "poplar":    {"moisture_index":[0.55,0.25],"soil_depth":[0.50,0.25],"wind_exposure":[0.50,0.25],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.40,0.25],"cliff_deg_max":40},
+    "ppine":     {"moisture_index":[0.35,0.25],"soil_depth":[0.45,0.30],"wind_exposure":[0.50,0.30],"concavity_norm":[0.45,0.30],"riparian_proximity":[0.10,0.30],"cliff_deg_max":45},
+    "pitchp":    {"moisture_index":[0.20,0.25],"soil_depth":[0.25,0.25],"wind_exposure":[0.60,0.25],"concavity_norm":[0.30,0.30],"riparian_proximity":[0.05,0.30],"cliff_deg_max":50},
+    "hoak":      {"moisture_index":[0.45,0.25],"soil_depth":[0.55,0.25],"wind_exposure":[0.35,0.25],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.20,0.30],"cliff_deg_max":40},
+    "olive":     {"moisture_index":[0.30,0.25],"soil_depth":[0.40,0.25],"wind_exposure":[0.55,0.25],"concavity_norm":[0.40,0.30],"riparian_proximity":[0.10,0.30],"cliff_deg_max":45},
+    "carob":     {"moisture_index":[0.20,0.25],"soil_depth":[0.35,0.25],"wind_exposure":[0.60,0.25],"concavity_norm":[0.35,0.30],"riparian_proximity":[0.05,0.30],"cliff_deg_max":50},
+    "apine":     {"moisture_index":[0.35,0.25],"soil_depth":[0.40,0.25],"wind_exposure":[0.55,0.25],"concavity_norm":[0.40,0.30],"riparian_proximity":[0.10,0.30],"cliff_deg_max":50},
+    "juniper":   {"moisture_index":[0.25,0.30],"soil_depth":[0.30,0.30],"wind_exposure":[0.65,0.25],"concavity_norm":[0.35,0.30],"riparian_proximity":[0.10,0.30],"cliff_deg_max":55},
+    "pinon":     {"moisture_index":[0.40,0.25],"soil_depth":[0.45,0.25],"wind_exposure":[0.50,0.25],"concavity_norm":[0.45,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":50},
+    "soak":      {"moisture_index":[0.45,0.30],"soil_depth":[0.55,0.25],"wind_exposure":[0.45,0.30],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.20,0.30],"cliff_deg_max":40},
+    "acacia":    {"moisture_index":[0.40,0.30],"soil_depth":[0.45,0.30],"wind_exposure":[0.50,0.30],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.35,0.30],"cliff_deg_max":45},
+    "steppep":   {"moisture_index":[0.60,0.25],"soil_depth":[0.50,0.25],"wind_exposure":[0.40,0.25],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.55,0.20],"cliff_deg_max":35},
+    "gfig":      {"moisture_index":[0.70,0.20],"soil_depth":[0.75,0.15],"wind_exposure":[0.25,0.20],"concavity_norm":[0.65,0.20],"riparian_proximity":[0.30,0.25],"cliff_deg_max":30},
+    "banyan":    {"moisture_index":[0.65,0.20],"soil_depth":[0.70,0.20],"wind_exposure":[0.20,0.20],"concavity_norm":[0.65,0.20],"riparian_proximity":[0.25,0.25],"cliff_deg_max":25},
+    "hardwood":  {"moisture_index":[0.55,0.25],"soil_depth":[0.55,0.25],"wind_exposure":[0.40,0.25],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.20,0.30],"cliff_deg_max":40},
+    "breadfruit":{"moisture_index":[0.60,0.25],"soil_depth":[0.55,0.25],"wind_exposure":[0.35,0.25],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.25,0.25],"cliff_deg_max":35},
+    "mpalm":     {"moisture_index":[0.50,0.25],"soil_depth":[0.40,0.25],"wind_exposure":[0.65,0.20],"concavity_norm":[0.40,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":50},
+    "rfpalm":    {"moisture_index":[0.65,0.20],"soil_depth":[0.55,0.25],"wind_exposure":[0.30,0.25],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.30,0.25],"cliff_deg_max":35},
+    "kapok":     {"moisture_index":[0.65,0.20],"soil_depth":[0.70,0.15],"wind_exposure":[0.25,0.20],"concavity_norm":[0.65,0.20],"riparian_proximity":[0.25,0.25],"cliff_deg_max":30},
+    "teak":      {"moisture_index":[0.45,0.25],"soil_depth":[0.50,0.25],"wind_exposure":[0.50,0.25],"concavity_norm":[0.45,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":45},
+    "tfig":      {"moisture_index":[0.65,0.20],"soil_depth":[0.60,0.20],"wind_exposure":[0.30,0.25],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.35,0.25],"cliff_deg_max":35},
+    "cpalm":     {"moisture_index":[0.45,0.25],"soil_depth":[0.35,0.25],"wind_exposure":[0.70,0.20],"concavity_norm":[0.35,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":50},
+    "mroot":     {"moisture_index":[0.85,0.10],"soil_depth":[0.60,0.25],"wind_exposure":[0.35,0.25],"concavity_norm":[0.70,0.20],"riparian_proximity":[0.80,0.15],"cliff_deg_max":20},
+    "rmang":     {"moisture_index":[0.80,0.15],"soil_depth":[0.55,0.25],"wind_exposure":[0.45,0.25],"concavity_norm":[0.65,0.25],"riparian_proximity":[0.75,0.15],"cliff_deg_max":25},
+    "bmang":     {"moisture_index":[0.70,0.20],"soil_depth":[0.50,0.25],"wind_exposure":[0.55,0.25],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.60,0.20],"cliff_deg_max":30},
+    "wmang":     {"moisture_index":[0.55,0.25],"soil_depth":[0.45,0.25],"wind_exposure":[0.50,0.25],"concavity_norm":[0.45,0.30],"riparian_proximity":[0.45,0.25],"cliff_deg_max":35},
+    "mangsm":    {"moisture_index":[0.70,0.25],"soil_depth":[0.50,0.30],"wind_exposure":[0.45,0.30],"concavity_norm":[0.55,0.30],"riparian_proximity":[0.65,0.25],"cliff_deg_max":30},
+    "rmangsm":   {"moisture_index":[0.80,0.15],"soil_depth":[0.50,0.25],"wind_exposure":[0.45,0.25],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.75,0.15],"cliff_deg_max":25},
+    "cfig":      {"moisture_index":[0.65,0.25],"soil_depth":[0.55,0.25],"wind_exposure":[0.35,0.25],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.40,0.25],"cliff_deg_max":35}
+  }
+}

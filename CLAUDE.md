@@ -2,18 +2,21 @@
 
 *Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`.*
 
-**Current state:** Session 41 (2026-04-10) — sand dunes + desert rock palette landed. **NEXT:** stratification "rings around hills" fix.
+**Current state:** Session 43 (2026-04-10) — project cleaned for agentic automation. S42's "riparian bare-dirt hole" was a validator false positive per user, dropped from priorities. Stratification rings parked as lower priority. Direction set: physical-realism overhaul of surface blocks + subsurface geology painting. Baselines `48_48` (clean) and `51_53` remain; treat `51_53`'s `no_bare_dirt_surface` FAILs as the locked known-state, not an active bug — `--baseline` still flags new PASS→FAIL regressions normally. **NEXT:** physical realism revamp — see DIRECTION below.
 
 ---
 
-## TOP PRIORITY (next session)
+## DIRECTION (active)
 
-**Stratification rings bug.** `_apply_desert_rock_palette()` step 6 (`core/surface_decorator.py:1617`) uses absolute `surface_y` for the band index. Top-down it forms correct horizontal contours. In-game ground view it appears as concentric rings around conical hills.
+**Physical realism for surface + subsurface geology.** Goal: stop painting blocks from biome-window noise lookups and start deriving them from physical signals end-to-end, top of column to bedrock.
 
-Candidate fixes (pick one, prototype with `diag_layers_breakdown.py`):
-1. Band axis = distance-from-ridge-crest along slope direction
-2. Move stratification into `core/column_generator.py` so bands only show on cliff cross-sections
-3. Accept top-down inaccuracy and drop stratification
+Working backlog (Claude picks order, user vetoes):
+
+1. **Surface block selection from physical drivers** — extend the S41 Physical Realism Layer pattern to every "soft" mask still using noise-as-discriminator. Candidates: snow cap north-factor, windthrow aspect, forest-floor density by aspect, coastal beach width by wave fetch, riparian banks by flow magnitude, moss/leaf-litter by humidity+canopy. Noise stays as ±10% edge jitter only.
+2. **Subsurface geology pass** — `core/column_generator.py` currently fills below-surface with a thin uniform stack. Replace with a real lithology model: bedrock band, basement rock by elevation/region, sediment thickness driven by `concavity_norm` + flow accumulation, soil horizon thickness by biome+slope. Should make cliff cross-sections and river cuts read as real geology in-game.
+3. **Stratification rings bug** (parked, lower priority). `_apply_desert_rock_palette()` step 6 (`core/surface_decorator.py:1617`) uses absolute `surface_y` so bands appear as concentric rings around conical hills in ground view. Fix candidates: band axis = distance-from-ridge along slope, OR move stratification into `column_generator.py` so bands only show on cliff cross-sections. The geology pass (#2) likely subsumes this.
+
+**Workflow for this direction:** before editing any `core/` path that no existing 3×3 baseline exercises, snapshot a baseline first (see Workflow rule). Land-heavy reference tiles still missing baselines: `24_80`, `36_20`, `59_53`, `16_73`, `25_72`. Snapshot lazily — only when about to touch a code path that tile exercises.
 
 ---
 
@@ -80,6 +83,7 @@ For SOFT organic features (forest floor, moss, grass color), noise IS appropriat
 - **Stop looping**: after 2 failed fixes for the same symptom, STOP. Investigate data with a diagnostic, propose a different strategy, or ask the user.
 - **Don't over-research.** 1-2 reference reads max, then write code.
 - **Never suggest 50k runs.** Never suggest "save for next session." User decides.
+- **Baseline before editing new code paths.** Before touching a `core/` path that no existing 3×3 baseline exercises, snapshot a baseline on a tile that does exercise it. Run `PYTHONUNBUFFERED=1 py tools/validate_3x3.py --tile-x X --tile-z Z --report validation_report_3x3_X_Z`, copy `summary.json` + `report.txt` + `stitched_biomes.png` + `stitched_blocks.png` into `tests/baselines/3x3/{X}_{Z}/`. After the edit, re-run with `--baseline tests/baselines/3x3/{X}_{Z}` and confirm no PASS→FAIL flips. Rule of thumb: snapshot *immediately before* the edit, never prophylactically — baselines rot when palettes/thresholds change legitimately. Current baselines: `48_48` (ocean/coast/seams, clean), `51_53` (rivers/lakes/mixed forest, 8 known pre-existing FAILs — riparian bare-dirt hole in MIXED_FOREST/TEMPERATE_RAINFOREST; still regression-useful because `--baseline` only flags new PASS→FAIL flips). Tiles without a baseline yet: `24_80` (desert/sand/rock), `36_20` (rock exposure/treeline), `59_53` (windthrow), `16_73` (meander), `25_72` (flat sand).
 
 ---
 
@@ -163,3 +167,84 @@ All steps 1-15 complete. In-game validation passed (Session 15). Hydrology engin
 - Precompute = 1:8 scale = 6,250 × 6,250
 - Tradewind = 270° (west → east)
 - Sea level Y=63
+
+---
+
+## COMMANDS (copy-paste ready)
+
+All commands assume CWD = project root. Python = `C:\Users\nicho\AppData\Local\Python\pythoncore-3.14-64\python.exe` (aliased as `py` below — substitute if not aliased).
+
+### Validate one tile (single-tile, writes .mca)
+```
+py tools/validate_test_tile.py --config config/thresholds.json --masks masks/ --output output/ --tile-x 36 --tile-z 20 --report validation_report_36_20
+```
+- Elapsed: ~3 min on reference tiles
+- Exit code: 0 = all PASS, 1 = one or more FAIL, 2 = fatal
+- Read `validation_report_36_20/checks.json` → `{"passed": N, "failed": N, "warnings": N}` for machine check
+- Read `validation_report_36_20/report.txt` for human-readable summary
+
+### Validate 3×3 (pre-MCA, fast feedback loop — preferred for iteration)
+```
+py tools/validate_3x3.py --config config/thresholds.json --masks masks/ --output output/ --tile-x 36 --tile-z 20 --report validation_report_3x3_36_20
+```
+- Runs 9 tiles through the pipeline up to surface decoration. No .mca written, no schematics placed.
+- **Always run with `PYTHONUNBUFFERED=1`.** Buffered stdout hides all progress and makes normal slow runs look like hangs. See Session 41 triage.
+- **Wall-time budget depends on land fraction, not tile count.** Per-tile reference (measured 2026-04-10 on (48,48)): deep ocean ~24s, ocean+rivers ~60s, mostly-land (80%+ land) ~200-320s (~3-5 min). For 3×3 runs: ocean center ~16 min; land-heavy center (36,20 / 24,80 / 25,72) budget **60 min**, hard ceiling **90 min** before you suspect a hang. Do NOT kill a (36,20) 3×3 at 25 min — that's normal pacing.
+- If a run looks stuck: first check per-tile progress lines in stdout; only if stdout has been silent for >10 min AND CPU is idle should you py-spy dump and kill.
+- Delta mode: add `--affects-key core/surface_decorator.py` (uses `config/validation_affects.json`)
+- Baseline diff: add `--baseline tests/baselines/3x3/36_20` (fails if PASS→FAIL regression)
+- Escape hatch for chunk_writer work: add `--full` (runs serial validate_test_tile 9×, writes .mca)
+
+### Validate masks (standalone sanity, ~1 min)
+```
+py tools/validate_masks.py --masks masks/ --report validation_report_masks
+```
+- Checks dtype, shape, coverage % bounds for every mask in `config/validation_affects.json → mask_bounds`
+- Run after any `rebuild_*.py` before chaining into a 3×3 tile render
+
+### Generate one tile .mca
+```
+py run_pipeline.py --config config/thresholds.json --masks masks/ --schem-index schematic_index.json --output output/ --tile-x0 36 --tile-x1 37 --tile-z0 20 --tile-z1 21
+```
+- Ranges are `[x0, x1)` — exclusive end
+- Writes to `output/r.{rx}.{rz}.mca` (region coords, not tile coords)
+- ~5-20 min per tile depending on hydro/schematic load
+
+### Copy .mca to test world
+```
+cp output/r.*.mca 'C:\Users\nicho\AppData\Roaming\ModrinthApp\profiles\test\saves\Vandirtest10\region\'
+```
+NOT `.minecraft/saves/`. Wrong path = silent no-op.
+
+### Rebuild a mask
+```
+py rebuild_centerline.py      # hydro_centerline.tif
+py rebuild_floodplain.py      # hydro_floodplain.tif
+py rebuild_windthrow.py       # wind_windthrow.tif
+py rebuild_rock_exposure.py   # rock_exposure*.tif, snow_caps.tif
+py rebuild_sand_dunes.py      # sand_dunes.tif
+py generate_lake_wl.py        # hydro_lake_wl.tif
+```
+Each writes to `masks/{name}.tif` and logs to stdout. Run from project root.
+
+### Top-down preview (fast iteration, no MCA)
+See `diag_*topdown.py` scripts. Canonical:
+- `diag_layers_breakdown.py` — 12-panel layer debug (~45s, use for stratification work)
+- `diag_sand_rock_world.py` — world-scale 1:8 preview (~95s)
+- `diag_river_3x3_topdown.py` — 7×3 river carver result
+
+### Precompute mask prerequisites (step0)
+```
+py step0_diagnostic.py --height masks/height.png --water masks/water.png
+```
+Writes `step0_output.json` with sea_level + spline breakpoints.
+
+### Interpret PASS/FAIL quickly
+```
+py -c "import json; d=json.load(open('validation_report_36_20/checks.json')); print('PASS' if d.get('failed',1)==0 else 'FAIL', d)"
+```
+
+### Loop rule reminder
+- Render 3×3 top-down BEFORE generating any .mca. Don't burn 18-min cycles blindly.
+- Log every failed fix to `memory/project_vandir_status.md` BEFORE retrying.
+- 2 failed fixes on same symptom → STOP. Investigate, or ask user.

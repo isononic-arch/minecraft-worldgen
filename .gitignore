@@ -11,6 +11,10 @@
 output/
 build/
 
+# Generated validator reports (committed baselines live in tests/baselines/)
+validation_report_*/
+validation_report/
+
 # Python
 __pycache__/
 *.pyc

@@ -85,15 +85,22 @@ def chk_surface_y_range(surface_y: np.ndarray) -> Check:
 
 
 def chk_no_bare_dirt_surface(surface_blk: np.ndarray, biome_grid: np.ndarray) -> Check:
+    # Scope: LAND columns only. _OCEAN columns have their "surface" 30+ blocks
+    # underwater (seafloor), where a dirt block is invisible and irrelevant. The
+    # check exists to catch ugly brown patches on land where decoration missed a
+    # spot — an ocean-floor dirt pixel is not that. Verified on validate_3x3
+    # (48,48) run 2026-04-10: 4 ocean tiles had 14-1380 dirt pixels, all 100%
+    # _OCEAN, with neighboring land tiles all clean.
     c = Check("no_bare_dirt_surface", "surface_decoration")
-    dirt_mask = surface_blk == "dirt"
+    land_mask = biome_grid != "_OCEAN"
+    dirt_mask = (surface_blk == "dirt") & land_mask
     n = int(dirt_mask.sum())
     if n > 0:
         biomes = np.unique(biome_grid[dirt_mask]).tolist()
-        c.failed(f"{n} pixels have bare 'dirt' as surface block",
+        c.failed(f"{n} pixels have bare 'dirt' as surface block (land only)",
                  f"Affected biomes: {biomes[:10]}")
     else:
-        c.passed("No bare dirt surface blocks")
+        c.passed("No bare dirt surface blocks on land")
     return c
 
 
@@ -211,8 +218,19 @@ def chk_schematic_placements(placements: list, surface_y: np.ndarray) -> Check:
     return c
 
 
-def chk_surface_block_variety(surface_blk: np.ndarray) -> Check:
+def chk_surface_block_variety(surface_blk: np.ndarray, biome_grid: np.ndarray | None = None) -> Check:
+    # Scope: tiles with land. Deep-ocean tiles (>95% _OCEAN) are legitimately
+    # monotonous — the "surface" is the seafloor, stone is correct there.
+    # Running the variety check on them produces false WARNs (e.g. validate_3x3
+    # (48,48) tiles (47,48) and (48,48): single block type = ['stone'], both
+    # 100% ocean). Signature gained biome_grid as optional kwarg; callers that
+    # don't pass it fall back to the original unscoped behavior.
     c = Check("surface_block_variety", "surface_decoration")
+    if biome_grid is not None:
+        ocean_frac = float((biome_grid == "_OCEAN").mean())
+        if ocean_frac > 0.95:
+            c.passed(f"skipped (ocean-heavy tile, {ocean_frac:.0%} _OCEAN)")
+            return c
     unique_blks = np.unique(surface_blk).tolist()
     n = len(unique_blks)
     if n < 2:
@@ -607,7 +625,7 @@ def main() -> int:
         cliff_deg    = cliff_deg,
     )
     checks.append(chk_no_bare_dirt_surface(surface_blk, biome_grid))
-    checks.append(chk_surface_block_variety(surface_blk))
+    checks.append(chk_surface_block_variety(surface_blk, biome_grid))
 
     # ---- Step 8: Schematic placement ----
     print("[validate] Step 8: schematic placement…")

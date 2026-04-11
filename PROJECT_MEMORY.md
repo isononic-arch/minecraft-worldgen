@@ -179,7 +179,8 @@ CLAUDE.md has the must-not-break version. This section adds the WHY for context.
 ## 7. OPEN WORK / ROADMAP
 
 ### Next session priority
-1. **Stratification rings fix** — see CLAUDE.md TOP PRIORITY.
+1. **Riparian bare-dirt hole** — preexisting bug surfaced by `validate_3x3.py`'s `no_bare_dirt_surface` check against baseline `51_53`. Zone window = MIXED_FOREST 85% + TEMPERATE_RAINFOREST 15%; ~10-12% of river pixels end up as raw `dirt`. Hunt in `core/surface_decorator.py` riparian-band handlers for those two biomes. Full details in `memory/project_vandir_status.md` 2026-04-10 entry and in CLAUDE.md TOP PRIORITY.
+2. **Stratification rings fix** — see CLAUDE.md TOP PRIORITY. Downgraded by user in S42 ("not that big") but still on list.
 
 ### Apply Physical Realism Layer pattern to other masks
 2. Snow cap north accumulation by `north_factor`
@@ -275,3 +276,60 @@ A one-line index of major milestones. Full session details previously lived in C
 - **S39** Bilinear upscale standard for all binary masks; rock/grass probabilistic dither; gap==6 removed from final override
 - **S40** Three-layer alpine system (meadow/rock/snow); alpine biome inheritance; staircase catalog
 - **S41** Sand dunes (gap==8); desert rock palette (terracotta + basalt); Physical Realism Layer pattern as new standard; treeline gaussian smoothing. **Stop point: stratification rings.**
+- **S42** Validator hardening: `_OCEAN` scope gates on `chk_no_bare_dirt_surface` + `chk_surface_block_variety`; memory strip in `validate_3x3.py` (null heavy buffers after per-tile checks, keep only stitch inputs) → 36% wall-time speedup on (48,48). Two 3×3 baselines committed to `tests/baselines/3x3/`: `48_48` (79 PASS / 0 FAIL, ocean/coast/seams) and `51_53` (74 PASS / 8 FAIL, floodplain/lakes/mixed forest, committed as baseline-with-known-failures). Validator surfaced a pre-existing **riparian bare-dirt hole** in MIXED_FOREST/TEMPERATE_RAINFOREST (~10-12% of river pixels → bare `dirt` on land); filed, parked, not a regression. Baseline-before-edit workflow rule added to CLAUDE.md. `CLAUDE.md` wall-time budget revised with per-tile reference data + `PYTHONUNBUFFERED=1` requirement. **Stop point: open — user picks from TOP PRIORITY list.**
+
+---
+
+## 11. SCALE CHALLENGES — tiered by severity
+
+*Added 2026-04-10 during cleanup/revamp pass. Living list of "things that will bite us as Vandir grows." Reorder as priorities shift.*
+
+Severity key:
+- **P0 — Blocker.** Will prevent or corrupt a full-scale run if not addressed. Fix before anything downstream of it.
+- **P1 — High.** Makes iteration painful or unreliable. Eats days of wall time over the life of the project.
+- **P2 — Medium.** Quality/polish cost. Visible but tolerable.
+- **P3 — Low.** Nit or deferred niceness.
+
+### P0 — Blockers
+
+1. ~~**Iteration wall time: 5-20 min per full .mca tile.**~~ **LARGELY RESOLVED (S41-42).** `tools/validate_3x3.py` runs pre-MCA only (no .mca write, no schematic placement) via shared `_pipeline_runner.py`. Measured budgets: deep ocean 3×3 ~10 min, land-heavy 3×3 ~20-60 min. Memory strip in S42 dropped land runs ~36%. Delta mode (`--affects-key`) wired. Remaining: land-heavy 3×3 is still 20-60 min wall time — acceptable for iteration but not snappy. Further gains would require `np.memmap` on hydro masks or cropping masks once per 3×3 window instead of per-tile (both `core/` changes).
+
+2. **`_TEST_SECTION_Y_MAX` silent drop history.** CLAUDE.md enforces `None`, but no check asserts sections above Y=255 actually survived in a written .mca. A regression here produces silently truncated tiles only caught by in-game inspection. Needs: lightweight nbtlib chunk parser in the validator asserting `len(sections) >= expected_count`.
+
+3. ~~**No regression baseline.**~~ **PARTIALLY RESOLVED (S42).** `tests/baselines/3x3/` now holds committed baselines. `48_48` (ocean/coast/seams, clean) and `51_53` (rivers/lakes/mixed forest, committed with 8 known pre-existing FAILs — still regression-useful because `--baseline` only flags new PASS→FAIL flips). Workflow rule in CLAUDE.md: snapshot a baseline *immediately before* editing a `core/` path not already covered, then diff after. Remaining gap: tiles `24_80`, `36_20`, `59_53`, `16_73`, `25_72` still uncovered — add on-demand when their code paths are about to be touched.
+
+### P1 — High (slow iteration, unreliable signal)
+
+4. **Single-threaded mask rebuilds.** 2-8 min × 6 rebuild scripts = 20-40 min to refresh all masks after one config edit. Some are independent (sand_dunes vs rock_exposure) and could run in parallel. Needs: investigate shared-memory cost vs win.
+
+5. **Stratification rings bug (current CLAUDE.md TOP PRIORITY, deferred 2026-04-10 behind cleanup).** Localized cosmetic, every desert-region render inherits it. Fixed scope, 3 pre-identified candidate fixes. P1 severity at scale (one cliff cross-section per mountain); P0 for annoyance-of-knowing-it's-broken.
+
+6. **Inflated slope math in `rebuild_rock_exposure/windthrow/floodplain` + `core/eco_gradients.py`.** CLAUDE.md says "works but ugly, don't touch without retuning thresholds." That's a landmine. Any later eco_gradients refactor will re-break these three masks. Needs: explicit migration plan + coordinated retune in one session, not piecemeal.
+
+7. ~~**No mask sanity validator.**~~ **RESOLVED (S41-42).** `tools/validate_masks.py` checks dtype + shape + coverage % bounds per mask from `config/validation_affects.json`. `tools/validate_3x3.py` runs 9 tiles through pre-MCA pipeline with per-tile + seam checks, supports baseline-diff (`--baseline`) for regression detection, and delta mode (`--affects-key`) to skip unaffected checks. Two 3×3 baselines committed: `tests/baselines/3x3/48_48` (ocean) and `51_53` (land, known failures). Remaining gap: per-zone distribution diffs — a regression that scrambles zone mix but keeps total coverage in-band will still pass. Filed as TODO against the baseline system.
+
+8. **Memory ceiling.** 8 GB + 256 MB/tile + GUI + rasterio windows + schematic palette = 4-thread parallel OOMs. Any full run at 4 threads is memory-bound, not CPU-bound. Needs: per-tile peak memory profile + reduction targets.
+
+### P2 — Medium
+
+9. **River ocean cutoff.** §7.10. Rivers may still generate inside ocean polygons at certain coast profiles.
+
+10. **Meander on connectivity extensions.** §7.9. Extension channels don't get the spline meander treatment. Visual inconsistency at river forks.
+
+11. **Brown terracotta 24.4% in desert rock.** §7.11. Tighten to 0.80 for more orange dominance. Aesthetic.
+
+12. **Basalt 14.3% could cluster.** §7.12. Aesthetic.
+
+13. **Seam at (49,46) Z-seam max=11.** §7.24. Known, deferred.
+
+### P3 — Low
+
+14. Subsurface basalt for cliff faces (§7.13) — requires `column_generator` integration.
+
+15. `diag_*.py` proliferation. 35 scripts at root, most session-scoped. Being resolved by the 2026-04-10 cleanup pass.
+
+16. Schematic placement wiring deferred items (§7.22, §7.23).
+
+---
+
+*The point of this list: by the time we're near any full-scale run, every P0 is empty.*
