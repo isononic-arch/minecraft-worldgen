@@ -847,3 +847,93 @@ I have been told this enough times that getting it wrong again is a capital offe
 - [x] Nick: Plan approved to begin Phase 0 (S43, 2026-04-10).
 - [x] Nick: Open questions 1–4 answered (S43, 2026-04-10).
 - [ ] Claude: Phase 0 baseline + diagnostic tool skeleton ready to commit on Phase 0 kickoff.
+
+---
+
+## 18. Implementation Log
+
+**This section is the source of truth for what has actually been built vs. the design above. Every Phase lands here with the date, the files it touched, the tests it added, and any open bugs. Future sessions read this first to catch up.**
+
+### S44 — Phase 0 + 0.5 (2026-04-11)
+
+**Status:** Phase 0 signed off. Phase 0.5 (lithology + wave_fetch + texture sanity + world_viewer MVP) landed in the same commit per user direction ("roll 0 and 0.5 into one commit and documentation moment").
+
+#### Phase 0 — Scaffolding
+
+**Goal:** Get the layer protocol, pipeline runner, wind model, field helpers, and no-grow guardrails in place so Phase 2+ pilot layers can land against a stable API.
+
+**New files:**
+- `core/layers/__init__.py` — package marker.
+- `core/layers/protocol.py` — `SurfaceContext`, `LayerResult`, `Layer` Protocol (id, pass_num, priority, kind, apply). `empty_result()` / `make_result()` helpers with shape+dtype validation. `EMPTY_BLOCK = ""` sentinel.
+- `core/layers/noise_profiles.py` — `legacy_mixed_forest_noise()` port of `_noise_tile()` from `surface_decorator.py`. 3-octave fBm via `opensimplex.noise2array`, persistence=0.5, lacunarity=2.0. Defaults: `LEGACY_MIXED_FOREST_SCALE = 60.0` (matches `config/thresholds.json → block_mixing.noise_scale`), `LEGACY_MIXED_FOREST_SEED = 42002`. Pure-numpy fallback when `opensimplex` unavailable.
+- `core/layers/vegetation_blocks.py` — `NO_GROW_BLOCKLIST` (saplings, crops, growable shrubs) + `NO_GROW_ALLOWLIST` (static grasses/flowers + 1.21.2+ blocks: `bush`, `leaf_litter`, `pale_moss_carpet`, `firefly_bush`, `resin_clump`). `validate_no_grow()` + `assert_palette_safe()` enforce at layer boundaries.
+- `core/surface_pipeline.py` — `run_pass(layers, ctx, strict=True)` with partition (writes only where `ownership == 0`) and overlay (bitmask at `idx % 8`) composition semantics. `run_passes()` for multi-pass chains. `partition_coverage()` helper. `_validate_result()` enforces shape + kind match + `EMPTY_BLOCK` invariant on partition layers.
+- `core/wind_model.py` — Single-source-of-truth tradewind module. `WIND_FLOW_VECTOR = (1.0, 0.0)` (east-pointing). `WIND_SOURCE_HEADING_DEG = 270.0`. `windward_factor(aspect) = (1 - cos(aspect))/2` (west-facing = 1). `leeward_factor`, `wind_exposure`, `fetch_integral` (vectorized row-wise cumsum, O(N)). Constants: `WEST/EAST/NORTH/SOUTH_FACING_ASPECT`.
+- `core/meadow_clearing_field.py` — `compute_meadow_clearing_field()` + `clearing_interior_mask()` / `clearing_seam_mask()`. opensimplex-backed at a fixed world wavelength.
+- `core/tree_density_hint.py` — `TEMPERATE_FORESTED_BIOMES` constant + `compute_tree_density_hint(biome_grid, slope, moisture_idx, disturbance)` → float32 [0,1]. Placeholder kernel `0.35 + 0.55*moisture - 0.45*slope` for temperate forested biomes, 0 elsewhere. Will be wired to real drivers in Phase 3.
+
+**Diagnostic stubs** (root dir, each callable standalone, writes PNG to `diag_output/{tx}_{tz}/`):
+- `diag_cliff_crosssection.py` — synthetic column stack PNG.
+- `diag_topdown_blocks.py` — checker pattern PNG.
+- `diag_layer_ownership.py` — radial bands with 5% unclaimed fraction.
+- `diag_suitability_field.py` — Gaussian blob + noise. Bug fix: `seed = (abs(hash(layer)) ^ (tile_x*1009 + tile_z)) & 0xFFFFFFFF` (was failing with negative int from `hash()`).
+- `diag_fluting_phase.py` — HSV tangent/phase rendering for vertical fluting hints.
+
+**Tests** (all green, 26 passing):
+- `tests/unit/__init__.py`
+- `tests/unit/test_surface_pipeline.py` — empty-list zero output, partition exclusivity, overlay preservation, invariant rejection.
+- `tests/unit/test_wind_model.py` — **sign pins**: west=windward (factor=1 at aspect=π), east=leeward (factor=1 at aspect=0), N/S neutral, windward+leeward=1, wind_exposure scales with slope, fetch direction (land east-of-water sees fetch=8, land west-of-water sees fetch=0), vector constants = (1,0) and heading = 270°. This test is the canary — a single sign flip here runs the whole weathering story backwards.
+- `tests/unit/test_vegetation_blocks.py` — allowlist/blocklist disjoint, `validate_no_grow()` rejects `oak_sapling`, `assert_palette_safe()` catches `wheat`.
+- `tests/unit/test_phase0_smoke.py` — import sanity, field shape/range, `tree_density_hint` kernel behavior (zero in desert, nonzero in moisture-rich forest, suppressed on slope).
+
+**Resolved Q&A from §16:**
+1. **Cave carver?** Grep over `core/` for `cave|carver` returned only "concave"/"concavity" substring matches. R1-5 collapses — Vandir has no cave carver, so the subsurface pass doesn't need to coordinate with one.
+2. **`wave_fetch` at 1:8?** Confirmed: vectorized cumsum in `wind_model.fetch_integral` handles the full 6250×6250 water mask in sub-second time. Precomputed in Phase 0.5 below.
+3. **noise_scale default?** Read `config/thresholds.json → block_mixing.noise_scale` directly: value is `60`. `legacy_mixed_forest_noise()` default updated from initial guess of 48.0 → 60.0 to match.
+
+#### Phase 0.5 — Precomputes + tooling
+
+**Goal:** Land the precomputed masks and diagnostics that Phase 2 pilot layers need, plus the world viewer that lets Nick review output across the whole 50k×50k map without firing MCA cycles.
+
+**Config changes** — `config/thresholds.json`:
+- Added top-level `lithology` key (total keys now 30). Structure:
+  - `feature_flag_enabled: false` — all lithology-aware code paths must honor this gate. Default OFF to de-risk Phase 0.5.
+  - `groups`: 6 entries (`granitic`, `sedimentary`, `basaltic`, `limestone`, `deepslate_metamorphic`, `mossy_temperate`), each with `id` (1..6) + 4-block `palette` + description.
+  - `zone_to_group`: 27-entry LUT mapping every real `OVERRIDE_BIOME_MAP` zone name to a group. (Draft LUT in §6 Pass 0 used some zone names that don't exist — remapped to the real zones from `core/biome_assignment.py`.)
+  - `elevation_overrides.rules: []` — structure wired, no rules yet. Phase 2+ adds alpine → deepslate_metamorphic etc.
+  - `basement`: `shallow_depth_blocks: 12`, `shallow_group_from_surface: true`, `deep_default_group: "granitic"`.
+
+**New tools:**
+- `tools/build_lithology.py` — produces `masks/lithology.tif` (6250×6250 uint8, 1..6, 0 = water/unclassified). Reads `override.tif` via windowed row-by-row read to avoid holding 2×2.5GB of uint8 in RAM (OOM-killed on first attempt with naive `src.read(1)`). Applies `elevation_overrides.rules` on demand. **Distribution on real masks:** 60.1% zero (water+unclassified), 12.9% granitic, 12.0% sedimentary, 1.1% basaltic, 1.2% limestone, 7.2% deepslate_metamorphic, 5.5% mossy_temperate.
+- `tools/build_wave_fetch.py` — produces `masks/wave_fetch.tif` (6250×6250 uint16, capped at `--max-distance` px). Prefers `shore.tif` for water mask, falls back to `height.tif < sea_level_16bit`. Uses `wind_model.fetch_integral()`. **Runtime:** ~1s on the 6250×6250 grid. **Result on real masks:** 19149 nonzero shore pixels (0.049% of grid), mean nonzero = 92.1, max = 128 (cap hit). Only 0.05% of pixels are "land directly east of water" — matches expectation, the shoreline is ~1 precompute cell wide.
+- `tools/extract_riparian_textures.py` — reads `/sessions/.../ModrinthApp/meta/versions/1.21.10/1.21.10.jar` and writes 8 block textures (dirt, coarse_dirt, rooted_dirt, podzol_top, mud, gravel, clay, packed_mud) to `diag_output/riparian/*.png` + a composed sanity swatch `_palette_sanity.png`. Closes the R3-4 verification loop visually before Phase 2 tuning.
+- `tools/world_viewer.py` — **MVP**, blind-written (no PyQt6 in sandbox). Splits into:
+  - Headless data layer (importable from tests): `LayerSpec`, `TileCache` (LRU over `(layer, zoom)` full-raster downsamples at factors 1/2/4/8), `discover_layers()`, `compute_hillshade()` (Horn method, USGS convention), `extract_cliff_section()` (straight-line transect by compass azimuth), `apply_colormap()` with inline `viridis`/`magma`/`terrain` LUTs (no matplotlib dep).
+  - Qt layer (gated by `try: import PyQt6`): `WorldCanvas` (QGraphicsView with wheel-zoom 0..3 and pan drag), `LayerPanel` (checkboxes auto-populated from `discover_layers()`), `CliffInset` (256×128 QLabel rendering). Bootstraps base height from `masks/height.tif` via windowed read + `_downsample_mean(factor=8)`. Imports `PaletteEditorWidget` from `tools/world_studio.py` if available; degrades gracefully if not.
+  - Headless smoke test passed: 24 layers discovered (including new `lithology` + `wave_fetch`), hillshade/cliff/colormap/downsample helpers all green against synthetic inputs.
+
+**Validator extensions** — `tools/validate_masks.py`:
+- Added `lithology` bound (`discrete`, 0.25 ≤ cov ≤ 0.45).
+- Added `wave_fetch` bound (`gradient`, 0.0 ≤ cov ≤ 0.02 — shore-only signal is sparse).
+- Added `check_lithology_extras()` running 4 extra sanity checks: (1) valid IDs only (must be subset of {0..6}), (2) at least 4 of 6 nonzero groups present, (3) zero-fraction in [0.40, 0.80] (must align with land/water), (4) shape = (6250, 6250). **All 6 checks pass on `masks/lithology.tif` + `masks/wave_fetch.tif`:**
+
+  ```
+  ✅ lithology: discrete cov=0.399
+  ✅ wave_fetch: gradient cov=0.000
+  ✅ lithology_ids: all ids in [0..6]
+  ✅ lithology_group_diversity: 6 nonzero groups present
+  ✅ lithology_water_alignment: zero_frac=0.601 in [0.40, 0.80]
+  ✅ lithology_shape: 6250×6250 (1:8)
+  ```
+
+**Open bugs:**
+- Aspect convention drift: `core/eco_gradients.py` line 132 computes `aspect = np.arctan2(gy, gx)` and comments it as "direction of steepest DESCENT" (mathematically backwards; it's the gradient direction, not descent). The sign of `gy` in `eco_gradients` is inverted relative to `wind_model` convention. **Action for Phase 2:** layers that need aspect should recompute from gradient using the `wind_model` sign convention, not trust `eco_gradients.aspect`. Pinned by test_wind_model.py — a single sign flip rolls the weathering backwards.
+- `world_viewer.py` is blind-written. Expect runtime fixes on first Qt import (PyQt6 API surface drift, QGraphicsView zoom math). Data layer tested green; GUI path is the risk.
+
+**Commit hygiene:**
+- Phase 0 + 0.5 rolled into a single commit per user direction.
+- **Push is blocked in sandbox** — Nick pushes from his terminal.
+
+**Next up (Phase 1 / Phase 2):**
+- Phase 1: wire `core/surface_pipeline.run_passes()` into `core/surface_decorator.decorate_surface()` as an additive call (shadow mode — new pipeline runs but output ignored). Confirms zero-impact path exists before Phase 2 hands a pilot layer real ownership.
+- Phase 2 pilot: temperate_forest_surface → temperate_riparian_fringe → temperate_windthrow_surface on tile (36, 20). Drives `--baseline tests/baselines/3x3/36_20` (need to snapshot that baseline before Phase 2 starts).

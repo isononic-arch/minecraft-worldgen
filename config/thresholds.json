@@ -1874,7 +1874,11 @@
     ]
   },
   "eco_gradients": {
-    "moisture_weights": {"flow": 0.4, "concavity": 0.3, "north_factor": 0.3},
+    "moisture_weights": {
+      "flow": 0.4,
+      "concavity": 0.3,
+      "north_factor": 0.3
+    },
     "soil_depth_slope_exponent": 1.5,
     "riparian_max_distance_px": 32,
     "lake_fringe_max_distance_px": 16
@@ -1893,76 +1897,1452 @@
     "colony_density_boost": 1.8
   },
   "eco_riparian": {
-    "band_widths": [2, 6, 16, 32],
-    "strahler_width_scale": [1.0, 1.0, 1.5, 2.0, 3.0],
+    "band_widths": [
+      2,
+      6,
+      16,
+      32
+    ],
+    "strahler_width_scale": [
+      1.0,
+      1.0,
+      1.5,
+      2.0,
+      3.0
+    ],
     "lake_fringe_width_px": 12,
     "moisture_stringer_strength": 0.3
   },
   "eco_placement": {
-    "eco_density_weights": {"soil_depth": 0.3, "moisture_index": 0.4, "concavity_norm": 0.3},
-    "eco_density_range": [0.5, 1.5],
+    "eco_density_weights": {
+      "soil_depth": 0.3,
+      "moisture_index": 0.4,
+      "concavity_norm": 0.3
+    },
+    "eco_density_range": [
+      0.5,
+      1.5
+    ],
     "slope_penalty_start_deg": 30,
     "slope_penalty_full_deg": 55,
     "habitat_score_floor": 0.05
   },
   "species_habitats": {
     "_doc": "Per-species habitat curves. Each gradient: [center, width] for sigmoid. cliff_deg_max: hard slope cutoff.",
-    "cedar":     {"moisture_index":[0.75,0.15],"soil_depth":[0.70,0.20],"wind_exposure":[0.20,0.15],"concavity_norm":[0.65,0.20],"riparian_proximity":[0.30,0.25],"cliff_deg_max":35},
-    "hemlock":   {"moisture_index":[0.55,0.20],"soil_depth":[0.50,0.25],"wind_exposure":[0.50,0.20],"concavity_norm":[0.45,0.25],"riparian_proximity":[0.10,0.30],"cliff_deg_max":40},
-    "sitka":     {"moisture_index":[0.50,0.25],"soil_depth":[0.40,0.25],"wind_exposure":[0.75,0.15],"concavity_norm":[0.35,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":45},
-    "dfir":      {"moisture_index":[0.45,0.20],"soil_depth":[0.45,0.25],"wind_exposure":[0.55,0.25],"concavity_norm":[0.40,0.30],"riparian_proximity":[0.10,0.30],"cliff_deg_max":40},
-    "maple":     {"moisture_index":[0.70,0.15],"soil_depth":[0.65,0.20],"wind_exposure":[0.25,0.20],"concavity_norm":[0.60,0.20],"riparian_proximity":[0.55,0.20],"cliff_deg_max":30},
-    "bspruce":   {"moisture_index":[0.50,0.30],"soil_depth":[0.50,0.30],"wind_exposure":[0.40,0.30],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.20,0.30],"cliff_deg_max":40},
-    "wspruce":   {"moisture_index":[0.65,0.20],"soil_depth":[0.55,0.25],"wind_exposure":[0.30,0.25],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.30,0.25],"cliff_deg_max":35},
-    "balfir":    {"moisture_index":[0.65,0.15],"soil_depth":[0.60,0.20],"wind_exposure":[0.20,0.15],"concavity_norm":[0.60,0.20],"riparian_proximity":[0.25,0.25],"cliff_deg_max":30},
-    "jpine":     {"moisture_index":[0.30,0.20],"soil_depth":[0.30,0.25],"wind_exposure":[0.65,0.20],"concavity_norm":[0.30,0.25],"riparian_proximity":[0.10,0.30],"cliff_deg_max":50},
-    "tamarack":  {"moisture_index":[0.80,0.15],"soil_depth":[0.55,0.25],"wind_exposure":[0.25,0.25],"concavity_norm":[0.70,0.20],"riparian_proximity":[0.50,0.20],"cliff_deg_max":30},
-    "spruce":    {"moisture_index":[0.45,0.30],"soil_depth":[0.45,0.30],"wind_exposure":[0.45,0.30],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":40},
-    "kspruce":   {"moisture_index":[0.35,0.25],"soil_depth":[0.30,0.25],"wind_exposure":[0.75,0.15],"concavity_norm":[0.30,0.25],"riparian_proximity":[0.10,0.30],"cliff_deg_max":55},
-    "salfir":    {"moisture_index":[0.60,0.20],"soil_depth":[0.55,0.25],"wind_exposure":[0.25,0.20],"concavity_norm":[0.65,0.20],"riparian_proximity":[0.20,0.25],"cliff_deg_max":35},
-    "kfir":      {"moisture_index":[0.35,0.25],"soil_depth":[0.25,0.25],"wind_exposure":[0.80,0.15],"concavity_norm":[0.30,0.25],"riparian_proximity":[0.10,0.30],"cliff_deg_max":55},
-    "sbirch":    {"moisture_index":[0.35,0.30],"soil_depth":[0.35,0.30],"wind_exposure":[0.60,0.25],"concavity_norm":[0.35,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":45},
-    "dbirch":    {"moisture_index":[0.65,0.20],"soil_depth":[0.55,0.25],"wind_exposure":[0.30,0.20],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.30,0.25],"cliff_deg_max":35},
-    "rowan":     {"moisture_index":[0.50,0.30],"soil_depth":[0.45,0.30],"wind_exposure":[0.50,0.30],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.20,0.30],"cliff_deg_max":45},
-    "eoak":      {"moisture_index":[0.55,0.25],"soil_depth":[0.65,0.20],"wind_exposure":[0.35,0.25],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.20,0.25],"cliff_deg_max":35},
-    "scotsp":    {"moisture_index":[0.30,0.25],"soil_depth":[0.30,0.25],"wind_exposure":[0.65,0.20],"concavity_norm":[0.30,0.30],"riparian_proximity":[0.10,0.30],"cliff_deg_max":50},
-    "lime":      {"moisture_index":[0.55,0.20],"soil_depth":[0.70,0.20],"wind_exposure":[0.25,0.20],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.25,0.25],"cliff_deg_max":30},
-    "ash":       {"moisture_index":[0.65,0.20],"soil_depth":[0.60,0.20],"wind_exposure":[0.30,0.25],"concavity_norm":[0.60,0.20],"riparian_proximity":[0.40,0.20],"cliff_deg_max":35},
-    "beech":     {"moisture_index":[0.55,0.20],"soil_depth":[0.70,0.15],"wind_exposure":[0.25,0.20],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.15,0.30],"cliff_deg_max":30},
-    "hornbeam":  {"moisture_index":[0.40,0.25],"soil_depth":[0.40,0.25],"wind_exposure":[0.45,0.25],"concavity_norm":[0.40,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":40},
-    "cherry":    {"moisture_index":[0.45,0.25],"soil_depth":[0.50,0.25],"wind_exposure":[0.50,0.25],"concavity_norm":[0.45,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":40},
-    "willow":    {"moisture_index":[0.80,0.15],"soil_depth":[0.65,0.20],"wind_exposure":[0.25,0.20],"concavity_norm":[0.65,0.20],"riparian_proximity":[0.75,0.15],"cliff_deg_max":25},
-    "cwillow":   {"moisture_index":[0.70,0.20],"soil_depth":[0.55,0.25],"wind_exposure":[0.30,0.25],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.65,0.20],"cliff_deg_max":30},
-    "wwillow":   {"moisture_index":[0.85,0.10],"soil_depth":[0.70,0.15],"wind_exposure":[0.15,0.15],"concavity_norm":[0.70,0.15],"riparian_proximity":[0.85,0.10],"cliff_deg_max":20},
-    "alder":     {"moisture_index":[0.70,0.20],"soil_depth":[0.55,0.25],"wind_exposure":[0.35,0.25],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.55,0.20],"cliff_deg_max":30},
-    "poplar":    {"moisture_index":[0.55,0.25],"soil_depth":[0.50,0.25],"wind_exposure":[0.50,0.25],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.40,0.25],"cliff_deg_max":40},
-    "ppine":     {"moisture_index":[0.35,0.25],"soil_depth":[0.45,0.30],"wind_exposure":[0.50,0.30],"concavity_norm":[0.45,0.30],"riparian_proximity":[0.10,0.30],"cliff_deg_max":45},
-    "pitchp":    {"moisture_index":[0.20,0.25],"soil_depth":[0.25,0.25],"wind_exposure":[0.60,0.25],"concavity_norm":[0.30,0.30],"riparian_proximity":[0.05,0.30],"cliff_deg_max":50},
-    "hoak":      {"moisture_index":[0.45,0.25],"soil_depth":[0.55,0.25],"wind_exposure":[0.35,0.25],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.20,0.30],"cliff_deg_max":40},
-    "olive":     {"moisture_index":[0.30,0.25],"soil_depth":[0.40,0.25],"wind_exposure":[0.55,0.25],"concavity_norm":[0.40,0.30],"riparian_proximity":[0.10,0.30],"cliff_deg_max":45},
-    "carob":     {"moisture_index":[0.20,0.25],"soil_depth":[0.35,0.25],"wind_exposure":[0.60,0.25],"concavity_norm":[0.35,0.30],"riparian_proximity":[0.05,0.30],"cliff_deg_max":50},
-    "apine":     {"moisture_index":[0.35,0.25],"soil_depth":[0.40,0.25],"wind_exposure":[0.55,0.25],"concavity_norm":[0.40,0.30],"riparian_proximity":[0.10,0.30],"cliff_deg_max":50},
-    "juniper":   {"moisture_index":[0.25,0.30],"soil_depth":[0.30,0.30],"wind_exposure":[0.65,0.25],"concavity_norm":[0.35,0.30],"riparian_proximity":[0.10,0.30],"cliff_deg_max":55},
-    "pinon":     {"moisture_index":[0.40,0.25],"soil_depth":[0.45,0.25],"wind_exposure":[0.50,0.25],"concavity_norm":[0.45,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":50},
-    "soak":      {"moisture_index":[0.45,0.30],"soil_depth":[0.55,0.25],"wind_exposure":[0.45,0.30],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.20,0.30],"cliff_deg_max":40},
-    "acacia":    {"moisture_index":[0.40,0.30],"soil_depth":[0.45,0.30],"wind_exposure":[0.50,0.30],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.35,0.30],"cliff_deg_max":45},
-    "steppep":   {"moisture_index":[0.60,0.25],"soil_depth":[0.50,0.25],"wind_exposure":[0.40,0.25],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.55,0.20],"cliff_deg_max":35},
-    "gfig":      {"moisture_index":[0.70,0.20],"soil_depth":[0.75,0.15],"wind_exposure":[0.25,0.20],"concavity_norm":[0.65,0.20],"riparian_proximity":[0.30,0.25],"cliff_deg_max":30},
-    "banyan":    {"moisture_index":[0.65,0.20],"soil_depth":[0.70,0.20],"wind_exposure":[0.20,0.20],"concavity_norm":[0.65,0.20],"riparian_proximity":[0.25,0.25],"cliff_deg_max":25},
-    "hardwood":  {"moisture_index":[0.55,0.25],"soil_depth":[0.55,0.25],"wind_exposure":[0.40,0.25],"concavity_norm":[0.50,0.30],"riparian_proximity":[0.20,0.30],"cliff_deg_max":40},
-    "breadfruit":{"moisture_index":[0.60,0.25],"soil_depth":[0.55,0.25],"wind_exposure":[0.35,0.25],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.25,0.25],"cliff_deg_max":35},
-    "mpalm":     {"moisture_index":[0.50,0.25],"soil_depth":[0.40,0.25],"wind_exposure":[0.65,0.20],"concavity_norm":[0.40,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":50},
-    "rfpalm":    {"moisture_index":[0.65,0.20],"soil_depth":[0.55,0.25],"wind_exposure":[0.30,0.25],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.30,0.25],"cliff_deg_max":35},
-    "kapok":     {"moisture_index":[0.65,0.20],"soil_depth":[0.70,0.15],"wind_exposure":[0.25,0.20],"concavity_norm":[0.65,0.20],"riparian_proximity":[0.25,0.25],"cliff_deg_max":30},
-    "teak":      {"moisture_index":[0.45,0.25],"soil_depth":[0.50,0.25],"wind_exposure":[0.50,0.25],"concavity_norm":[0.45,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":45},
-    "tfig":      {"moisture_index":[0.65,0.20],"soil_depth":[0.60,0.20],"wind_exposure":[0.30,0.25],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.35,0.25],"cliff_deg_max":35},
-    "cpalm":     {"moisture_index":[0.45,0.25],"soil_depth":[0.35,0.25],"wind_exposure":[0.70,0.20],"concavity_norm":[0.35,0.30],"riparian_proximity":[0.15,0.30],"cliff_deg_max":50},
-    "mroot":     {"moisture_index":[0.85,0.10],"soil_depth":[0.60,0.25],"wind_exposure":[0.35,0.25],"concavity_norm":[0.70,0.20],"riparian_proximity":[0.80,0.15],"cliff_deg_max":20},
-    "rmang":     {"moisture_index":[0.80,0.15],"soil_depth":[0.55,0.25],"wind_exposure":[0.45,0.25],"concavity_norm":[0.65,0.25],"riparian_proximity":[0.75,0.15],"cliff_deg_max":25},
-    "bmang":     {"moisture_index":[0.70,0.20],"soil_depth":[0.50,0.25],"wind_exposure":[0.55,0.25],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.60,0.20],"cliff_deg_max":30},
-    "wmang":     {"moisture_index":[0.55,0.25],"soil_depth":[0.45,0.25],"wind_exposure":[0.50,0.25],"concavity_norm":[0.45,0.30],"riparian_proximity":[0.45,0.25],"cliff_deg_max":35},
-    "mangsm":    {"moisture_index":[0.70,0.25],"soil_depth":[0.50,0.30],"wind_exposure":[0.45,0.30],"concavity_norm":[0.55,0.30],"riparian_proximity":[0.65,0.25],"cliff_deg_max":30},
-    "rmangsm":   {"moisture_index":[0.80,0.15],"soil_depth":[0.50,0.25],"wind_exposure":[0.45,0.25],"concavity_norm":[0.60,0.25],"riparian_proximity":[0.75,0.15],"cliff_deg_max":25},
-    "cfig":      {"moisture_index":[0.65,0.25],"soil_depth":[0.55,0.25],"wind_exposure":[0.35,0.25],"concavity_norm":[0.55,0.25],"riparian_proximity":[0.40,0.25],"cliff_deg_max":35}
+    "cedar": {
+      "moisture_index": [
+        0.75,
+        0.15
+      ],
+      "soil_depth": [
+        0.7,
+        0.2
+      ],
+      "wind_exposure": [
+        0.2,
+        0.15
+      ],
+      "concavity_norm": [
+        0.65,
+        0.2
+      ],
+      "riparian_proximity": [
+        0.3,
+        0.25
+      ],
+      "cliff_deg_max": 35
+    },
+    "hemlock": {
+      "moisture_index": [
+        0.55,
+        0.2
+      ],
+      "soil_depth": [
+        0.5,
+        0.25
+      ],
+      "wind_exposure": [
+        0.5,
+        0.2
+      ],
+      "concavity_norm": [
+        0.45,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.1,
+        0.3
+      ],
+      "cliff_deg_max": 40
+    },
+    "sitka": {
+      "moisture_index": [
+        0.5,
+        0.25
+      ],
+      "soil_depth": [
+        0.4,
+        0.25
+      ],
+      "wind_exposure": [
+        0.75,
+        0.15
+      ],
+      "concavity_norm": [
+        0.35,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.15,
+        0.3
+      ],
+      "cliff_deg_max": 45
+    },
+    "dfir": {
+      "moisture_index": [
+        0.45,
+        0.2
+      ],
+      "soil_depth": [
+        0.45,
+        0.25
+      ],
+      "wind_exposure": [
+        0.55,
+        0.25
+      ],
+      "concavity_norm": [
+        0.4,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.1,
+        0.3
+      ],
+      "cliff_deg_max": 40
+    },
+    "maple": {
+      "moisture_index": [
+        0.7,
+        0.15
+      ],
+      "soil_depth": [
+        0.65,
+        0.2
+      ],
+      "wind_exposure": [
+        0.25,
+        0.2
+      ],
+      "concavity_norm": [
+        0.6,
+        0.2
+      ],
+      "riparian_proximity": [
+        0.55,
+        0.2
+      ],
+      "cliff_deg_max": 30
+    },
+    "bspruce": {
+      "moisture_index": [
+        0.5,
+        0.3
+      ],
+      "soil_depth": [
+        0.5,
+        0.3
+      ],
+      "wind_exposure": [
+        0.4,
+        0.3
+      ],
+      "concavity_norm": [
+        0.5,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.2,
+        0.3
+      ],
+      "cliff_deg_max": 40
+    },
+    "wspruce": {
+      "moisture_index": [
+        0.65,
+        0.2
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.3,
+        0.25
+      ],
+      "concavity_norm": [
+        0.6,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.3,
+        0.25
+      ],
+      "cliff_deg_max": 35
+    },
+    "balfir": {
+      "moisture_index": [
+        0.65,
+        0.15
+      ],
+      "soil_depth": [
+        0.6,
+        0.2
+      ],
+      "wind_exposure": [
+        0.2,
+        0.15
+      ],
+      "concavity_norm": [
+        0.6,
+        0.2
+      ],
+      "riparian_proximity": [
+        0.25,
+        0.25
+      ],
+      "cliff_deg_max": 30
+    },
+    "jpine": {
+      "moisture_index": [
+        0.3,
+        0.2
+      ],
+      "soil_depth": [
+        0.3,
+        0.25
+      ],
+      "wind_exposure": [
+        0.65,
+        0.2
+      ],
+      "concavity_norm": [
+        0.3,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.1,
+        0.3
+      ],
+      "cliff_deg_max": 50
+    },
+    "tamarack": {
+      "moisture_index": [
+        0.8,
+        0.15
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.25,
+        0.25
+      ],
+      "concavity_norm": [
+        0.7,
+        0.2
+      ],
+      "riparian_proximity": [
+        0.5,
+        0.2
+      ],
+      "cliff_deg_max": 30
+    },
+    "spruce": {
+      "moisture_index": [
+        0.45,
+        0.3
+      ],
+      "soil_depth": [
+        0.45,
+        0.3
+      ],
+      "wind_exposure": [
+        0.45,
+        0.3
+      ],
+      "concavity_norm": [
+        0.5,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.15,
+        0.3
+      ],
+      "cliff_deg_max": 40
+    },
+    "kspruce": {
+      "moisture_index": [
+        0.35,
+        0.25
+      ],
+      "soil_depth": [
+        0.3,
+        0.25
+      ],
+      "wind_exposure": [
+        0.75,
+        0.15
+      ],
+      "concavity_norm": [
+        0.3,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.1,
+        0.3
+      ],
+      "cliff_deg_max": 55
+    },
+    "salfir": {
+      "moisture_index": [
+        0.6,
+        0.2
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.25,
+        0.2
+      ],
+      "concavity_norm": [
+        0.65,
+        0.2
+      ],
+      "riparian_proximity": [
+        0.2,
+        0.25
+      ],
+      "cliff_deg_max": 35
+    },
+    "kfir": {
+      "moisture_index": [
+        0.35,
+        0.25
+      ],
+      "soil_depth": [
+        0.25,
+        0.25
+      ],
+      "wind_exposure": [
+        0.8,
+        0.15
+      ],
+      "concavity_norm": [
+        0.3,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.1,
+        0.3
+      ],
+      "cliff_deg_max": 55
+    },
+    "sbirch": {
+      "moisture_index": [
+        0.35,
+        0.3
+      ],
+      "soil_depth": [
+        0.35,
+        0.3
+      ],
+      "wind_exposure": [
+        0.6,
+        0.25
+      ],
+      "concavity_norm": [
+        0.35,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.15,
+        0.3
+      ],
+      "cliff_deg_max": 45
+    },
+    "dbirch": {
+      "moisture_index": [
+        0.65,
+        0.2
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.3,
+        0.2
+      ],
+      "concavity_norm": [
+        0.6,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.3,
+        0.25
+      ],
+      "cliff_deg_max": 35
+    },
+    "rowan": {
+      "moisture_index": [
+        0.5,
+        0.3
+      ],
+      "soil_depth": [
+        0.45,
+        0.3
+      ],
+      "wind_exposure": [
+        0.5,
+        0.3
+      ],
+      "concavity_norm": [
+        0.5,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.2,
+        0.3
+      ],
+      "cliff_deg_max": 45
+    },
+    "eoak": {
+      "moisture_index": [
+        0.55,
+        0.25
+      ],
+      "soil_depth": [
+        0.65,
+        0.2
+      ],
+      "wind_exposure": [
+        0.35,
+        0.25
+      ],
+      "concavity_norm": [
+        0.55,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.2,
+        0.25
+      ],
+      "cliff_deg_max": 35
+    },
+    "scotsp": {
+      "moisture_index": [
+        0.3,
+        0.25
+      ],
+      "soil_depth": [
+        0.3,
+        0.25
+      ],
+      "wind_exposure": [
+        0.65,
+        0.2
+      ],
+      "concavity_norm": [
+        0.3,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.1,
+        0.3
+      ],
+      "cliff_deg_max": 50
+    },
+    "lime": {
+      "moisture_index": [
+        0.55,
+        0.2
+      ],
+      "soil_depth": [
+        0.7,
+        0.2
+      ],
+      "wind_exposure": [
+        0.25,
+        0.2
+      ],
+      "concavity_norm": [
+        0.55,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.25,
+        0.25
+      ],
+      "cliff_deg_max": 30
+    },
+    "ash": {
+      "moisture_index": [
+        0.65,
+        0.2
+      ],
+      "soil_depth": [
+        0.6,
+        0.2
+      ],
+      "wind_exposure": [
+        0.3,
+        0.25
+      ],
+      "concavity_norm": [
+        0.6,
+        0.2
+      ],
+      "riparian_proximity": [
+        0.4,
+        0.2
+      ],
+      "cliff_deg_max": 35
+    },
+    "beech": {
+      "moisture_index": [
+        0.55,
+        0.2
+      ],
+      "soil_depth": [
+        0.7,
+        0.15
+      ],
+      "wind_exposure": [
+        0.25,
+        0.2
+      ],
+      "concavity_norm": [
+        0.55,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.15,
+        0.3
+      ],
+      "cliff_deg_max": 30
+    },
+    "hornbeam": {
+      "moisture_index": [
+        0.4,
+        0.25
+      ],
+      "soil_depth": [
+        0.4,
+        0.25
+      ],
+      "wind_exposure": [
+        0.45,
+        0.25
+      ],
+      "concavity_norm": [
+        0.4,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.15,
+        0.3
+      ],
+      "cliff_deg_max": 40
+    },
+    "cherry": {
+      "moisture_index": [
+        0.45,
+        0.25
+      ],
+      "soil_depth": [
+        0.5,
+        0.25
+      ],
+      "wind_exposure": [
+        0.5,
+        0.25
+      ],
+      "concavity_norm": [
+        0.45,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.15,
+        0.3
+      ],
+      "cliff_deg_max": 40
+    },
+    "willow": {
+      "moisture_index": [
+        0.8,
+        0.15
+      ],
+      "soil_depth": [
+        0.65,
+        0.2
+      ],
+      "wind_exposure": [
+        0.25,
+        0.2
+      ],
+      "concavity_norm": [
+        0.65,
+        0.2
+      ],
+      "riparian_proximity": [
+        0.75,
+        0.15
+      ],
+      "cliff_deg_max": 25
+    },
+    "cwillow": {
+      "moisture_index": [
+        0.7,
+        0.2
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.3,
+        0.25
+      ],
+      "concavity_norm": [
+        0.6,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.65,
+        0.2
+      ],
+      "cliff_deg_max": 30
+    },
+    "wwillow": {
+      "moisture_index": [
+        0.85,
+        0.1
+      ],
+      "soil_depth": [
+        0.7,
+        0.15
+      ],
+      "wind_exposure": [
+        0.15,
+        0.15
+      ],
+      "concavity_norm": [
+        0.7,
+        0.15
+      ],
+      "riparian_proximity": [
+        0.85,
+        0.1
+      ],
+      "cliff_deg_max": 20
+    },
+    "alder": {
+      "moisture_index": [
+        0.7,
+        0.2
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.35,
+        0.25
+      ],
+      "concavity_norm": [
+        0.6,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.55,
+        0.2
+      ],
+      "cliff_deg_max": 30
+    },
+    "poplar": {
+      "moisture_index": [
+        0.55,
+        0.25
+      ],
+      "soil_depth": [
+        0.5,
+        0.25
+      ],
+      "wind_exposure": [
+        0.5,
+        0.25
+      ],
+      "concavity_norm": [
+        0.5,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.4,
+        0.25
+      ],
+      "cliff_deg_max": 40
+    },
+    "ppine": {
+      "moisture_index": [
+        0.35,
+        0.25
+      ],
+      "soil_depth": [
+        0.45,
+        0.3
+      ],
+      "wind_exposure": [
+        0.5,
+        0.3
+      ],
+      "concavity_norm": [
+        0.45,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.1,
+        0.3
+      ],
+      "cliff_deg_max": 45
+    },
+    "pitchp": {
+      "moisture_index": [
+        0.2,
+        0.25
+      ],
+      "soil_depth": [
+        0.25,
+        0.25
+      ],
+      "wind_exposure": [
+        0.6,
+        0.25
+      ],
+      "concavity_norm": [
+        0.3,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.05,
+        0.3
+      ],
+      "cliff_deg_max": 50
+    },
+    "hoak": {
+      "moisture_index": [
+        0.45,
+        0.25
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.35,
+        0.25
+      ],
+      "concavity_norm": [
+        0.55,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.2,
+        0.3
+      ],
+      "cliff_deg_max": 40
+    },
+    "olive": {
+      "moisture_index": [
+        0.3,
+        0.25
+      ],
+      "soil_depth": [
+        0.4,
+        0.25
+      ],
+      "wind_exposure": [
+        0.55,
+        0.25
+      ],
+      "concavity_norm": [
+        0.4,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.1,
+        0.3
+      ],
+      "cliff_deg_max": 45
+    },
+    "carob": {
+      "moisture_index": [
+        0.2,
+        0.25
+      ],
+      "soil_depth": [
+        0.35,
+        0.25
+      ],
+      "wind_exposure": [
+        0.6,
+        0.25
+      ],
+      "concavity_norm": [
+        0.35,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.05,
+        0.3
+      ],
+      "cliff_deg_max": 50
+    },
+    "apine": {
+      "moisture_index": [
+        0.35,
+        0.25
+      ],
+      "soil_depth": [
+        0.4,
+        0.25
+      ],
+      "wind_exposure": [
+        0.55,
+        0.25
+      ],
+      "concavity_norm": [
+        0.4,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.1,
+        0.3
+      ],
+      "cliff_deg_max": 50
+    },
+    "juniper": {
+      "moisture_index": [
+        0.25,
+        0.3
+      ],
+      "soil_depth": [
+        0.3,
+        0.3
+      ],
+      "wind_exposure": [
+        0.65,
+        0.25
+      ],
+      "concavity_norm": [
+        0.35,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.1,
+        0.3
+      ],
+      "cliff_deg_max": 55
+    },
+    "pinon": {
+      "moisture_index": [
+        0.4,
+        0.25
+      ],
+      "soil_depth": [
+        0.45,
+        0.25
+      ],
+      "wind_exposure": [
+        0.5,
+        0.25
+      ],
+      "concavity_norm": [
+        0.45,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.15,
+        0.3
+      ],
+      "cliff_deg_max": 50
+    },
+    "soak": {
+      "moisture_index": [
+        0.45,
+        0.3
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.45,
+        0.3
+      ],
+      "concavity_norm": [
+        0.5,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.2,
+        0.3
+      ],
+      "cliff_deg_max": 40
+    },
+    "acacia": {
+      "moisture_index": [
+        0.4,
+        0.3
+      ],
+      "soil_depth": [
+        0.45,
+        0.3
+      ],
+      "wind_exposure": [
+        0.5,
+        0.3
+      ],
+      "concavity_norm": [
+        0.5,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.35,
+        0.3
+      ],
+      "cliff_deg_max": 45
+    },
+    "steppep": {
+      "moisture_index": [
+        0.6,
+        0.25
+      ],
+      "soil_depth": [
+        0.5,
+        0.25
+      ],
+      "wind_exposure": [
+        0.4,
+        0.25
+      ],
+      "concavity_norm": [
+        0.55,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.55,
+        0.2
+      ],
+      "cliff_deg_max": 35
+    },
+    "gfig": {
+      "moisture_index": [
+        0.7,
+        0.2
+      ],
+      "soil_depth": [
+        0.75,
+        0.15
+      ],
+      "wind_exposure": [
+        0.25,
+        0.2
+      ],
+      "concavity_norm": [
+        0.65,
+        0.2
+      ],
+      "riparian_proximity": [
+        0.3,
+        0.25
+      ],
+      "cliff_deg_max": 30
+    },
+    "banyan": {
+      "moisture_index": [
+        0.65,
+        0.2
+      ],
+      "soil_depth": [
+        0.7,
+        0.2
+      ],
+      "wind_exposure": [
+        0.2,
+        0.2
+      ],
+      "concavity_norm": [
+        0.65,
+        0.2
+      ],
+      "riparian_proximity": [
+        0.25,
+        0.25
+      ],
+      "cliff_deg_max": 25
+    },
+    "hardwood": {
+      "moisture_index": [
+        0.55,
+        0.25
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.4,
+        0.25
+      ],
+      "concavity_norm": [
+        0.5,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.2,
+        0.3
+      ],
+      "cliff_deg_max": 40
+    },
+    "breadfruit": {
+      "moisture_index": [
+        0.6,
+        0.25
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.35,
+        0.25
+      ],
+      "concavity_norm": [
+        0.55,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.25,
+        0.25
+      ],
+      "cliff_deg_max": 35
+    },
+    "mpalm": {
+      "moisture_index": [
+        0.5,
+        0.25
+      ],
+      "soil_depth": [
+        0.4,
+        0.25
+      ],
+      "wind_exposure": [
+        0.65,
+        0.2
+      ],
+      "concavity_norm": [
+        0.4,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.15,
+        0.3
+      ],
+      "cliff_deg_max": 50
+    },
+    "rfpalm": {
+      "moisture_index": [
+        0.65,
+        0.2
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.3,
+        0.25
+      ],
+      "concavity_norm": [
+        0.6,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.3,
+        0.25
+      ],
+      "cliff_deg_max": 35
+    },
+    "kapok": {
+      "moisture_index": [
+        0.65,
+        0.2
+      ],
+      "soil_depth": [
+        0.7,
+        0.15
+      ],
+      "wind_exposure": [
+        0.25,
+        0.2
+      ],
+      "concavity_norm": [
+        0.65,
+        0.2
+      ],
+      "riparian_proximity": [
+        0.25,
+        0.25
+      ],
+      "cliff_deg_max": 30
+    },
+    "teak": {
+      "moisture_index": [
+        0.45,
+        0.25
+      ],
+      "soil_depth": [
+        0.5,
+        0.25
+      ],
+      "wind_exposure": [
+        0.5,
+        0.25
+      ],
+      "concavity_norm": [
+        0.45,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.15,
+        0.3
+      ],
+      "cliff_deg_max": 45
+    },
+    "tfig": {
+      "moisture_index": [
+        0.65,
+        0.2
+      ],
+      "soil_depth": [
+        0.6,
+        0.2
+      ],
+      "wind_exposure": [
+        0.3,
+        0.25
+      ],
+      "concavity_norm": [
+        0.6,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.35,
+        0.25
+      ],
+      "cliff_deg_max": 35
+    },
+    "cpalm": {
+      "moisture_index": [
+        0.45,
+        0.25
+      ],
+      "soil_depth": [
+        0.35,
+        0.25
+      ],
+      "wind_exposure": [
+        0.7,
+        0.2
+      ],
+      "concavity_norm": [
+        0.35,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.15,
+        0.3
+      ],
+      "cliff_deg_max": 50
+    },
+    "mroot": {
+      "moisture_index": [
+        0.85,
+        0.1
+      ],
+      "soil_depth": [
+        0.6,
+        0.25
+      ],
+      "wind_exposure": [
+        0.35,
+        0.25
+      ],
+      "concavity_norm": [
+        0.7,
+        0.2
+      ],
+      "riparian_proximity": [
+        0.8,
+        0.15
+      ],
+      "cliff_deg_max": 20
+    },
+    "rmang": {
+      "moisture_index": [
+        0.8,
+        0.15
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.45,
+        0.25
+      ],
+      "concavity_norm": [
+        0.65,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.75,
+        0.15
+      ],
+      "cliff_deg_max": 25
+    },
+    "bmang": {
+      "moisture_index": [
+        0.7,
+        0.2
+      ],
+      "soil_depth": [
+        0.5,
+        0.25
+      ],
+      "wind_exposure": [
+        0.55,
+        0.25
+      ],
+      "concavity_norm": [
+        0.55,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.6,
+        0.2
+      ],
+      "cliff_deg_max": 30
+    },
+    "wmang": {
+      "moisture_index": [
+        0.55,
+        0.25
+      ],
+      "soil_depth": [
+        0.45,
+        0.25
+      ],
+      "wind_exposure": [
+        0.5,
+        0.25
+      ],
+      "concavity_norm": [
+        0.45,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.45,
+        0.25
+      ],
+      "cliff_deg_max": 35
+    },
+    "mangsm": {
+      "moisture_index": [
+        0.7,
+        0.25
+      ],
+      "soil_depth": [
+        0.5,
+        0.3
+      ],
+      "wind_exposure": [
+        0.45,
+        0.3
+      ],
+      "concavity_norm": [
+        0.55,
+        0.3
+      ],
+      "riparian_proximity": [
+        0.65,
+        0.25
+      ],
+      "cliff_deg_max": 30
+    },
+    "rmangsm": {
+      "moisture_index": [
+        0.8,
+        0.15
+      ],
+      "soil_depth": [
+        0.5,
+        0.25
+      ],
+      "wind_exposure": [
+        0.45,
+        0.25
+      ],
+      "concavity_norm": [
+        0.6,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.75,
+        0.15
+      ],
+      "cliff_deg_max": 25
+    },
+    "cfig": {
+      "moisture_index": [
+        0.65,
+        0.25
+      ],
+      "soil_depth": [
+        0.55,
+        0.25
+      ],
+      "wind_exposure": [
+        0.35,
+        0.25
+      ],
+      "concavity_norm": [
+        0.55,
+        0.25
+      ],
+      "riparian_proximity": [
+        0.4,
+        0.25
+      ],
+      "cliff_deg_max": 35
+    }
+  },
+  "lithology": {
+    "_comment": "Phase 0.5 (S44) \u2014 see PHYSICAL_REALISM_REFACTOR.md \u00a76 Pass 0. Feature-flagged off by default.",
+    "feature_flag_enabled": false,
+    "groups": {
+      "granitic": {
+        "id": 1,
+        "palette": [
+          "stone",
+          "andesite",
+          "granite",
+          "diorite"
+        ],
+        "description": "Intrusive igneous basement \u2014 default temperate highland."
+      },
+      "sedimentary": {
+        "id": 2,
+        "palette": [
+          "sandstone",
+          "smooth_sandstone",
+          "red_sandstone",
+          "stone"
+        ],
+        "description": "Arid/semi-arid clastics \u2014 dune + steppe + karst margins."
+      },
+      "basaltic": {
+        "id": 3,
+        "palette": [
+          "basalt",
+          "smooth_basalt",
+          "blackstone",
+          "stone"
+        ],
+        "description": "Extrusive mafic \u2014 coastal headlands, peaks."
+      },
+      "limestone": {
+        "id": 4,
+        "palette": [
+          "calcite",
+          "tuff",
+          "smooth_stone",
+          "stone"
+        ],
+        "description": "Karst barrens + cave-prone carbonate."
+      },
+      "deepslate_metamorphic": {
+        "id": 5,
+        "palette": [
+          "deepslate",
+          "cobbled_deepslate",
+          "polished_deepslate",
+          "stone"
+        ],
+        "description": "High-alpine / arctic basement."
+      },
+      "mossy_temperate": {
+        "id": 6,
+        "palette": [
+          "mossy_cobblestone",
+          "stone",
+          "cobblestone",
+          "andesite"
+        ],
+        "description": "Wet temperate rainforest regolith."
+      }
+    },
+    "zone_to_group": {
+      "COASTAL_HEATH": "granitic",
+      "TEMPERATE_RAINFOREST": "mossy_temperate",
+      "BOREAL_TAIGA": "granitic",
+      "SNOWY_BOREAL_TAIGA": "deepslate_metamorphic",
+      "ALPINE_MEADOW": "deepslate_metamorphic",
+      "ARCTIC_TUNDRA": "deepslate_metamorphic",
+      "FROZEN_FLATS": "deepslate_metamorphic",
+      "TEMPERATE_DECIDUOUS": "granitic",
+      "RAINFOREST_COAST": "mossy_temperate",
+      "RIPARIAN_WOODLAND": "sedimentary",
+      "DRY_OAK_SAVANNA": "sedimentary",
+      "KARST_BARRENS": "limestone",
+      "BIRCH_FOREST": "granitic",
+      "EASTERN_TEMPERATE_COAST": "basaltic",
+      "MIXED_FOREST": "granitic",
+      "CONTINENTAL_STEPPE": "sedimentary",
+      "DRY_PINE_BARRENS": "sedimentary",
+      "SCRUBBY_HEATHLAND": "sedimentary",
+      "LUSH_RAINFOREST_COAST": "mossy_temperate",
+      "SAND_DUNE_DESERT": "sedimentary",
+      "DESERT_STEPPE_TRANSITION": "sedimentary",
+      "SEMI_ARID_SHRUBLAND": "sedimentary",
+      "DRY_WOODLAND_MAQUIS": "limestone",
+      "TIDAL_JUNGLE_FRINGE": "basaltic",
+      "MANGROVE_COAST": "sedimentary",
+      "FRESHWATER_FEN": "sedimentary"
+    },
+    "elevation_overrides": {
+      "_comment": "Rules evaluated in order; first match wins. mc_y thresholds are post-spline.",
+      "rules": []
+    },
+    "basement": {
+      "_comment": "Deep basement below shallow_depth_blocks \u2014 set shallow_group_from_surface=True to keep shallow horizon tied to surface group.",
+      "shallow_depth_blocks": 12,
+      "shallow_group_from_surface": true,
+      "deep_default_group": "granitic"
+    }
   }
 }

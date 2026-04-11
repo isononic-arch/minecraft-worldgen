@@ -1,8 +1,8 @@
 # CLAUDE.md — Vandir World Generation Pipeline
 
-*Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`.*
+*Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`. For the physical-realism refactor plan + implementation log, see `PHYSICAL_REALISM_REFACTOR.md` (§18 is the running log).*
 
-**Current state:** Session 43 (2026-04-10) — project cleaned for agentic automation. S42's "riparian bare-dirt hole" was a validator false positive per user, dropped from priorities. Stratification rings parked as lower priority. Direction set: physical-realism overhaul of surface blocks + subsurface geology painting. Baselines `48_48` (clean) and `51_53` remain; treat `51_53`'s `no_bare_dirt_surface` FAILs as the locked known-state, not an active bug — `--baseline` still flags new PASS→FAIL regressions normally. **NEXT:** physical realism revamp — see DIRECTION below.
+**Current state:** Session 44 (2026-04-11) — Phase 0 + 0.5 of the physical-realism refactor landed together. New scaffolding: `core/layers/{protocol,noise_profiles,vegetation_blocks}.py`, `core/surface_pipeline.py`, `core/wind_model.py` (tradewind single source of truth, sign-pinned by `tests/unit/test_wind_model.py`), `core/meadow_clearing_field.py`, `core/tree_density_hint.py`. New precomputes: `masks/lithology.tif` (6250×6250 uint8 1..6, feature-flagged OFF via `config/thresholds.json → lithology.feature_flag_enabled`), `masks/wave_fetch.tif` (6250×6250 uint16). New tools: `tools/build_lithology.py`, `tools/build_wave_fetch.py`, `tools/extract_riparian_textures.py`, `tools/world_viewer.py` (PyQt6 MVP). 26 unit tests green. **NEXT:** Phase 1 — wire `run_passes()` into `decorate_surface()` in shadow mode (new pipeline runs, output ignored) to prove zero-impact path before Phase 2 pilot on tile (36, 20). Snapshot `tests/baselines/3x3/36_20/` **before** Phase 2 starts.
 
 ---
 

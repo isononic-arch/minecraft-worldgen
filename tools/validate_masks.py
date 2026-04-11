@@ -84,7 +84,89 @@ DEFAULT_BOUNDS = {
     "rock_exposure_tight":  {"kind": "gradient", "min_cov": 0.0,  "max_cov": 0.30},
     "snow_caps":            {"kind": "gradient", "min_cov": 0.0,  "max_cov": 0.25},
     "sand_dunes":           {"kind": "gradient", "min_cov": 0.001,"max_cov": 0.25},
+    # Phase 0.5 (S44) — physical realism refactor precomputes.
+    # lithology: uint8 1..6, 0 = water/unclassified. Expect ~30% nonzero (land fraction).
+    "lithology":            {"kind": "discrete", "min_cov": 0.25, "max_cov": 0.45},
+    # wave_fetch: land-only signal; shore pixels east of water. Tiny coverage (~0.0005).
+    "wave_fetch":           {"kind": "gradient", "min_cov": 0.0,  "max_cov": 0.02},
 }
+
+
+# Phase 0.5 extras — lithology-specific sanity checks beyond coverage bounds.
+# Spec: PHYSICAL_REALISM_REFACTOR.md §6 Pass 0 + §11 Phase 0.5 validator checklist.
+LITHOLOGY_EXPECTED_IDS = {0, 1, 2, 3, 4, 5, 6}
+LITHOLOGY_MIN_GROUPS_PRESENT = 4  # at least 4 of 6 groups must be nonzero on land
+
+
+def check_lithology_extras(masks_dir: Path) -> list[dict]:
+    """Extra lithology sanity checks — band IDs, group diversity, water alignment.
+
+    Returns a list of result dicts (same schema as check_mask).
+    """
+    import numpy as np
+    import rasterio
+
+    out: list[dict] = []
+    path = masks_dir / "lithology.tif"
+    if not path.exists():
+        return out
+
+    with rasterio.open(str(path)) as src:
+        lith = src.read(1)
+    shape = lith.shape
+
+    # Check 1: valid IDs only.
+    r1 = {"name": "lithology_ids", "path": str(path), "detail": {}}
+    unique = set(int(x) for x in np.unique(lith))
+    unexpected = unique - LITHOLOGY_EXPECTED_IDS
+    r1["detail"]["unique_ids"] = sorted(unique)
+    if unexpected:
+        r1["result"] = "FAIL"
+        r1["message"] = f"unexpected ids {sorted(unexpected)}"
+    else:
+        r1["result"] = "PASS"
+        r1["message"] = f"all ids in {sorted(LITHOLOGY_EXPECTED_IDS)}"
+    out.append(r1)
+
+    # Check 2: group diversity — at least N distinct nonzero groups on land.
+    r2 = {"name": "lithology_group_diversity", "path": str(path), "detail": {}}
+    nonzero_ids = unique - {0}
+    r2["detail"]["nonzero_group_count"] = len(nonzero_ids)
+    if len(nonzero_ids) < LITHOLOGY_MIN_GROUPS_PRESENT:
+        r2["result"] = "FAIL"
+        r2["message"] = (
+            f"only {len(nonzero_ids)} nonzero groups present, "
+            f"expected ≥{LITHOLOGY_MIN_GROUPS_PRESENT}")
+    else:
+        r2["result"] = "PASS"
+        r2["message"] = f"{len(nonzero_ids)} nonzero groups present"
+    out.append(r2)
+
+    # Check 3: water alignment — lithology==0 fraction should be close to the
+    # land-inverse fraction (water + unclassified). Sanity: must be within
+    # [0.40, 0.80] for Vandir (30% land, some coastal zones unmapped).
+    r3 = {"name": "lithology_water_alignment", "path": str(path), "detail": {}}
+    zero_frac = float((lith == 0).mean())
+    r3["detail"]["zero_frac"] = round(zero_frac, 4)
+    if 0.40 <= zero_frac <= 0.80:
+        r3["result"] = "PASS"
+        r3["message"] = f"zero/water fraction {zero_frac:.3f} in [0.40, 0.80]"
+    else:
+        r3["result"] = "FAIL"
+        r3["message"] = f"zero/water fraction {zero_frac:.3f} outside [0.40, 0.80]"
+    out.append(r3)
+
+    # Check 4: shape at 1:8 precompute resolution.
+    r4 = {"name": "lithology_shape", "path": str(path), "detail": {"shape": list(shape)}}
+    if shape == (6250, 6250):
+        r4["result"] = "PASS"
+        r4["message"] = "shape 6250×6250 (1:8)"
+    else:
+        r4["result"] = "FAIL"
+        r4["message"] = f"unexpected shape {shape}, want (6250, 6250)"
+    out.append(r4)
+
+    return out
 
 
 def load_bounds(project_root: Path) -> dict:
@@ -224,6 +306,18 @@ def main() -> int:
         path = masks_dir / f"{name}.tif"
         res = check_mask(path, spec)
         results.append(res)
+
+    # Phase 0.5 lithology extras — run only if lithology.tif is being checked
+    # (or if no --only filter is set).
+    if not args.only or "lithology" in names:
+        try:
+            extras = check_lithology_extras(masks_dir)
+            results.extend(extras)
+        except Exception as e:
+            results.append({
+                "name": "lithology_extras", "path": "", "result": "FAIL",
+                "message": f"lithology extras error: {e}", "detail": {},
+            })
 
     n_pass = sum(1 for r in results if r["result"] == "PASS")
     n_fail = sum(1 for r in results if r["result"] == "FAIL")
