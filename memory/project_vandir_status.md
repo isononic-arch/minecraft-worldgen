@@ -180,3 +180,40 @@ land that is unzoned    =  0.37%    ← thin waterline, expected
 **Commit posture:** staged for a single commit rolling Phase 0 + 0.5. Push is blocked in sandbox — Nick pushes from his terminal.
 
 **Ready state for next session:** Phase 1 shadow-mode hookup ready to land. After that, snapshot `tests/baselines/3x3/36_20/` and start Phase 2 pilot (temperate_forest_surface → temperate_riparian_fringe → temperate_windthrow_surface) on tile (36, 20). `world_viewer.py` GUI path likely needs Qt fix-up on first launch — use the headless helpers in the meantime for any CLI-driven mask inspection.
+
+## 2026-04-11 — Session 46: Phase 1.5 lithology scaffolding (spec-vs-code drift finding)
+
+**What happened:** S46 began as "do Phase 1 per §11" (extend `column_generator.fill_column(...)` with lithology params) per the S45 handoff. Before writing any code, ran the new session-kickoff pillar checkoff, including the **Codebase reconciliation check** (added this session as step 5 of the checkoff). That check immediately failed.
+
+**Drift found (§11 Phase 1 spec vs actual code):**
+1. `column_generator.fill_column()` — **does not exist.** `core/column_generator.py` has no function named `fill_column`. Real entry points are `generate_column()` (legacy per-column, line 452), `process_tile_columns_v2()` (hot path, vectorized tile-level, line 956), and `generate_columns()` (run_pipeline wrapper returning only `surface_y`, line 1537).
+2. `ColumnResult.blocks` sparse dict — **not a lithology injection point.** The sparse dict only contains BEDROCK_Y=-64, sy-2, sy-1, sy, water fill, dune fill. It is read by `tools/validate_test_tile.py`, `tools/world_studio.py`, and `tools/voxel_preview.py` — none of which are in the .mca production path.
+3. **Real mid-column fill path:** `core/chunk_writer.build_column_array()` (line 202). Builds the full `(Y_RANGE, H, W)` volume: bedrock at `Y_MIN`, stone fill `[Y_MIN+1, surface_y-3]` with biome-aware cliff banding variants (per `_BIOME_CLIFF_STONE` LUT + `_CLIFF_BANDS` sequences, Y-slice processing in steps of 32), subsurface at sy-2/sy-1, surface at sy, ground cover at sy+1, water fill. Called from `core/chunk_writer.py:997` and `1055`, `tools/validate_test_tile.py:742`, `diag_profile.py:66`.
+
+Writing §11 Phase 1 against the spec as stated would have produced a pure no-op (fattening a sparse dict the .mca path never reads) with a golden test that passed for the wrong reason.
+
+**Surfaced to user** per CLAUDE.md rule "do not guess, do not silently pick one." User picked "fatten the real path." §11 Phase 1 preserved verbatim but marked **SUPERSEDED**; new **Phase 1.5** subsection inserted targeting `build_column_array()` instead.
+
+**Tile choice correction:** Claude initially chose 36_20 as the new land-heavy baseline thinking it was a temperate mountain tile. User corrected mid-session: "36,20 is desert, pick another tile." Repicked **59_53** (windthrow / temperate mountain reference per the CLAUDE.md tile table). 59_53 baseline started in background (`nohup py tools/validate_3x3.py --tile-x 59 --tile-z 53 --report validation_report_3x3_59_53`) during doc work, must complete and be snapshotted to `tests/baselines/3x3/59_53/` before any edit to chunk_writer.py or column_generator.py.
+
+**Phase 1.5 scope (planned, not yet landed):**
+- Extend `core/chunk_writer.build_column_array()` with 4 new optional kwargs: `lithology_tile`, `sediment_thickness_tile`, `soil_horizon_depth_tile`, `use_new_geology` (default None / None / None / False).
+- Early-out guard `if not use_new_geology or lithology_tile is None:` → fall through to existing unchanged code (flag-OFF byte-identical to S45).
+- Flag-ON branch raises `NotImplementedError` with message referencing §11 Phase 1.5 + §6 Pass 1, deferred to S47 Phase 2.
+- Thread same 4 kwargs through `process_tile_columns_v2()` and `generate_columns()` as pass-through (no logic).
+- New `tests/unit/test_phase1_5_scaffolding.py` with 5 tests: (1) flag-off identity, (2) flag-off with lithology_tile provided still identity, (3) flag-on raises NotImplementedError, (4) param-threading sanity, (5) no-caller-enables-flag sentinel (grep-based).
+- Target: 31 → 36 unit tests green; `validate_3x3` flag-OFF on 59_53 / 48_48 / 51_53 → zero new PASS→FAIL flips.
+
+**Docs landed this session (before code edits):**
+- `PHYSICAL_REALISM_REFACTOR.md` §11 Phase 1 marked SUPERSEDED (verbatim preserved); new §11 Phase 1.5 subsection inserted; §6 Pass 1 header got S46 correction note; §18 S46 implementation log entry with phase state block, files-touched plan, validation table scaffold, exit criteria, open items; new §19 Spec-vs-Code Drift Log section started with entry S46-1.
+- `CLAUDE.md` **Current state** line rewritten for S46; session-kickoff pillar checkoff extended with step 5 "Codebase reconciliation check" (grep-before-code rule, citing this S46 drift as the canary failure it prevents).
+- `PROJECT_MEMORY.md` §10 session log: S43/S44/S45/S46 entries added.
+- This file (`memory/project_vandir_status.md`) — this entry.
+
+**Workflow invariants held so far:** no `core/` edits yet (doc-only); no pipeline regen; no 50k runs suggested. 31/31 unit tests still green at entry.
+
+**Baseline-before-edit status:** 59_53 snapshot running in background (PID 22499). Code edits blocked until it completes and reports are copied to `tests/baselines/3x3/59_53/`.
+
+**Commit posture:** single local commit planned for doc updates first, then a second local commit for the scaffolding + tests. Push blocked in sandbox — Nick pushes from his terminal.
+
+**Prevention rule added:** CLAUDE.md session-kickoff step 5 — grep named symbols against the codebase before writing code against any spec. The S46 drift is now the canonical example in `PHYSICAL_REALISM_REFACTOR.md` §19.

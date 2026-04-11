@@ -1,0 +1,666 @@
+{
+  "center": [
+    59,
+    53
+  ],
+  "tile_count": 9,
+  "elapsed_s": 962.4,
+  "tiles": [
+    {
+      "tile_x": 58,
+      "tile_z": 52,
+      "elapsed_ms": 177007,
+      "checks": [
+        {
+          "name": "biome_coverage",
+          "category": "biome",
+          "result": "PASS",
+          "message": "4 biomes, land=100.0%, ocean=0.0%",
+          "detail": "BOREAL_TAIGA:6749, CONTINENTAL_STEPPE:6580, MIXED_FOREST:129605, TEMPERATE_RAINFOREST:119210"
+        },
+        {
+          "name": "surface_y_range",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "range [91, 110] within [-64, 448]",
+          "detail": ""
+        },
+        {
+          "name": "river_meta_consistency",
+          "category": "hydrology",
+          "result": "PASS",
+          "message": "725 river pixels, none suspiciously high",
+          "detail": ""
+        },
+        {
+          "name": "no_bare_dirt_surface",
+          "category": "surface_decoration",
+          "result": "FAIL",
+          "message": "19 pixels have bare 'dirt' as surface block (land only)",
+          "detail": "Affected biomes: ['BOREAL_TAIGA', 'MIXED_FOREST', 'TEMPERATE_RAINFOREST']"
+        },
+        {
+          "name": "surface_block_variety",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "11 distinct surface block types",
+          "detail": ""
+        },
+        {
+          "name": "bedrock_layer",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "All Y=-64 pixels are bedrock",
+          "detail": ""
+        },
+        {
+          "name": "water_fill",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "No sub-sea pixels in this tile (all above sea level)",
+          "detail": ""
+        },
+        {
+          "name": "no_void_columns",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "100-sample stone layer check passed",
+          "detail": ""
+        },
+        {
+          "name": "column_profile",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "Bedrock=\u2713, surface=coarse_dirt @ Y=95, stone present",
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "tile_x": 59,
+      "tile_z": 52,
+      "elapsed_ms": 135445,
+      "checks": [
+        {
+          "name": "biome_coverage",
+          "category": "biome",
+          "result": "PASS",
+          "message": "2 biomes, land=100.0%, ocean=0.0%",
+          "detail": "MIXED_FOREST:8843, TEMPERATE_RAINFOREST:253301"
+        },
+        {
+          "name": "surface_y_range",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "range [98, 120] within [-64, 448]",
+          "detail": ""
+        },
+        {
+          "name": "river_meta_consistency",
+          "category": "hydrology",
+          "result": "PASS",
+          "message": "96 river pixels, none suspiciously high",
+          "detail": ""
+        },
+        {
+          "name": "no_bare_dirt_surface",
+          "category": "surface_decoration",
+          "result": "FAIL",
+          "message": "11 pixels have bare 'dirt' as surface block (land only)",
+          "detail": "Affected biomes: ['TEMPERATE_RAINFOREST']"
+        },
+        {
+          "name": "surface_block_variety",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "8 distinct surface block types",
+          "detail": ""
+        },
+        {
+          "name": "bedrock_layer",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "All Y=-64 pixels are bedrock",
+          "detail": ""
+        },
+        {
+          "name": "water_fill",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "No sub-sea pixels in this tile (all above sea level)",
+          "detail": ""
+        },
+        {
+          "name": "no_void_columns",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "100-sample stone layer check passed",
+          "detail": ""
+        },
+        {
+          "name": "column_profile",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "Bedrock=\u2713, surface=coarse_dirt @ Y=106, stone present",
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "tile_x": 60,
+      "tile_z": 52,
+      "elapsed_ms": 79058,
+      "checks": [
+        {
+          "name": "biome_coverage",
+          "category": "biome",
+          "result": "PASS",
+          "message": "1 biomes, land=100.0%, ocean=0.0%",
+          "detail": "TEMPERATE_RAINFOREST:262144"
+        },
+        {
+          "name": "surface_y_range",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "range [116, 160] within [-64, 448]",
+          "detail": ""
+        },
+        {
+          "name": "river_meta_consistency",
+          "category": "hydrology",
+          "result": "WARN",
+          "message": "No river pixels in this tile (river_meta all zero)",
+          "detail": ""
+        },
+        {
+          "name": "no_bare_dirt_surface",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "No bare dirt surface blocks on land",
+          "detail": ""
+        },
+        {
+          "name": "surface_block_variety",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "7 distinct surface block types",
+          "detail": ""
+        },
+        {
+          "name": "bedrock_layer",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "All Y=-64 pixels are bedrock",
+          "detail": ""
+        },
+        {
+          "name": "water_fill",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "No sub-sea pixels in this tile (all above sea level)",
+          "detail": ""
+        },
+        {
+          "name": "no_void_columns",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "100-sample stone layer check passed",
+          "detail": ""
+        },
+        {
+          "name": "column_profile",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "Bedrock=\u2713, surface=coarse_dirt @ Y=130, stone present",
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "tile_x": 58,
+      "tile_z": 53,
+      "elapsed_ms": 138540,
+      "checks": [
+        {
+          "name": "biome_coverage",
+          "category": "biome",
+          "result": "PASS",
+          "message": "2 biomes, land=100.0%, ocean=0.0%",
+          "detail": "MIXED_FOREST:16187, TEMPERATE_RAINFOREST:245957"
+        },
+        {
+          "name": "surface_y_range",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "range [92, 115] within [-64, 448]",
+          "detail": ""
+        },
+        {
+          "name": "river_meta_consistency",
+          "category": "hydrology",
+          "result": "PASS",
+          "message": "47769 river pixels, none suspiciously high",
+          "detail": ""
+        },
+        {
+          "name": "no_bare_dirt_surface",
+          "category": "surface_decoration",
+          "result": "FAIL",
+          "message": "5656 pixels have bare 'dirt' as surface block (land only)",
+          "detail": "Affected biomes: ['MIXED_FOREST', 'TEMPERATE_RAINFOREST']"
+        },
+        {
+          "name": "surface_block_variety",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "9 distinct surface block types",
+          "detail": ""
+        },
+        {
+          "name": "bedrock_layer",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "All Y=-64 pixels are bedrock",
+          "detail": ""
+        },
+        {
+          "name": "water_fill",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "No sub-sea pixels in this tile (all above sea level)",
+          "detail": ""
+        },
+        {
+          "name": "no_void_columns",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "100-sample stone layer check passed",
+          "detail": ""
+        },
+        {
+          "name": "column_profile",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "Bedrock=\u2713, surface=coarse_dirt @ Y=101, stone present",
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "tile_x": 59,
+      "tile_z": 53,
+      "elapsed_ms": 74388,
+      "checks": [
+        {
+          "name": "biome_coverage",
+          "category": "biome",
+          "result": "PASS",
+          "message": "1 biomes, land=100.0%, ocean=0.0%",
+          "detail": "TEMPERATE_RAINFOREST:262144"
+        },
+        {
+          "name": "surface_y_range",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "range [106, 125] within [-64, 448]",
+          "detail": ""
+        },
+        {
+          "name": "river_meta_consistency",
+          "category": "hydrology",
+          "result": "PASS",
+          "message": "4730 river pixels, none suspiciously high",
+          "detail": ""
+        },
+        {
+          "name": "no_bare_dirt_surface",
+          "category": "surface_decoration",
+          "result": "FAIL",
+          "message": "526 pixels have bare 'dirt' as surface block (land only)",
+          "detail": "Affected biomes: ['TEMPERATE_RAINFOREST']"
+        },
+        {
+          "name": "surface_block_variety",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "9 distinct surface block types",
+          "detail": ""
+        },
+        {
+          "name": "bedrock_layer",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "All Y=-64 pixels are bedrock",
+          "detail": ""
+        },
+        {
+          "name": "water_fill",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "No sub-sea pixels in this tile (all above sea level)",
+          "detail": ""
+        },
+        {
+          "name": "no_void_columns",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "100-sample stone layer check passed",
+          "detail": ""
+        },
+        {
+          "name": "column_profile",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "Bedrock=\u2713, surface=moss_block @ Y=114, stone present",
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "tile_x": 60,
+      "tile_z": 53,
+      "elapsed_ms": 78926,
+      "checks": [
+        {
+          "name": "biome_coverage",
+          "category": "biome",
+          "result": "PASS",
+          "message": "1 biomes, land=100.0%, ocean=0.0%",
+          "detail": "TEMPERATE_RAINFOREST:262144"
+        },
+        {
+          "name": "surface_y_range",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "range [119, 157] within [-64, 448]",
+          "detail": ""
+        },
+        {
+          "name": "river_meta_consistency",
+          "category": "hydrology",
+          "result": "WARN",
+          "message": "No river pixels in this tile (river_meta all zero)",
+          "detail": ""
+        },
+        {
+          "name": "no_bare_dirt_surface",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "No bare dirt surface blocks on land",
+          "detail": ""
+        },
+        {
+          "name": "surface_block_variety",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "7 distinct surface block types",
+          "detail": ""
+        },
+        {
+          "name": "bedrock_layer",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "All Y=-64 pixels are bedrock",
+          "detail": ""
+        },
+        {
+          "name": "water_fill",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "No sub-sea pixels in this tile (all above sea level)",
+          "detail": ""
+        },
+        {
+          "name": "no_void_columns",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "100-sample stone layer check passed",
+          "detail": ""
+        },
+        {
+          "name": "column_profile",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "Bedrock=\u2713, surface=coarse_dirt @ Y=133, stone present",
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "tile_x": 58,
+      "tile_z": 54,
+      "elapsed_ms": 79757,
+      "checks": [
+        {
+          "name": "biome_coverage",
+          "category": "biome",
+          "result": "PASS",
+          "message": "1 biomes, land=100.0%, ocean=0.0%",
+          "detail": "TEMPERATE_RAINFOREST:262144"
+        },
+        {
+          "name": "surface_y_range",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "range [106, 162] within [-64, 448]",
+          "detail": ""
+        },
+        {
+          "name": "river_meta_consistency",
+          "category": "hydrology",
+          "result": "WARN",
+          "message": "No river pixels in this tile (river_meta all zero)",
+          "detail": ""
+        },
+        {
+          "name": "no_bare_dirt_surface",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "No bare dirt surface blocks on land",
+          "detail": ""
+        },
+        {
+          "name": "surface_block_variety",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "7 distinct surface block types",
+          "detail": ""
+        },
+        {
+          "name": "bedrock_layer",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "All Y=-64 pixels are bedrock",
+          "detail": ""
+        },
+        {
+          "name": "water_fill",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "No sub-sea pixels in this tile (all above sea level)",
+          "detail": ""
+        },
+        {
+          "name": "no_void_columns",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "100-sample stone layer check passed",
+          "detail": ""
+        },
+        {
+          "name": "column_profile",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "Bedrock=\u2713, surface=mossy_cobblestone @ Y=132, stone present",
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "tile_x": 59,
+      "tile_z": 54,
+      "elapsed_ms": 79543,
+      "checks": [
+        {
+          "name": "biome_coverage",
+          "category": "biome",
+          "result": "PASS",
+          "message": "1 biomes, land=100.0%, ocean=0.0%",
+          "detail": "TEMPERATE_RAINFOREST:262144"
+        },
+        {
+          "name": "surface_y_range",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "range [109, 151] within [-64, 448]",
+          "detail": ""
+        },
+        {
+          "name": "river_meta_consistency",
+          "category": "hydrology",
+          "result": "PASS",
+          "message": "1096 river pixels, none suspiciously high",
+          "detail": ""
+        },
+        {
+          "name": "no_bare_dirt_surface",
+          "category": "surface_decoration",
+          "result": "FAIL",
+          "message": "123 pixels have bare 'dirt' as surface block (land only)",
+          "detail": "Affected biomes: ['TEMPERATE_RAINFOREST']"
+        },
+        {
+          "name": "surface_block_variety",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "9 distinct surface block types",
+          "detail": ""
+        },
+        {
+          "name": "bedrock_layer",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "All Y=-64 pixels are bedrock",
+          "detail": ""
+        },
+        {
+          "name": "water_fill",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "No sub-sea pixels in this tile (all above sea level)",
+          "detail": ""
+        },
+        {
+          "name": "no_void_columns",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "100-sample stone layer check passed",
+          "detail": ""
+        },
+        {
+          "name": "column_profile",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "Bedrock=\u2713, surface=coarse_dirt @ Y=123, stone present",
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "tile_x": 60,
+      "tile_z": 54,
+      "elapsed_ms": 113594,
+      "checks": [
+        {
+          "name": "biome_coverage",
+          "category": "biome",
+          "result": "PASS",
+          "message": "2 biomes, land=100.0%, ocean=0.0%",
+          "detail": "ALPINE_MEADOW:15835, TEMPERATE_RAINFOREST:246309"
+        },
+        {
+          "name": "surface_y_range",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "range [124, 173] within [-64, 448]",
+          "detail": ""
+        },
+        {
+          "name": "river_meta_consistency",
+          "category": "hydrology",
+          "result": "WARN",
+          "message": "No river pixels in this tile (river_meta all zero)",
+          "detail": ""
+        },
+        {
+          "name": "no_bare_dirt_surface",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "No bare dirt surface blocks on land",
+          "detail": ""
+        },
+        {
+          "name": "surface_block_variety",
+          "category": "surface_decoration",
+          "result": "PASS",
+          "message": "7 distinct surface block types",
+          "detail": ""
+        },
+        {
+          "name": "bedrock_layer",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "All Y=-64 pixels are bedrock",
+          "detail": ""
+        },
+        {
+          "name": "water_fill",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "No sub-sea pixels in this tile (all above sea level)",
+          "detail": ""
+        },
+        {
+          "name": "no_void_columns",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "100-sample stone layer check passed",
+          "detail": ""
+        },
+        {
+          "name": "column_profile",
+          "category": "terrain",
+          "result": "PASS",
+          "message": "Bedrock=\u2713, surface=coarse_dirt @ Y=141, stone present",
+          "detail": ""
+        }
+      ]
+    }
+  ],
+  "seam_checks": [
+    {
+      "name": "biome_seam_continuity",
+      "category": "seam",
+      "result": "FAIL",
+      "message": "Biome seams 3.50\u00d7 interior transition rate (likely real seam)",
+      "detail": ""
+    },
+    {
+      "name": "block_palette_seam_continuity",
+      "category": "seam",
+      "result": "PASS",
+      "message": "Block palette seam ratio 1.14",
+      "detail": "seam=3095, interior=2724, ratio=1.14"
+    },
+    {
+      "name": "surface_y_seam_step",
+      "category": "seam",
+      "result": "PASS",
+      "message": "All seam steps \u2264 4 blocks",
+      "detail": "max_step=3, over_budget_px=0"
+    }
+  ],
+  "pass": 74,
+  "fail": 6,
+  "warn": 4
+}

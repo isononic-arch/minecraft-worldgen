@@ -210,7 +210,20 @@ def build_column_array(
     tile_world_x:  int   = 0,
     tile_world_z:  int   = 0,
     river_water_y: np.ndarray | None = None, # (H, W) int16 — water surface for rivers above sea level
-) -> np.ndarray:
+    # ---- Phase 1.5 scaffolding (S46) ----
+    # These four kwargs land the plumbing for the physical-realism refactor's
+    # Pass 1 (Geology / Column). None of them affect output in Phase 1.5: when
+    # ``use_new_geology`` is False OR ``lithology_tile`` is None, the function
+    # falls through to the existing (pre-S46) legacy path and is byte-identical.
+    # When both are truthy, we raise ``NotImplementedError`` — the real geology
+    # branch lands in Phase 2 (S47). See PHYSICAL_REALISM_REFACTOR.md §11 Phase
+    # 1.5 and §6 Pass 1. A sentinel unit test forbids any production caller from
+    # setting ``use_new_geology=True`` until Phase 2.
+    lithology_tile:          np.ndarray | None = None,  # (H, W) uint8 — lithology group id per column
+    sediment_thickness_tile: np.ndarray | None = None,  # (H, W) uint8 — blocks of sediment above basement
+    soil_horizon_depth_tile: np.ndarray | None = None,  # (H, W) uint8 — blocks of soil above sediment
+    use_new_geology:         bool                = False,
+) -> tuple[np.ndarray, "BlockPalette"]:
     """
     Build a (Y_RANGE, H, W) object array of block name strings.
 
@@ -226,6 +239,20 @@ def build_column_array(
     Returns (vol, palette) where vol has shape (Y_RANGE, H, W) dtype=uint16
     and palette is a BlockPalette mapping indices ↔ block name strings.
     """
+    # ---- Phase 1.5: flag-ON stub ----
+    # Both the flag AND a lithology_tile must be present to enter the new path.
+    # Anything else (flag off, or tile missing, or both) falls through to the
+    # legacy code below unchanged — guaranteeing byte-identity with pre-S46.
+    if use_new_geology and lithology_tile is not None:
+        raise NotImplementedError(
+            "build_column_array: use_new_geology=True is Phase 1.5 scaffolding "
+            "only — the real geology branch lands in Phase 2 (S47). "
+            "See PHYSICAL_REALISM_REFACTOR.md §11 Phase 1.5 and §6 Pass 1."
+        )
+    # Phase 1.5 flag-OFF: the three lithology tiles are accepted but unused.
+    # (Kept as local refs so static linters don't flag them as dead kwargs.)
+    _ = (lithology_tile, sediment_thickness_tile, soil_horizon_depth_tile)
+
     H, W = surface_y.shape
     pal = BlockPalette()
     vol = np.zeros((Y_RANGE, H, W), dtype=np.uint16)  # 0 = air

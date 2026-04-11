@@ -966,12 +966,25 @@ def process_tile_columns_v2(
     tile_origin_y:  int,
     noise_gens:     dict,
     cfg:            dict,
+    # ---- Phase 1.5 scaffolding (S46) ----
+    # Pass-through only in Phase 1.5: this function does not consume the
+    # lithology tiles itself; they are plumbed here so future callers
+    # (chunk_writer path) can hand them to build_column_array without every
+    # intermediate needing a new signature change later. See
+    # PHYSICAL_REALISM_REFACTOR.md §11 Phase 1.5.
+    lithology_tile:          np.ndarray | None = None,
+    sediment_thickness_tile: np.ndarray | None = None,
+    soil_horizon_depth_tile: np.ndarray | None = None,
+    use_new_geology:         bool                = False,
 ) -> list[list]:
     """
     Vectorized replacement for process_tile_columns().
     Returns list[list[ColumnResult]] — identical structure to original.
     ~100x faster than the per-column Python loop.
     """
+    # Phase 1.5: lithology kwargs are pass-through only in this function.
+    _ = (lithology_tile, sediment_thickness_tile,
+         soil_horizon_depth_tile, use_new_geology)
     # ColumnResult, gaea_to_mc_y, SEA_LEVEL are all defined in this same module.
     H, W = tile_height.shape
 
@@ -1543,12 +1556,22 @@ def generate_columns(
     cfg:          dict,
     tile_x:       int,          # tile index X (multiply by 512 for world origin)
     tile_y:       int,          # tile index Y (multiply by 512 for world origin)
+    # ---- Phase 1.5 scaffolding (S46) ----
+    # Pass-through only — this wrapper returns surface_y and does not touch
+    # lithology. Kwargs exist so run_pipeline can hand them down to the
+    # chunk_writer path without another signature change later.
+    lithology_tile:          np.ndarray | None = None,
+    sediment_thickness_tile: np.ndarray | None = None,
+    soil_horizon_depth_tile: np.ndarray | None = None,
+    use_new_geology:         bool                = False,
 ) -> np.ndarray:
     """
     Compute the surface_y (H, W) int16 array for a tile.
     Applies: height LUT → ocean-depth correction → dune height offset.
     Returns shape (H, W) int16 with MC Y values.
     """
+    _ = (lithology_tile, sediment_thickness_tile,
+         soil_horizon_depth_tile, use_new_geology)  # Phase 1.5 pass-through
     from scipy.ndimage import distance_transform_edt
 
     H, W = height_tile.shape
