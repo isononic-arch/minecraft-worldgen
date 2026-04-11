@@ -1,6 +1,6 @@
 # Vandir Physical Realism Refactor — Design Doc
 
-**Status:** APPROVED — Phase 0 cleared to begin (S43, 2026-04-10)
+**Status:** APPROVED (S43, 2026-04-10) — Phase 0 cleared. Updated with Nick's §1–6 review feedback. §7+ awaiting second review pass.
 **Session:** S43 (2026-04-10)
 **Authors:** Nick (direction), Claude (architecture)
 **Supersedes:** `CLAUDE.md` DIRECTION block (S43), `ARCHITECTURE_VISION.md` §"Surface decoration"
@@ -73,6 +73,8 @@ The layer order Vandir adopts (§ 4) is a direct superset of this quote.
 6. **Feature-flag risky paths.** Lithology + new column path are flagged OFF by default and validated standalone before any downstream consumer reads them.
 7. **Old pipeline stays as shim.** `surface_decorator.py` remains active until the pilot biome group passes green in-game. No mid-refactor cutover.
 8. **Agentic-first diagnostics.** Every layer and pass emits reviewable PNG artifacts. .mca regen only at phase checkpoints.
+9. **Tradewinds blow west → east (270°).** Every wind-influenced layer — windthrow, wave fetch, dune orientation, snow lee accumulation, leaf-litter drift, sand scour, weathering bleach asymmetry — uses this as ground truth. West-facing slopes are windward (exposed, scoured, dryer); east-facing slopes are leeward (sheltered, accumulation-biased, wetter leeside). This is already baked into CLAUDE.md world constants; the refactor makes every wind-aware layer reference a single `core/wind_model.py` helper rather than rolling its own aspect math. Gets this wrong and the map's whole weathering story runs backwards.
+10. **Block-texture reality check.** Before any block joins a palette, its actual in-game texture is the deciding vote, not its name. Names are misleading (`smooth_stone` is flat-gray and reads as bunker concrete; `mud` is near-black with a subtle water sheen; `packed_mud` is arid dry-clay brown; `rooted_dirt` shows pale root veins). When I'm not confident a block will read right in context, I flag it, propose alternatives, and wait for Nick's call rather than shipping it into a palette.
 
 ---
 
@@ -207,12 +209,14 @@ Every layer ships with at least one test:
 
 | ID | Name | Surface palette | Subsurface basement |
 |----|------|-----------------|---------------------|
-| 1 | Granitic | stone + granite + andesite + diorite + mossy cobble | granite + andesite |
+| 1 | Granitic | **andesite (primary temperate light rock)** + stone + granite + diorite + mossy cobble | granite + andesite |
 | 2 | Sedimentary | sandstone + red_sandstone + smooth_sandstone + terracotta variants | sandstone + red_sandstone |
-| 3 | Basaltic | basalt + smooth_basalt + blackstone + polished_blackstone + magma_block | basalt + blackstone |
-| 4 | Limestone | calcite + tuff + dripstone_block + smooth_stone | calcite + tuff |
-| 5 | Deepslate-metamorphic | deepslate + cobbled_deepslate + tuff + polished_deepslate | deepslate |
-| 6 | Mossy-temperate | stone + cobblestone + mossy_cobblestone + mossy_stone_bricks | stone + cobblestone |
+| 3 | Basaltic | basalt + smooth_basalt + blackstone + magma_block *(no polished_blackstone)* | basalt + blackstone |
+| 4 | Limestone | calcite + tuff + dripstone_block + stone *(no smooth_stone)* | calcite + tuff |
+| 5 | Deepslate-metamorphic | deepslate + cobbled_deepslate + tuff *(no polished_deepslate)* | deepslate |
+| 6 | Mossy-temperate | **andesite** + stone + cobblestone + mossy_cobblestone *(no mossy_stone_bricks)* | stone + cobblestone |
+
+**No polished/brick-ified blocks** in any lithology palette. They read as "built" rather than natural and break immersion on cliff faces. Rule of thumb: if the block has a visible chiseled grid or mortar lines, it's out.
 
 **Assignment rule (initial, hand-tunable):** Direct LUT on override zone code + elevation bucket + region (optional). No hydrology signals, no flow-dependency — keeps Pass 0 deterministic and debuggable.
 
@@ -288,8 +292,45 @@ Replaces the bulk of `surface_decorator.py`'s surface-block logic. Each layer is
 | `vertical_fluting` | **overlay** | any biome, `cliff_deg ≥ 35°`, already claimed by cliff_face layer | aspect_smoothed, cliff_tangent_direction | Phase-modulated stone variant substitution, stripe width 4 ±1 block. See § 10. |
 | `snow_cap_north` | **overlay** | elevation ≥ snow_line, `north_factor > 0.4` | north_factor, elevation | Snow block substitution |
 | `beach_by_fetch` | partition | shoreline, new `wave_fetch.tif` > threshold | wave_fetch, shoreline_distance | Sand primary, gravel secondary; width scales with fetch |
-| `river_bar` | partition | inside meander bends, low flow | flow, concavity, bend curvature | Gravel + sand + coarse dirt scatter |
-| `lake_edge` | partition | lake fringe (2px band) | hydro_lake_wl, terrain | Sand + gravel + dirt, width tuned to slope |
+| `river_bar` | partition | inside meander bends, low flow | flow, concavity, bend curvature | Gravel + sand + coarse dirt scatter *(in arid / sedimentary zones only — temperate uses `temperate_riparian_fringe` below)* |
+| `lake_edge` | partition | lake fringe (2px band) | hydro_lake_wl, terrain | *(arid / sedimentary)* sand + gravel + dirt |
+| `temperate_riparian_fringe` | partition | temperate zones, within 3–5 blocks of river centerline OR inside lake fringe band | flow, concavity, moisture_idx | Brown/mud/dirt palette (see below) with matched noise profile from legacy riparian noise mix. Claims lake_edge + river_bar pixels in temperate zones. |
+| `temperate_forest_surface` | partition | temperate forested biomes (`MIXED_FOREST`, `TEMPERATE_RAINFOREST`, `TEMPERATE_CONIFEROUS_FOREST`), `slope_class == flat` or `moderate`, not claimed by cliff/talus/riparian | biome, tree_density_hint, north_factor | Grass-dominant mix with legacy mixed-forest noise scale driving coarse_dirt / podzol / rooted_dirt scatter |
+
+**Temperate riparian fringe palette** (Pass 2 default for temperate lake/river edges; supersedes earlier sand+gravel default):
+
+Primary (60–70%): `dirt`, `coarse_dirt`, `rooted_dirt`. These read as muddy waterline soil without the arid gravel-bar feel.
+Secondary (20–30%): `podzol` in shaded bends (north-facing, dense canopy nearby), `packed_mud` sparingly in high-flow scour spots.
+Accent (≤10%): `gravel` at the immediate waterline only (1px band), `clay` in still-water lake fringes.
+**Block-texture verification (pulled from `meta/versions/1.21.10/1.21.10.jar` on 2026-04-10):**
+
+| Block | Texture read | Riparian verdict |
+|-------|--------------|------------------|
+| `dirt` | Classic warm mid-brown, slightly varied | ✅ Safe baseline, primary |
+| `coarse_dirt` | Darker grittier brown | ✅ Good companion, primary |
+| `rooted_dirt` | Warm brown with pale beige root veins | ✅ **Only under tree canopy / next to willow-alder clusters.** Out of place on open lake edges. Guarded by a `near_canopy_hint` predicate. |
+| `podzol` (top) | Dark brown with visible green moss/needle bits | ✅ Shaded bends + dense-canopy north-facing bank |
+| `packed_mud` | Warm dry tan, caked-clay read | ❌ **Removed from temperate.** Arid riparian only (swap to `arid_riparian_fringe` in Phase 5). |
+| `mud` (1.19+) | Very dark brown-gray with subtle wet sheen | ⚠️ **Accent only, narrow bands** — too dark as primary. Test render required before the accent band > 1 pixel wide. |
+| `gravel` | Light gray with warm specks | ❌ **Removed from temperate.** Too light to blend with dark banks. Arid riparian only + 1-pixel immediate waterline. |
+| `clay` | Soft pale blue-gray, fine texture | ✅ Still-water lake fringe accent |
+
+**Updated temperate riparian palette** (revised after texture verification):
+- Primary (60–70%): `dirt`, `coarse_dirt`
+- Secondary (20–25%): `podzol` (shaded bends), `rooted_dirt` (under canopy only)
+- Accent (≤10%): `mud` (1-pixel scour bands only, Phase 2 test render gates expansion), `clay` (still-water lake fringes only)
+- Waterline (1-pixel band): `gravel` permitted but not required
+
+`packed_mud` and broad `gravel` use move to `arid_riparian_fringe` in Phase 5.
+
+Noise profile: reuse legacy mixed-forest noise field (scale + type) to drive palette selection — Nick confirmed the noise math itself was good, only the distribution logic was off. Port the noise function to `core/layers/noise_profiles.py` as `legacy_mixed_forest_noise()`. `temperate_forest_surface` uses the same helper so the two layers share grain at biome boundaries.
+
+**Tree-density coupling (surface block mix ↔ tree density):** Pass 2's `temperate_forest_surface` and `temperate_grass_terrace` both read a `tree_density_hint` field. Because Pass 4 runs *after* Pass 2, this field is **precomputed once at pipeline start** in a new helper `core/tree_density_hint.py` that evaluates the same suitability function Pass 4 will later use for placement — inline, cheap, and tile-scoped. Pass 2 consumes the hint; Pass 4 later uses the same function on its own samples so the two stay consistent by construction. (This is the same cross-pass pattern as vertical fluting's variant hints, just going in the other direction on the pipeline.) Rule:
+- **High tree density** (closed canopy hint > 0.6) → forest-floor noise mix dominates (grass_block 50%, coarse_dirt 25%, podzol 15%, rooted_dirt 10%).
+- **Low tree density** (open canopy hint < 0.3) → clean grassland (grass_block 90%, coarse_dirt 8%, mossy_cobble 2%).
+- **Transition band** linearly interpolates.
+
+This is the loop-close Nick asked for: the forest placement layer in Pass 4 feeds back into Pass 2's surface mix so the ground visibly knows it's "under a forest" vs "under open pasture" even before trees render.
 
 Rough count: 9 layers for MVP pilot, with temperate group + shared. Desert_pavement and boreal_moss_carpet get their own layer files in Phase 5 (horizontal rollout).
 
@@ -307,11 +348,14 @@ Replaces ground cover logic in `surface_decorator.py`. Each layer emits ground-c
 
 | Layer | Type | Scope | Density rule |
 |-------|------|-------|--------------|
-| `temperate_forest_floor` | partition | temperate forested biomes, grass_block surface | `density = base × (0.5 + 0.5 × moisture_idx) × (0.7 + 0.3 × north_factor)` |
-| `alpine_grass_meadow` | partition | alpine biomes, grass_block surface | `density = base × (1 - north_factor × 0.5)` (sun-facing denser) |
-| `riparian_lush` | partition | within 6 blocks of river centerline, temperate | `density = base × 1.5`, fern + tall grass mix |
+| `temperate_forest_floor` | partition | temperate forested biomes, grass_block surface, tree_density_hint ≥ 0.3 | `density = base × (0.5 + 0.5 × moisture_idx) × (0.7 + 0.3 × north_factor)`. Mix: `short_grass`, `fern`, `leaf_litter` (1.21.2+), `pale_moss_carpet`, occasional `pink_petals` / `wildflowers`, `bush` (1.21.2+) |
+| `temperate_clearing` (formerly `temperate_meadow` — renamed because "meadow" = "clearing" per Nick) | partition | **Noise-driven clearings inside forest and floodplain matrices.** Scope: temperate forest biomes **AND floodplain corridors (gap==4)**, grass_block surface, where the shared `meadow_clearing_field` (single low-freq organic-blob noise, ~200–400 block wavelength, precomputed once and read by both Pass 3 ground cover and Pass 4 tree scatter) drops below threshold. Clearings are emergent gaps in the forest/floodplain fabric — not a painted biome. Floodplain corridors use the same field so natural tree-free stretches along rivers read as grass with short_grass coverage, same as interior forest clearings. | **Dense `short_grass`** across the interior (NOT tall_grass). Flowers are **extremely rare** — sparse single-stem `dandelion` / `poppy` / `oxeye_daisy` only, treated as a barely-there background trace (Poisson rate ~1 per ~500 grass blocks, tunable down to 1/800 if in-world review says still too busy). No `allium` / `cornflower` / `azure_bluet` / `lily_of_the_valley` / `wildflowers` here — those are reserved for the alpine rarity (see `alpine_flower_field`). Clearings read as grass seas, never bouquets. |
+| `clearing_edge_dither` (formerly `meadow_forest_edge_dither`) | **overlay** | within ~4 blocks of the clearing↔forest seam (both sides), driven by the `meadow_clearing_field` crossing its threshold. Applies equally to forest clearings and floodplain clearings. | **Surface block dither + vegetation dither.** On the forest side: surface block mix shifts from forest-floor noise toward grass-block, tree schematic density scales down to ~40% of interior. On the clearing side: `tall_grass` band appears (3–4 block wide) as the clearing-side edge signal, with a hair of tree scatter for ~2 blocks deeper into the clearing. Result: visible grass-height dither right at the seam, scarcity band of trees spilling into the clearing. |
+| `alpine_grass_meadow` | partition | alpine biomes, grass_block surface | `density = base × (1 - north_factor × 0.5)` (sun-facing denser). Same flower policy as temperate_meadow — trace only. |
+| `alpine_flower_field` | partition | **Rare exception.** Alpine grass_meadow pixels where a separate very-low-freq `alpine_flower_rarity` noise field exceeds a high threshold (~top 2–4% of alpine meadow area). Must NOT overlap tree_density_hint ≥ 0.3 and must be sun-facing (`north_factor < 0.4`). | The one place the full flower palette (`poppy` / `oxeye_daisy` / `cornflower` / `allium` / `azure_bluet` / `lily_of_the_valley` / `wildflowers`) comes out at meaningful density. Treated as a prize-tier overlay, not a common biome feature. |
+| `riparian_lush` | partition | within 6 blocks of river centerline, temperate | `density = base × 1.5`, fern + short_grass mix (not tall_grass unless near forest edge) |
 | `boreal_moss_carpet` | partition | boreal biomes, flat slopes | `density = base × (0.5 + 0.5 × concavity_norm)` |
-| `edge_softening` | overlay | within N blocks of biome boundary (see § 11) | additive edge recipe per biome |
+| `biome_edge_softening` | overlay | within N blocks of biome boundary (see § 9) | Per-biome symmetric edge recipe, each biome owns one rule |
 
 **Inline suitability (R2 #8 mitigation):** no new precompute mask. Each layer computes its density field from existing eco_grads + `moisture_idx` derived inline via `scipy.ndimage.distance_transform_edt` on water masks. If wall-time becomes a problem, promote to precompute later.
 
@@ -327,76 +371,142 @@ Replaces the placement code in current decoration. Schematic recipes (existing c
 |-------|------|-------|----------------|
 | `temperate_tree_canopy` | partition | temperate biomes, grass_block | Poisson-disk weighted by `suitability = moisture × (1 - steepness) × (1 - disturbance)` |
 | `alpine_treeline` | partition | alpine, elevation-band | Density falls off linearly from `treeline_low` to `treeline_high` |
-| `disturbance_succession` | partition | windthrow + old floodplain masks | Early-succession recipe (birch sapling, tall grass, ferns) instead of climax trees |
-| `riparian_trees` | partition | within 4 blocks of river centerline | Willow / alder / birch cluster, denser than upland |
+| `disturbance_succession` | partition | windthrow + old floodplain masks | Early-succession recipe — **NO saplings / no growable plants** (see rule below). Replace with tall_grass, fern, large_fern, bush, short_grass, dead_bush where arid, and seasonal flower blocks. |
+| `riparian_trees` | partition | within 4 blocks of river centerline | Willow / alder / birch schematic *fully-grown* cluster, denser than upland. Schematics only — no saplings. |
 
 **Poisson-disk weighted by suitability:** standard Poisson-disk with per-candidate rejection probability = `1 - suitability(x, z)`. Gives visible clustering without random holes.
+
+**No-grow rule (VERY IMPORTANT):** no block that Minecraft can tick into growth is allowed as a final placement. This means:
+- ❌ No `oak_sapling`, `birch_sapling`, `spruce_sapling`, `jungle_sapling`, `acacia_sapling`, `dark_oak_sapling`, `mangrove_propagule`, `cherry_sapling`, `azalea`, `flowering_azalea`
+- ❌ No `wheat`, `carrots`, `potatoes`, `beetroots`, `melon_stem`, `pumpkin_stem`, `sweet_berry_bush` (can grow to stage 3), `cocoa` (stages), `kelp` (grows), `bamboo_sapling`, `sugar_cane` (grows)
+- ❌ No `torchflower_crop`, `pitcher_crop` in non-farmable cells
+- ✅ Use nearest non-growing equivalents: `short_grass`, `tall_grass`, `fern`, `large_fern`, `bush` (1.21.2+), `dead_bush`, `leaf_litter` (1.21.2+), `pink_petals`, `wildflowers` (if in 1.21.10), plus static flowers (`dandelion`, `poppy`, `azure_bluet`, `allium`, `oxeye_daisy`, `cornflower`, `lily_of_the_valley`, `blue_orchid`), `moss_carpet`, `pale_moss_carpet`.
+- Applies to every vegetation layer, not just disturbance_succession. Every block emitted by a Pass 4 layer must pass a `NO_GROW_ALLOWLIST` check before the chunk writer accepts it.
+
+**Block palette accuracy:** Target MC version **1.21.10 Java, DataVersion 4556** (per `CLAUDE.md`). Use known-good blocks only: `bush`, `firefly_bush` (banned in forests per user), `leaf_litter`, `pale_moss_carpet`, `resin_clump` — all 1.21.2+ valid. If I need to emit `bush_block` or similar NBT-sensitive blocks, I use the existing working pattern from `chunk_writer.py` rather than re-deriving it (prior session had `bush_block` generation trouble — don't repeat).
+
+**See Open Question #5:** Nick's latest message referenced "1.20.9 (hotfix 1.20.10)" which conflicts with CLAUDE.md's 1.21.10. Needs resolution before palette is locked.
 
 ---
 
 ### Pass 5 — Microdetail + World Studio preview cleanup
 
-**Microdetail layers (~5, all overlay):**
+**Microdetail layers (all overlay):**
 
 | Layer | Scope | Effect |
 |-------|-------|--------|
-| `water_edge_staining` | within 2 blocks of water surface | Mossy cobble / algae patches on rock near waterline |
-| `south_face_bleaching` | rock pixels with high solar exposure | Smooth sandstone / bleached variants |
-| `north_face_moss` | rock pixels with north_factor > 0.6, humid biomes | Mossy cobble scatter |
+| `water_edge_gradient` | rock/stone pixels within 2 blocks of water surface | **Biome-aware luminosity gradient** — see below. NOT mossy-by-default. |
+| `south_face_bleaching` | rock pixels with high solar exposure, by lithology group | Biome-aware gradient toward lighter variants (e.g. calcite near limestone, smooth sandstone near sedimentary, tuff→light variants near deepslate). See gradient principle below. |
+| `north_face_moss_targeted` | **only cobblestone pixels** with north_factor > 0.6 in humid biomes | Mossy cobble substitution on cobblestone specifically — not a broad rock overlay. |
 | `frost_heave` | cold biomes, flat slopes | Occasional stone/cobble poking through grass |
 | `debris_apron_rocks` | below cliff faces, in talus layers | Small boulder scatter (schematic, not block-level) |
 
-**World Studio preview cleanup:** strip the noise-based default render layers (slope rocks, moisture, etc.) from `tools/world_studio.py` preview. Keep only the base surface block render driven by the new pipeline. Nick's call — these layers produce meaningless noise and are actively misleading during iteration.
+**Biome-aware rock gradient principle (Nick's spec):** water edges, bleaching, and other weathering overlays use **block luminosity gradients** matched to the local lithology, not uniform moss application. Examples:
+
+- **Deepslate region water edge:** `deepslate → cobbled_deepslate → tuff → stone → andesite → diorite → calcite` fine-scatter along the waterline, each block picked by distance-from-water + random jitter, creating a dark→light gradient that reads as wet-zone weathering.
+- **Granitic / mossy-temperate water edge:** `stone → andesite → diorite → calcite` — andesite is the critical midband (confirmed from the Block gradient reference image: the "light midband" is andesite, not smooth_stone). Deepslate or cobblestone can anchor the dark end depending on basement lithology.
+- **Limestone water edge:** `tuff → calcite → dripstone_block → stone` — mineral-deposit feel.
+- **Basaltic water edge:** `basalt → blackstone → smooth_basalt → stone → tuff` — volcanic-rubble weathering. (`smooth_basalt` is fine here — the name is misleading but the texture is a cleanly-weathered dark basalt, not concrete.)
+- **Sedimentary south-face bleach:** `sandstone → red_sandstone (subtle) → white_terracotta (sparingly) → calcite` — sun-baked highlight. Avoid `smooth_sandstone`; the bevelled edge reads as carved block.
+
+The rule: pick 4–5 blocks from the lithology group (plus close neighbors in the vanilla palette) spanning a clear luminosity range, then fine-scatter by distance-from-waterline or solar-exposure signal. Same logic applies to bleaching, frost-heave highlights, and any other microdetail gradient.
+
+**Moss is a subset, not the default.** Previous design leaned on mossy_cobblestone as the universal "water is here" signal. That's wrong — moss only belongs on specific substrates (cobblestone-heavy pixels in humid biomes), and overusing it makes everything look like a swamp. `north_face_moss_targeted` is the only moss-specific microdetail layer; all other weathering uses the luminosity-gradient principle.
+
+**World Studio preview cleanup:** strip the noise-based default render layers (slope rocks, moisture, etc.) from `tools/world_studio.py` preview. **Keep the base-surface-block palette editor UI** — Nick wants to quickly adjust the per-biome base surface block mix after seeing tiles in-world, and we had a working UI for that. Don't dump it; port it onto the new pipeline's per-biome base surface block config (likely `config/base_surface_palettes.json`). What gets stripped: the noise-based preview render layers (meaningless slope rocks + moisture overlay). What stays: the biome palette editor and the base-block picker per biome.
 
 ---
 
 ## 7. Phase 0.5 — Agentic Diagnostic Tooling
 
-**Why this exists:** The refactor needs iterative visual evaluation, but I (Claude) can't fly into Minecraft. .mca regen + test-world loading takes ~20 minutes per cycle and requires Nick's input. To iterate autonomously, I need diagnostic renderers that produce reviewable PNG artifacts Nick can spot-check between .mca checkpoints.
+**Why this exists:** The refactor needs iterative visual evaluation, but I (Claude) can't fly into Minecraft. .mca regen + test-world loading takes ~20 minutes per cycle and requires Nick's input. To iterate autonomously, I need diagnostic renderers that produce reviewable artifacts Nick can spot-check between .mca checkpoints.
 
 **Axes of evaluation: BOTH vertical AND horizontal matter.** Top-down checks catch biome transitions, pixel ownership, ground cover density, river corridors, boundary softening. Cross-sections catch lithology stacks, soil horizon depth, vertical fluting stripe rendering, river-bed geometry, cliff column integrity. Every phase checkpoint produces both axes — neither alone is sufficient.
 
-**New diagnostic tools:**
+### Primary tool: `tools/world_viewer.py` (standalone, cache-first)
 
-1. **`diag_cliff_crosssection.py`** — *vertical axis*
-   - Input: tile coords + sample line (2 endpoints in tile-local coords)
-   - Output: PNG showing vertical slice through column_output along the line. Y axis = block Y, X axis = distance along sample line. Each cell = block type colored by a stone palette.
-   - Use: evaluate lithology stacks, vertical fluting, sediment/soil horizon layering, river-bed cross-sections.
-   - This is the **primary vertical-axis tool** for Pass 1 and § 10 work.
-   - Default sample lines per pilot tile committed to `tests/diag_lines/{tile}.json` so reruns are reproducible and baselineable.
+Inspired by the WorldPainter Custom Object Layer preview panel Nick flagged: an orthographic hillshaded relief viewer with contour overlays, block-ID base coloring, and object markers. It is **not** a real 3D voxel renderer — it is a fast 2.5D tile viewer built on a pyramidal cache so pan/zoom is pure PNG blit, not live compute.
 
-1b. **`diag_topdown_blocks.py`** — *horizontal axis*
-   - Input: tile coords (or 3×3 range)
-   - Output: PNG of surface block type at Y = surface_y, colored by a canonical block palette. Same resolution as current `diag_layers_breakdown.py` stitched_blocks panel but focused on block *identity* not layer ownership.
-   - Use: catch bare dirt, grass/stone mix, riparian bank reads, ground cover density, beach widths, boundary softening.
-   - This is the **primary horizontal-axis tool** for Pass 2/3/4 work.
+**Explicit: NOT bundled into `tools/world_studio.py`.** World Studio is stale, will break in the refactor, and bolting a new viewer onto it would bloat an already-overloaded tool. `tools/world_viewer.py` ships standalone with its own minimal PyQt6 window, own launch, own cache, own palette editor.
 
-2. **`diag_layer_ownership.py`**
-   - Input: tile coords, pass number
-   - Output: PNG with each partition layer colored distinctly, showing which pixels each claimed.
-   - Use: debug pixel ownership conflicts, verify coverage invariants, catch unclaimed pixels.
+**Architecture — tile pyramid with content-hashed cache:**
 
-3. **`diag_suitability_field.py`**
-   - Input: tile coords, layer id
-   - Output: PNG of a single layer's density/suitability field as a grayscale heatmap.
-   - Use: tune ground cover and vegetation layer parameters without rerunning the full pipeline.
+```
+.viewer_cache/
+  {pipeline_hash}/            # hash(pipeline code version + config hash)
+    world_overview.png        # single ~1500×1500 image, full world at 1:1024
+    region_07/                # 1:128 region overviews
+      {rx}_{rz}.png
+    tile_1x1/                 # 1:8 per-tile (matches existing precompute scale)
+      {tile_x}_{tile_z}.png
+    tile_3x3/                 # 1:1 3×3 stitched (1536×1536) — heavy, lazy
+      {tile_x}_{tile_z}.png
+  input_manifest.json          # mtime + sha256 of every input file
+```
 
-4. **`diag_layer_breakdown.py`** (extend existing `diag_layers_breakdown.py`)
-   - Add N+1 panels for new layers added in each pass.
-   - Add "pixel ownership" as a dedicated panel.
+**Cache keying:** `hash(git_HEAD + uncommitted_diff(core/layers/*, core/surface_pipeline.py, config/) + input_mtimes)`. Edit a layer → layer caches invalidate, hillshade+contour caches stay valid (they only depend on `height.tif`). Net: typical "I tweaked a threshold" edit triggers a partial rebuild of ~5–15 sec on the active tile, not a full rebuild.
 
-5. **`diag_fluting_phase.py`**
-   - Input: tile coords
-   - Output: PNG showing computed cliff tangent direction (as a hue field) and the resulting stripe phase (as a value field) across the tile.
-   - Use: tune vertical fluting parameters.
+**Rendering layers (composable, user-toggleable):**
 
-**Artifact handling:** all tools write to `diag_output/{tile_x}_{tile_z}/{tool_name}.png`. I (Claude) save them to the workspace folder and present via `mcp__cowork__present_files` at phase checkpoints so Nick can review without opening Minecraft.
+1. **Base: block-ID top-down** — surface_y block identity colored via `tools/world_block_map.py` (new canonical `BLOCK_COLORS` LUT, mirrors the `BIOME_COLORS` pattern).
+2. **Hillshade** — numpy gradient + Lambertian shading from `height.tif`. Multiplicative blend over base.
+3. **Contour lines** — `skimage.measure.find_contours` at configurable elevation intervals, drawn as `QPainterPath` overlay.
+4. **Biome overlay** — optional, swaps block colors for biome colors (existing `BIOME_COLORS`).
+5. **Layer ownership overlay** — each partition layer colored distinctly. Replaces standalone `diag_layer_ownership.py`.
+6. **Suitability field overlay** — per-layer density/suitability as grayscale heatmap. Replaces standalone `diag_suitability_field.py`.
+7. **Single mask overlay** — any named mask (`cliff_deg`, `flow_tile`, `aspect`, `concavity_norm`, `north_factor`, `wind_exposure`) as a colormap overlay. Replaces N one-off diag scripts.
 
-**Runtime budget:** each tool completes in < 60s on a single tile. The full diag suite for a tile should take < 5 minutes total. This replaces ~20 minutes of .mca regen + test-world validation for most iteration cycles.
+**Interaction:**
+- Pan/zoom via `QGraphicsView` with pyramid LOD swap. Buttery at any tile count — no live compute on scroll.
+- **Left-click-drag a line on the map → cliff cross-section inset** opens in a dock widget. Calls `core/diag/cliff_crosssection.py` (headless function) on the line, renders a Y-slice showing block identity down the column. This is where vertical fluting and lithology stacks get checked without leaving the viewer.
+- Shift-click → toggle overlays on/off.
+- Right-click tile → "force rebuild" for that tile.
+- Status bar: dirty tile count, last rebuild time, cache size.
+
+**Base surface palette editor** (migrated from dead `world_studio.py`):
+- Docked panel. Select biome → edit base surface block mix → hit "Apply" → viewer rebuilds the affected tiles. Same workflow as the old World Studio biome palette editor, now wired to `config/base_surface_palettes.json`.
+- This is the only piece of `world_studio.py` that survives. Everything else in World Studio is parked/broken.
+
+**Runtime budget:**
+- First-load world overview: ~5 sec (single pass over 1:8 masks).
+- First-load 1×1 tile: ~8 sec (hillshade + contour + block render).
+- First-load 3×3 at 1:1: ~45–60 sec (heavy, lazy on first view).
+- Pan/zoom after cache warm: **60 fps** (PNG blit only).
+- Rebuild after a layer edit: ~5–15 sec for active tile only; other tiles cached.
+- No realtime scroll compute. No GPU required for MVP.
+
+**MVP ships CPU-only.** If 60 fps blit turns out to stutter on the heavy 3×3 view, the fallback is `QOpenGLWidget` + shader hillshade, budgeted at half a day. Not a Phase 0 commitment.
+
+### Secondary tools (headless functions, importable by viewer and runnable standalone)
+
+1. **`core/diag/cliff_crosssection.py`** — *vertical axis*
+   - Inputs: tile coords + sample line (2 endpoints). Reads `column_output`.
+   - Output: PNG showing vertical slice along the line. Y axis = block Y, X axis = distance along line. Each cell = block identity.
+   - Used as: (a) inset panel in `world_viewer.py` click-drag interaction, (b) standalone CLI for baseline snapshots and batch runs.
+   - Default sample lines per pilot tile committed to `tests/diag_lines/{tile}.json` for reproducible baselines.
+
+2. **`core/diag/fluting_phase.py`**
+   - Computes cliff tangent direction (as hue) and stripe phase (as value) across a tile.
+   - Used as: toggleable viewer overlay + standalone PNG emitter for vertical fluting tuning.
+
+**Retired diag scripts** (no longer built as standalones, subsumed into viewer):
+- ~~`diag_topdown_blocks.py`~~ → viewer base layer
+- ~~`diag_layer_ownership.py`~~ → viewer layer ownership overlay
+- ~~`diag_suitability_field.py`~~ → viewer suitability overlay
+- ~~`diag_layer_breakdown.py`~~ → viewer "all layers" multi-overlay view
+- Existing `diag_layers_breakdown.py` stays as-is during transition; can be deleted after viewer lands.
+
+**Artifact handling:** viewer screenshots + exports write to `diag_output/{tile_x}_{tile_z}/{capture_name}.png`. I (Claude) save them to the workspace folder and present via `mcp__cowork__present_files` at phase checkpoints so Nick can review without opening Minecraft.
+
+**Phase 0 cost impact:** Phase 0 gets ~1.5 days longer to build the viewer, but Phase 2–5 iteration gets tighter because scroll-pan-tweak-rebuild on the active tile is a <30 sec loop instead of 20 min.
 
 ---
 
 ## 8. Vertical Fluting — Detailed Spec
+
+> ### ⭐ Gold-star feature
+>
+> **Vertical fluting is the single most impactful visual win this refactor ships.** Cliff faces going from uniform stone tint to real columnar weathering stripes is the change that will read as "this world looks like Norterre" the first time Nick flies past one in-game. Every other pass is table-stakes realism; this is the one that makes cliffs read as *geological*. If a phase budget has to be cut, cut elsewhere before cutting vertical fluting work.
 
 (Special callout because of Nick's observation: vertical stripes don't render top-down, they only show from the side.)
 
@@ -496,8 +606,14 @@ Every phase has: a baseline snapshot taken *before* any edit, unit tests, a feat
 **Deliverables:**
 - `core/layers/protocol.py` with `SurfaceContext`, `LayerResult`, `Layer` protocol, composition semantics.
 - `core/surface_pipeline.py` orchestrator skeleton (imports empty layer lists, walks them, enforces partition/overlay rules). Not yet called from production code.
-- `diag_cliff_crosssection.py`, `diag_layer_ownership.py`, `diag_suitability_field.py` (minimum three).
+- `core/wind_model.py` — single source of truth for tradewind direction (270°, W→E). Exposes `windward_factor(aspect)`, `leeward_factor(aspect)`, `wind_exposure(aspect, slope)`, `fetch_integral(water_mask, origin)`. Every wind-aware layer imports from here.
+- `core/tree_density_hint.py` — precomputed tree-density hint field so Pass 2 can read what Pass 4 will emit (without running Pass 4 first).
+- `core/meadow_clearing_field.py` — single low-frequency organic-blob noise field (~200–400 block wavelength, one octave of opensimplex at 1:8 precompute res, upscaled bilinear). Precomputed once at pipeline start. **Shared input** consumed by Pass 3 `temperate_clearing` / `clearing_edge_dither` layers AND Pass 4 tree-scatter density weighting, so tree absence and grass clearings line up on the exact same seam. Scope covers temperate forest biomes + floodplain corridors (gap==4). No per-layer noise re-rolling — both passes read the same field for deterministic agreement.
+- `core/layers/noise_profiles.py` — contains `legacy_mixed_forest_noise()` ported from the current surface_decorator, reused by `temperate_forest_surface` and `temperate_riparian_fringe`.
+- `diag_cliff_crosssection.py`, `diag_topdown_blocks.py`, `diag_layer_ownership.py`, `diag_suitability_field.py`, plus stub for `diag_fluting_phase.py` (minimum four tools ready to emit PNGs).
 - Unit tests for partition coverage and overlay behavior on synthetic tiles.
+- Unit test: `wind_model.windward_factor(west_facing_aspect) ≈ 1.0`, `leeward_factor(east_facing_aspect) ≈ 1.0`. Catches any sign-flip regression immediately.
+- `NO_GROW_ALLOWLIST` constant defined in `core/layers/vegetation_blocks.py`, with a sentinel unit test that fails if any blacklisted block is added to a palette.
 
 **Exit criteria:** orchestrator runs on an empty layer list over a synthetic tile and produces correct zero-output. Diagnostic tools run on tile 36_20 and emit PNGs. No production code touched.
 
@@ -599,15 +715,9 @@ Every phase has: a baseline snapshot taken *before* any edit, unit tests, a feat
 
 ---
 
-### Phase 6 — World Studio preview cleanup (parallel, low priority)
+### ~~Phase 6 — World Studio preview cleanup~~ (DROPPED, S43)
 
-**Deliverables:**
-- Strip noise-based default render layers from `tools/world_studio.py`.
-- Re-wire preview to render only surface blocks from the new pipeline.
-
-**Exit criteria:** World Studio preview runs and shows the new pipeline's output instead of the legacy noise defaults.
-
-**Risk:** low but distracting — parallelize with Phase 5.
+**Dropped per Nick's §11 review.** The new `tools/world_viewer.py` (§7) functionally replaces what this phase was supposed to do. `tools/world_studio.py` will break during the refactor and is considered stale — not worth fixing. The only piece worth saving is the base surface palette editor, which migrates into `world_viewer.py` instead.
 
 ---
 
@@ -632,6 +742,12 @@ Compiled from R1 + R2 adversarial review. Each risk has a status and mitigation.
 | R2-5 | In-game validation bandwidth is week 3–4 bottleneck | H | **Resolved** | Phase 0.5 diagnostic tooling replaces most .mca cycles |
 | R2-6 | Per-biome boundary rules overlap at seams | M | **Resolved** | Directional side-of computation — each side owns its own softening |
 | R2-7 | 24_80 baseline snapshot gotcha (current subsurface may be wrong) | M | **Resolved** | Baseline 36_20 (known-good) instead for column work |
+| R3-1 | Tree-density hint cross-pass dependency (Pass 2 ↔ Pass 4) | M | **Resolved** | Precompute hint once at pipeline start via `core/tree_density_hint.py`; Pass 4 reuses same fn so they stay consistent |
+| R3-2 | Tradewind direction sign errors silently invert weathering | H | **Resolved** | Single `core/wind_model.py` owns all wind math; unit test pins W→E direction |
+| R3-3 | No-grow rule violations ship silently (saplings in a recipe slip through) | H | **Resolved** | `NO_GROW_ALLOWLIST` enforced at chunk_writer boundary, unit-tested; Phase 5 audit walks every existing schematic recipe |
+| R3-4 | MC version ambiguity (1.20.x vs 1.21.x) blocks block palette | H | **Open** | Open Question #5 — blocks Pass 4 palette lock, not Phase 0/0.5/1 |
+| R3-5 | `mud` / `rooted_dirt` block textures may not read right at temperate riparian edges | M | **Open** | Diagnostic render before Pass 2 flag flips — Open Question #6 |
+| R3-6 | Biome-aware rock gradient palettes are hand-tuned and brittle | M | **Accepted** | Lives in `config/microdetail_gradients.json`; Phase 5 iteration cycles tune per lithology group |
 
 **Remaining open risks (not yet resolved):**
 
@@ -654,6 +770,8 @@ Compiled from R1 + R2 adversarial review. Each risk has a status and mitigation.
 6. **.mca regen only at phase checkpoints.** Iteration happens through diagnostic PNGs. Per-phase .mca regen once.
 7. **No 50k runs.** Ever.
 8. **Failure logging before retries.** Per `CLAUDE.md` workflow rule: after a failed fix, write timestamp + what + why to `memory/project_vandir_status.md` BEFORE retrying. 2 failures on the same symptom = STOP and investigate or ask Nick.
+9. **Failure logging forks execution — no blind retries.** On any validator regression (a new PASS→FAIL flip against a baseline, or any unexpected failure in a pre-committed check), the agent's execution path must **fork**: stop the current edit chain, write a structured entry to `memory/project_vandir_status.md` (timestamp + what was being attempted + full failure signature + root-cause hypothesis + proposed next diagnostic), and only then decide whether to continue. Retrying the same edit or spraying at the symptom is prohibited. This is the agentic-automation safeguard: because I'm running on autopilot between checkpoints, silent retry loops would waste the entire phase budget on a misread failure. Every failed checkpoint is a stop-and-think, not a stop-and-tweak.
+10. **Regression is a first-class signal, not noise.** If a baseline flips from PASS to FAIL on a check unrelated to the current edit, that's a priority-0 investigation — treat it as "something upstream broke, figure out what." Do not mark the check as flaky and move on. Do not update the baseline to suppress the regression.
 
 ---
 
@@ -682,24 +800,45 @@ Per biome group, the matching north star image from `Realistic World Examples/` 
 
 ## 15. Out of Scope (Parked)
 
-- Norterre's 108-layer count as a literal target. Aspirational trajectory only.
-- Two-pass heightmap in World Machine style. Vandir's Gaea heightmap is fixed.
-- Per-adjacency-pair boundary rules. Only per-biome symmetric rules.
-- `chk_no_bare_dirt_surface` validator false positive on `51_53`. Locked as known-state.
-- Stratification rings bug as a standalone fix. Subsumed by vertical fluting (§ 10).
-- Caves / cave carvers (re-evaluate during Phase 1 if Vandir has cave carving at all).
-- Wind / weather simulation.
-- Seasonal variation (snowfall changes, leaf-drop cycles).
-- Per-structure weathering (buildings).
+- **108-layer count as a target.** Norterre's 108 is a multi-year aspirational trajectory, not a literal goal. Build layers organically as features demand them. If we get there, we get there. If we ship an excellent pilot with 15 layers, that's the win.
+- **Two-pass heightmap in World Machine style.** Vandir's Gaea heightmap is fixed and single-pass. Work around it rather than re-importing. Confidence is high that the mask-based Pass 0–5 approach covers the realism delta without needing a second heightmap pass.
+- **Per-adjacency-pair boundary rules.** *Explained for clarity:* the bad version was writing transition recipes for every PAIR of neighboring biomes (desert↔forest, forest↔alpine, etc.) — O(N²), up to ~190 rules for 20 biomes, brittle. The good version (which we ARE shipping, § 9) is one symmetric edge rule per biome: each biome owns "what I do at my own edge, regardless of who's on the other side." 20 biomes → 20 rules. Adding a biome = 1 new rule, not 19.
+- **Wind / weather simulation.** Tradewind direction is a static 270° constant (§ 3 principle #9). Dynamic weather is not in scope.
+- **Seasonal variation** (snowfall changes, leaf-drop cycles, seasonal grass color). **Dropped entirely per Nick.** Doesn't make sense for a static-world pipeline.
+- **Stratification rings bug as a standalone fix.** Subsumed by vertical fluting (§ 10). Goes away automatically when the `_apply_desert_rock_palette` stratification step is deleted.
+- **`chk_no_bare_dirt_surface` validator false positive on `51_53`.** Locked as known-state in baselines.
+- **Schematic index Y-offset sink bug.** Intermittent issue where some schematics sink below surface due to default placement Y offset. Fix later (Phase 5+ or post-pilot). Not blocking the refactor.
+- **`tools/world_studio.py` repair.** Stale, will break during refactor, not worth fixing. Only the base surface palette editor survives, migrated to `tools/world_viewer.py`.
+
+### 🚫 NO STRUCTURES — hard rule, not a parking-lot item
+
+There are **no player-made structures** in Vandir, ever, in any form:
+
+- **No buildings.** No houses, cabins, towers, watchtowers, huts, shelters.
+- **No villages.** No village gen, no village schematics, no abandoned-village schematics.
+- **No ruins.** No ruined portals, no ruin structures, no stone-brick ruins.
+- **No dungeons / strongholds / outposts / mansions / monuments / temples / mineshafts / end-portals.**
+- **No lore-implied artifacts.** No mystery chests, no signs, no carved stone, no suspicious gravel, no crafted items placed in-world.
+- **No animals as placed entities.** (Vanilla MC will spawn mobs from biome rules — that's fine and out of our control. But we do not place mob schematics.)
+
+**What IS allowed** (the only things Pass 4 emits): grown tree schematics, rock schematics (boulders, talus scatter), debris schematics (fallen logs, root piles), plant schematics (bushes, ferns, flowers as entities if needed). Everything here is something that would exist without a human in the world.
+
+**Enforcement:** Phase 5 includes a schematic-index audit. Every entry in `schematic_index.json` is classified as `natural` or `structure`. Any `structure` entry is removed from the placement sampler — existing recipes stay in the file as dead code but cannot be called. A unit test in Phase 0 pins that no layer in `core/layers/pass4_vegetation/` imports any structure-classified schematic ID.
+
+I have been told this enough times that getting it wrong again is a capital offense. Reminder logged.
 
 ---
 
-## 16. Open Questions — RESOLVED (S43, 2026-04-10)
+## 16. Open Questions
+
+### Resolved (S43, 2026-04-10)
 
 1. **Cave carving?** **No.** Everything below surface is solid. R1-5 (cave-carver interaction) collapses. Subsurface lithology pass owns the full column below the soil horizon with no carver coordination needed.
-2. **`wave_fetch.tif` at 1:8?** **In scope.** Directional distance transform over water at 6250×6250 is cheap (~seconds with scipy). Claude will precompute it in Phase 0.5 alongside lithology. Used by coastal beach width in Pass 2+.
+2. **`wave_fetch.tif` at 1:8?** **In scope.** Directional distance transform over water at 6250×6250 is cheap (~seconds with scipy). Claude will precompute it in Phase 0.5 alongside lithology. Used by coastal beach width in Pass 2+. Tradewind direction (270° W→E) biases the fetch integration — west-facing coasts get long fetch, east-facing coasts get short fetch.
 3. **Horizontal rollout pace?** **Autopilot.** Once pilot tile 36_20 passes acceptance, Claude drives biome-group expansion at its own cadence, logging each group completion to `memory/project_vandir_status.md`. Nick vetoes on review.
-4. **Schematic index + recipes?** **Unchanged.** Index and recipe files remain exactly as-is. Only the placement *sampler* changes (algorithmic → suitability-weighted Poisson-disk from inline vegetation suitability fields).
+4. **Schematic index + recipes?** **Unchanged for this refactor.** Index and recipe files remain exactly as-is during the refactor. Only the placement *sampler* changes (algorithmic → suitability-weighted Poisson-disk from inline vegetation suitability fields driven by `elevation_sparseness` and `moisture_sparseness`). Saplings in current schematic recipes get audited against the `NO_GROW_ALLOWLIST`; any sapling-based recipes get swapped to equivalent grown-tree schematics. **Known bug (out of scope):** some schematics intermittently sink below surface due to default placement Y offset. Fix later, not blocking.
+5. **Minecraft version?** **1.21.10 Java, DataVersion 4556.** Nick's earlier "1.20.10" was a typo. Verified against `meta/versions/1.21.10/1.21.10.jar` in the ModrinthApp mount. `bush`, `firefly_bush`, `leaf_litter`, `pale_moss_carpet`, `resin_clump` are all valid 1.21.2+ blocks and cleared for use. Pass 4 palette and `NO_GROW_ALLOWLIST` can lock. **R3-4 closes.**
+6. **Riparian palette block-texture verification.** Resolved via direct read of block textures from the 1.21.10 jar on 2026-04-10. See the verification table in § 6 Pass 2. `packed_mud` and broad `gravel` moved out of temperate riparian. `mud` kept as narrow accent pending a Phase 0.5 test render. `rooted_dirt` kept with a `near_canopy_hint` predicate.
 
 ---
 
