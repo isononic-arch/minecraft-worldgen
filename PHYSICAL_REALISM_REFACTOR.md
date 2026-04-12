@@ -734,6 +734,52 @@ Additionally: the workflow rule required the baseline tile to be a temperate-mou
 
 ---
 
+### Phase 1.75 — Real geology content (inserted S47, 2026-04-12)
+
+**Scope:** Implement the four geology sublayers inside the `use_new_geology=True` branch of `build_column_array()`. Replace the Phase 1.5 `NotImplementedError` stub with working geology fill. Wire callers to read `lithology.tif` and pass it through. Inline derivation of sediment thickness and soil horizon depth (no precomputed .tif masks — see design decision in §18 S47).
+
+**Deliverables:**
+- `core/chunk_writer.py` — `_fill_geology_layers()` private helper implementing sublayers 1-4:
+  1. **bedrock_band**: Y_MIN+1 to Y_MIN+4 → deepslate (promotes existing implicit bedrock-adjacent fill to explicit geology layer).
+  2. **basement_rock_by_group**: above bedrock band, below sediment → lithology palette blocks with Y-banding (XZ-waviness reused from legacy cliff banding pattern). Each lithology group (1-6) maps to its `config/thresholds.json → lithology.groups.{name}.palette` block list.
+  3. **sediment_thickness**: above basement → gravel / coarse_dirt / dirt by flow magnitude. Thickness derived inline from `concavity_norm * 0.6 + flow * 0.4`, scaled to 0-8 blocks.
+  4. **soil_horizon**: below surface_y-3 → dirt (flat slopes) / coarse_dirt (moderate+ slopes). Depth derived inline from slope: 4 blocks flat, 2 moderate, 1 steep, 0 cliff.
+- `core/chunk_writer.py` — `_compute_xz_waviness()` and `_apply_banded_fill()` extracted as reusable helpers from the legacy cliff banding code. Legacy path now calls the same helpers.
+- `core/chunk_writer.py` — `write_tile()` gains `lithology_tile` and `flow_tile` params. Reads `lithology.feature_flag_enabled` from cfg to gate the geology branch.
+- `core/tile_streamer.py` — `read_discrete_tile()` function for reading uint8 masks without float normalisation (avoids lossy 0-255 round-trip for discrete group IDs).
+- `tools/_pipeline_runner.py` — reads `lithology.tif` via `read_discrete_tile()`, stores in `TileArtifacts.lithology_tile`.
+- `tools/validate_test_tile.py` — reads `lithology.tif`, passes through `write_tile()`.
+- `run_pipeline.py` — reads `lithology.tif`, passes through `write_tile()`.
+- `tests/unit/test_phase1_75_geology.py` — 10 new tests covering geology stratification, vertical order, lithology palette presence, sediment/soil presence, ocean columns unaffected, mixed lithology groups, flow-driven sediment thickness.
+- `tests/unit/test_phase1_5_scaffolding.py` — `test_flag_on_raises_not_implemented` replaced with `test_flag_on_runs_geology_not_raises` (Phase 1.5 stub retired).
+- `config/thresholds.json` — `lithology.feature_flag_enabled` remains `false`. Flip to `true` when ready for in-game review.
+
+**Design decisions (S47):**
+- **Inline derivation** for sediment thickness + soil horizon depth. Reason: these signals vary at column-to-column scale (valley bottom vs ridge, cliff vs flat), but precomputed .tif masks at 1:8 scale (1 pixel = 8×8 blocks) would smear these gradients into blocky 8×8 patches — exactly where the geology should look most natural. Inline derivation from `surface_y` gradient + flow uses 1:1 resolution. The unused `sediment_thickness_tile` and `soil_horizon_depth_tile` kwargs are kept for backward compat but ignored when geology runs inline.
+- **Callers wired in S47** (not deferred). `_pipeline_runner.py`, `validate_test_tile.py`, `run_pipeline.py` all read `lithology.tif` and pass it through. Gated by `cfg.lithology.feature_flag_enabled` in `write_tile()`.
+- **Geology replaces cliff banding** on the code path (mutual exclusion via `if/elif`). On flag-ON, the basement uses lithology-palette banding instead of the legacy `_BIOME_CLIFF_STONE` + `_CLIFF_BANDS` tables. On flag-OFF, legacy cliff banding runs unchanged.
+
+**Exit criteria:**
+- Flag-OFF: `validate_3x3 --baseline` on 48_48, 51_53, 59_53 — zero new PASS→FAIL flips (geology code doesn't run when flag is off; callers pass None).
+- Unit test suite: 46 total (36 prior + 10 new), all passing (the 1 opensimplex-dep failure is a sandbox-only issue, passes on user's machine).
+- Flag-ON manual verification: `config/thresholds.json → lithology.feature_flag_enabled: true`, run `validate_test_tile --tile-x 59 --tile-z 53`, inspect cliff cross-section in-game for geology layering.
+
+**Scope boundaries (explicitly NOT in Phase 1.75):**
+- No sublayer 5 (river_bed) or 6 (lake_bed) — requires `river_meta` / `hydro_lake` threading to `build_column_array()`.
+- No sublayer 7 (vertical_fluting_consumer) — Phase 2 territory.
+- No changes to `core/eco_gradients.py`, `core/surface_decorator.py`, or any `rebuild_*.py`.
+- No `.mca` regeneration or in-game validation (flag remains OFF).
+- No diagnostic output (`diag_cliff_crosssection.py` with flag-ON deferred to next session).
+- Aspect convention drift still unresolved (carry-forward).
+
+**Next session (post-Phase-1.75) delivers:**
+- Flip `lithology.feature_flag_enabled: true`, regenerate 59_53 .mca, inspect cliff cross-section in-game.
+- Tune sediment/soil thresholds based on visual inspection.
+- Sublayers 5-6 (river_bed, lake_bed) if river_meta/hydro_lake threading is straightforward.
+- Or proceed to Phase 2 (surface pipeline pilot layers) if geology looks good enough.
+
+---
+
 ### Phase 2 — Temperate Mountain Pass 2 (week 3)
 
 **Deliverables:**
@@ -1172,6 +1218,74 @@ Then calls `run_passes([], _shadow_ctx, strict=True)` and immediately `del`s the
 
 - Push blocked in sandbox per standing rule. Nick pushes from local terminal when ready.
 - S46 is deliberately a small, safe, shippable increment. The Option B choice in-chat was "full Phase 1 — fatten sparse dict." The S46 recon showed "fatten the sparse dict" is the wrong abstraction — the sparse dict is a dead path for mid-column fill — so Option B morphed mid-session into "extend the real mid-column injection point." The scope (scaffolding only, no geology content) is narrower than a literal reading of "full Phase 1" would suggest, but delivers the same architectural foundation in a way that leaves a very small S47 Δ to write the geology logic itself. The user authorized all perms partway through S46, so the decision to trim the content scope was made by Claude to keep flag-OFF byte-identity achievable in one session; any expansion of scope on S47 has no new blockers.
+
+---
+
+### S47 — Phase 1.75 real geology content (2026-04-12)
+
+**Phase state (end of S47):**
+- Landed this session: **Phase 1.75 + surface decorator gating + visual tuning**
+- §11 currently at: **Phase 1.75** (subsection between Phase 1.5 and Phase 2)
+- Next session starts: **Phase 1.75b** — extend surface decorator gating to ALL biomes (currently only gap==5 rock). Then sublayers 5-6 (river_bed, lake_bed) or Phase 2 surface pilots.
+
+**Design decisions (S47, in-chat):**
+1. sediment_thickness + soil_horizon_depth computed **inline per-tile** (not precomputed .tif masks). 1:8 resolution smears column-scale gradients.
+2. Surface decorator **gated by geology flag**: when `use_new_geology=True`, gap==5 rock painting skips legacy terracotta/basalt/stratification and uses naturalistic soil palette instead. Cliff faces left unpainted so geology column shows through as cross-section.
+3. Lithology palettes expanded to 6-8 blocks per group, no `stone` filler that hides bands.
+4. Band thickness randomised 4-10 blocks via precomputed LUT (was uniform 12).
+
+**Bugs found and fixed (S47):**
+1. **Lithology read coordinate mismatch** — `lithology.tif` is 6250×6250 (1:8 scale), but all three callers read at full-res offsets (`tile_x * 512` instead of `tile_x * 64`), producing a 512×512 window of zeros. Fix: divide offsets by 8, read 64×64, zoom NEAREST in `_fill_geology_layers()`.
+2. **Surface decorator mesh artifact** — `_apply_desert_rock_palette()` ran unconditionally after geology, overwriting subsurface with terracotta stratification bands and basalt caps on convex ridges. Created visible grid/mesh pattern on all slopes. Fix: gated behind `use_new_geology` flag.
+
+**Files touched (S47 — geology content + surface gating + tuning):**
+
+1. **`core/chunk_writer.py`** — Core geology:
+   - `_fill_geology_layers()` — sublayers 1-4 with NEAREST upscale of lithology_tile at top. Per-column ±3Y noise for organic band edges.
+   - `_build_band_lut()` — new helper: pre-generates Y→variant LUT with randomised band thickness [4,10].
+   - `_apply_banded_fill()` — gains `col_y_noise` and `band_lut` params. When LUT provided, band thickness varies per-band.
+   - `_compute_xz_waviness()` — extracted from legacy cliff banding.
+   - `build_column_array()` — `NotImplementedError` → `_fill_geology_layers()` call. New params: `flow_tile`, `cfg`.
+   - `write_tile()` — gains `lithology_tile`, `flow_tile`, reads geology flag.
+
+2. **`core/surface_decorator.py`** — `decorate_surface()` gains `use_new_geology` param. Gap==5 rock block: when True, uses soil palette (grass_block/coarse_dirt/gravel/packed_mud by slope+concavity, sand in washes). When False, legacy terracotta/stone palettes preserved. Legacy `_apply_desert_rock_palette()` and cool rock palette untouched but bypassed on flag-ON.
+
+3. **`core/tile_streamer.py`** — `read_discrete_tile()` for raw integer mask reads.
+
+4. **`tools/_pipeline_runner.py`** — lithology read at 1:8 coords, `use_new_geology` threaded to `decorate_surface()`.
+
+5. **`tools/validate_test_tile.py`** — same 1:8 coord fix + geology flag threading.
+
+6. **`run_pipeline.py`** — same 1:8 coord fix + geology flag threading.
+
+7. **`config/thresholds.json`** — `lithology.feature_flag_enabled: true`, `band_scale_y: 5` (was 12). All 6 lithology palettes expanded:
+   - granitic: granite, stone, andesite, diorite, granite, polished_granite
+   - sedimentary: sandstone, smooth_sandstone, red_sandstone, sandstone, orange_terracotta, terracotta, smooth_sandstone, red_sandstone
+   - basaltic: basalt, smooth_basalt, blackstone, basalt, tuff, smooth_basalt
+   - limestone: calcite, tuff, smooth_stone, calcite, diorite, tuff
+   - deepslate_metamorphic: deepslate, tuff, stone, cobbled_deepslate, andesite, deepslate
+   - mossy_temperate: mossy_cobblestone, cobblestone, andesite, stone, mossy_cobblestone, cobblestone
+
+8. **`tests/unit/test_phase1_75_geology.py`** — 10 new tests (unchanged from first S47 commit).
+
+9. **`tests/unit/test_phase1_5_scaffolding.py`** — `test_flag_on_runs_geology_not_raises` (stub retired).
+
+**Validation results (S47):**
+
+| Gate | Result | Detail |
+|---|---|---|
+| Unit tests (sandbox Python 3.10) | **46/46 PASS** | All Phase 1.75 + scaffolding tests green after opensimplex install. |
+| 3×3 baseline 48_48 (flag-OFF regression) | **PASS** | No baseline regressions. |
+| 3×3 flag-ON 59_53 | **74 PASS, 6 FAIL (pre-existing), 4 WARN** | Bare-dirt + biome seam FAILs all pre-existing. No new regressions. |
+| 3×3 flag-ON 24_80 | **71 PASS, 1 FAIL (pre-existing), 12 WARN** | Biome seam FAIL pre-existing. Surface decoration clean. |
+| In-game 24_80 | **Verified** | Sedimentary + deepslate_metamorphic bands visible in 124-block cliff faces. Variable band thickness, XZ waviness, per-column noise all working. Surface soil palette (grass/coarse_dirt/gravel) clean from above. |
+| In-game 59_53 | **Verified** | Temperate rainforest terrain with geology subsurface intact. |
+
+**Open items carried into next session:**
+- **All-biome surface decorator gating** — currently only gap==5 rock is gated. Other gap types (alpine_meadow, snow, sand_dune, windthrow, floodplain, meadow) still use legacy painting. Need to audit each for subsurface overrides that conflict with geology.
+- **Sublayers 5-6** (river_bed, lake_bed) — requires threading `river_meta` / `hydro_lake` to `build_column_array()`.
+- **Palette tuning** — in-game review may reveal further color balance issues per biome region.
+- **Aspect convention drift** (carry-over from S44). Still unresolved.
 
 ---
 

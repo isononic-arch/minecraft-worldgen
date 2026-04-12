@@ -144,6 +144,18 @@ def _process_tile(args: dict) -> dict:
     )
     # masks dict keys: height, slope, erosion, flow, deposits, override, shore, river
 
+    # ---- Step 4a: Read discrete lithology mask (Phase 1.75) ----
+    # lithology.tif is 6250×6250 (1:8 scale) — read at 1:8 coords, not full-res.
+    # _fill_geology_layers() handles upscale 64→512 via NEAREST zoom.
+    _lith_col = col_off // 8
+    _lith_row = row_off // 8
+    _lith_w   = max(1, w // 8)
+    _lith_h   = max(1, h // 8)
+    lithology_tile = core_tile_stream.read_discrete_tile(
+        _Path(masks_dir) / "lithology.tif", _lith_col, _lith_row,
+        width=_lith_w, height=_lith_h,
+    )
+
     # ---- Step 5: Biome assignment ----
     biome_grid = core_biome_assign.assign_biomes(
         height_tile   = masks["height"],
@@ -230,6 +242,7 @@ def _process_tile(args: dict) -> dict:
             biome_grid[alpine_any] = eco_grads.alpine_biome_source[alpine_any]
 
     # ---- Step 7: Surface decoration ----
+    _use_geo = bool(cfg.get("lithology", {}).get("feature_flag_enabled", False))
     surface_blk, sub_blk, ground_cover = core_decorator.decorate_surface(
         surface_y    = surface_y,
         biome_grid   = biome_grid,
@@ -244,6 +257,7 @@ def _process_tile(args: dict) -> dict:
         tile_y       = tile_y,
         eco_grads    = eco_grads,
         cliff_deg    = cliff_deg,
+        use_new_geology = _use_geo,
     )
 
     # ---- Step 8: Schematic placement ----
@@ -388,6 +402,8 @@ def _process_tile(args: dict) -> dict:
             output_dir   = out_dir,
             cfg          = cfg,
             river_water_y= river_water_y,
+            lithology_tile=lithology_tile,
+            flow_tile    = masks["flow"],
         )
 
     elapsed_ms = int((time.perf_counter() - t0) * 1000)

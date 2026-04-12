@@ -65,6 +65,7 @@ class TileArtifacts:
     sub_blk: np.ndarray
     ground_cover: np.ndarray
     col_results: list
+    lithology_tile: np.ndarray | None = None  # (64, 64) uint8 at 1:8 — Phase 1.75
     placements: list = field(default_factory=list)
     elapsed_ms: int = 0
 
@@ -185,6 +186,18 @@ def run_tile_prelude(
     )
     noise = core_noise.load_noise_generators(cfg_path)
 
+    # ---- Step 4a: read discrete lithology mask (Phase 1.75) ----
+    # lithology.tif is 6250×6250 (1:8 scale) — read at 1:8 coords.
+    # _fill_geology_layers() handles upscale 64→512 via NEAREST zoom.
+    _lith_col = col_off // 8
+    _lith_row = row_off // 8
+    _lith_w   = max(1, TILE_SIZE // 8)
+    _lith_h   = max(1, TILE_SIZE // 8)
+    lithology_tile = core_tiles.read_discrete_tile(
+        masks_dir / "lithology.tif", _lith_col, _lith_row,
+        width=_lith_w, height=_lith_h,
+    )
+
     # ---- Step 5: biome assignment ----
     _log("assign_biomes")
     biome_grid = core_biome.assign_biomes(
@@ -276,6 +289,7 @@ def run_tile_prelude(
 
     # ---- Step 7: surface decoration ----
     _log("decorate_surface")
+    _use_geo = bool(cfg.get("lithology", {}).get("feature_flag_enabled", False))
     surface_blk, sub_blk, ground_cover = core_dec.decorate_surface(
         surface_y    = surface_y,
         biome_grid   = biome_grid,
@@ -290,6 +304,7 @@ def run_tile_prelude(
         tile_y       = tile_z,
         eco_grads    = eco_grads,
         cliff_deg    = cliff_deg,
+        use_new_geology = _use_geo,
     )
 
     # ---- Step 8 (optional): schematic placement ----
@@ -328,6 +343,7 @@ def run_tile_prelude(
         surface_blk=surface_blk,
         sub_blk=sub_blk,
         ground_cover=ground_cover,
+        lithology_tile=lithology_tile,
         col_results=col_results,
         placements=placements,
         elapsed_ms=elapsed_ms,

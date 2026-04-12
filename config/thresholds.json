@@ -101,7 +101,7 @@
   },
   "cliff_banding": {
     "enabled": true,
-    "band_scale_y": 12,
+    "band_scale_y": 5,
     "band_noise_scale_xz": 20,
     "cliff_deg_thr": 45.0,
     "variants": [
@@ -3243,15 +3243,17 @@
   },
   "lithology": {
     "_comment": "Phase 0.5 (S44) \u2014 see PHYSICAL_REALISM_REFACTOR.md \u00a76 Pass 0. Feature-flagged off by default.",
-    "feature_flag_enabled": false,
+    "feature_flag_enabled": true,
     "groups": {
       "granitic": {
         "id": 1,
         "palette": [
+          "granite",
           "stone",
           "andesite",
+          "diorite",
           "granite",
-          "diorite"
+          "polished_granite"
         ],
         "description": "Intrusive igneous basement \u2014 default temperate highland."
       },
@@ -3261,7 +3263,11 @@
           "sandstone",
           "smooth_sandstone",
           "red_sandstone",
-          "stone"
+          "sandstone",
+          "orange_terracotta",
+          "terracotta",
+          "smooth_sandstone",
+          "red_sandstone"
         ],
         "description": "Arid/semi-arid clastics \u2014 dune + steppe + karst margins."
       },
@@ -3271,7 +3277,9 @@
           "basalt",
           "smooth_basalt",
           "blackstone",
-          "stone"
+          "basalt",
+          "tuff",
+          "smooth_basalt"
         ],
         "description": "Extrusive mafic \u2014 coastal headlands, peaks."
       },
@@ -3281,7 +3289,9 @@
           "calcite",
           "tuff",
           "smooth_stone",
-          "stone"
+          "calcite",
+          "diorite",
+          "tuff"
         ],
         "description": "Karst barrens + cave-prone carbonate."
       },
@@ -3289,9 +3299,11 @@
         "id": 5,
         "palette": [
           "deepslate",
+          "tuff",
+          "stone",
           "cobbled_deepslate",
-          "polished_deepslate",
-          "stone"
+          "andesite",
+          "deepslate"
         ],
         "description": "High-alpine / arctic basement."
       },
@@ -3299,9 +3311,11 @@
         "id": 6,
         "palette": [
           "mossy_cobblestone",
-          "stone",
           "cobblestone",
-          "andesite"
+          "andesite",
+          "stone",
+          "mossy_cobblestone",
+          "cobblestone"
         ],
         "description": "Wet temperate rainforest regolith."
       }

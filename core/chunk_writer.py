@@ -196,6 +196,296 @@ class BlockPalette:
 
 
 # ---------------------------------------------------------------------------
+# GEOLOGY HELPERS  (Phase 1.75, S47)
+# ---------------------------------------------------------------------------
+
+# Bedrock band: deepslate fills Y_MIN+1 to Y_MIN + _BEDROCK_BAND_DEPTH.
+_BEDROCK_BAND_DEPTH = 4
+
+# Sediment block selection thresholds (flow_tile values)
+_SEDIMENT_FLOW_HIGH = 0.3    # above → gravel
+_SEDIMENT_FLOW_MED  = 0.1    # above → coarse_dirt, below → dirt
+
+# Soil depth by slope class (blocks of dirt/coarse_dirt above sediment)
+_SOIL_DEPTH_FLAT     = 4     # slope < 18°
+_SOIL_DEPTH_MODERATE = 2     # 18° ≤ slope < 35°
+_SOIL_DEPTH_STEEP    = 1     # 35° ≤ slope < 55°
+_SOIL_DEPTH_CLIFF    = 0     # slope ≥ 55°
+
+# Maximum sediment thickness (blocks of gravel/dirt above basement)
+_SEDIMENT_MAX_BLOCKS = 8
+
+
+def _compute_xz_waviness(
+    H: int, W: int,
+    tile_world_x: int, tile_world_z: int,
+    band_scale_y: int,
+) -> np.ndarray:
+    """Compute XZ waviness field (H, W) int32 for tilting band boundaries."""
+    wave_amp  = max(1, band_scale_y // 3)
+    wave_cell = 32
+
+    row_u = (np.arange(H, dtype=np.uint32) + tile_world_z)
+    col_u = (np.arange(W, dtype=np.uint32) + tile_world_x)
+
+    rci = (row_u // wave_cell).astype(np.int32)
+    cci = (col_u // wave_cell).astype(np.int32)
+    rf  = ((row_u % wave_cell).astype(np.float32)) / wave_cell
+    cf  = ((col_u % wave_cell).astype(np.float32)) / wave_cell
+
+    def _cell_hash(ri: np.ndarray, ci: np.ndarray) -> np.ndarray:
+        ri2d = ri[:, None].astype(np.uint32)
+        ci2d = ci[None, :].astype(np.uint32)
+        h = ri2d * np.uint32(2654435761) ^ ci2d * np.uint32(2246822519)
+        h ^= h >> np.uint32(16)
+        h *= np.uint32(0x45D9F3B)
+        h ^= h >> np.uint32(16)
+        return h.astype(np.float32) * np.float32(2.3283064e-10)
+
+    rf2d = rf[:, None]; cf2d = cf[None, :]
+    v00 = _cell_hash(rci,     cci    )
+    v10 = _cell_hash(rci + 1, cci    )
+    v01 = _cell_hash(rci,     cci + 1)
+    v11 = _cell_hash(rci + 1, cci + 1)
+    smooth = (v00 * (1 - rf2d) * (1 - cf2d)
+            + v10 * rf2d       * (1 - cf2d)
+            + v01 * (1 - rf2d) * cf2d
+            + v11 * rf2d       * cf2d)
+    return ((smooth * 2 - 1) * wave_amp).astype(np.int32)
+
+
+def _build_band_lut(
+    n_v: int,
+    band_min: int,
+    band_max: int,
+    lut_size: int,
+    seed: int,
+) -> np.ndarray:
+    """Build a Y → variant index LUT with randomised band thicknesses.
+
+    Returns an int32 array of length ``lut_size`` where each element is a
+    variant index in [0, n_v).  Band thicknesses are drawn uniformly from
+    [band_min, band_max] inclusive, cycling through variants.
+    """
+    rng = np.random.default_rng(seed)
+    lut = np.empty(lut_size, dtype=np.int32)
+    pos = 0
+    vi = 0
+    while pos < lut_size:
+        thickness = int(rng.integers(band_min, band_max + 1))
+        end = min(pos + thickness, lut_size)
+        lut[pos:end] = vi
+        pos = end
+        vi = (vi + 1) % n_v
+    return lut
+
+
+def _apply_banded_fill(
+    vol: np.ndarray,
+    stone_mask: np.ndarray,
+    col_mask: np.ndarray,
+    xz_waviness: np.ndarray,
+    variant_indices: list[int],
+    n_v: int,
+    band_scale_y: int,
+    col_y_noise: np.ndarray | None = None,
+    band_lut: np.ndarray | None = None,
+) -> None:
+    """Apply Y-banded fill to vol for columns matching col_mask, Y-sliced.
+
+    ``col_y_noise`` is an optional (H, W) int array that shifts band boundaries
+    per column by ±N blocks, producing organic-looking folded strata.
+
+    ``band_lut`` is an optional precomputed Y → variant-index lookup table with
+    randomised band thicknesses (from ``_build_band_lut``).  When provided,
+    ``band_scale_y`` is ignored and the LUT is indexed directly.
+    """
+    lut_size = band_lut.shape[0] if band_lut is not None else 0
+    SLICE = 32
+    for y_s in range(0, vol.shape[0], SLICE):
+        y_e = min(y_s + SLICE, vol.shape[0])
+        cs_slice = stone_mask[y_s:y_e] & col_mask[None, :, :]
+        if not cs_slice.any():
+            continue
+        y_arr = np.arange(y_s, y_e, dtype=np.int32)
+        y_mod = y_arr[:, None, None] + xz_waviness[None, :, :]
+        if col_y_noise is not None:
+            y_mod = y_mod + col_y_noise[None, :, :]
+
+        if band_lut is not None:
+            # Wrap into LUT range and look up variant index
+            band_idx = band_lut[np.abs(y_mod).astype(np.int32) % lut_size]
+        else:
+            band_idx = (y_mod // band_scale_y) % n_v
+
+        for vi, v_idx in enumerate(variant_indices):
+            v_mask = cs_slice & (band_idx == vi)
+            if v_mask.any():
+                vol[y_s:y_e][v_mask] = v_idx
+
+
+def _fill_geology_layers(
+    vol: np.ndarray,
+    pal: "BlockPalette",
+    stone_mask: np.ndarray,
+    abs_y: np.ndarray,
+    surface_y: np.ndarray,
+    lithology_tile: np.ndarray,
+    *,
+    flow_tile: np.ndarray | None,
+    cfg: dict | None,
+    band_scale_y: int,
+    tile_world_x: int,
+    tile_world_z: int,
+) -> None:
+    """
+    Phase 1.75 geology fill.  Overwrites the stone-filled range
+    [Y_MIN+1, surface_y-3] with stratified geology layers:
+
+      1. Bedrock band  (deepslate, Y_MIN+1 to Y_MIN + _BEDROCK_BAND_DEPTH)
+      2. Basement rock  (lithology palette with Y-banding, above bedrock band)
+      3. Sediment       (gravel/dirt/coarse_dirt by flow, above basement)
+      4. Soil horizon   (dirt/coarse_dirt by slope, below surface_y-3)
+
+    Operates in-place on ``vol``.  Only touches voxels where ``stone_mask``
+    is True (i.e. the [Y_MIN+1, surface_y-3] range on land columns).
+    """
+    H, W = surface_y.shape
+
+    # ---- Upscale lithology to full resolution if needed (NEAREST for discrete IDs) ----
+    if lithology_tile.shape != (H, W):
+        from scipy.ndimage import zoom
+        _zh = H / lithology_tile.shape[0]
+        _zw = W / lithology_tile.shape[1]
+        lithology_tile = zoom(lithology_tile, (_zh, _zw), order=0)  # order=0 = nearest
+
+    # ---- Derive slope from surface_y (same formula as legacy cliff banding) ----
+    _gy, _gx = np.gradient(surface_y.astype(np.float32))
+    slope_deg = np.degrees(np.arctan(np.hypot(_gx, _gy)))  # (H, W)
+
+    # ---- 1. Compute soil_depth per column: f(slope) ----
+    soil_depth = np.full((H, W), _SOIL_DEPTH_FLAT, dtype=np.int32)
+    soil_depth[slope_deg >= 18] = _SOIL_DEPTH_MODERATE
+    soil_depth[slope_deg >= 35] = _SOIL_DEPTH_STEEP
+    soil_depth[slope_deg >= 55] = _SOIL_DEPTH_CLIFF
+
+    # ---- 2. Compute sediment_thickness per column: f(concavity, flow) ----
+    # Concavity via second derivatives of surface_y (Laplacian approximation)
+    _gyy, _ = np.gradient(_gy)
+    _, _gxx = np.gradient(_gx)
+    concavity_raw = _gyy + _gxx  # positive = concave (valley), negative = convex
+    del _gy, _gx, _gyy, _gxx
+
+    concavity_pos = np.clip(concavity_raw, 0, None)
+    c_max = np.percentile(concavity_pos[concavity_pos > 0], 95) if np.any(concavity_pos > 0) else 1.0
+    concavity_norm = np.clip(concavity_pos / max(c_max, 1e-6), 0, 1).astype(np.float32)
+
+    flow_f = np.clip(flow_tile, 0, 1).astype(np.float32) if flow_tile is not None else np.zeros((H, W), dtype=np.float32)
+
+    # 60% concavity + 40% flow → scale to max blocks
+    sed_raw = concavity_norm * 0.6 + flow_f * 0.4
+    sediment_thickness = np.clip((sed_raw * _SEDIMENT_MAX_BLOCKS).astype(np.int32),
+                                 0, _SEDIMENT_MAX_BLOCKS)
+
+    # ---- 3. Compute layer boundaries (absolute MC Y) ----
+    bedrock_band_top_y = Y_MIN + _BEDROCK_BAND_DEPTH         # scalar
+    stone_zone_top     = (surface_y - 3).astype(np.int32)     # (H, W)
+
+    # Top-down allocation within the stone zone:
+    #   soil at top → sediment below → basement fills the rest
+    soil_top_y = stone_zone_top                                # (H, W)
+    soil_bot_y = np.maximum(soil_top_y - soil_depth + 1,
+                            bedrock_band_top_y + 1)
+
+    sed_top_y  = soil_bot_y - 1
+    sed_bot_y  = np.maximum(sed_top_y - sediment_thickness + 1,
+                            bedrock_band_top_y + 1)
+
+    # Basement fills whatever remains between bedrock band and sediment bottom
+    # (automatically zero-thickness if the column is too short)
+
+    # ---- 4. Build lithology palette LUT from config ----
+    lith_cfg = (cfg or {}).get("lithology", {})
+    groups   = lith_cfg.get("groups", {})
+
+    # group_id → list of palette block index (for banding)
+    id_to_pal: dict[int, list[int]] = {}
+    for gdata in groups.values():
+        gid = gdata["id"]
+        id_to_pal[gid] = [pal.idx(b) for b in gdata.get("palette", ["stone"])]
+
+    # Fallback for group_id=0 (water/unclassified) or missing groups
+    fallback_pal = [pal.idx("stone")]
+
+    # ---- 5. Fill layers ----
+
+    # 5a. Bedrock band → deepslate
+    DEEPSLATE_IDX = pal.idx("deepslate")
+    bb_mask = stone_mask & (abs_y <= bedrock_band_top_y)
+    vol[bb_mask] = DEEPSLATE_IDX
+
+    # 5b. Basement rock with lithology-palette banding
+    #     Uses XZ waviness for natural-looking tilted strata, plus per-column
+    #     Y noise for organic folded band edges.
+    xz_waviness = _compute_xz_waviness(H, W, tile_world_x, tile_world_z, band_scale_y)
+
+    # Per-column Y noise: ±3 blocks, deterministic from world position
+    _noise_rng = np.random.default_rng(tile_world_x * 73856093 ^ tile_world_z * 19349669)
+    col_y_noise = _noise_rng.integers(-3, 4, size=(H, W), dtype=np.int32)
+
+    # Basement range: above bedrock band, below sediment bottom
+    basement_mask = stone_mask & (abs_y > bedrock_band_top_y) & (abs_y < sed_bot_y[None, :, :])
+
+    # Band thickness range (randomised per group for natural variation)
+    _BAND_MIN = 4
+    _BAND_MAX = 10
+    _LUT_SIZE = Y_RANGE * 2  # enough headroom for waviness + noise offsets
+
+    for gid, palette_idx_list in id_to_pal.items():
+        group_cols = (lithology_tile == gid)  # (H, W)
+        if not group_cols.any():
+            continue
+        # Deterministic seed per group + tile so bands differ between groups
+        _lut_seed = tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 2654435761
+        band_lut = _build_band_lut(
+            len(palette_idx_list), _BAND_MIN, _BAND_MAX, _LUT_SIZE, _lut_seed,
+        )
+        _apply_banded_fill(
+            vol, basement_mask, group_cols, xz_waviness,
+            palette_idx_list, len(palette_idx_list), band_scale_y,
+            col_y_noise=col_y_noise,
+            band_lut=band_lut,
+        )
+
+    # Columns with lithology_tile==0 (water/unclassified) keep stone (already filled)
+
+    # 5c. Sediment layer: gravel / coarse_dirt / dirt by flow magnitude
+    GRAVEL_IDX = pal.idx("gravel")
+    COARSE_DIRT_IDX = pal.idx("coarse_dirt")
+    DIRT_IDX = pal.idx("dirt")
+
+    sed_mask = stone_mask & (abs_y >= sed_bot_y[None, :, :]) & (abs_y <= sed_top_y[None, :, :])
+
+    if flow_tile is not None:
+        high_flow_2d = (flow_tile > _SEDIMENT_FLOW_HIGH)
+        med_flow_2d  = (flow_tile > _SEDIMENT_FLOW_MED) & ~high_flow_2d
+        low_flow_2d  = ~high_flow_2d & ~med_flow_2d
+
+        vol[sed_mask & high_flow_2d[None, :, :]] = GRAVEL_IDX
+        vol[sed_mask & med_flow_2d[None, :, :]]  = COARSE_DIRT_IDX
+        vol[sed_mask & low_flow_2d[None, :, :]]  = DIRT_IDX
+    else:
+        vol[sed_mask] = DIRT_IDX
+
+    # 5d. Soil horizon: dirt on gentle slopes, coarse_dirt on steep
+    soil_mask = stone_mask & (abs_y >= soil_bot_y[None, :, :]) & (abs_y <= soil_top_y[None, :, :])
+    steep_2d = (slope_deg >= 18)  # moderate+ → coarse_dirt
+
+    vol[soil_mask & ~steep_2d[None, :, :]] = DIRT_IDX
+    vol[soil_mask & steep_2d[None, :, :]]  = COARSE_DIRT_IDX
+
+
+# ---------------------------------------------------------------------------
 # BLOCK ARRAY BUILDER  (pure NumPy — no amulet dependency for building)
 # ---------------------------------------------------------------------------
 
@@ -210,19 +500,17 @@ def build_column_array(
     tile_world_x:  int   = 0,
     tile_world_z:  int   = 0,
     river_water_y: np.ndarray | None = None, # (H, W) int16 — water surface for rivers above sea level
-    # ---- Phase 1.5 scaffolding (S46) ----
-    # These four kwargs land the plumbing for the physical-realism refactor's
-    # Pass 1 (Geology / Column). None of them affect output in Phase 1.5: when
-    # ``use_new_geology`` is False OR ``lithology_tile`` is None, the function
-    # falls through to the existing (pre-S46) legacy path and is byte-identical.
-    # When both are truthy, we raise ``NotImplementedError`` — the real geology
-    # branch lands in Phase 2 (S47). See PHYSICAL_REALISM_REFACTOR.md §11 Phase
-    # 1.5 and §6 Pass 1. A sentinel unit test forbids any production caller from
-    # setting ``use_new_geology=True`` until Phase 2.
+    # ---- Phase 1.5 / 1.75 lithology kwargs (S46-S47) ----
+    # When ``use_new_geology`` is True AND ``lithology_tile`` is provided, the
+    # function fills the subsurface with geology-stratified layers instead of
+    # uniform stone + cliff banding.  See PHYSICAL_REALISM_REFACTOR.md §11
+    # Phase 1.75 and §6 Pass 1.
     lithology_tile:          np.ndarray | None = None,  # (H, W) uint8 — lithology group id per column
-    sediment_thickness_tile: np.ndarray | None = None,  # (H, W) uint8 — blocks of sediment above basement
-    soil_horizon_depth_tile: np.ndarray | None = None,  # (H, W) uint8 — blocks of soil above sediment
+    sediment_thickness_tile: np.ndarray | None = None,  # (H, W) uint8 — blocks of sediment (unused; inline now)
+    soil_horizon_depth_tile: np.ndarray | None = None,  # (H, W) uint8 — blocks of soil (unused; inline now)
     use_new_geology:         bool                = False,
+    flow_tile:               np.ndarray | None = None,  # (H, W) float32 [0,1] — for inline sediment thickness
+    cfg:                     dict | None        = None,  # thresholds.json — for lithology group palettes
 ) -> tuple[np.ndarray, "BlockPalette"]:
     """
     Build a (Y_RANGE, H, W) object array of block name strings.
@@ -239,19 +527,8 @@ def build_column_array(
     Returns (vol, palette) where vol has shape (Y_RANGE, H, W) dtype=uint16
     and palette is a BlockPalette mapping indices ↔ block name strings.
     """
-    # ---- Phase 1.5: flag-ON stub ----
-    # Both the flag AND a lithology_tile must be present to enter the new path.
-    # Anything else (flag off, or tile missing, or both) falls through to the
-    # legacy code below unchanged — guaranteeing byte-identity with pre-S46.
-    if use_new_geology and lithology_tile is not None:
-        raise NotImplementedError(
-            "build_column_array: use_new_geology=True is Phase 1.5 scaffolding "
-            "only — the real geology branch lands in Phase 2 (S47). "
-            "See PHYSICAL_REALISM_REFACTOR.md §11 Phase 1.5 and §6 Pass 1."
-        )
-    # Phase 1.5 flag-OFF: the three lithology tiles are accepted but unused.
-    # (Kept as local refs so static linters don't flag them as dead kwargs.)
-    _ = (lithology_tile, sediment_thickness_tile, soil_horizon_depth_tile)
+    # Phase 1.5 compat: unused kwargs kept to avoid breaking existing callers
+    _ = (sediment_thickness_tile, soil_horizon_depth_tile)
 
     H, W = surface_y.shape
     pal = BlockPalette()
@@ -273,58 +550,30 @@ def build_column_array(
     STONE_IDX = pal.idx("stone")
     vol[stone_mask] = STONE_IDX
 
-    # ---- Cliff interior banding ----
-    # For steep columns (cliff_deg >= cliff_deg_thr) replace the uniform stone
-    # fill with geologically-keyed banded variants (Y × XZ-hash modulo).
-    # Processed in Y-slices of 32 to cap peak memory at ~24 MB per slice.
-    if biome_grid is not None:
-        # Compute cliff_deg from surface_y gradient (MC Y-space degrees)
+    # ---- Subsurface fill: geology branch OR legacy cliff banding ----
+    if use_new_geology and lithology_tile is not None:
+        _fill_geology_layers(
+            vol, pal, stone_mask, abs_y, surface_y, lithology_tile,
+            flow_tile=flow_tile, cfg=cfg,
+            band_scale_y=band_scale_y,
+            tile_world_x=tile_world_x, tile_world_z=tile_world_z,
+        )
+    elif biome_grid is not None:
+        # ---- Legacy cliff interior banding ----
+        # For steep columns (cliff_deg >= cliff_deg_thr) replace the uniform stone
+        # fill with geologically-keyed banded variants (Y × XZ-hash modulo).
+        # Processed in Y-slices of 32 to cap peak memory at ~24 MB per slice.
         _gy, _gx = np.gradient(surface_y.astype(np.float32))
         cliff_deg = np.degrees(np.arctan(np.hypot(_gx, _gy)))  # (H, W)
         cliff_mask = (cliff_deg >= cliff_deg_thr) & (surface_y > SEA_Y)
         del _gy, _gx, cliff_deg
 
         if cliff_mask.any():
-            # XZ waviness: a slow-varying offset (±wave_amp blocks) that tilts the
-            # band boundaries slightly — gives strata a natural, non-flat look without
-            # creating vertical stripes.  Uses a low-frequency hash sampled every
-            # wave_cell blocks, then bilinearly interpolated across the tile.
-            wave_amp  = max(1, band_scale_y // 3)   # e.g. ±4 blocks for scale_y=12
-            wave_cell = 32                            # one hash sample per 32 blocks
+            xz_waviness = _compute_xz_waviness(
+                H, W, tile_world_x, tile_world_z, band_scale_y,
+            )
 
-            row_u = (np.arange(H, dtype=np.uint32) + tile_world_z)
-            col_u = (np.arange(W, dtype=np.uint32) + tile_world_x)
-
-            # Cell indices and fractional positions (H,) and (W,)
-            rci  = (row_u // wave_cell).astype(np.int32)
-            cci  = (col_u // wave_cell).astype(np.int32)
-            rf   = ((row_u % wave_cell).astype(np.float32)) / wave_cell
-            cf   = ((col_u % wave_cell).astype(np.float32)) / wave_cell
-
-            def _cell_hash(ri: np.ndarray, ci: np.ndarray) -> np.ndarray:
-                """(H,)×(W,) → (H,W) float32 in [0,1]"""
-                ri2d = ri[:, None].astype(np.uint32)
-                ci2d = ci[None, :].astype(np.uint32)
-                h = ri2d * np.uint32(2654435761) ^ ci2d * np.uint32(2246822519)
-                h ^= h >> np.uint32(16)
-                h *= np.uint32(0x45D9F3B)
-                h ^= h >> np.uint32(16)
-                return h.astype(np.float32) * np.float32(2.3283064e-10)  # /2^32
-
-            rf2d = rf[:, None]; cf2d = cf[None, :]   # (H,1) and (1,W)
-            # Bilinear interpolation over the 4 surrounding cell corners
-            v00 = _cell_hash(rci,     cci    )
-            v10 = _cell_hash(rci + 1, cci    )
-            v01 = _cell_hash(rci,     cci + 1)
-            v11 = _cell_hash(rci + 1, cci + 1)
-            smooth = (v00 * (1 - rf2d) * (1 - cf2d)
-                    + v10 * rf2d       * (1 - cf2d)
-                    + v01 * (1 - rf2d) * cf2d
-                    + v11 * rf2d       * cf2d)          # (H, W) in [0, 1]
-            # Convert to integer waviness offset: centred on 0, range ±wave_amp
-            xz_waviness = ((smooth * 2 - 1) * wave_amp).astype(np.int32)  # (H, W)
-
-            # Build per-biome stone-type grid (use string keys for lookup, not stored in vol)
+            # Build per-biome stone-type grid
             stone_type_grid = np.full((H, W), _DEFAULT_CLIFF_STONE, dtype=object)
             for _bname in np.unique(biome_grid):
                 _bm = (biome_grid == _bname)
@@ -342,22 +591,10 @@ def build_column_array(
                 if not col_mask.any():
                     continue
 
-                # Process in Y-slices to keep RAM bounded
-                SLICE = 32
-                for y_s in range(0, Y_RANGE, SLICE):
-                    y_e = min(y_s + SLICE, Y_RANGE)
-                    cs_slice = stone_mask[y_s:y_e] & col_mask[None, :, :]
-                    if not cs_slice.any():
-                        continue
-                    y_arr = np.arange(y_s, y_e, dtype=np.int32)
-                    # Y + XZ waviness → band index.  Waviness tilts bands but keeps
-                    # them primarily horizontal (Y-driven, not XZ-driven).
-                    y_mod = y_arr[:, None, None] + xz_waviness[None, :, :]  # (slice,H,W)
-                    band_idx = (y_mod // band_scale_y) % n_v
-                    for vi, v_idx in enumerate(variant_indices):
-                        v_mask = cs_slice & (band_idx == vi)
-                        if v_mask.any():
-                            vol[y_s:y_e][v_mask] = v_idx
+                _apply_banded_fill(
+                    vol, stone_mask, col_mask, xz_waviness,
+                    variant_indices, n_v, band_scale_y,
+                )
 
     # Subsurface, surface, and ground cover — vectorised advanced indexing.
     # Each write targets a specific (Y, row, col) cell determined by surface_y.
@@ -1006,10 +1243,13 @@ def write_tile(
     output_dir:    Path,
     cfg:           dict | None = None, # thresholds.json content (for geo params)
     river_water_y: np.ndarray | None = None, # (H, W) int16 — river water surface
+    lithology_tile: np.ndarray | None = None, # (H, W) uint8 — Phase 1.75
+    flow_tile:      np.ndarray | None = None, # (H, W) float32 — Phase 1.75
 ) -> list[str]:
     """
     Full tile write pipeline:
-      1. Build volume array from terrain data (with cliff interior banding)
+      1. Build volume array from terrain data (with cliff interior banding
+         OR geology-stratified fill when lithology is enabled)
       2. Stamp schematics
       3. Write to .mca region files
 
@@ -1017,7 +1257,11 @@ def write_tile(
     """
     H, W = surface_y.shape
 
-    # Step 1 — build volume (with geologically-keyed cliff banding when cfg provided)
+    # Check whether the geology feature flag is ON
+    _lith_cfg = (cfg or {}).get("lithology", {})
+    _use_geo  = bool(_lith_cfg.get("feature_flag_enabled", False))
+
+    # Step 1 — build volume
     _cb   = (cfg or {}).get("cliff_banding", {})
     _cthr = float(_cb.get("cliff_deg_thr", 45.0))
     _bsy  = int(_cb.get("band_scale_y", 12))
@@ -1029,6 +1273,10 @@ def write_tile(
         tile_world_x   = tile_world_x,
         tile_world_z   = tile_world_z,
         river_water_y  = river_water_y,
+        lithology_tile = lithology_tile if _use_geo else None,
+        use_new_geology= _use_geo,
+        flow_tile      = flow_tile if _use_geo else None,
+        cfg            = cfg if _use_geo else None,
     )
 
     # Step 2 — stamp schematics

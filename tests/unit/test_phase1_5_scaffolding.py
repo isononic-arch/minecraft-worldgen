@@ -109,29 +109,24 @@ def test_flag_off_with_new_kwargs_identity():
         "flag ON with lithology_tile=None must fall through"
 
 
-def test_flag_on_raises_not_implemented():
+def test_flag_on_runs_geology_not_raises():
     """
-    Phase 1.5 scaffolding: the flag-ON path is deliberately stubbed. This test
-    pins the deferral contract. Phase 2 will delete this test and replace it
-    with the real geology assertion.
+    Phase 1.75: the flag-ON path now runs real geology fill (S47 replaced the
+    Phase 1.5 NotImplementedError stub). This test pins that it produces a
+    valid volume instead of raising.
     """
     kw = _tiny_tile()
     H, W = kw["surface_y"].shape
-    lith = np.zeros((H, W), dtype=np.uint8)
+    lith = np.ones((H, W), dtype=np.uint8)  # all granitic
 
-    with pytest.raises(NotImplementedError) as exc:
-        cw.build_column_array(
-            **kw,
-            lithology_tile=lith,
-            use_new_geology=True,
-        )
-    msg = str(exc.value).lower()
-    # Message must reference the phase plan + deferral so a future reader
-    # lands on the right doc.
-    assert ("phase 1.5" in msg or "§11" in msg or "section 11" in msg), \
-        f"NotImplementedError must cite §11 Phase 1.5: {exc.value!r}"
-    assert ("phase 2" in msg or "s47" in msg), \
-        f"NotImplementedError must cite Phase 2 / S47 deferral: {exc.value!r}"
+    vol, pal = cw.build_column_array(
+        **kw,
+        lithology_tile=lith,
+        use_new_geology=True,
+        cfg={"lithology": {"groups": {"granitic": {"id": 1, "palette": ["stone", "andesite"]}}}},
+    )
+    assert vol.ndim == 3, "Flag-ON should produce a 3D volume"
+    assert (vol[0] != 0).all(), "Bedrock layer should be present"
 
 
 def test_param_threading_through_column_generator():

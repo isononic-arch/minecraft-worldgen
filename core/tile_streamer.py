@@ -165,6 +165,46 @@ def read_single_mask(
         return np.zeros((height, width), dtype=np.float32)
 
 
+def read_discrete_tile(
+    path:    Union[str, Path],
+    col_off: int,
+    row_off: int,
+    width:   int = 512,
+    height:  int = 512,
+) -> np.ndarray | None:
+    """
+    Read a discrete (uint8/uint16) mask tile WITHOUT float normalisation.
+
+    Returns the raw integer array (zero-padded at world edges), or None if the
+    file does not exist.  Used for masks like ``lithology.tif`` where pixel
+    values are group IDs (1-6), not continuous gradients.
+    """
+    path = Path(path)
+    if not path.exists():
+        return None
+
+    try:
+        import rasterio
+        from rasterio.windows import Window
+
+        with rasterio.open(str(path)) as src:
+            w = min(width,  src.width  - col_off)
+            h = min(height, src.height - row_off)
+            if w <= 0 or h <= 0:
+                return np.zeros((height, width), dtype=np.uint8)
+            win = Window(col_off, row_off, w, h)
+            raw = src.read(1, window=win)
+
+            if h < height or w < width:
+                padded = np.zeros((height, width), dtype=raw.dtype)
+                padded[:h, :w] = raw
+                raw = padded
+
+            return raw
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # SMOKE TEST
 # ---------------------------------------------------------------------------
