@@ -49,7 +49,7 @@ BIOME_TO_MC: dict[str, str] = {
     "TEMPERATE_RAINFOREST":    "minecraft:dark_forest",
     "BOREAL_TAIGA":            "minecraft:old_growth_birch_forest",
     "SNOWY_BOREAL_TAIGA":      "minecraft:snowy_taiga",
-    "ALPINE_MEADOW":           "minecraft:plains",
+    "ALPINE_MEADOW":           "minecraft:meadow",
     "ARCTIC_TUNDRA":           "minecraft:frozen_peaks",
     "FROZEN_FLATS":            "minecraft:snowy_plains",
     "TEMPERATE_DECIDUOUS":     "minecraft:forest",
@@ -58,7 +58,7 @@ BIOME_TO_MC: dict[str, str] = {
     "DRY_OAK_SAVANNA":         "minecraft:savanna",
     "KARST_BARRENS":           "minecraft:savanna_plateau",
     "BIRCH_FOREST":            "minecraft:birch_forest",
-    "EASTERN_TEMPERATE_COAST": "minecraft:stony_shore",
+    "EASTERN_TEMPERATE_COAST": "minecraft:beach",
     "MIXED_FOREST":            "minecraft:forest",
     "CONTINENTAL_STEPPE":      "minecraft:plains",
     "DRY_PINE_BARRENS":        "minecraft:wooded_badlands",
@@ -340,7 +340,7 @@ def _fill_geology_layers(
 ) -> None:
     """
     Phase 1.75 geology fill.  Overwrites the stone-filled range
-    [Y_MIN+1, surface_y-3] with stratified geology layers:
+    [Y_MIN+1, surface_y-4] with stratified geology layers:
 
       1. Bedrock band  (deepslate, Y_MIN+1 to Y_MIN + _BEDROCK_BAND_DEPTH)
       2. Basement rock  (lithology palette with Y-banding, above bedrock band)
@@ -359,9 +359,9 @@ def _fill_geology_layers(
         _zw = W / lithology_tile.shape[1]
         lithology_tile = zoom(lithology_tile, (_zh, _zw), order=0)  # order=0 = nearest
 
-    # ---- Derive slope from surface_y (same formula as legacy cliff banding) ----
-    _gy, _gx = np.gradient(surface_y.astype(np.float32))
-    slope_deg = np.degrees(np.arctan(np.hypot(_gx, _gy)))  # (H, W)
+    # ---- Derive slope from surface_y (smoothed to avoid staircase aliasing) ----
+    from core.eco_gradients import compute_cliff_deg
+    slope_deg = compute_cliff_deg(surface_y)
 
     # ---- 1. Compute soil_depth per column: f(slope) ----
     soil_depth = np.full((H, W), _SOIL_DEPTH_FLAT, dtype=np.int32)
@@ -371,6 +371,7 @@ def _fill_geology_layers(
 
     # ---- 2. Compute sediment_thickness per column: f(concavity, flow) ----
     # Concavity via second derivatives of surface_y (Laplacian approximation)
+    _gy, _gx = np.gradient(surface_y.astype(np.float32))
     _gyy, _ = np.gradient(_gy)
     _, _gxx = np.gradient(_gx)
     concavity_raw = _gyy + _gxx  # positive = concave (valley), negative = convex
@@ -389,7 +390,7 @@ def _fill_geology_layers(
 
     # ---- 3. Compute layer boundaries (absolute MC Y) ----
     bedrock_band_top_y = Y_MIN + _BEDROCK_BAND_DEPTH         # scalar
-    stone_zone_top     = (surface_y - 3).astype(np.int32)     # (H, W)
+    stone_zone_top     = (surface_y - 4).astype(np.int32)     # (H, W)
 
     # Top-down allocation within the stone zone:
     #   soil at top → sediment below → basement fills the rest
@@ -517,8 +518,8 @@ def build_column_array(
 
     Layout:
       Y_MIN      → 'bedrock'
-      Y_MIN+1 .. surface_y-3  → 'stone' (banded on cliff faces)
-      surface_y-2, surface_y-1 → sub_blk
+      Y_MIN+1 .. surface_y-4  → 'stone' (geology/lithology — buried 1 extra block)
+      surface_y-3, surface_y-2, surface_y-1 → sub_blk
       surface_y                → surface_blk
       surface_y+1              → ground_cover (if not '')
       surface_y+1 .. SEA_Y    → 'water'  (only if surface_y < SEA_Y)
@@ -544,7 +545,7 @@ def build_column_array(
 
     surf_broad = surface_y[None, :, :]                           # (1, H, W)
 
-    stone_mask  = (abs_y >= Y_MIN + 1) & (abs_y <= surf_broad - 3)
+    stone_mask  = (abs_y >= Y_MIN + 1) & (abs_y <= surf_broad - 4)
     water_mask  = (abs_y > surf_broad) & (abs_y <= SEA_Y)
 
     STONE_IDX = pal.idx("stone")
@@ -563,10 +564,10 @@ def build_column_array(
         # For steep columns (cliff_deg >= cliff_deg_thr) replace the uniform stone
         # fill with geologically-keyed banded variants (Y × XZ-hash modulo).
         # Processed in Y-slices of 32 to cap peak memory at ~24 MB per slice.
-        _gy, _gx = np.gradient(surface_y.astype(np.float32))
-        cliff_deg = np.degrees(np.arctan(np.hypot(_gx, _gy)))  # (H, W)
+        from core.eco_gradients import compute_cliff_deg
+        cliff_deg = compute_cliff_deg(surface_y)
         cliff_mask = (cliff_deg >= cliff_deg_thr) & (surface_y > SEA_Y)
-        del _gy, _gx, cliff_deg
+        del cliff_deg
 
         if cliff_mask.any():
             xz_waviness = _compute_xz_waviness(
@@ -621,6 +622,11 @@ def build_column_array(
     yi_sub2 = sy_flat - 2 - Y_MIN
     valid2 = (yi_sub2 >= 0) & (yi_sub2 < Y_RANGE)
     vol[yi_sub2[valid2], r_idx[valid2], c_idx[valid2]] = sub_idx_flat[valid2]
+
+    # subsurface sy-3 — extra dirt buffer so geology never peeks at convex edges
+    yi_sub3 = sy_flat - 3 - Y_MIN
+    valid3 = (yi_sub3 >= 0) & (yi_sub3 < Y_RANGE)
+    vol[yi_sub3[valid3], r_idx[valid3], c_idx[valid3]] = sub_idx_flat[valid3]
 
     # ground cover sy+1 (only where non-empty)
     cover_mask = np.array([bool(b) for b in cov_flat])

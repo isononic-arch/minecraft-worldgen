@@ -3361,6 +3361,7 @@
   },
   "surface_pipeline": {
     "shadow_mode": false,
-    "_comment": "Phase 0.75 (S45): when true, decorate_surface() calls run_passes([], ctx) at the end as a smoke test of the new SurfaceContext path. Output is discarded; production blocks are unchanged. Also gated by env VANDIR_SHADOW=1."
+    "feature_flag_enabled": true,
+    "_comment": "Phase 0.75 shadow_mode: smoke test (output discarded). Phase 2.0 feature_flag_enabled: when true, runs temperate cliff/talus/fluting layers and merges into surface_blocks. Legacy path preserved as fallback for unclaimed pixels."
   }
 }

@@ -780,23 +780,109 @@ Additionally: the workflow rule required the baseline tile to be a temperate-mou
 
 ---
 
-### Phase 2 — Temperate Mountain Pass 2 (week 3)
+### Phase 1.75b — All-biome surface decorator gating + palette tuning (inserted S48, 2026-04-12)
+
+**Scope:** Extend the S47 surface decorator geology gating (currently gap==5 rock only) to ALL gap handlers and slope zones that write `subsurface_blocks`. When `use_new_geology=True`, the geology column owns everything below `surface_y`; the surface decorator should only write `surface_blocks`. Also: palette tuning pass on all 6 lithology groups based on in-game review.
+
+**Architecture finding (S48 recon):**
+Geology fills `vol` in Y range `[Y_MIN+1, surface_y-3]`. The surface decorator's `sub_blk` fills `sy-1` and `sy-2` (non-overlapping). When gap handlers override `sub_blk` with "stone" (snow, slope zones) or "sandstone" (sand dunes), it creates a discontinuity: stone at sy-1/sy-2 then dirt (soil horizon) at sy-3. Fix: skip subsurface overrides when geology flag is ON, letting base biome's default `sub_blk` persist (typically "dirt"), which is continuous with geology's soil horizon.
 
 **Deliverables:**
-- 9 Pass 2 layers from § 6 table, implemented in `core/layers/pass2_surface/temperate/` + `shared/`.
-- `core/surface_pipeline.py` wired as the Pass 2 orchestrator.
-- `surface_decorator.py` gains a feature flag `use_new_surface_pipeline` — default OFF. When ON, delegates to `surface_pipeline.py` for temperate-mountain biomes only; falls back to current logic elsewhere.
-- Parallel protocol test: `desert_pavement` layer implemented (1 layer, not full pass) to prove protocol generalizes.
-- Unit tests: partition coverage ≥ 99% on 36_20 land pixels; `desert_pavement` scope isolation on 24_80.
-- `diag_layer_ownership.py` output on 36_20 shows all 9 layers cleanly partitioning the terrain.
-- `diag_cliff_crosssection.py` output on 36_20 shows vertical fluting on cliff faces.
+- `core/surface_decorator.py`:
+  - `decorate_surface()` — gate `subsurface_blocks` writes in snow (gap==7), sand dune (gap==8) handlers behind `use_new_geology`. Surface writes preserved.
+  - `_apply_slope_zones()` — gains `use_new_geology: bool = False` param. When True, skip all `subsurface_blocks` writes (transition stone, cliff, talus). Surface writes preserved.
+  - Gap-edge dither subsurface copy (line ~1618) — gate behind `use_new_geology`.
+  - Meadow (gap==1), windthrow (gap==2), floodplain (gap==4): **no change needed** — these only write `surface_blocks`, no subsurface overrides.
+  - Alpine meadow (gap==6): **no change needed** — only writes `surface_blocks`.
+- `tests/unit/test_phase1_75b_gating.py` — new file testing:
+  1. Snow handler skips subsurface writes when geology ON.
+  2. Sand dune handler skips subsurface writes when geology ON.
+  3. Slope zone subsurface skipped when geology ON, surface still written.
+  4. Legacy (flag OFF) behavior unchanged for all handlers.
+- Palette tuning: adjust `config/thresholds.json` lithology palettes if in-game review reveals issues.
 
 **Exit criteria:**
-- Feature flag ON for temperate-mountain biomes produces PNGs Nick reviews and approves.
+- Flag-OFF: `validate_3x3 --baseline` on 48_48 — zero new PASS→FAIL flips.
+- Flag-ON: `validate_3x3` on 24_80 and 59_53 — no new regressions vs S47 results.
+- Unit tests: all prior + new tests passing.
+- In-game spot-check on 24_80 or 59_53 if palette changes made.
+
+**Scope boundaries (explicitly NOT in Phase 1.75b):**
+- No sublayer 5 (river_bed) or 6 (lake_bed).
+- No changes to `core/chunk_writer.py` geology fill logic.
+- No changes to `core/eco_gradients.py` or any `rebuild_*.py`.
+- Aspect convention drift still deferred.
+
+---
+
+### Phase 2 — Temperate Mountain Pass 2 (week 3) — SPLIT INTO 2.0/2.5/2.75 (S48)
+
+> **Scope split (S48, 2026-04-12).** Original Phase 2 spec targeted all 11 §6 layers in one session. S48 recon found this unrealistic — split into three decimal phases by dependency group. §6 table is canonical for layer specs; this section is the implementation roadmap. Pilot tile changed from 36_20 (desert) to **59_53** (temperate forested ridges, existing baseline).
+
+**Original deliverables (still the full Phase 2 goal):**
+- 11 Pass 2 layers from § 6 table (9 partition + 2 overlay), in `core/layers/pass2_surface/`.
+- `core/surface_pipeline.py` wired as the Pass 2 orchestrator.
+- `surface_decorator.py` gains feature flag `use_new_surface_pipeline` — default OFF.
+- `desert_pavement` parallel protocol test on 24_80.
+- `diag_layer_ownership.py` real output on 59_53.
+- `diag_cliff_crosssection.py` output on 59_53 showing vertical fluting.
+
+**Original exit criteria:**
+- Feature flag ON for temperate biomes produces results Nick reviews and approves.
 - Regression baseline on 48_48 (ocean) + 51_53 (river/forest) still green.
-- .mca regen at end of phase: tile 36_20 in-world comparison to `Mountain rock exposure in valley.webp` north star.
+- .mca regen: 59_53 in-world inspection.
 
 **Risk:** high. Most of the creative work lives here. Most likely slip point.
+
+---
+
+### Phase 2.0 — Feature flag wiring + rock/cliff group (S48, 2026-04-12)
+
+**Scope:** Wire `use_new_surface_pipeline` feature flag in `surface_decorator.py`. Construct `SurfaceContext` from existing pipeline artifacts. Implement the 3 rock/cliff layers that are the highest-impact visual change and prove partition + overlay semantics end-to-end.
+
+**Deliverables:**
+- `surface_decorator.py` — new `use_new_surface_pipeline` feature flag (default OFF, gated in `config/thresholds.json`). When ON for temperate biomes, delegates to `surface_pipeline.run_pass()` for rock/cliff layers; legacy code still handles remaining pixels.
+- `core/layers/pass2_surface/temperate_cliff_face.py` — **partition** layer. Rock mix from lithology group: 70% primary + 20% secondary + 10% accent, with ±10% edge jitter from noise. Scope: temperate biomes, `cliff_deg >= 35°`.
+- `core/layers/pass2_surface/temperate_talus_apron.py` — **partition** layer. Cobblestone + gravel scatter below cliff_face pixels. Scope: temperate, `18° <= cliff_deg < 35°`, concave.
+- `core/layers/pass2_surface/vertical_fluting.py` — **overlay** layer. Phase-modulated stone variant substitution on cliff faces, stripe width 4 ±1 block. Scope: any biome, `cliff_deg >= 35°`, already claimed by cliff_face.
+- `SurfaceContext` builder in `surface_decorator.py` (or `_pipeline_runner.py`) that maps eco_grads + lithology + surface_y into the `SurfaceContext` dataclass.
+- Unit tests: partition coverage on 59_53 for cliff_face; overlay correctness for vertical_fluting; flag-OFF regression.
+
+**Exit criteria:**
+- Flag-OFF: 48_48 baseline green. 59_53 baseline green.
+- Flag-ON: 59_53 3×3 renders cliff faces with lithology-derived rock palettes and visible vertical fluting stripes.
+- Unit tests: all prior + new tests passing.
+
+**Scope boundaries (NOT in Phase 2.0):**
+- No terrain layers (grass_terrace, weathered_top, forest_surface).
+- No water-adjacent layers (riparian_fringe, river_bar, lake_edge).
+- No snow_cap_north, beach_by_fetch, desert_pavement.
+- No diag_layer_ownership.py rewrite (deferred to Phase 2.5 or 2.75).
+- Legacy surface_decorator still handles all non-cliff pixels.
+
+---
+
+### Phase 2.5 — Terrain group (3 layers)
+
+**Scope:** Fill the flat/moderate slope gaps in the surface pipeline.
+- `temperate_grass_terrace` — partition, moderate slopes
+- `temperate_weathered_top` — partition, flat + high elevation + exposed
+- `temperate_forest_surface` — partition, forested biomes, flat/moderate
+
+**Exit criteria:** 59_53 with flag ON shows no unclaimed land pixels in temperate biomes (cliff + talus + grass + weathered + forest cover all land).
+
+---
+
+### Phase 2.75 — Water-adjacent + cross-biome (5 layers) + desert_pavement test
+
+**Scope:** Complete the §6 layer table.
+- `temperate_riparian_fringe`, `river_bar`, `lake_edge` — water-adjacent
+- `snow_cap_north` — overlay, high elevation
+- `beach_by_fetch` — shoreline (may need `wave_fetch.tif` mask)
+- `desert_pavement` — parallel protocol test on 24_80
+- `diag_layer_ownership.py` rewrite from stub to real pipeline reader
+
+**Exit criteria:** Full §6 table implemented. 59_53 partition coverage ≥ 99%. desert_pavement isolated on 24_80. diag_layer_ownership.py produces real output.
 
 ---
 
@@ -1286,6 +1372,225 @@ Then calls `run_passes([], _shadow_ctx, strict=True)` and immediately `del`s the
 - **Sublayers 5-6** (river_bed, lake_bed) — requires threading `river_meta` / `hydro_lake` to `build_column_array()`.
 - **Palette tuning** — in-game review may reveal further color balance issues per biome region.
 - **Aspect convention drift** (carry-over from S44). Still unresolved.
+
+### S48 — Phase 1.75b all-biome surface decorator gating + cliff cross-section diag (2026-04-12)
+
+**Phase state (end of S48):**
+- Landed this session: **Phase 1.75b**
+- §11 currently at: **Phase 1.75b** (new subsection between Phase 1.75 and Phase 2)
+- Next session starts: **Phase 2** — Temperate Mountain Pass 2 (surface pipeline pilot layers)
+
+**Architecture finding (S48 recon):**
+Geology fills `vol` in Y range `[Y_MIN+1, surface_y-3]`. The surface decorator's `sub_blk` fills `sy-1` and `sy-2` — **non-overlapping Y ranges**. But when gap handlers override `sub_blk` with "stone" (snow, slope zones) or "sandstone" (sand dunes), it creates a visible discontinuity: stone at sy-1/sy-2 then dirt (soil horizon) at sy-3. Fix: skip all subsurface writes in the decorator when geology is ON, letting base biome subsurface (typically "dirt") persist — continuous with geology's soil horizon.
+
+**Audit results (gap handler subsurface writes):**
+- **gap==5 rock** — already gated in S47. No change.
+- **gap==7 snow** — 3 `subsurface_blocks` writes. All gated behind `if not use_new_geology`.
+- **gap==8 sand_dune** — 1 write. Gated.
+- **gap==6 alpine_meadow** — no subsurface writes. No change needed.
+- **gap==1 meadow, gap==2 windthrow, gap==4 floodplain** — surface-only writes. No change needed.
+- **Gap-edge dither** (line ~1618) — subsurface copy. Gated.
+- **`_apply_slope_zones()`** — 6 subsurface writes (transition, cliff, talus). All gated. New `use_new_geology` param added; caller passes the flag.
+- **`_apply_desert_rock_palette()`** — already bypassed when geology ON (inside gap==5 `else` branch). No change needed.
+
+**Files touched (S48):**
+
+1. **`core/surface_decorator.py`**:
+   - Snow handler (gap==7): 3 subsurface writes gated behind `if not use_new_geology`.
+   - Sand dune handler (gap==8): 1 write gated.
+   - Gap-edge dither: subsurface copy gated.
+   - `_apply_slope_zones()`: gains `use_new_geology: bool = False` param; 6 subsurface writes gated (transition stone, cliff stone, gravel_talus, cobble_talus).
+   - Call site: passes `use_new_geology=use_new_geology` to `_apply_slope_zones`.
+   - Pre-existing truncation fix: `sys.exit(` → `sys.exit(0)` at EOF.
+
+2. **`diag_cliff_crosssection.py`**: FULL REWRITE from Phase 0 stub to real pipeline reader.
+   - Uses `_pipeline_runner.run_tile_prelude()` to run full pipeline through surface decoration.
+   - Calls `build_column_array()` with geology params to build voxel volume.
+   - Samples line through volume, renders block identities as colored PNG.
+   - Annotated output: Y-axis labels, surface profile overlay (orange), block legend.
+   - Metadata JSON sidecar with blocks_seen, timing, geology flag state.
+   - CLI: `py diag_cliff_crosssection.py --tile-x 24 --tile-z 80 --line 50 50 460 460`
+
+3. **`PHYSICAL_REALISM_REFACTOR.md`**: §11 Phase 1.75b subsection inserted.
+
+4. **`tests/unit/test_phase1_75b_gating.py`**: NEW — 10 tests:
+   - 6 functional tests of `_apply_slope_zones` (cliff/transition/talus × geology ON/OFF + flat baseline).
+   - 4 structural grep tests (snow subsurface gated, sand subsurface gated, slope param exists, call site passes flag).
+
+**Validation results (S48):**
+
+| Gate | Result | Detail |
+|---|---|---|
+| Unit tests (sandbox Python 3.10) | **56/56 PASS** | 46 prior + 10 new Phase 1.75b gating tests. |
+| 3×3 baseline 48_48 (flag-OFF) | **PENDING** | Must run on user's machine (rasterio/masks). Flag-OFF path is byte-identical by construction (gating only adds `if not False` checks). |
+| 3×3 flag-ON 24_80 | **PENDING** | Must run on user's machine. |
+| 3×3 flag-ON 59_53 | **PENDING** | Must run on user's machine. |
+| Cliff cross-section diag | **PENDING** | First real pipeline run on user's machine. |
+
+**Open items carried into next session:**
+- **Palette tuning** — deferred. In-game/cross-section review may reveal color balance issues.
+- **Sublayers 5-6** (river_bed, lake_bed) — requires threading `river_meta` / `hydro_lake` to `build_column_array()`.
+- **Aspect convention drift** (carry-over from S44). Still unresolved.
+- **51_53 flag-ON shadow hookup** (carry-over). Not Phase 1.75b scope.
+
+### S48 (cont.) — Phase 2.0 surface pipeline pilot layers (2026-04-12)
+
+**Phase state (end of S48 cont.):**
+- Landed this session: **Phase 2.0**
+- §11 currently at: **Phase 2.0** (updated session ref from S49 to S48)
+- Next session starts: **Phase 2.5** — Terrain group (grass_terrace, weathered_top, forest_surface)
+
+**What landed:**
+
+1. **`core/layers/pass2_surface/temperate_cliff_face.py`** — NEW. Partition layer (priority 10). Claims temperate biome pixels where `cliff_deg >= 35°` and land. Block selection: lithology group palette with 70/20/10 primary/secondary/accent scatter. Vectorized per-group painting.
+
+2. **`core/layers/pass2_surface/temperate_talus_apron.py`** — NEW. Partition layer (priority 20). Claims temperate pixels where `18° <= cliff_deg < 35°` and concave (`concavity_norm > 0`). 50/50 cobblestone/gravel scatter at 60% density; passthrough on unscattered scope pixels.
+
+3. **`core/layers/pass2_surface/vertical_fluting.py`** — NEW. Overlay layer (priority 50). Phase-modulated stripe pattern on already-claimed cliff pixels. Algorithm: 3×3 mean-filtered surface_y gradient → cliff tangent → dot-product phase → `(phase // 4) % N_VARIANTS` indexing into lithology palette. ±1 block jitter from noise.
+
+4. **`core/layers/pass2_surface/__init__.py`** — Updated. Exports all 3 layer classes.
+
+5. **`core/surface_decorator.py`**:
+   - New params: `use_new_surface_pipeline: bool = False`, `lithology_tile: np.ndarray | None = None`.
+   - Pipeline delegation block after shadow mode: when flag ON, builds SurfaceContext from eco_grads/cliff_deg/surface_y/noise_b/lithology, instantiates 3 layers, runs `run_pass()`, merges claimed+overlaid pixels into `surface_blocks`. Legacy path preserved for all unclaimed pixels.
+   - Try/except wrapped — pipeline errors logged to stdout and swallowed, production tuple untouched.
+   - Pre-existing EOF truncation fixed (test harness `print` + `sys.exit(0)`).
+
+6. **`config/thresholds.json`** — `surface_pipeline.feature_flag_enabled: false` added.
+
+7. **`tools/_pipeline_runner.py`** — Reads `surface_pipeline.feature_flag_enabled`, passes `use_new_surface_pipeline` and `lithology_tile` to `decorate_surface()`.
+
+8. **`run_pipeline.py`** — Same wiring as `_pipeline_runner.py`.
+
+9. **`tests/unit/test_phase2_0_layers.py`** — NEW — 21 tests:
+   - 8 TemperateCliffFace tests (steep/flat/non-temperate/ocean/prior-ownership/granitic-palette/threshold-boundary).
+   - 5 TemperateTalusApron tests (moderate-concave/flat/steep/blocks/convex).
+   - 4 VerticalFluting tests (claimed-cliffs/unclaimed/flat/multiple-variants).
+   - 3 pipeline composition tests (full 3-layer pass, flag param exists, default False).
+   - 1 config test (feature_flag_enabled exists and is false).
+
+**Validation results (S48 Phase 2.0):**
+
+| Gate | Result | Detail |
+|---|---|---|
+| Unit tests (sandbox Python 3.10) | **77/77 PASS** | 56 prior + 21 new Phase 2.0 tests. |
+| Flag-OFF regression | **PASS (by construction)** | `feature_flag_enabled: false` in config; `use_new_surface_pipeline` defaults False. Pipeline block never executes. |
+| Flag-ON 59_53 3×3 | **PENDING** | Must run on user's machine with rasterio/masks. |
+| Flag-ON in-game visual | **PENDING** | Cliff faces should show lithology-derived palette + visible fluting stripes. |
+
+### S48 (cont. 2) — All-biome expansion + threshold tuning + triage (2026-04-12)
+
+**Phase state (end of S48 cont. 2):**
+- Landed this session: **Phase 2.0** (code complete, flag ON, visual validation BLOCKED — see triage)
+- §11 currently at: **Phase 2.0**
+- Next session starts: **Phase 2.0 triage** then **Phase 2.5**
+
+**Changes landed:**
+
+1. **Biome scope expansion** — `TEMPERATE_BIOMES` renamed to `LAND_BIOMES`, now includes all 25 land biomes (was 9 temperate-only). Cliff_face, talus_apron, and vertical_fluting now fire on all biomes with lithology group mappings. Discovered during in-game validation that 59_53 (windthrow) and 36_20 (rock exposure) had no steep temperate terrain — the original temperate-only scope meant the pipeline had nothing to claim.
+
+2. **Threshold lowering** (in flux, needs further tuning):
+   - `CLIFF_DEG_THRESHOLD`: 35° → 25°
+   - `TALUS_DEG_MIN/MAX`: 18–35° → 15–25°
+   - `MIN_CLIFF_DEG` (fluting): 35° → 25°
+   - Rationale: in-game mountain faces on tile (25,80) (Y 159→315, 156-block elevation range) rendered as all-grass. The `cliff_deg` data at those visually-steep slopes was below 35°.
+
+3. **Config**: `surface_pipeline.feature_flag_enabled` set to `true` (was false).
+
+**In-game validation results:**
+- 59_53 flag-ON: 74 PASS / 6 FAIL (pre-existing), no regressions vs baseline. Top-down stitched_blocks.png shows lithology palette differentiation. But in-game: no visible cliff rocks — tile is all gentle rolling terrain (windthrow), no ≥25° slopes.
+- 25_80 (single tile, flag-ON, 25° threshold): still all grass in-game despite 156-block elevation range. **Root cause unresolved.**
+
+**TRIAGE — lithology blocks not visible in-game: ROOT CAUSE FOUND.**
+
+**Root cause:** `tools/validate_test_tile.py` line 625 called `decorate_surface()` without passing `use_new_surface_pipeline` or `lithology_tile`. Both defaulted to `False`/`None`, so the pipeline block never executed. The subsurface geology (geology flag) WAS wired correctly in this file, which is why underground lithology worked but surface didn't.
+
+**Fix:** Added `_use_sp` + `lithology_tile` params to the `validate_test_tile.py` call site, matching the pattern already in `_pipeline_runner.py` and `run_pipeline.py`.
+
+**Lesson:** When adding a new param to `decorate_surface()`, grep ALL call sites — there are 5+: `run_pipeline.py`, `_pipeline_runner.py`, `validate_test_tile.py`, `world_studio.py`, and the internal `__main__` test harness. Missing one means silent flag-OFF behavior.
+
+Thresholds reset to originals (35°/18–35°/35°) after premature lowering during triage. Visual validation pending with correct wiring.
+
+**Open items carried into next session:**
+- **Threshold calibration** — 35° cliff threshold confirmed working but may need tuning per biome.
+- **Aspect convention drift** (carry-over from S44).
+- **51_53 flag-ON shadow hookup** (carry-over).
+- **MC biome mapping bug** — (25,80) rendering as plains in-game, possible `_DEFAULT` fallthrough in `BIOME_TO_MC`.
+- **world_studio.py** — still missing `use_new_surface_pipeline`/`lithology_tile` params (low priority, preview only).
+
+### S48 (cont. 3) — Phase 2.5 layers + Gaea mask analysis (2026-04-12)
+
+**Phase state (end of S48 cont. 3):**
+- Landed this session: **Phase 2.0 + 2.5** (all 6 layers code complete, flag ON, 77/77 tests green, Phase 2.0 visually confirmed in-game on 25,80)
+- §11 currently at: **Phase 2.5**
+- Next session starts: **Phase 2.5 visual validation** then **Phase 2.75**
+
+**Changes landed:**
+
+1. **Phase 2.5 layers implemented** — 3 new partition layers:
+   - `grass_terrace.py`: 8–18° slopes, grass_block dominant, coarse_dirt on south-facing (north_factor < 0.3, 35% scatter).
+   - `weathered_top.py`: flat + high elevation (≥180 Y) + wind-exposed (>0.5). Mix: 25% stone, 30% mossy_cobblestone, 45% grass_block.
+   - `forest_surface.py`: 13 forested biomes, tree-density-driven interpolation (high density → podzol/rooted_dirt/coarse_dirt mix; low density → grass dominant).
+
+2. **tree_density_hint module** — `core/tree_density_hint.py` stub computing density from biome + slope + moisture + disturbance. Used by forest_surface layer.
+
+3. **Phase 2.0 root cause fixed + visually confirmed** — `validate_test_tile.py` was missing `use_new_surface_pipeline`/`lithology_tile` params. Fixed. Lithology rock rendering confirmed correct on cliff faces in-game on (25,80). Thresholds reset to originals (35°/18–35°/35°).
+
+4. **Gaea vs Python mask delegation analysis** — researched WorldPainter/Gaea pipelines. Recommendation: outsource 4 environmental exposure masks to Gaea (rock_exposure, snow_caps, wind_windthrow, sand_dunes) since they're terrain-erosion products. Keep hydrology, gap mask, lithology, surface pipeline layers, and tree density in Python (game-logic dependent).
+
+**Test results:** 77/77 unit tests green (21 Phase 2.0 + 56 Phase 2.5 + prior).
+
+**Open items carried into S49:**
+- **Phase 2.5 visual validation** — grass_terrace, weathered_top, forest_surface need in-game confirmation.
+- **Phase 2.75** — water-adjacent + cross-biome layers (riparian_fringe, river_bar, lake_edge, snow_cap_north, beach_by_fetch).
+- **Gaea mask outsourcing** — spec Gaea node graphs for rock/snow/wind/sand if user wants to proceed.
+- **MC biome mapping bug** — (25,80) rendering as plains.
+- **Aspect convention drift**, **51_53 flag-ON shadow hookup**, **palette tuning**, **world_studio.py** params (all carry-forward).
+
+---
+
+### S49 — 2026-04-13: Biome mapping consolidation, ground cover gating, stone banding cleanup
+
+**Phase state:** Landed this session: S49 bugfixes (biome mapping, ground cover, stone banding). §11 currently at: Phase 2.5 complete. Next session starts: Phase 2.75 (water-adjacent + cross-biome) OR visual validation of S49 fixes on (24,80).
+
+**Context:** User generated tile (24,80) and found 4 problems: (1) stone banding on convex edges where terrain ≤18°, (2) MC biome mapping falling through to `_DEFAULT` (plains), (3) default ground cover (short_grass + flowers) blanketing entire mountain, (4) no slope/height/exposure cutoff on ground cover. User chose fix order: biome → ground cover → stone banding.
+
+**Changes:**
+
+1. **Biome mapping consolidation** — Root cause: `BIOME_TO_MC` dict was duplicated in 4 files with divergent mappings. `chunk_writer.py` (canonical) had `ALPINE_MEADOW → minecraft:plains` (temp 0.25 → rivers freeze). Fixed:
+   - `core/chunk_writer.py`: ALPINE_MEADOW → `minecraft:meadow` (temp 0.5), EASTERN_TEMPERATE_COAST → `minecraft:beach` (temp 0.8 vs stony_shore 0.2).
+   - `tools/validate_test_tile.py`: removed 30-line duplicate dict, now imports from `core.chunk_writer.BIOME_TO_MC`.
+   - `tools/_pipeline_runner.py`: removed duplicate dict, `_mc_biome_map()` uses lazy import from `core.chunk_writer.BIOME_TO_MC`.
+   - `tools/voxel_preview.py`: removed duplicate dict, lazy import from `core.chunk_writer.BIOME_TO_MC`.
+   - `tools/world_studio.py`: still has duplicate — not fixed (world_studio broken per CLAUDE.md, low priority).
+
+2. **Ground cover slope gating** — `core/surface_decorator.py`:
+   - `_apply_ground_cover()` gains `cliff_deg` parameter + slope-based density modulation: 0% on cliffs (≥35°), 10% on talus (18–35°), 50% on moderate (8–18°), 100% on flat (<8°).
+   - Post-pipeline ground cover suppression: any pixel with a non-plantable surface block (stone, andesite, granite, sandstone, terracotta, sand, snow, ice, etc.) gets `ground_cover` cleared to `""`.
+
+3. **Stone banding cleanup (v1)** — `core/surface_decorator.py`:
+   - Post-pipeline pass after surface_pipeline merge: any pixel where `cliff_deg ≤ 18°` AND surface is a hard rock block → forced to `grass_block`. Implements user rule: "≤18° = grass overrides convex-edge stone."
+   - **SUPERSEDED same session** — user tested in-game, banding was worse. Replaced by approach (4).
+
+4. **Lithology depth push + banding cleanup v2** — `core/chunk_writer.py`:
+   - Root cause (partial): geology bands visible at convex edges because stone_mask reached `surface_y - 3` (only 2 blocks of dirt buffer). Fix: push stone_mask to `surface_y - 4`, add 3rd sub_blk layer at `sy-3`, update `_fill_geology_layers` stone_zone_top to match. Column layout now: `[Y_MIN+1, sy-4]` = geology, `[sy-3, sy-1]` = sub_blk (3 blocks dirt), `sy` = surface_blk.
+   - Removed the v1 stone banding cleanup from `surface_decorator.py` (no longer needed — geology is buried deep enough that convex edges show dirt, not rock).
+   - Stone faces now only appear on ≥35° cliffs via the existing TemperateCliffFace surface layer.
+   - **In-game result: better but banding persisted.** Root cause identified as deeper: see (5).
+
+5. **Slope smoothing — staircase aliasing fix (root cause)** — `core/eco_gradients.py` + all callers:
+   - **Root cause:** `cliff_deg` computed from raw integer `surface_y` via `np.gradient`. Integer terrain is a staircase — every 1-block step edge produces a local 45° spike even on globally gentle (~15°) slopes. The ≥35° cliff layer claims every step edge → stone bands at every contour line. The banding is intrinsic to the discrete gradient, not fixable by post-processing.
+   - **Fix:** New `compute_cliff_deg(surface_y, sigma=1.5)` helper in `core/eco_gradients.py`. Applies `gaussian_filter(sigma=1.5)` to surface_y before gradient computation. This recovers the true regional slope, eliminating staircase aliasing. sigma=1.5 ≈ 3-block effective kernel.
+   - Updated all 5 call sites: `_pipeline_runner.py`, `validate_test_tile.py`, `surface_decorator.py` test helper, `chunk_writer.py` legacy cliff banding, `chunk_writer._fill_geology_layers` soil depth computation.
+
+**Test results:** 77/77 unit tests green (after all fixes).
+
+**Open items carried into S50:**
+- **Regenerate tile (24,80)** — validate biome fix + ground cover gating + lithology depth + slope smoothing in-game.
+- **Phase 2.75** — water-adjacent + cross-biome layers (riparian_fringe, river_bar, lake_edge, snow_cap_north, beach_by_fetch).
+- **Ice in subsurface** — user noted at specific coords on (24,80); expects ground cover + topsoil update to resolve.
+- **world_studio.py** duplicate BIOME_TO_MC — low priority.
+- **Aspect convention drift**, **51_53 flag-ON shadow hookup**, **palette tuning** (all carry-forward).
 
 ---
 

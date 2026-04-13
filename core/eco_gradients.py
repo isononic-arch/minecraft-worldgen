@@ -18,7 +18,27 @@ import sys
 from typing import NamedTuple, Optional
 
 import numpy as np
-from scipy.ndimage import laplace, distance_transform_edt
+from scipy.ndimage import laplace, distance_transform_edt, gaussian_filter
+
+
+# ---------------------------------------------------------------------------
+# Slope computation — shared helper (S49)
+# ---------------------------------------------------------------------------
+
+def compute_cliff_deg(surface_y: np.ndarray, *, sigma: float = 1.5) -> np.ndarray:
+    """Compute slope in degrees from integer surface_y, with Gaussian pre-smooth.
+
+    Raw integer terrain is a staircase — every 1-block step edge produces a
+    local 45° spike even on globally gentle slopes.  Pre-smoothing with a
+    small Gaussian (sigma ~1.5 blocks ≈ 3-block effective kernel) recovers
+    the true regional slope and eliminates contour-line banding artifacts
+    in the surface pipeline layers.
+
+    Returns (H, W) float32 degrees.
+    """
+    sy_smooth = gaussian_filter(surface_y.astype(np.float32), sigma=sigma)
+    gy, gx = np.gradient(sy_smooth)
+    return np.degrees(np.arctan(np.hypot(gx, gy))).astype(np.float32)
 
 
 # ---------------------------------------------------------------------------

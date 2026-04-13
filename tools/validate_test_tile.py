@@ -490,39 +490,12 @@ def main() -> int:
     # deposits — use erosion as proxy if no dedicated mask
     dep_u16 = er_u16.copy()
 
-    # MC biome mapping (biome_grid → MC biome string)
-    BIOME_TO_MC = {
-        "COASTAL_HEATH":           "minecraft:windswept_hills",
-        "TEMPERATE_RAINFOREST":    "minecraft:old_growth_spruce_taiga",
-        "BOREAL_TAIGA":            "minecraft:taiga",
-        "SNOWY_BOREAL_TAIGA":      "minecraft:snowy_taiga",
-        "ALPINE_MEADOW":           "minecraft:meadow",
-        "ARCTIC_TUNDRA":           "minecraft:frozen_peaks",
-        "FROZEN_FLATS":            "minecraft:ice_spikes",
-        "TEMPERATE_DECIDUOUS":     "minecraft:forest",
-        "RAINFOREST_COAST":        "minecraft:old_growth_birch_forest",
-        "RIPARIAN_WOODLAND":       "minecraft:dark_forest",
-        "DRY_OAK_SAVANNA":         "minecraft:savanna",
-        "KARST_BARRENS":           "minecraft:windswept_gravelly_hills",
-        "BIRCH_FOREST":            "minecraft:birch_forest",
-        "EASTERN_TEMPERATE_COAST": "minecraft:beach",
-        "MIXED_FOREST":            "minecraft:forest",
-        "CONTINENTAL_STEPPE":      "minecraft:plains",
-        "DRY_PINE_BARRENS":        "minecraft:wooded_badlands",
-        "SCRUBBY_HEATHLAND":       "minecraft:windswept_hills",
-        "LUSH_RAINFOREST_COAST":   "minecraft:jungle",
-        "SAND_DUNE_DESERT":        "minecraft:desert",
-        "DESERT_STEPPE_TRANSITION":"minecraft:savanna_plateau",
-        "SEMI_ARID_SHRUBLAND":     "minecraft:savanna",
-        "DRY_WOODLAND_MAQUIS":     "minecraft:sparse_jungle",
-        "TIDAL_JUNGLE_FRINGE":     "minecraft:sparse_jungle",
-        "MANGROVE_COAST":          "minecraft:mangrove_swamp",
-        "FRESHWATER_FEN":          "minecraft:swamp",
-        "_OCEAN":                  "minecraft:ocean",
-    }
+    # MC biome mapping — canonical source is core/chunk_writer.BIOME_TO_MC
     mc_biomes = np.empty(biome_grid.shape, dtype=object)
     for b in np.unique(biome_grid):
-        mc_biomes[biome_grid == b] = BIOME_TO_MC.get(str(b), "minecraft:plains")
+        mc_biomes[biome_grid == b] = core_chunk.BIOME_TO_MC.get(
+            str(b), core_chunk.BIOME_TO_MC["_DEFAULT"]
+        )
 
     col_results = core_col.process_tile_columns_v2(
         tile_height   = h_u16,
@@ -587,8 +560,8 @@ def main() -> int:
     checks.append(chk_river_meta_consistency(river_meta, surface_y))
 
     # ---- Step 6b: Ecological gradients ----
-    _gy, _gx = np.gradient(surface_y.astype(np.float32))
-    cliff_deg = np.degrees(np.arctan(np.hypot(_gx, _gy))).astype(np.float32)
+    from core.eco_gradients import compute_cliff_deg
+    cliff_deg = compute_cliff_deg(surface_y)
     SEA_LEVEL = 63
     land_mask = surface_y >= SEA_LEVEL
 
@@ -622,6 +595,7 @@ def main() -> int:
     # surface blocks from scratch based on biome, river_meta, terrain.
     # Do NOT extract from col_results (pre-carve surface_y is stale).
     _use_geo = bool(cfg.get("lithology", {}).get("feature_flag_enabled", False))
+    _use_sp  = bool(cfg.get("surface_pipeline", {}).get("feature_flag_enabled", False))
     surface_blk, sub_blk, ground_cover = core_dec.decorate_surface(
         surface_y    = surface_y,
         biome_grid   = biome_grid,
@@ -637,6 +611,8 @@ def main() -> int:
         eco_grads    = eco_grads,
         cliff_deg    = cliff_deg,
         use_new_geology = _use_geo,
+        use_new_surface_pipeline = _use_sp,
+        lithology_tile = lithology_tile if _use_sp else None,
     )
     checks.append(chk_no_bare_dirt_surface(surface_blk, biome_grid))
     checks.append(chk_surface_block_variety(surface_blk, biome_grid))

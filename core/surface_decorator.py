@@ -787,6 +787,8 @@ def decorate_surface(
     eco_grads=None,             # Optional EcoGradients from eco_gradients.py
     cliff_deg:    np.ndarray | None = None,  # (H,W) float32 degrees
     use_new_geology: bool = False,  # When True, skip legacy rock painting (geology column handles subsurface)
+    use_new_surface_pipeline: bool = False,  # Phase 2.0: run new layer-based surface pipeline for temperate cliffs
+    lithology_tile: np.ndarray | None = None,  # (H/8, W/8) uint8 lithology group IDs — upscaled internally
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute surface and subsurface block arrays for a tile.
@@ -998,7 +1000,8 @@ def decorate_surface(
     if cliff_deg is not None:
         _apply_slope_zones(surface_blocks, subsurface_blocks,
                            cliff_deg, biome_grid, surface_y, noise_b2, noise_b3,
-                           noise_b4, cfg, meadow_exclude=_meadow_exclude)
+                           noise_b4, cfg, meadow_exclude=_meadow_exclude,
+                           use_new_geology=use_new_geology)
 
     # --- Gap surface block ratio shift ----------------------------------------
     # Inside clearings, nudge surface block ratios WITHOUT changing noise type.
@@ -1191,7 +1194,8 @@ def decorate_surface(
                 _is_rock_under = snow_px & ~_is_snow
 
                 surface_blocks[_is_snow] = "snow_block"
-                subsurface_blocks[_is_snow] = "stone"
+                if not use_new_geology:
+                    subsurface_blocks[_is_snow] = "stone"
                 # Non-snow pixels in snow zone → stone (rock showing through)
                 _blk_rng_s = np.random.default_rng(
                     tile_x * 48271 ^ tile_y * 31337 ^ 0x5AFC)
@@ -1199,7 +1203,8 @@ def decorate_surface(
                 surface_blocks[_is_rock_under & (_blk_rand_s < 0.55)] = "stone"
                 surface_blocks[_is_rock_under & (_blk_rand_s >= 0.55) & (_blk_rand_s < 0.80)] = "andesite"
                 surface_blocks[_is_rock_under & (_blk_rand_s >= 0.80)] = "gravel"
-                subsurface_blocks[_is_rock_under] = "stone"
+                if not use_new_geology:
+                    subsurface_blocks[_is_rock_under] = "stone"
                 del _blk_rng_s, _blk_rand_s
 
                 # Rare powder_snow in concavities (deep snow pockets)
@@ -1211,13 +1216,15 @@ def decorate_surface(
             elif snow_px.any():
                 # Fallback if no gradient available
                 surface_blocks[snow_px] = "snow_block"
-                subsurface_blocks[snow_px] = "stone"
+                if not use_new_geology:
+                    subsurface_blocks[snow_px] = "stone"
 
             # ── Sand dunes (gap==8): pure sand ───────────────────────────
             sand_px = _gap == 8
             if sand_px.any():
                 surface_blocks[sand_px] = "sand"
-                subsurface_blocks[sand_px] = "sandstone"
+                if not use_new_geology:
+                    subsurface_blocks[sand_px] = "sandstone"
 
             # ── Sand flows on rock (proximity-based dither) ─────────────
             # Where rock/alpine pixels border sand dunes, paint sand patches
@@ -1343,15 +1350,20 @@ def decorate_surface(
         biome_grid, noise_b, cfg,
         tile_x, tile_y,
         gap_mask=_gap_for_ecotone,
+        use_new_geology=use_new_geology,
     )
 
     # --- Ground cover --------------------------------------------------------
+    # NOTE: ground cover is applied here provisionally; if the surface pipeline
+    # runs below (use_new_surface_pipeline), a post-pipeline gating pass will
+    # clear ground cover on pixels where non-plantable blocks were placed.
     _apply_ground_cover(
         ground_cover, surface_blocks,
         biome_grid, river_meta,
         noise_b, den_cfg,
         tile_x, tile_y,
         eco_grads=eco_grads,
+        cliff_deg=cliff_deg,
     )
 
     # --- Clear floating vegetation near water --------------------------------
@@ -1441,6 +1453,131 @@ def decorate_surface(
                 f"{type(_shadow_exc).__name__}: {_shadow_exc}"
             )
 
+    # -----------------------------------------------------------------------
+    # Phase 2.0 — New surface pipeline for temperate cliff/talus layers.
+    # When use_new_surface_pipeline=True, run the layer-based pipeline on
+    # temperate cliff pixels and merge results into surface_blocks. Legacy
+    # path already ran above — pipeline overwrites only claimed pixels.
+    # Subsurface is NOT touched (geology column owns subsurface).
+    # -----------------------------------------------------------------------
+    if use_new_surface_pipeline:
+        try:
+            from core.surface_pipeline import run_pass as _sp_run_pass
+            from core.layers.protocol import SurfaceContext as _SPCtx
+            from core.layers.pass2_surface import (
+                TemperateCliffFace,
+                TemperateTalusApron,
+                VerticalFluting,
+                GrassTerrace,
+                WeatheredTop,
+                ForestSurface,
+            )
+
+            # Build lithology grid at tile resolution (512×512).
+            _litho_512: np.ndarray | None = None
+            if lithology_tile is not None:
+                from scipy.ndimage import zoom as _sp_zoom
+                _zh = H / lithology_tile.shape[0]
+                _zw = W / lithology_tile.shape[1]
+                _litho_512 = _sp_zoom(lithology_tile, (_zh, _zw), order=0)
+
+            # Build eco_grads dict for SurfaceContext.
+            _pipe_eco: dict = {}
+            if eco_grads is not None:
+                for _attr in (
+                    "moisture_index", "wind_exposure", "concavity_norm",
+                    "soil_depth", "gap_mask", "aspect", "north_factor",
+                    "riparian_proximity", "lake_fringe",
+                    "rock_exposure_gradient", "rock_tight_gradient",
+                    "snow_caps_gradient", "sand_dunes_gradient",
+                ):
+                    _v = getattr(eco_grads, _attr, None)
+                    if _v is not None:
+                        _pipe_eco[_attr] = _v
+            if cliff_deg is not None:
+                _pipe_eco["cliff_deg"] = cliff_deg
+            _pipe_eco["surface_y"] = surface_y
+            _pipe_eco["noise_b"] = noise_b
+
+            # Compute tree density hint for forest_surface layer.
+            try:
+                from core.tree_density_hint import compute_tree_density_hint
+                _slope_proxy = cliff_deg / 90.0 if cliff_deg is not None else np.zeros((H, W), dtype=np.float32)
+                _moist_proxy = _pipe_eco.get("moisture_index", np.full((H, W), 0.5, dtype=np.float32))
+                _dist_proxy = None
+                if eco_grads is not None:
+                    _gm = getattr(eco_grads, "gap_mask", None)
+                    if _gm is not None:
+                        _dist_proxy = ((_gm == 2) | (_gm == 4)).astype(np.float32)
+                _pipe_eco["tree_density_hint"] = compute_tree_density_hint(
+                    biome_grid, slope=_slope_proxy, moisture_idx=_moist_proxy,
+                    disturbance=_dist_proxy,
+                )
+            except Exception:
+                pass  # forest_surface falls back to 0.45 default
+
+            # Instantiate layers.
+            _litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
+            _layers = [
+                TemperateCliffFace(lithology_config=_litho_cfg),
+                TemperateTalusApron(),
+                GrassTerrace(),
+                WeatheredTop(),
+                ForestSurface(),
+                VerticalFluting(lithology_config=_litho_cfg),
+            ]
+
+            _sp_ctx = _SPCtx(
+                tile_x=int(tile_x),
+                tile_z=int(tile_y),
+                biome_grid=biome_grid,
+                lithology_grid=_litho_512,
+                eco_grads=_pipe_eco,
+                column_output={"surface_y": surface_y},
+                prior_surface=surface_blocks.copy(),
+                prior_ownership=np.zeros((H, W), dtype=np.uint16),
+                overlay_touched=np.zeros((H, W), dtype=np.uint8),
+            )
+
+            _sp_result = _sp_run_pass(_layers, _sp_ctx, strict=True)
+
+            # Merge: overwrite surface_blocks where pipeline claimed pixels.
+            _claimed = _sp_result.ownership > 0
+            _overlaid = _sp_result.overlay_touched > 0
+            _changed = _claimed | _overlaid
+            if _changed.any():
+                surface_blocks[_changed] = _sp_result.surface[_changed]
+
+        except Exception as _sp_exc:  # noqa: BLE001
+            print(
+                f"[surface_pipeline] ERROR tile=({tile_x},{tile_y}): "
+                f"{type(_sp_exc).__name__}: {_sp_exc}"
+            )
+
+        # ---- Post-pipeline ground cover gating (Phase 3 foundation) ----------
+        # Clear ground cover on pixels where the surface pipeline placed
+        # non-plantable blocks (stone, gravel, cobblestone, etc.).  These
+        # blocks can't physically support grass/fern growth — ground cover
+        # on cliff faces and talus aprons looks wrong.
+        _NON_PLANTABLE = frozenset({
+            "stone", "andesite", "granite", "diorite", "deepslate",
+            "cobblestone", "mossy_cobblestone", "cobbled_deepslate",
+            "gravel", "calcite", "tuff", "dripstone_block",
+            "basalt", "smooth_basalt", "blackstone",
+            "sandstone", "red_sandstone", "smooth_sandstone",
+            "terracotta", "orange_terracotta", "brown_terracotta",
+            "white_terracotta", "yellow_terracotta", "red_terracotta",
+            "light_gray_terracotta",
+            "packed_mud", "sand", "red_sand",
+            "snow_block", "powder_snow", "ice", "packed_ice", "blue_ice",
+        })
+        _np_mask = np.zeros((H, W), dtype=bool)
+        for _blk in _NON_PLANTABLE:
+            _np_mask |= (surface_blocks == _blk)
+        _gc_cleared = _np_mask & (ground_cover != "")
+        if _gc_cleared.any():
+            ground_cover[_gc_cleared] = ""
+
     return surface_blocks, subsurface_blocks, ground_cover
 
 
@@ -1457,6 +1594,7 @@ def _apply_ecotone_dither(
     tile_x:            int,
     tile_y:            int,
     gap_mask:          np.ndarray | None = None,  # skip rock/alpine pixels
+    use_new_geology:   bool = False,
 ) -> None:
     """Dither biome boundaries by probabilistically mixing blocks from
     adjacent biomes within a transition band.
@@ -1615,7 +1753,8 @@ def _apply_ecotone_dither(
         target_c = swap_c[bname_mask]
 
         surface_blocks[target_r, target_c]    = surface_blocks[sampled_r, sampled_c]
-        subsurface_blocks[target_r, target_c] = subsurface_blocks[sampled_r, sampled_c]
+        if not use_new_geology:
+            subsurface_blocks[target_r, target_c] = subsurface_blocks[sampled_r, sampled_c]
 
 
 # ---------------------------------------------------------------------------
@@ -1640,6 +1779,7 @@ def _apply_slope_zones(
     noise_b4:       np.ndarray,
     cfg:            dict,
     meadow_exclude: np.ndarray | None = None,  # (H,W) bool — skip these pixels
+    use_new_geology: bool = False,  # When True, skip subsurface writes (geology column owns it)
 ) -> None:
     """3-zone slope system + talus (Norterre-inspired).
 
@@ -1672,12 +1812,14 @@ def _apply_slope_zones(
     if transition_zone.any():
         stone_scatter = transition_zone & (noise_b2 < trans_stone_f)
         surface_blocks[stone_scatter]    = stone_surf[stone_scatter]
-        subsurface_blocks[stone_scatter] = "stone"
+        if not use_new_geology:
+            subsurface_blocks[stone_scatter] = "stone"
         gravel_scatter = transition_zone & ~stone_scatter & (
             cliff_deg >= (grass_max_deg + trans_max_deg) / 2)
         gravel_mask = gravel_scatter & (noise_b3 < 0.4)
         surface_blocks[gravel_mask]    = "gravel"
-        subsurface_blocks[gravel_mask] = "stone"
+        if not use_new_geology:
+            subsurface_blocks[gravel_mask] = "stone"
 
     # Zone 3: full cliff
     hard_stone = land & (cliff_deg >= trans_max_deg)
@@ -1685,7 +1827,8 @@ def _apply_slope_zones(
         hard_stone = hard_stone & ~meadow_exclude
     if hard_stone.any():
         surface_blocks[hard_stone]    = stone_surf[hard_stone]
-        subsurface_blocks[hard_stone] = stone_surf[hard_stone]
+        if not use_new_geology:
+            subsurface_blocks[hard_stone] = stone_surf[hard_stone]
 
     # Talus / scree at cliff bases
     talus_cfg = cfg.get("talus", {})
@@ -1699,9 +1842,11 @@ def _apply_slope_zones(
             gravel_talus  = talus_scatter & (noise_b4 < talus_gravel_f)
             cobble_talus  = talus_scatter & ~gravel_talus
             surface_blocks[gravel_talus]    = "gravel"
-            subsurface_blocks[gravel_talus] = "stone"
+            if not use_new_geology:
+                subsurface_blocks[gravel_talus] = "stone"
             surface_blocks[cobble_talus]    = "cobblestone"
-            subsurface_blocks[cobble_talus] = "stone"
+            if not use_new_geology:
+                subsurface_blocks[cobble_talus] = "stone"
 
 
 # ---------------------------------------------------------------------------
@@ -2023,6 +2168,7 @@ def _apply_ground_cover(
     tile_x:         int,
     tile_y:         int,
     eco_grads=None,
+    cliff_deg:      np.ndarray | None = None,
 ) -> None:
     """
     Place ground cover blocks (surface_y + 1) per biome.
@@ -2034,6 +2180,8 @@ def _apply_ground_cover(
          within a configurable transition width.
       3. **Species colonies** — Voronoi-like clustering where specific species dominate
          small patches, mimicking natural seed dispersal.
+      4. **Slope-based suppression** — cliff faces (≥35°) get no ground cover, talus
+         slopes (18-35°) get sparse cover, moderate slopes (8-18°) get reduced cover.
 
     Falls back to legacy noise×density when eco_grads is None.
     """
@@ -2041,6 +2189,16 @@ def _apply_ground_cover(
     floor      = den_cfg.get("floor", 0.35)
     rng        = np.random.default_rng(tile_x * 73856093 ^ tile_y * 19349663 ^ 7654321)
     rand_field = rng.random((H, W)).astype(np.float32)
+
+    # ---- Slope-based density gating (Phase 3 foundation) ---------------------
+    # Cliff faces cannot support ground cover; talus and moderate slopes have
+    # reduced density.  This is the physical-realism gate: steep rock doesn't
+    # grow grass.
+    slope_density_mod = np.ones((H, W), dtype=np.float32)
+    if cliff_deg is not None:
+        slope_density_mod[cliff_deg >= 35.0] = 0.0    # cliff: no ground cover
+        slope_density_mod[(cliff_deg >= 18.0) & (cliff_deg < 35.0)] = 0.10  # talus: sparse
+        slope_density_mod[(cliff_deg >= 8.0) & (cliff_deg < 18.0)] = 0.50   # moderate: reduced
 
     # ---- Ecological density modulation ------------------------------------
     eco_density_mod = np.ones((H, W), dtype=np.float32)
@@ -2121,9 +2279,9 @@ def _apply_ground_cover(
             continue
         n_species = len(palette)
 
-        # Noise multiplier in [floor, 1.0], further modulated by ecology
+        # Noise multiplier in [floor, 1.0], further modulated by ecology + slope
         density_mult = floor + (1.0 - floor) * noise_b
-        density_mult = density_mult * eco_density_mod
+        density_mult = density_mult * eco_density_mod * slope_density_mod
 
         # Compute per-species final density arrays
         species_densities = []
@@ -2373,11 +2531,10 @@ if __name__ == "__main__":
     # ---- Test 2: Eco path (with eco_grads) ----
     import os, sys as _sys
     _sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    from core.eco_gradients import compute_eco_gradients
+    from core.eco_gradients import compute_eco_gradients, compute_cliff_deg
 
-    # Build cliff_deg from surface_y gradient
-    _gy, _gx = np.gradient(surface_y.astype(np.float32))
-    cliff_deg = np.degrees(np.arctan(np.hypot(_gx, _gy))).astype(np.float32)
+    # Build cliff_deg from surface_y gradient (smoothed to avoid staircase aliasing)
+    cliff_deg = compute_cliff_deg(surface_y)
     land_mask = surface_y >= 63
 
     eco_grads = compute_eco_gradients(
@@ -2461,5 +2618,6 @@ if __name__ == "__main__":
     print(f"  [noise_layers] blocks   : {nl_unique[:10]} ...")
     print(f"  [noise_layers] MF       : {sorted(mf_blocks)}")
     print(f"  [noise_layers] AT       : {sorted(at_blocks)}")
-    print("PASS")
-    sys.exit(
+    print("  [noise_layers] OK")
+
+    sys.exit(0)

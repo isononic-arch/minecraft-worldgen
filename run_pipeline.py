@@ -243,6 +243,7 @@ def _process_tile(args: dict) -> dict:
 
     # ---- Step 7: Surface decoration ----
     _use_geo = bool(cfg.get("lithology", {}).get("feature_flag_enabled", False))
+    _use_sp  = bool(cfg.get("surface_pipeline", {}).get("feature_flag_enabled", False))
     surface_blk, sub_blk, ground_cover = core_decorator.decorate_surface(
         surface_y    = surface_y,
         biome_grid   = biome_grid,
@@ -258,6 +259,8 @@ def _process_tile(args: dict) -> dict:
         eco_grads    = eco_grads,
         cliff_deg    = cliff_deg,
         use_new_geology = _use_geo,
+        use_new_surface_pipeline = _use_sp,
+        lithology_tile = lithology_tile if _use_sp else None,
     )
 
     # ---- Step 8: Schematic placement ----

@@ -178,35 +178,8 @@ def _banded_stone(biome: str, world_x: int, world_z: int, mc_y: int,
 # Pipeline runner (returns surface_y, biome_grid, surface_blk)
 # ---------------------------------------------------------------------------
 
-BIOME_TO_MC = {
-    "COASTAL_HEATH":            "minecraft:windswept_hills",
-    "TEMPERATE_RAINFOREST":     "minecraft:old_growth_spruce_taiga",
-    "BOREAL_TAIGA":             "minecraft:taiga",
-    "SNOWY_BOREAL_TAIGA":       "minecraft:snowy_taiga",
-    "ALPINE_MEADOW":            "minecraft:meadow",
-    "ARCTIC_TUNDRA":            "minecraft:frozen_peaks",
-    "FROZEN_FLATS":             "minecraft:ice_spikes",
-    "TEMPERATE_DECIDUOUS":      "minecraft:forest",
-    "RAINFOREST_COAST":         "minecraft:old_growth_birch_forest",
-    "RIPARIAN_WOODLAND":        "minecraft:dark_forest",
-    "DRY_OAK_SAVANNA":          "minecraft:savanna",
-    "KARST_BARRENS":            "minecraft:windswept_gravelly_hills",
-    "BIRCH_FOREST":             "minecraft:birch_forest",
-    "EASTERN_TEMPERATE_COAST":  "minecraft:beach",
-    "MIXED_FOREST":             "minecraft:forest",
-    "CONTINENTAL_STEPPE":       "minecraft:plains",
-    "DRY_PINE_BARRENS":         "minecraft:wooded_badlands",
-    "SCRUBBY_HEATHLAND":        "minecraft:windswept_hills",
-    "LUSH_RAINFOREST_COAST":    "minecraft:jungle",
-    "SAND_DUNE_DESERT":         "minecraft:desert",
-    "DESERT_STEPPE_TRANSITION": "minecraft:savanna_plateau",
-    "SEMI_ARID_SHRUBLAND":      "minecraft:savanna",
-    "DRY_WOODLAND_MAQUIS":      "minecraft:sparse_jungle",
-    "TIDAL_JUNGLE_FRINGE":      "minecraft:sparse_jungle",
-    "MANGROVE_COAST":           "minecraft:mangrove_swamp",
-    "FRESHWATER_FEN":           "minecraft:swamp",
-    "_OCEAN":                   "minecraft:ocean",
-}
+# MC biome mapping — canonical source is core/chunk_writer.BIOME_TO_MC
+# Imported lazily in run_pipeline() to avoid import-time side effects.
 
 
 def run_pipeline(tx: int, tz: int, cfg: dict, progress_cb=None) -> dict:
@@ -247,9 +220,10 @@ def run_pipeline(tx: int, tz: int, cfg: dict, progress_cb=None) -> dict:
     sh_bool = masks["shore"] > 0.5
     dep_u16 = er_u16.copy()
 
+    from core.chunk_writer import BIOME_TO_MC
     mc_biomes = np.empty(biome_grid.shape, dtype=object)
     for b in np.unique(biome_grid):
-        mc_biomes[biome_grid == b] = BIOME_TO_MC.get(str(b), "minecraft:plains")
+        mc_biomes[biome_grid == b] = BIOME_TO_MC.get(str(b), BIOME_TO_MC["_DEFAULT"])
 
     col_results = core_col.process_tile_columns_v2(
         tile_height=h_u16, tile_slope=sl_u16, tile_erosion=er_u16,
