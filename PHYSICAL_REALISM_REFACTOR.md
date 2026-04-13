@@ -867,22 +867,22 @@ Geology fills `vol` in Y range `[Y_MIN+1, surface_y-3]`. The surface decorator's
 **Scope:** Fill the flat/moderate slope gaps in the surface pipeline.
 - `temperate_grass_terrace` — partition, moderate slopes
 - `temperate_weathered_top` — partition, flat + high elevation + exposed
-- `temperate_forest_surface` — partition, forested biomes, flat/moderate
+- ~~`temperate_forest_surface`~~ — **REMOVED S50.** Over-claimed all unclaimed forested-biome pixels including clearings/meadows. Legacy per-biome surface block logic + gap_mask meadow/clearing dither in `decorate_surface()` handles forest floors correctly.
 
-**Exit criteria:** 59_53 with flag ON shows no unclaimed land pixels in temperate biomes (cliff + talus + grass + weathered + forest cover all land).
+**Exit criteria:** 59_53 with flag ON shows cliff + talus + grass + weathered cover geological/terrain pixels; forested land handled by legacy decorator.
 
 ---
 
-### Phase 2.75 — Water-adjacent + cross-biome (5 layers) + desert_pavement test
+### Phase 2.75 — Cross-biome + environment layers (4 layers) [Updated S50]
 
-**Scope:** Complete the §6 layer table.
-- `temperate_riparian_fringe`, `river_bar`, `lake_edge` — water-adjacent
-- `snow_cap_north` — overlay, high elevation
-- `beach_by_fetch` — shoreline (may need `wave_fetch.tif` mask)
-- `desert_pavement` — parallel protocol test on 24_80
+**Scope:** Revised S50 — dropped `temperate_riparian_fringe` and `lake_edge` (existing `riparian_proximity` / `lake_fringe` signals + legacy decorator sufficient). Replaced `beach_by_fetch` with simpler physics-derived beach.
+- `snow_cap_north` — overlay, high elevation + north_factor threshold
+- `river_bar` — partition, arid zones, gravel/sand bars in dry riverbeds
+- `beach_surface` — **DEFERRED S50.** Per-tile EDT didn't resolve coastlines. Needs precompute mask: `rebuild_beach.py` → `beach.tif` at 1:8 (EDT from ocean at full 50k scale, threshold by elevation band + slope). Then wire as gradient mask like rock_exposure/snow_caps.
+- `desert_pavement` — partition, flat arid non-dune land: coarse_dirt, packed_mud, dead_bush, short_dry_grass, tall_dry_grass (single block, NOT double-stacked). Outside sand_dune_desert zone.
 - `diag_layer_ownership.py` rewrite from stub to real pipeline reader
 
-**Exit criteria:** Full §6 table implemented. 59_53 partition coverage ≥ 99%. desert_pavement isolated on 24_80. diag_layer_ownership.py produces real output.
+**Exit criteria:** 4 new layers registered. snow_cap_north visible on high-elevation north faces. beach_surface places sand/gravel at coastlines. desert_pavement breaks up arid monotone on (24,80). diag_layer_ownership.py produces real output.
 
 ---
 
@@ -1438,7 +1438,7 @@ Geology fills `vol` in Y range `[Y_MIN+1, surface_y-3]`. The surface decorator's
 **Phase state (end of S48 cont.):**
 - Landed this session: **Phase 2.0**
 - §11 currently at: **Phase 2.0** (updated session ref from S49 to S48)
-- Next session starts: **Phase 2.5** — Terrain group (grass_terrace, weathered_top, forest_surface)
+- Next session starts: **Phase 2.5** — Terrain group (grass_terrace, weathered_top, forest_surface — forest_surface later removed S50)
 
 **What landed:**
 
@@ -1530,9 +1530,9 @@ Thresholds reset to originals (35°/18–35°/35°) after premature lowering dur
 1. **Phase 2.5 layers implemented** — 3 new partition layers:
    - `grass_terrace.py`: 8–18° slopes, grass_block dominant, coarse_dirt on south-facing (north_factor < 0.3, 35% scatter).
    - `weathered_top.py`: flat + high elevation (≥180 Y) + wind-exposed (>0.5). Mix: 25% stone, 30% mossy_cobblestone, 45% grass_block.
-   - `forest_surface.py`: 13 forested biomes, tree-density-driven interpolation (high density → podzol/rooted_dirt/coarse_dirt mix; low density → grass dominant).
+   - `forest_surface.py`: 13 forested biomes, tree-density-driven interpolation (high density → podzol/rooted_dirt/coarse_dirt mix; low density → grass dominant). **REMOVED S50** — over-claimed clearings/meadows; legacy decorator handles forest floors correctly.
 
-2. **tree_density_hint module** — `core/tree_density_hint.py` stub computing density from biome + slope + moisture + disturbance. Used by forest_surface layer.
+2. **tree_density_hint module** — `core/tree_density_hint.py` stub computing density from biome + slope + moisture + disturbance. Was used by forest_surface layer (removed S50). Module retained but no longer called by pipeline.
 
 3. **Phase 2.0 root cause fixed + visually confirmed** — `validate_test_tile.py` was missing `use_new_surface_pipeline`/`lithology_tile` params. Fixed. Lithology rock rendering confirmed correct on cliff faces in-game on (25,80). Thresholds reset to originals (35°/18–35°/35°).
 
@@ -1541,7 +1541,7 @@ Thresholds reset to originals (35°/18–35°/35°) after premature lowering dur
 **Test results:** 77/77 unit tests green (21 Phase 2.0 + 56 Phase 2.5 + prior).
 
 **Open items carried into S49:**
-- **Phase 2.5 visual validation** — grass_terrace, weathered_top, forest_surface need in-game confirmation.
+- **Phase 2.5 visual validation** — grass_terrace, weathered_top need in-game confirmation. (forest_surface removed S50.)
 - **Phase 2.75** — water-adjacent + cross-biome layers (riparian_fringe, river_bar, lake_edge, snow_cap_north, beach_by_fetch).
 - **Gaea mask outsourcing** — spec Gaea node graphs for rock/snow/wind/sand if user wants to proceed.
 - **MC biome mapping bug** — (25,80) rendering as plains.
@@ -1591,6 +1591,35 @@ Thresholds reset to originals (35°/18–35°/35°) after premature lowering dur
 - **Ice in subsurface** — user noted at specific coords on (24,80); expects ground cover + topsoil update to resolve.
 - **world_studio.py** duplicate BIOME_TO_MC — low priority.
 - **Aspect convention drift**, **51_53 flag-ON shadow hookup**, **palette tuning** (all carry-forward).
+
+---
+
+### S50 — 2026-04-13: Phase 2.75 partial + ForestSurface removal
+
+**Phase state (end of S50):**
+- Landed this session: **Phase 2.75 partial** (3 of 4 layers: snow_cap_north, river_bar, desert_pavement). ForestSurface removed. BeachSurface attempted then removed.
+- §11 currently at: **Phase 2.75** (updated S50 — scope revised, beach deferred to precompute mask)
+- Next session starts: **Beach precompute mask** then **3×3 validation** of all Phase 2.75 layers.
+
+**Changes landed:**
+
+1. **ForestSurface layer removed** — It over-claimed all unclaimed forested-biome pixels including clearings/meadows, painting coarse_dirt/podzol where the legacy per-biome surface block logic + gap_mask meadow/clearing system already handled forest floors correctly. `tree_density_hint` computation removed from pipeline (module retained, no callers). 8 layers active (was 6).
+
+2. **`snow_cap_north.py`** — NEW. Overlay layer (priority 55). Extends snow downslope on north-facing terrain in the "near snow line" band (`snow_caps_gradient` 0.20–0.40, below gap==7 trigger at 0.40). Scope: `north_factor >= 0.55`, `surface_y >= 160`, land. Probabilistic dither scales with both north_factor and gradient proximity — 85% at best conditions, 15% at margins. Places `snow_block`.
+
+3. **`river_bar.py`** — NEW. Partition layer (priority 42). Arid biomes near river channels (`riparian_proximity >= 0.4`, `cliff_deg < 18°`). Block palette: coarse_dirt/packed_mud/sand scatter with dither fading from 90% at channel to 30% at corridor edge. **SAND_DUNE_DESERT variant** uses desert pavement palette (55% coarse_dirt / 45% packed_mud, no sand) per user directive.
+
+4. **`desert_pavement.py`** — NEW. Partition layer (priority 43). Flat arid non-dune biomes (DESERT_STEPPE_TRANSITION, SEMI_ARID_SHRUBLAND, DRY_OAK_SAVANNA, DRY_WOODLAND_MAQUIS, DRY_PINE_BARRENS, DESERT_ROCK, COASTAL_HEATH). Places coarse_dirt (55%) / packed_mud (45%) with moisture-driven dither. Ground cover (dead_bush, short_dry_grass, tall_dry_grass) deferred to legacy GROUND_COVER_PALETTES update.
+
+5. **BeachSurface attempted then removed** — Partition layer using per-tile EDT from `surface_y` to find ocean-adjacent flat low-elevation pixels. Didn't produce visible beaches on (48,48) — the per-tile EDT at 512×512 likely missed coastline geometry that only resolves at full 50k precompute scale. **Decision: defer to precompute mask approach** — write `rebuild_beach.py` to produce `beach.tif` at 1:8 (6250×6250) like rock_exposure/snow_caps, wire into pipeline as a gradient mask.
+
+6. **§11 Phase 2.75 scope revised** — Dropped `temperate_riparian_fringe` and `lake_edge` (existing signals sufficient). Replaced `beach_by_fetch` with simpler physics-derived beach (deferred to precompute mask). Updated exit criteria.
+
+**Open items carried into S51:**
+- **Beach precompute mask** — `rebuild_beach.py` → `beach.tif` at 1:8. EDT from ocean at full world scale, thresholded by elevation band + slope. Wire into eco_gradients or as a new layer with the gradient mask pattern.
+- **3×3 validation** — (24,80) for snow_cap_north + river_bar + desert_pavement; (48,48) for beach once mask exists.
+- **Desert pavement ground cover** — add dead_bush/short_dry_grass/tall_dry_grass to GROUND_COVER_PALETTES for arid biomes.
+- **Ice in subsurface**, **world_studio.py** duplicate BIOME_TO_MC, **aspect convention drift**, **51_53 flag-ON shadow hookup**, **palette tuning** (all carry-forward).
 
 ---
 

@@ -12,14 +12,30 @@ Phase 2.0 layers (S48):
 Phase 2.5 layers (S48):
   - GrassTerrace        (partition, priority 30)
   - WeatheredTop        (partition, priority 35)
-  - ForestSurface       (partition, priority 40)
+
+Note: ForestSurface (partition, priority 40) removed in S50 — it over-claimed
+all unclaimed forested-biome pixels including clearings/meadows. The legacy
+per-biome surface block logic + gap_mask meadow/clearing system in
+decorate_surface() handles forest floors correctly and was already running
+before the layer pipeline.
+
+Phase 2.75 layers (S50):
+  - RiverBar             (partition, priority 42)
+  - DesertPavement       (partition, priority 43)
+  - SnowCapNorth         (overlay,  priority 55)
+
+Note: BeachSurface (partition, priority 38) was attempted in S50 but removed —
+per-layer EDT from surface_y didn't produce visible beaches on (48,48). Deferred
+to a precompute mask approach (like rock_exposure/snow_caps) for next session.
 """
 from core.layers.pass2_surface.temperate_cliff_face import TemperateCliffFace
 from core.layers.pass2_surface.temperate_talus_apron import TemperateTalusApron
 from core.layers.pass2_surface.vertical_fluting import VerticalFluting
 from core.layers.pass2_surface.grass_terrace import GrassTerrace
 from core.layers.pass2_surface.weathered_top import WeatheredTop
-from core.layers.pass2_surface.forest_surface import ForestSurface
+from core.layers.pass2_surface.snow_cap_north import SnowCapNorth
+from core.layers.pass2_surface.river_bar import RiverBar
+from core.layers.pass2_surface.desert_pavement import DesertPavement
 
 __all__ = [
     "TemperateCliffFace",
@@ -27,5 +43,7 @@ __all__ = [
     "VerticalFluting",
     "GrassTerrace",
     "WeatheredTop",
-    "ForestSurface",
+    "SnowCapNorth",
+    "RiverBar",
+    "DesertPavement",
 ]

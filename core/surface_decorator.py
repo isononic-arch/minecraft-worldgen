@@ -1470,7 +1470,9 @@ def decorate_surface(
                 VerticalFluting,
                 GrassTerrace,
                 WeatheredTop,
-                ForestSurface,
+                SnowCapNorth,
+                RiverBar,
+                DesertPavement,
             )
 
             # Build lithology grid at tile resolution (512×512).
@@ -1499,32 +1501,19 @@ def decorate_surface(
             _pipe_eco["surface_y"] = surface_y
             _pipe_eco["noise_b"] = noise_b
 
-            # Compute tree density hint for forest_surface layer.
-            try:
-                from core.tree_density_hint import compute_tree_density_hint
-                _slope_proxy = cliff_deg / 90.0 if cliff_deg is not None else np.zeros((H, W), dtype=np.float32)
-                _moist_proxy = _pipe_eco.get("moisture_index", np.full((H, W), 0.5, dtype=np.float32))
-                _dist_proxy = None
-                if eco_grads is not None:
-                    _gm = getattr(eco_grads, "gap_mask", None)
-                    if _gm is not None:
-                        _dist_proxy = ((_gm == 2) | (_gm == 4)).astype(np.float32)
-                _pipe_eco["tree_density_hint"] = compute_tree_density_hint(
-                    biome_grid, slope=_slope_proxy, moisture_idx=_moist_proxy,
-                    disturbance=_dist_proxy,
-                )
-            except Exception:
-                pass  # forest_surface falls back to 0.45 default
-
             # Instantiate layers.
+            # Note: ForestSurface removed in S50 — legacy decorate_surface()
+            # handles forest floor blocks correctly via per-biome logic + gap_mask.
             _litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
             _layers = [
                 TemperateCliffFace(lithology_config=_litho_cfg),
                 TemperateTalusApron(),
                 GrassTerrace(),
                 WeatheredTop(),
-                ForestSurface(),
+                RiverBar(),
+                DesertPavement(),
                 VerticalFluting(lithology_config=_litho_cfg),
+                SnowCapNorth(),
             ]
 
             _sp_ctx = _SPCtx(
