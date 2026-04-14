@@ -911,39 +911,47 @@ def decorate_surface(
         )
         used_noise_layers = True
 
-        # Overlay eco conditions on top of noise layers (terrain-geometry-
-        # driven — these place blocks WHERE terrain dictates, not randomly).
-        if eco_grads is not None:
-            _ECO_PRIORITY = [
-                "eco_dry", "eco_moist",
-                "eco_shallow_soil", "eco_deep_soil",
-                "eco_ridge", "eco_basin",
-            ]
-            # Meadow clearings: skip eco condition overlays — meadow
-            # surface should be pure grass_block, not geology-driven
-            _meadow_eco_excl = None
-            if hasattr(eco_grads, 'gap_mask'):
-                _meadow_eco_excl = eco_grads.gap_mask == 1
-            for biome in np.unique(biome_grid):
-                biome_str = str(biome)
-                palette = BIOME_BLOCK_PALETTES.get(biome_str)
-                if palette is None:
+        # S53: eco condition overlay RESTORED with organic-only surface blocks.
+        # S52 deleted this entirely, which killed the high-frequency texture
+        # scatter that gave forest floors their character.  The problem was
+        # the block palette (granite/tuff/stone on gentle slopes), not the
+        # physical-signal-driven overlay concept.
+        #
+        # Fix: apply eco_* entries from BIOME_BLOCK_PALETTES but substitute
+        # any stone-variant surface blocks with organic equivalents.  Keep
+        # subsurface as-is (stone subsurface is fine — only visible in cliff
+        # cross-sections).
+        _STONE_TO_ORGANIC = {
+            "stone":              "packed_mud",
+            "granite":            "coarse_dirt",
+            "diorite":            "coarse_dirt",
+            "andesite":           "coarse_dirt",
+            "tuff":               "packed_mud",
+            "cobblestone":        "gravel",
+            "mossy_cobblestone":  "moss_block",
+            "deepslate":          "packed_mud",
+            "calcite":            "packed_mud",
+            "dripstone_block":    "packed_mud",
+        }
+        for _biome in np.unique(biome_grid):
+            _bname = str(_biome)
+            _palette = BIOME_BLOCK_PALETTES.get(_bname)
+            if _palette is None:
+                continue
+            _bmask = biome_grid == _biome
+            for _surf, _sub, _tag in _palette:
+                if not _tag.startswith("eco_"):
                     continue
-                mask = biome_grid == biome
-                by_tag = {tag: (s, sb) for s, sb, tag in palette}
-                for tag in _ECO_PRIORITY:
-                    if tag not in by_tag:
-                        continue
-                    s, sb = by_tag[tag]
-                    eco_mask = cond.get(tag)
-                    if eco_mask is None:
-                        continue
-                    apply = mask & eco_mask
-                    if _meadow_eco_excl is not None:
-                        apply = apply & ~_meadow_eco_excl
-                    if apply.any():
-                        surface_blocks[apply]    = s
-                        subsurface_blocks[apply] = sb
+                _c = cond.get(_tag)
+                if _c is None:
+                    continue
+                _apply = _bmask & _c
+                if not _apply.any():
+                    continue
+                # Replace stone variants on surface, keep subsurface as-is
+                _actual_surf = _STONE_TO_ORGANIC.get(_surf, _surf)
+                surface_blocks[_apply] = _actual_surf
+                subsurface_blocks[_apply] = _sub
 
     if not used_noise_layers:
         # ── FALLBACK: legacy BIOME_BLOCK_PALETTES + condition tags ────────
@@ -991,17 +999,12 @@ def decorate_surface(
                 surface_blocks[apply]    = surf
                 subsurface_blocks[apply] = sub
 
-    # --- Slope zone overrides (abiotic — override ecological palettes) ------
-    # Meadow clearings excluded — gentle slopes in open meadows shouldn't
-    # expose rock/gravel; that's a cliff-face phenomenon.
-    _meadow_exclude = None
-    if eco_grads is not None and hasattr(eco_grads, 'gap_mask'):
-        _meadow_exclude = (eco_grads.gap_mask == 1) | (eco_grads.gap_mask == 4) | (eco_grads.gap_mask == 5) | (eco_grads.gap_mask == 6) | (eco_grads.gap_mask == 7) | (eco_grads.gap_mask == 8)
-    if cliff_deg is not None:
-        _apply_slope_zones(surface_blocks, subsurface_blocks,
-                           cliff_deg, biome_grid, surface_y, noise_b2, noise_b3,
-                           noise_b4, cfg, meadow_exclude=_meadow_exclude,
-                           use_new_geology=use_new_geology)
+    # S52: legacy _apply_slope_zones() REMOVED.  This was a second slope
+    # system (45°/65° thresholds) that wrote stone/gravel/cobblestone on
+    # gap==0 steep pixels — redundant with the surface pipeline layers:
+    #   TemperateCliffFace (35°+), TemperateTalusApron (18-35°),
+    #   GrassTerrace (8-18°).  Keeping the function definition below for
+    # reference but no longer calling it.
 
     # --- Gap surface block ratio shift ----------------------------------------
     # Inside clearings, nudge surface block ratios WITHOUT changing noise type.
@@ -1249,6 +1252,13 @@ def decorate_surface(
                     del _sf_rng, _sf_rand, _flow_prob, _sand_flow
                 del _dist_sand, _flow_zone, _rock_or_alp
 
+            # ── Beach (gap==9): sand only — S51 rework ─────────────────────
+            beach_px = _gap == 9
+            if beach_px.any():
+                surface_blocks[beach_px] = "sand"
+                if not use_new_geology:
+                    subsurface_blocks[beach_px] = "sandstone"
+
     # --- Gap edge probabilistic dither ----------------------------------------
     # At meadow/windthrow/floodplain edges, blend the gap's grass_block surface
     # with the surrounding biome's surface block.  Uses distance-from-gap-interior
@@ -1384,10 +1394,16 @@ def decorate_surface(
         _raw_meadow = (eco_grads.gap_mask == 1) | (eco_grads.gap_mask == 4)
         if _raw_meadow.any():
             _final_meadow = _bd_meadow_final(_raw_meadow, iterations=2)
-            # Don't expand into water or rock exposure
+            # Don't expand into water, rock, snow, alpine meadow, sand dune, or beach
             _water = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
-            _rock_snow_zone = (eco_grads.gap_mask == 5) | (eco_grads.gap_mask == 7)
-            _final_meadow = _final_meadow & ~_water & ~_rock_snow_zone & (surface_y >= 63)
+            _protected_gaps = (
+                (eco_grads.gap_mask == 5) |  # rock
+                (eco_grads.gap_mask == 6) |  # alpine_meadow
+                (eco_grads.gap_mask == 7) |  # snow
+                (eco_grads.gap_mask == 8) |  # sand_dune
+                (eco_grads.gap_mask == 9)    # beach
+            )
+            _final_meadow = _final_meadow & ~_water & ~_protected_gaps & (surface_y >= 63)
             _fm_rng = np.random.default_rng(
                 tile_x * 48271 ^ tile_y * 31337 ^ 0xF14A1)
             _fm_rand = _fm_rng.random((H, W)).astype(np.float32)
@@ -1470,7 +1486,6 @@ def decorate_surface(
                 VerticalFluting,
                 GrassTerrace,
                 WeatheredTop,
-                SnowCapNorth,
                 RiverBar,
                 DesertPavement,
             )
@@ -1513,7 +1528,6 @@ def decorate_surface(
                 RiverBar(),
                 DesertPavement(),
                 VerticalFluting(lithology_config=_litho_cfg),
-                SnowCapNorth(),
             ]
 
             _sp_ctx = _SPCtx(
@@ -1676,7 +1690,7 @@ def _apply_ecotone_dither(
     if gap_mask is not None:
         # Don't ecotone-dither rock (5) or alpine meadow (6) — their blocks
         # are gradient-driven, not biome-palette-driven
-        has_neighbour = has_neighbour & (gap_mask != 5) & (gap_mask != 6) & (gap_mask != 7) & (gap_mask != 8)
+        has_neighbour = has_neighbour & (gap_mask != 5) & (gap_mask != 6) & (gap_mask != 7) & (gap_mask != 8) & (gap_mask != 9)
     if not has_neighbour.any():
         return
 
@@ -1747,96 +1761,12 @@ def _apply_ecotone_dither(
 
 
 # ---------------------------------------------------------------------------
-# SLOPE ZONE OVERRIDES (abiotic — overrides ecological palettes)
+# S52: _apply_slope_zones() DELETED.  Was a legacy 3-zone slope system
+# (45°/65° thresholds + 8px talus dilation) that wrote stone/gravel/
+# cobblestone on gap==0 steep pixels.  Fully replaced by surface pipeline:
+#   TemperateCliffFace (35°+), TemperateTalusApron (18-35°),
+#   GrassTerrace (8-18°).  _DESERT_BIOMES_SET also removed.
 # ---------------------------------------------------------------------------
-
-# Per-biome desert set for sandstone cliff surfaces
-_DESERT_BIOMES_SET = frozenset({
-    "SAND_DUNE_DESERT", "DESERT_STEPPE_TRANSITION",
-    "SEMI_ARID_SHRUBLAND", "DRY_WOODLAND_MAQUIS",
-})
-
-
-def _apply_slope_zones(
-    surface_blocks: np.ndarray,     # modified in-place
-    subsurface_blocks: np.ndarray,  # modified in-place
-    cliff_deg:      np.ndarray,     # (H,W) float32 degrees
-    biome_grid:     np.ndarray,     # (H,W) str
-    surface_y:      np.ndarray,     # (H,W) int16
-    noise_b2:       np.ndarray,     # phase-offset noise for scatter
-    noise_b3:       np.ndarray,
-    noise_b4:       np.ndarray,
-    cfg:            dict,
-    meadow_exclude: np.ndarray | None = None,  # (H,W) bool — skip these pixels
-    use_new_geology: bool = False,  # When True, skip subsurface writes (geology column owns it)
-) -> None:
-    """3-zone slope system + talus (Norterre-inspired).
-
-    Zone 1 (< grass_max_deg):  untouched — biome palette controls surface
-    Zone 2 (transition):       mixed stone/gravel scatter on moderate slopes
-    Zone 3 (> trans_max_deg):  full cliff stone (sandstone for deserts)
-    Talus: gravel/cobblestone at cliff bases
-    """
-    from scipy.ndimage import binary_dilation
-
-    H, W = cliff_deg.shape
-    SEA_LEVEL = 63
-    land = surface_y >= SEA_LEVEL
-
-    sz = cfg.get("slope_zones", {})
-    grass_max_deg  = float(sz.get("full_grass_max_deg",    45))
-    trans_max_deg  = float(sz.get("transition_max_deg",    65))
-    trans_stone_f  = float(sz.get("transition_stone_frac", 0.5))
-
-    desert_mask = np.zeros((H, W), dtype=bool)
-    for b in np.unique(biome_grid):
-        if str(b) in _DESERT_BIOMES_SET:
-            desert_mask |= (biome_grid == b)
-    stone_surf = np.where(desert_mask, "sandstone", "stone")
-
-    # Zone 2: transition slope
-    transition_zone = land & (cliff_deg >= grass_max_deg) & (cliff_deg < trans_max_deg)
-    if meadow_exclude is not None:
-        transition_zone = transition_zone & ~meadow_exclude
-    if transition_zone.any():
-        stone_scatter = transition_zone & (noise_b2 < trans_stone_f)
-        surface_blocks[stone_scatter]    = stone_surf[stone_scatter]
-        if not use_new_geology:
-            subsurface_blocks[stone_scatter] = "stone"
-        gravel_scatter = transition_zone & ~stone_scatter & (
-            cliff_deg >= (grass_max_deg + trans_max_deg) / 2)
-        gravel_mask = gravel_scatter & (noise_b3 < 0.4)
-        surface_blocks[gravel_mask]    = "gravel"
-        if not use_new_geology:
-            subsurface_blocks[gravel_mask] = "stone"
-
-    # Zone 3: full cliff
-    hard_stone = land & (cliff_deg >= trans_max_deg)
-    if meadow_exclude is not None:
-        hard_stone = hard_stone & ~meadow_exclude
-    if hard_stone.any():
-        surface_blocks[hard_stone]    = stone_surf[hard_stone]
-        if not use_new_geology:
-            subsurface_blocks[hard_stone] = stone_surf[hard_stone]
-
-    # Talus / scree at cliff bases
-    talus_cfg = cfg.get("talus", {})
-    if talus_cfg.get("enabled", True) and hard_stone.any():
-        talus_dilate   = int(talus_cfg.get("dilate_px", 8))
-        talus_gravel_f = float(talus_cfg.get("gravel_frac", 0.5))
-        cliff_dilated  = binary_dilation(hard_stone, iterations=talus_dilate)
-        talus_zone     = land & cliff_dilated & ~hard_stone & (cliff_deg < grass_max_deg)
-        if talus_zone.any():
-            talus_scatter = talus_zone & (noise_b3 < 0.6)
-            gravel_talus  = talus_scatter & (noise_b4 < talus_gravel_f)
-            cobble_talus  = talus_scatter & ~gravel_talus
-            surface_blocks[gravel_talus]    = "gravel"
-            if not use_new_geology:
-                subsurface_blocks[gravel_talus] = "stone"
-            surface_blocks[cobble_talus]    = "cobblestone"
-            if not use_new_geology:
-                subsurface_blocks[cobble_talus] = "stone"
-
 
 # ---------------------------------------------------------------------------
 # DESERT ROCK PALETTE — multi-layer composition (Session 41)
@@ -2225,6 +2155,8 @@ def _apply_ground_cover(
                 eco_density_mod[snow_cap_px] = 0.02  # almost nothing on snow
                 sand_dune_px = gap_mask == 8
                 eco_density_mod[sand_dune_px] = 0.05  # bare sand
+                beach_px = gap_mask == 9
+                eco_density_mod[beach_px] = 0.02  # bare beach
 
     # ---- Species colony map -----------------------------------------------
     # Hash-based colony assignment: divides tile into ~48px cells,

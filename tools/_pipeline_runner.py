@@ -254,6 +254,11 @@ def run_tile_prelude(
             hydro_floodplain = masks.get("hydro_floodplain"),
             wind_windthrow   = masks.get("wind_windthrow"),
             rock_exposure    = masks.get("rock_exposure"),
+            rock_exposure_tight = masks.get("rock_exposure_tight"),
+            snow_caps        = masks.get("snow_caps"),
+            snow_caps_north  = masks.get("snow_caps_north"),
+            sand_dunes       = masks.get("sand_dunes"),
+            beach            = masks.get("beach"),
         )
     except Exception as e:
         _log(f"eco_gradients failed: {e}")

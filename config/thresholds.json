@@ -339,10 +339,10 @@
         "is_base": false
       },
       {
-        "name": "tuff (noise2)",
+        "name": "packed_mud (noise2)",
         "noise": "gaussian",
         "enabled": true,
-        "block": "tuff",
+        "block": "packed_mud",
         "sub": "andesite",
         "coverage": 0.16,
         "scale": 14,
@@ -442,10 +442,10 @@
         "is_base": false
       },
       {
-        "name": "diorite (erosion2)",
+        "name": "coarse_dirt (erosion2)",
         "noise": "gaussian",
         "enabled": true,
-        "block": "diorite",
+        "block": "coarse_dirt",
         "sub": "stone",
         "coverage": 0.08,
         "scale": 36,
@@ -534,10 +534,10 @@
         "is_base": true
       },
       {
-        "name": "granite (noise2)",
+        "name": "coarse_dirt (noise2)",
         "noise": "gaussian",
         "enabled": true,
-        "block": "granite",
+        "block": "coarse_dirt",
         "sub": "stone",
         "coverage": 0.17,
         "scale": 11,
@@ -683,10 +683,10 @@
         "is_base": true
       },
       {
-        "name": "granite (erosion2)",
+        "name": "coarse_dirt (erosion2)",
         "noise": "gaussian",
         "enabled": true,
-        "block": "granite",
+        "block": "coarse_dirt",
         "sub": "stone",
         "coverage": 0.07,
         "scale": 11,
@@ -1295,10 +1295,10 @@
         "is_base": false
       },
       {
-        "name": "tuff (noise)",
+        "name": "packed_mud (noise)",
         "noise": "gaussian",
         "enabled": true,
-        "block": "tuff",
+        "block": "packed_mud",
         "sub": "andesite",
         "coverage": 0.08,
         "scale": 8,
@@ -1703,10 +1703,10 @@
         "is_base": false
       },
       {
-        "name": "stone (noise2)",
+        "name": "packed_mud (noise2)",
         "noise": "gaussian",
         "enabled": true,
-        "block": "stone",
+        "block": "packed_mud",
         "sub": "stone",
         "coverage": 0.21,
         "scale": 12,
@@ -1782,10 +1782,10 @@
         "is_base": false
       },
       {
-        "name": "gravel (erosion2)",
+        "name": "packed_mud (erosion2)",
         "noise": "gaussian",
         "enabled": true,
-        "block": "stone",
+        "block": "packed_mud",
         "sub": "calcite",
         "coverage": 0.14,
         "scale": 10,

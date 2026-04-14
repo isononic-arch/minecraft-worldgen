@@ -22,18 +22,19 @@ before the layer pipeline.
 Phase 2.75 layers (S50):
   - RiverBar             (partition, priority 42)
   - DesertPavement       (partition, priority 43)
-  - SnowCapNorth         (overlay,  priority 55)
+
+Note: SnowCapNorth (overlay, priority 55) was a surface layer in S50; converted
+to precompute mask (snow_caps_north.tif → eco_gradients gap==7) in S51.
 
 Note: BeachSurface (partition, priority 38) was attempted in S50 but removed —
-per-layer EDT from surface_y didn't produce visible beaches on (48,48). Deferred
-to a precompute mask approach (like rock_exposure/snow_caps) for next session.
+per-layer EDT from surface_y didn't produce visible beaches on (48,48). Converted
+to precompute mask (beach.tif → eco_gradients gap==9) in S51.
 """
 from core.layers.pass2_surface.temperate_cliff_face import TemperateCliffFace
 from core.layers.pass2_surface.temperate_talus_apron import TemperateTalusApron
 from core.layers.pass2_surface.vertical_fluting import VerticalFluting
 from core.layers.pass2_surface.grass_terrace import GrassTerrace
 from core.layers.pass2_surface.weathered_top import WeatheredTop
-from core.layers.pass2_surface.snow_cap_north import SnowCapNorth
 from core.layers.pass2_surface.river_bar import RiverBar
 from core.layers.pass2_surface.desert_pavement import DesertPavement
 
@@ -43,7 +44,6 @@ __all__ = [
     "VerticalFluting",
     "GrassTerrace",
     "WeatheredTop",
-    "SnowCapNorth",
     "RiverBar",
     "DesertPavement",
 ]

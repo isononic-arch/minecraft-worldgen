@@ -100,7 +100,9 @@ def main(tile_x, tile_z):
         rock_exposure=masks.get("rock_exposure"),
         rock_exposure_tight=masks.get("rock_exposure_tight"),
         snow_caps=masks.get("snow_caps"),
-        sand_dunes=masks.get("sand_dunes"))
+        snow_caps_north=masks.get("snow_caps_north"),
+        sand_dunes=masks.get("sand_dunes"),
+        beach=masks.get("beach"))
 
     # Alpine biome inheritance (same as run_pipeline)
     if hasattr(eco, 'alpine_biome_source'):

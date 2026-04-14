@@ -385,6 +385,56 @@ def main():
     n_sc = int((sc_land >= 0.5).sum())
     print(f"  snow caps (>=0.5): {n_sc} px ({100*n_sc/max(n_land,1):.1f}%)", flush=True)
 
+    # ══════════════════════════════════════════════════════════════════
+    # ── 13b. SNOW CAPS NORTH MASK (snow_caps_north.tif) ──────────────
+    # Extension of snow onto north-facing slopes BELOW the gap==7
+    # threshold. Replaces the per-tile SnowCapNorth surface layer (S51).
+    # Zone: snow_grad in [0.10, 0.40), north-facing (nf >= 0.55),
+    # high elevation (sy >= 160).
+    # Output: gradient [0,1] where higher = more likely snow.
+    # ══════════════════════════════════════════════════════════════════
+    print("\nComputing snow_caps_north (north-face extension) ...", flush=True)
+    _nf = np.cos(aspect).astype(np.float32)  # recompute, aspect still alive
+    _GRAD_MIN, _GRAD_MAX = 0.10, 0.40
+    _NF_MIN = 0.55
+    _MIN_Y = 160.0
+
+    in_band = (snow_grad >= _GRAD_MIN) & (snow_grad < _GRAD_MAX)
+    north_facing = _nf >= _NF_MIN
+    high_elev = sy >= _MIN_Y
+
+    scn_scope = land_mask & in_band & north_facing & high_elev
+
+    # Gradient: probability rises with both north_factor and snow_grad.
+    # nf_t: 0 at NF_MIN, 1 at nf=1.0
+    # grad_t: 0 at GRAD_MIN, 1 at GRAD_MAX
+    nf_t = np.clip((_nf - _NF_MIN) / (1.0 - _NF_MIN), 0.0, 1.0).astype(np.float32)
+    grad_t = np.clip(
+        (snow_grad - _GRAD_MIN) / (_GRAD_MAX - _GRAD_MIN), 0.0, 1.0,
+    ).astype(np.float32)
+    # Combined score: product gives natural falloff at edges
+    scn_grad = np.where(scn_scope, nf_t * grad_t, np.float32(0.0))
+    del _nf, nf_t, grad_t, in_band, north_facing, high_elev, scn_scope
+
+    scn_grad = gaussian_filter(scn_grad, sigma=0.6).astype(np.float32)
+    scn_grad[~land_mask] = 0.0
+    scn_grad = np.clip(scn_grad, 0.0, 1.0)
+
+    n_scn = int((scn_grad[land_mask] >= 0.15).sum())
+    print(f"  snow_caps_north (>=0.15): {n_scn} px ({100*n_scn/max(n_land,1):.1f}%)", flush=True)
+
+    result_scn = np.clip(scn_grad * 255.0, 0, 255).astype(np.uint8)
+    del scn_grad; gc.collect()
+
+    out_path_scn = MASKS_DIR / "snow_caps_north.tif"
+    print(f"Writing {out_path_scn} ...", flush=True)
+    t0 = time.perf_counter()
+    write_upscaled(result_scn, out_path_scn, dtype="uint8", scale=SCALE,
+                   full_size=FULL_SIZE, chunk_rows=50, interpolation="bilinear")
+    del result_scn
+    print(f"  Written in {time.perf_counter()-t0:.1f}s", flush=True)
+
+    # ── Write snow_caps ──────────────────────────────────────────────
     result_snow = np.clip(snow_grad * 255.0, 0, 255).astype(np.uint8)
     del snow_grad; gc.collect()
 

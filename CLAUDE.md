@@ -2,7 +2,7 @@
 
 *Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`. For the physical-realism refactor plan + implementation log, see `PHYSICAL_REALISM_REFACTOR.md` (§18 is the running log).*
 
-**Current state:** Session 50 (2026-04-13) — **Phase 2.75 partial: 3 of 4 layers landed, beach deferred.** 8 layers active (was 6 pre-S50; ForestSurface removed, 3 new added). S50 changes: (1) ForestSurface removed — over-claimed clearings/meadows, legacy decorator handles forest floors. (2) SnowCapNorth overlay (priority 55) — extends snow onto north-facing slopes below the snow line via snow_caps_gradient + north_factor dither. (3) RiverBar partition (priority 42) — coarse_dirt/packed_mud/sand in arid riverbeds; SAND_DUNE_DESERT variant uses desert pavement palette (no sand). (4) DesertPavement partition (priority 43) — coarse_dirt/packed_mud on flat arid non-dune biomes. (5) BeachSurface attempted then removed — per-layer EDT from surface_y didn't produce visible beaches on (48,48); deferred to precompute mask approach. **NEXT:** beach precompute mask (rebuild_beach.py → beach.tif at 1:8, wire into eco_gradients + gap_mask or layer), then 3×3 validation on (24,80) for snow/river_bar/pavement and (48,48) for beach. **Carry-forward:** aspect convention drift, 51_53 flag-ON shadow hookup, palette tuning, ice in subsurface, world_studio.py duplicate BIOME_TO_MC + missing surface pipeline params, desert_pavement ground cover palettes (dead_bush/short_dry_grass/tall_dry_grass).
+**Current state:** Session 53 (2026-04-13) — **S52 bugfix + eco overlay restored organic-only + noise_layers stone purge.** S53 found S52 left a broken build: `column_generator.py` crashed with NameError (`desert_mask`, `grass_max_deg`, `trans_max_deg` orphaned by slope zone deletion). Fixed. S52's eco overlay deletion killed forest floor texture variety — restored the overlay with organic-only surface blocks (stone→packed_mud, granite→coarse_dirt, tuff→packed_mud, etc.) keeping same physical signals (soil_depth/wind_exposure/moisture_index). Purged 7 stone-variant surface blocks from `noise_layers_biome` in thresholds.json (ARCTIC_TUNDRA tuff, BOREAL_TAIGA diorite, CONTINENTAL_STEPPE granite, DRY_PINE_BARRENS granite, SCRUBBY_HEATHLAND tuff, FROZEN_FLATS stone, KARST_BARRENS stone → organic equivalents). **Stone banding NOT yet confirmed fixed in-game — needs validation.** Diagnostic showed 0% stone on gap==0 gentle slopes for MIXED_FOREST after changes, but user reports banding still visible. **NEXT:** In-game validation of S53 changes (stone banding fix + forest floor dither quality). If banding persists, deeper investigation needed — possible sources: ecotone dither copying stone from gap==5 rock zones, surface pipeline layers on 8°+ slopes, or subsurface stone bleeding through at terrain edges. Then: ecotone dither width (24px grass bleed at biome boundaries), beach blob/staircasing on (35,77), desert pavement ground cover. **Carry-forward:** aspect convention drift, 51_53 flag-ON shadow hookup, palette tuning, ice in subsurface, world_studio.py duplicate BIOME_TO_MC + missing surface pipeline params, desert_pavement ground cover palettes (dead_bush/short_dry_grass/tall_dry_grass), full column_generator surface code cleanup (steps 5-10 write to dead surface_blk).
 
 ---
 
@@ -31,12 +31,12 @@ Working backlog (Claude picks order, user vetoes):
 6. **Never modify `override_final.png`** — protected master. Write to `override.tif` only via `upscale_override_vectorized.py`.
 
 ### Gap mask
-**Current values:** `0`=none, `1`=meadow, `2`=windthrow, `4`=floodplain, `5`=rock, `6`=alpine_meadow, `7`=snow, `8`=sand_dune. (`3` is unused — bare patches removed.)
+**Current values:** `0`=none, `1`=meadow, `2`=windthrow, `4`=floodplain, `5`=rock, `6`=alpine_meadow, `7`=snow, `8`=sand_dune, `9`=beach. (`3` is unused — bare patches removed.)
 
 **Application order in `eco_gradients.py`** (each claims `gap==0` unless noted):
-1. floodplain (4) → 2. alpine_meadow (6) → 3. rock (5) → 4. windthrow (2) → 5. meadow (1) → 6. **snow (7) — uses `land & ~water`, NO gap filter, overrides EVERYTHING** → 7. sand_dune (8) — overrides 0/1/2/4 only, NEVER 5/6/7.
+1. floodplain (4) → 2. alpine_meadow (6) → 3. rock (5) → 4. windthrow (2) → 5. meadow (1) → 6. **snow (7) — uses `land & ~water & gap!=4`, protects floodplain (S51 fix)** → 6b. snow_caps_north (7) — extends gap==7 onto north-facing slopes (S51, claims non-7/non-4 only) → 7. sand_dune (8) — overrides 0/1/2 only, NEVER 4/5/6/7 (S51 fix: floodplain no longer overridable) → 8. beach (9) — claims gap==0 only, Y=63 constraint.
 
-**Final meadow override** (last pass in `decorate_surface`): dilates 2px, forces `grass_block` on gap **1 and 4 ONLY**. Never include 5/6/7/8 (re-creates staircases).
+**Final meadow override** (last pass in `decorate_surface`): dilates 2px, forces `grass_block` on gap **1 and 4 ONLY**. Never include 5/6/7/8/9 (re-creates staircases).
 
 ### Lakes
 - Shoreline = **terrain intersection** (`height < spill_elevation`). NEVER morph/blur/spline/gaussian on `hydro_lake` mask.
@@ -118,9 +118,11 @@ All steps 1-15 complete. In-game validation passed (Session 15). Hydrology engin
 - `wind_windthrow.tif` (bilinear) — gap==2
 - `rock_exposure.tif` (bilinear) — alpine gradient (gap==5,6)
 - `rock_exposure_tight.tif`, `snow_caps.tif` — gap==7
+- `snow_caps_north.tif` (bilinear) — gap==7 north-face extension (S51)
 - `sand_dunes.tif` (bilinear) — gap==8
+- `beach.tif` (bilinear) — gap==9, Y=63 constraint in eco_gradients (S51)
 
-**Rebuild scripts:** `rebuild_centerline.py`, `rebuild_floodplain.py`, `rebuild_windthrow.py`, `rebuild_rock_exposure.py`, `rebuild_sand_dunes.py`, `generate_lake_wl.py`.
+**Rebuild scripts:** `rebuild_centerline.py`, `rebuild_floodplain.py`, `rebuild_windthrow.py`, `rebuild_rock_exposure.py`, `rebuild_sand_dunes.py`, `rebuild_beach.py`, `generate_lake_wl.py`.
 
 ---
 
@@ -236,8 +238,9 @@ NOT `.minecraft/saves/`. Wrong path = silent no-op.
 py rebuild_centerline.py      # hydro_centerline.tif
 py rebuild_floodplain.py      # hydro_floodplain.tif
 py rebuild_windthrow.py       # wind_windthrow.tif
-py rebuild_rock_exposure.py   # rock_exposure*.tif, snow_caps.tif
+py rebuild_rock_exposure.py   # rock_exposure*.tif, snow_caps.tif, snow_caps_north.tif
 py rebuild_sand_dunes.py      # sand_dunes.tif
+py rebuild_beach.py           # beach.tif
 py generate_lake_wl.py        # hydro_lake_wl.tif
 ```
 Each writes to `masks/{name}.tif` and logs to stdout. Run from project root.

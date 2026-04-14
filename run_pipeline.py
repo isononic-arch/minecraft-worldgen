@@ -227,7 +227,9 @@ def _process_tile(args: dict) -> dict:
         rock_exposure = masks.get("rock_exposure"),
         rock_exposure_tight = masks.get("rock_exposure_tight"),
         snow_caps = masks.get("snow_caps"),
+        snow_caps_north = masks.get("snow_caps_north"),
         sand_dunes = masks.get("sand_dunes"),
+        beach = masks.get("beach"),
     )
 
     # ---- Step 6c: Alpine biome inheritance ----

@@ -42,6 +42,8 @@ import numpy as np
 from opensimplex import OpenSimplex
 from scipy.ndimage import distance_transform_edt, binary_dilation
 
+from core.eco_gradients import compute_cliff_deg
+
 # ── Constants (locked) ────────────────────────────────────────────────────────
 MC_Y_MIN   = -64
 MC_Y_MAX   = 448
@@ -1090,9 +1092,10 @@ def process_tile_columns_v2(
             is_ocean = surface_y <= SEA_LEVEL
 
     # Cliff slope in degrees from final surface_y (post-LUT, post-dune, MC Y space)
-    _gy_c, _gx_c = np.gradient(surface_y.astype(np.float32))
-    cliff_deg = np.degrees(np.arctan(np.hypot(_gx_c, _gy_c))).astype(np.float32)
-    del _gy_c, _gx_c
+    # Gaussian pre-smooth (sigma=1.5) eliminates staircase banding from integer
+    # terrain — every 1-block step edge used to spike to ~45° and trigger stone
+    # transition on gentle convex slopes.  (S51 fix)
+    cliff_deg = compute_cliff_deg(surface_y, sigma=1.5)
 
     # ---- 4. Block mixing noise (4 layers at different phases) ----
     # Use decoration_density gen if available; fall back to slope_mix.
@@ -1259,57 +1262,20 @@ def process_tile_columns_v2(
                 surface_blk[apply] = entry[0]
                 sub_blk[apply]     = entry[1]
 
-    # ---- 6. Slope zones — 3-zone system (Norterre-inspired) ----
-    # Zone 1 (< full_grass_max_deg): full biome surface palette (unchanged)
-    # Zone 2 (transition): mixed biome/stone scatter — the "rocky slope" look
-    # Zone 3 (> full_cliff_min_deg): full cliff stone with banding
+    # S52: Slope zones (6) + talus (6a) REMOVED.  This was a legacy 3-zone
+    # system (25°/50° thresholds) writing stone/gravel/cobblestone into
+    # surface_blk — which is DEAD CODE because decorate_surface() builds
+    # its own surface block arrays from scratch and chunk_writer uses those.
+    # The surface pipeline layers (TemperateCliffFace, TalusApron,
+    # GrassTerrace) now handle all slope-based surface block selection.
+    # NOTE: Steps 6b-6d below also write to the dead surface_blk but are
+    # left in place for now — full column_generator surface code cleanup
+    # is a separate task.
     land = ~is_ocean
-    sz = cfg.get("slope_zones", {})
-    grass_max_deg  = float(sz.get("full_grass_max_deg",    25))
-    trans_max_deg  = float(sz.get("transition_max_deg",    50))
-    trans_stone_f  = float(sz.get("transition_stone_frac", 0.5))
-
-    desert_mask = np.isin(tile_biomes, list(DESERT_BIOMES))
-    stone_surf  = np.where(desert_mask, "sandstone", "stone")
-
-    # Zone 2: transition slope — scatter stone using noise
-    transition_zone = land & (cliff_deg >= grass_max_deg) & (cliff_deg < trans_max_deg)
-    if transition_zone.any():
-        # Use mix_noise to decide which pixels become stone in the transition
-        stone_scatter = transition_zone & (mix_noise2 < trans_stone_f)
-        surface_blk[stone_scatter] = stone_surf[stone_scatter]
-        sub_blk[stone_scatter]     = "stone"
-        # Gravel scatter at higher slope within transition
-        gravel_scatter = transition_zone & ~stone_scatter & (cliff_deg >= (grass_max_deg + trans_max_deg) / 2)
-        gravel_mask = gravel_scatter & (mix_noise3 < 0.4)
-        surface_blk[gravel_mask] = "gravel"
-        sub_blk[gravel_mask]     = "stone"
-
-    # Zone 3: full cliff — hard stone override
-    hard_stone = land & (cliff_deg >= trans_max_deg)
-    if hard_stone.any():
-        surface_blk[hard_stone] = stone_surf[hard_stone]
-        sub_blk[hard_stone]     = stone_surf[hard_stone]
-
-    # ---- 6a. Talus / scree at cliff bases ----
-    # Detect pixels adjacent to cliffs but low-slope themselves.
-    # Place gravel/cobblestone scatter to simulate accumulated rock debris.
-    talus_cfg = cfg.get("talus", {})
-    if talus_cfg.get("enabled", True) and hard_stone.any():
-        talus_dilate = int(talus_cfg.get("dilate_px", 8))
-        talus_gravel_f = float(talus_cfg.get("gravel_frac", 0.5))
-        # Dilate cliff mask, intersect with non-cliff low-slope land
-        cliff_dilated = binary_dilation(hard_stone, iterations=talus_dilate)
-        talus_zone = land & cliff_dilated & ~hard_stone & (cliff_deg < grass_max_deg)
-        if talus_zone.any():
-            # Distance-based falloff: closer to cliff = more debris
-            talus_scatter = talus_zone & (mix_noise3 < 0.6)
-            gravel_talus = talus_scatter & (mix_noise4 < talus_gravel_f)
-            cobble_talus = talus_scatter & ~gravel_talus
-            surface_blk[gravel_talus] = "gravel"
-            sub_blk[gravel_talus]     = "stone"
-            surface_blk[cobble_talus] = "cobblestone"
-            sub_blk[cobble_talus]     = "stone"
+    # Variables formerly set by the deleted slope zones code, still used
+    # by downstream dead-code steps (7b flow-sand, 8 snow cap).
+    grass_max_deg = float(ss.get("full_grass_max_deg", 25.0))
+    trans_max_deg = float(ss.get("stone_cliff_threshold_degrees", 55.0))
 
     # ---- 6b. Altitude override (runs AFTER slope — highest priority on land) ----
     # High-elevation pixels get altitude-tagged palette block even on steep faces.
@@ -1398,6 +1364,7 @@ def process_tile_columns_v2(
     # ---- 7b. Flow-path sand deposition (desert biomes only) ----
     # In arid biomes, moderate flow values trace drainage paths where sand accumulates.
     # Replaces whatever surface block was set with sand along flow corridors.
+    desert_mask = np.isin(tile_biomes, list(DESERT_BIOMES))
     if desert_mask.any():
         flow_sand = desert_mask & land & (flow_f >= 0.15) & (flow_f < 0.50) & (cliff_deg < grass_max_deg)
         if flow_sand.any():

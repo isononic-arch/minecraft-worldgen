@@ -39,7 +39,9 @@ MASK_NAMES = [
     "rock_exposure",
     "rock_exposure_tight",
     "snow_caps",
+    "snow_caps_north",
     "sand_dunes",
+    "beach",
 ]
 
 

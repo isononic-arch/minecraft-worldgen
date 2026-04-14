@@ -56,11 +56,12 @@ class EcoGradients(NamedTuple):
     wind_exposure:       np.ndarray   # [0, 1] exposure on ridges at elevation
     riparian_proximity:  np.ndarray   # [0, 1] closeness to flowing water (1 = at channel)
     lake_fringe:         np.ndarray   # [0, 1] closeness to lake edge (1 = at lake)
-    gap_mask:            np.ndarray   # uint8: 0=none, 1=meadow, 2=windthrow, 4=floodplain, 5=rock, 6=alpine_meadow, 7=snow, 8=sand_dune
+    gap_mask:            np.ndarray   # uint8: 0=none, 1=meadow, 2=windthrow, 4=floodplain, 5=rock, 6=alpine_meadow, 7=snow, 8=sand_dune, 9=beach
     rock_exposure_gradient: np.ndarray  # float32 [0,1] raw gradient for tree thinning
     rock_tight_gradient: np.ndarray  # float32 [0,1] tight rock gradient for dither
     snow_caps_gradient: np.ndarray   # float32 [0,1] raw snow cap gradient for dither
     sand_dunes_gradient: np.ndarray  # float32 [0,1] sand dune gradient for dither
+    beach_gradient:      np.ndarray  # float32 [0,1] beach proximity gradient for dither
     alpine_biome_source: np.ndarray  # (H, W) object str — nearest non-alpine biome name
 
 
@@ -124,7 +125,9 @@ def compute_eco_gradients(
     rock_exposure: np.ndarray | None = None,     # (H, W) float32 [0,1] — precomputed mask
     rock_exposure_tight: np.ndarray | None = None,  # (H, W) float32 [0,1] — tight rock peaks
     snow_caps: np.ndarray | None = None,            # (H, W) float32 [0,1] — snow cap mask
+    snow_caps_north: np.ndarray | None = None,     # (H, W) float32 [0,1] — north-face snow extension (S51)
     sand_dunes: np.ndarray | None = None,           # (H, W) float32 [0,1] — sand dune mask
+    beach: np.ndarray | None = None,                # (H, W) float32 [0,1] — beach proximity mask
 ) -> EcoGradients:
     """Compute all ecological gradients for a single tile.
 
@@ -410,14 +413,22 @@ def compute_eco_gradients(
                 del rt_jittered, _jitter_rock, alpine_avail
 
             # Layer 3: Snow — from snow_caps mask. Subtle dither.
-            # Overrides ALL other gap types (including floodplain) — at the
-            # snow line, nothing else makes sense.
+            # Overrides most gap types EXCEPT floodplain (gap==4) — riparian
+            # corridors must survive even at high elevation.  (S51 fix)
             if snow_caps is not None and snow_caps.max() > 0.01:
                 _jitter_snow = _jitter_base * 0.05
                 sc_jittered = snow_caps + _jitter_snow
-                snow_avail = land_mask & ~water_mask_re
+                snow_avail = land_mask & ~water_mask_re & (gap_mask != 4)
                 gap_mask[snow_avail & (sc_jittered >= 0.4)] = 7
                 del sc_jittered, _jitter_snow, snow_avail
+
+            # Layer 3b: Snow north-face extension — precompute mask (S51).
+            # Extends gap==7 onto north-facing slopes below the main snow line.
+            # Replaces the per-tile SnowCapNorth surface layer.
+            if snow_caps_north is not None and snow_caps_north.max() > 0.01:
+                scn_avail = land_mask & ~water_mask_re & (gap_mask != 4) & (gap_mask != 7)
+                gap_mask[scn_avail & (snow_caps_north >= 0.15)] = 7
+                del scn_avail
 
             del _jitter_base
 
@@ -428,8 +439,9 @@ def compute_eco_gradients(
         # Sand does NOT override alpine/rock/snow (high-elevation features).
         if sand_dunes is not None and sand_dunes.max() > 0.01:
             water_mask_sd = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
-            # Override gap==0, 1, 2, 4 (regular biome, meadow, windthrow, floodplain)
-            sd_overridable = (gap_mask == 0) | (gap_mask == 1) | (gap_mask == 2) | (gap_mask == 4)
+            # Override gap==0, 1, 2 (regular biome, meadow, windthrow).
+            # NOT floodplain (4) — riparian corridors must survive.  (S51 fix)
+            sd_overridable = (gap_mask == 0) | (gap_mask == 1) | (gap_mask == 2)
             sd_avail = land_mask & ~water_mask_sd & sd_overridable
             # Local noise for sand boundary jitter
             _world_x0 = tile_x * W
@@ -482,6 +494,18 @@ def compute_eco_gradients(
             wt_candidate = wt_precomputed & land_mask & ~water_mask_wt & (gap_mask == 0)
             gap_mask[wt_candidate] = 2
         # ── End windthrow ─────────────────────────────────────────────────
+
+        # ── Beach (gap==9) — coastal sand at Y=63 only (S51 rework) ─────
+        # Precomputed by rebuild_beach.py: EDT from ocean at 1:8, tight
+        # elevation + slope gate.  Here we enforce the hard Y=63 constraint
+        # and claim gap==0 only.  No simplex jitter — mask shape IS the shape.
+        if beach is not None and beach.max() > 0.01:
+            water_mask_bch = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
+            bch_avail = (land_mask & ~water_mask_bch & (gap_mask == 0)
+                         & (surface_y == 63))  # Y=63 only — user directive
+            gap_mask[bch_avail & (beach >= 0.05)] = 9
+            del bch_avail, water_mask_bch
+        # ── End beach ────────────────────────────────────────────────────
 
         # -- Per-biome meadow thresholding --
         # Floodplain + rock/alpine + windthrow already claimed their pixels.
@@ -559,6 +583,7 @@ def compute_eco_gradients(
     rt_grad = rock_exposure_tight if rock_exposure_tight is not None else np.zeros((H, W), dtype=np.float32)
     sc_grad = snow_caps if snow_caps is not None else np.zeros((H, W), dtype=np.float32)
     sd_grad = sand_dunes if sand_dunes is not None else np.zeros((H, W), dtype=np.float32)
+    bch_grad = beach if beach is not None else np.zeros((H, W), dtype=np.float32)
 
     # Alpine biome source: for each alpine/rock/snow pixel AND for any
     # ALPINE_MEADOW biome pixel (regardless of gap), find the nearest
@@ -596,6 +621,7 @@ def compute_eco_gradients(
         rock_tight_gradient=rt_grad,
         snow_caps_gradient=sc_grad,
         sand_dunes_gradient=sd_grad,
+        beach_gradient=bch_grad,
         alpine_biome_source=_alpine_bio_src,
     )
 
