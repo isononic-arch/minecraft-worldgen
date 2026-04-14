@@ -7,6 +7,8 @@ Claims pixels where:
   - 18° <= cliff_deg < 35° (moderate slope, below cliff threshold)
   - concavity_norm > 0 (concave = material accumulation zone)
   - pixel is land
+  - NOT near a river (riparian_proximity < threshold) — S54 fix: river carving
+    creates channel drops that read as moderate slopes, overwriting riparian dither.
 
 Block selection: cobblestone + gravel scatter (50/50 by noise), matching the
 legacy talus zone behavior but driven purely by physical signals.
@@ -38,6 +40,10 @@ CONCAVITY_THRESHOLD = 0.0
 
 # Gravel fraction within talus scatter.
 GRAVEL_FRAC = 0.50
+
+# Riparian exclusion: pixels with riparian_proximity >= this threshold are
+# excluded from talus painting.  Same rationale as temperate_cliff_face.  S54 fix.
+RIPARIAN_EXCLUSION_THRESHOLD = 0.3
 
 # Scatter density — fraction of scope pixels that get talus blocks.
 # Rest stay as prior surface (claimed but passthrough, so partition still works).
@@ -79,8 +85,13 @@ class TemperateTalusApron:
         surface_y = ctx.eco_grads.get("surface_y")
         land = (surface_y > SEA_LEVEL_Y) if surface_y is not None else np.ones(shape, dtype=bool)
 
+        # S54: exclude river-adjacent pixels — carved channels create steep banks
+        # that are not real geological slopes.
+        rip = ctx.eco_grads.get("riparian_proximity")
+        not_riparian = (rip < RIPARIAN_EXCLUSION_THRESHOLD) if rip is not None else np.ones(shape, dtype=bool)
+
         unclaimed = ctx.prior_ownership == 0
-        scope = biome_mask & moderate & concave & land & unclaimed
+        scope = biome_mask & moderate & concave & land & not_riparian & unclaimed
 
         if not scope.any():
             return make_result(np.zeros(shape, dtype=bool), block_out,

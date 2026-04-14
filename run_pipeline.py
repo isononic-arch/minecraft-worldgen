@@ -204,8 +204,11 @@ def _process_tile(args: dict) -> dict:
     )
 
     # ---- Step 6b: Ecological gradients ----
-    _gy, _gx = np.gradient(surface_y.astype(np.float32))
-    cliff_deg = np.degrees(np.arctan(np.hypot(_gx, _gy))).astype(np.float32)
+    # Use Gaussian-smoothed cliff_deg (sigma=1.5) to eliminate 45° spikes at
+    # every 1-block terrain step.  Raw np.gradient on integer surface_y treats
+    # each staircase edge as a cliff, causing temperate_cliff_face / talus_apron
+    # layers to paint stone contour-line bands across flat terrain.  S54 fix.
+    cliff_deg = core_eco.compute_cliff_deg(surface_y)
     land_mask = surface_y >= core_col_gen.SEA_LEVEL
 
     eco_grads = core_eco.compute_eco_gradients(

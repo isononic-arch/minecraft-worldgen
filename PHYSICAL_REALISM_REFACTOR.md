@@ -1710,6 +1710,47 @@ Thresholds reset to originals (35°/18–35°/35°) after premature lowering dur
 - **Full column_generator surface code cleanup** — steps 5-10 write to dead surface_blk.
 - Carry-forward: aspect convention drift, 51_53 flag-ON shadow hookup, palette tuning, ice in subsurface, world_studio.py duplicate BIOME_TO_MC.
 
+### S54 — 2026-04-14: Stone contour-line banding ROOT CAUSE + fix
+
+**Phase state (end of S54):**
+- Landed this session: **Contour-line banding fix** — root cause identified and one-line fix applied.
+- §11 currently at: **Phase 2.75** (no new phase — this was a cross-cutting bug fix)
+- Next session starts: **Ecotone dither width** (24px grass bleed at biome boundaries), **beach blob/staircasing** on (35,77), **desert pavement ground cover**.
+
+**Root cause:** `run_pipeline.py` line 207-208 computed `cliff_deg` via raw `np.gradient(surface_y.astype(np.float32))` without any smoothing. Integer `surface_y` is a staircase — every 1-block terrain step produces a local gradient of 1.0, which `np.arctan` maps to **45°**. This unsmoothed `cliff_deg` was passed through `decorate_surface()` into the surface pipeline's `SurfaceContext.eco_grads["cliff_deg"]`, where it drove threshold gates in every slope-sensitive layer:
+
+- `temperate_cliff_face` (≥35°) → stone/andesite/cobblestone on every terrain step
+- `temperate_talus_apron` (18-35°) → cobblestone scatter on every terrain step
+- `vertical_fluting` (≥35°) → stone variants (only where cliff_face already claimed)
+- `grass_terrace` (8-18°) → biome-keyed scatter
+
+The result: visible stone contour-line bands tracing every Y-level transition across all terrain, most visible on flat valley floors where the stone contrasts sharply with the grass/podzol palette.
+
+Meanwhile, `core/eco_gradients.py::compute_cliff_deg()` already existed with sigma=1.5 Gaussian pre-smooth specifically designed to eliminate this artifact — its docstring reads "eliminates contour-line banding artifacts in the surface pipeline layers." But only `chunk_writer.py` (subsurface banding) called it; the surface pipeline received the raw unsmoothed version.
+
+**Fix (1 line):** `run_pipeline.py` line 207-208 replaced:
+```python
+# BEFORE (raw gradient, 45° at every 1-block step):
+_gy, _gx = np.gradient(surface_y.astype(np.float32))
+cliff_deg = np.degrees(np.arctan(np.hypot(_gx, _gy))).astype(np.float32)
+
+# AFTER (Gaussian-smoothed, recovers true regional slope):
+cliff_deg = core_eco.compute_cliff_deg(surface_y)
+```
+
+**In-game validation:** Tile (51,53) regenerated and loaded. Flat-terrain stone contour-line banding **eliminated**. Forest floors show clean grass/podzol/coarse_dirt mix without stone intrusions at Y transitions.
+
+**River bank cobble/gravel fix (same session):** River banks (NOT lakes) displayed cobble/gravel mix instead of their normal riparian block dither. Cause: river carving creates 2-4 block channel drops that exceed the 18° talus and 35° cliff thresholds even after Gaussian smoothing of cliff_deg. Both `temperate_cliff_face` and `temperate_talus_apron` had no river exclusion — purely slope-gated. Fix: added `riparian_proximity >= 0.3` exclusion to the scope mask in both layers. Pixels near rivers (within ~30% of the riparian max distance, i.e. within the carved channel influence zone) are excluded from cliff/talus painting, letting the normal riparian block dither from `decorate_surface()` handle them instead. `vertical_fluting` cascades automatically (requires cliff_face ownership to fire). `grass_terrace` already had a riparian block-name guard. In-game validated on (51,53) — river banks restored to normal palette.
+
+**Files modified:** `run_pipeline.py` (cliff_deg computation), `core/layers/pass2_surface/temperate_cliff_face.py` (riparian exclusion), `core/layers/pass2_surface/temperate_talus_apron.py` (riparian exclusion), `CLAUDE.md`, `PHYSICAL_REALISM_REFACTOR.md` (this entry), `memory/CONTOUR_BANDING_FIX.md` (standalone reference).
+
+**Open items carried into S55:**
+- **Ecotone dither width** (24px) — biome boundary bleed.
+- **Beach blob/staircasing** on (35,77).
+- **Desert pavement ground cover** — dead_bush/short_dry_grass/tall_dry_grass.
+- **Full column_generator surface code cleanup** — steps 5-10 write to dead surface_blk.
+- Carry-forward: aspect convention drift, 51_53 flag-ON shadow hookup, palette tuning, ice in subsurface, world_studio.py duplicate BIOME_TO_MC.
+
 ---
 
 ## 19. Spec-vs-Code Drift Log

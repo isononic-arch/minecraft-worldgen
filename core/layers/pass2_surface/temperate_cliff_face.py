@@ -6,6 +6,9 @@ Claims pixels where:
   - biome is in LAND_BIOMES
   - cliff_deg >= CLIFF_DEG_THRESHOLD (35°)
   - pixel is land (surface_y > sea_level)
+  - NOT near a river (riparian_proximity < threshold) — S54 fix: river carving
+    creates 2-4 block channel drops that read as steep slopes even after Gaussian
+    smoothing, causing stone to overwrite normal riparian block dither.
 
 Block selection: lithology group palette with 70/20/10 primary/secondary/accent
 scatter, using noise for edge jitter.
@@ -59,6 +62,11 @@ CLIFF_DEG_THRESHOLD = 35.0
 # Sea level (MC Y).
 SEA_LEVEL_Y = 63
 
+# Riparian exclusion: pixels with riparian_proximity >= this threshold are
+# excluded from cliff painting.  River carving creates 2-4 block channel drops
+# that exceed 35° even after Gaussian smoothing of cliff_deg.  S54 fix.
+RIPARIAN_EXCLUSION_THRESHOLD = 0.3
+
 # Scatter fractions for lithology palette: primary 70%, secondary 20%, accent 10%.
 PRIMARY_FRAC = 0.70
 SECONDARY_FRAC = 0.90  # cumulative: 70 + 20
@@ -106,8 +114,13 @@ class TemperateCliffFace:
         surface_y = ctx.eco_grads.get("surface_y")
         land = (surface_y > SEA_LEVEL_Y) if surface_y is not None else np.ones(shape, dtype=bool)
 
+        # S54: exclude river-adjacent pixels — carved channels create steep banks
+        # that are not real geological cliffs.
+        rip = ctx.eco_grads.get("riparian_proximity")
+        not_riparian = (rip < RIPARIAN_EXCLUSION_THRESHOLD) if rip is not None else np.ones(shape, dtype=bool)
+
         unclaimed = ctx.prior_ownership == 0
-        scope = biome_mask & steep & land & unclaimed
+        scope = biome_mask & steep & land & not_riparian & unclaimed
 
         if not scope.any():
             return make_result(np.zeros(shape, dtype=bool), block_out,

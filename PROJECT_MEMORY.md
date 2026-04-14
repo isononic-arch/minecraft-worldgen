@@ -2,7 +2,7 @@
 
 *Broad project memory. Consolidates 40+ scattered memory entries into one widely-useful reference. Read this when CLAUDE.md doesn't have enough context. Updated after major milestones.*
 
-**Last updated:** 2026-04-10 (Session 41)
+**Last updated:** 2026-04-14 (Session 54)
 
 ---
 
@@ -37,8 +37,10 @@ run_pipeline.py (per tile, ProcessPoolExecutor)
    ├── core/biome_assignment.py — 4-stage biome logic (override → height/slope → hydro → forest)
    ├── core/river_carver_v2.py — terrain carving from precomputed centerline
    ├── core/column_generator.py — vertical block columns
-   ├── core/surface_decorator.py — biome palettes + eco overlays + slope zones + ground cover
-   └── core/chunk_writer.py — nbtlib .mca writer
+   ├── core/surface_decorator.py — biome palettes + eco overlays + ground cover
+   ├── core/surface_pipeline.py — layer-based surface pass orchestrator (S44+)
+   ├── core/layers/pass2_surface/ — slope-driven layers: cliff_face, talus_apron, grass_terrace, vertical_fluting, etc.
+   └── core/chunk_writer.py — nbtlib .mca writer + geology subsurface fill (S47+)
    ↓
 output/r.{x}.{z}.mca → copy to test world region/
 ```
@@ -61,7 +63,8 @@ Surface variations are encoded as a `gap_mask` per tile, computed in `eco_gradie
 | 5 | bare rock | above treeline + steep | probabilistic stone dither |
 | 6 | alpine meadow | treeline transition | wildflower stone mix |
 | 7 | snow cap | high elevation | overrides ALL gaps |
-| 8 | sand dune | desert biomes | overrides 0/1/2/4 only |
+| 8 | sand dune | desert biomes | overrides 0/1/2 only, NEVER 4/5/6/7 (S51 fix) |
+| 9 | beach | EDT from ocean, Y=63 gate | claims gap==0 only (S51) |
 
 **Application order matters.** See CLAUDE.md hard rules. Snow uses `land & ~water` and ignores existing gap values — it's the master override. Sand dunes go last but yield to alpine/rock/snow.
 
@@ -128,6 +131,8 @@ The "what we've already burned a session on" list. If a problem here recurs, STA
 - **Desert rock palette** (S41) — terracotta + basalt cap rock via Physical Realism Layer pattern, 14.3% basalt coverage from concavity-driven volcanic dikes.
 - **Treeline biome-shaped seams** (S41) — `gaussian_filter(treeline, sigma=15.0)` in `rebuild_rock_exposure.py` smooths over ~30 source pixels (240 blocks).
 - **Schematic placement** (S34) — 9 hard-won rules (separate bush/tree passes, no leaves/fences underground, classic ID 6 → matching leaves, marker blocks → air, 3px river buffer, etc.).
+- **Stone contour-line banding** (S49-S54) — stone/andesite/cobblestone bands traced every terrain contour line. ROOT CAUSE (S54): `run_pipeline.py` computed `cliff_deg` from raw `np.gradient(surface_y)` without smoothing; every 1-block staircase step read as 45°, firing `temperate_cliff_face` (≥35°) and `temperate_talus_apron` (18-35°). Fix: replaced with `compute_cliff_deg(surface_y)` (sigma=1.5 Gaussian pre-smooth). Sessions S49-S53 fixed secondary sources (noise_layers stone, eco overlay stone, slope zone assignments) that masked the primary cause. See `memory/CONTOUR_BANDING_FIX.md`.
+- **River bank cobble/gravel** (S54) — cliff_face and talus_apron fired on carved river channel banks (2-4 block drops exceed thresholds even after smoothing). Fix: added `riparian_proximity >= 0.3` exclusion to both layers' scope masks.
 
 ### Tooling
 - **`world_studio.py` integration** (S17-25) — single-pane tool: world map, voxel preview, cross-section, sim preview, biome cluster, hydro overlay, palette editor, spline editor.
@@ -146,9 +151,10 @@ CLAUDE.md has the must-not-break version. This section adds the WHY for context.
 - **All `rebuild_*.py` scripts run at 1:8 (6250×6250).** Bilinear upscale to 50k via `write_upscaled()`. Register in `core/tile_streamer.py:MASK_NAMES`. Wire through `eco_gradients.py` (gap_mask) and/or `surface_decorator.py` (palette).
 
 ### Slope math footgun
-- `np.gradient(sy)` returns dY per ARRAY INDEX. At 1:8 scale, that's 8× the real slope.
-- `rebuild_sand_dunes.py` uses corrected `np.gradient(sy) / SCALE`.
-- `rebuild_rock_exposure/windthrow/floodplain` + `core/eco_gradients.py` use the OLD inflated math with thresholds tuned to it. Don't fix it without retuning the thresholds — you'll silently break the pipeline.
+- `np.gradient(sy)` returns dY per ARRAY INDEX. On integer terrain, every 1-block step reads as gradient=1.0 → 45°.
+- **`run_pipeline.py` uses `compute_cliff_deg(surface_y)`** (Gaussian sigma=1.5 pre-smooth) since S54. This is the canonical cliff_deg for surface pipeline layers and eco_gradients. See `memory/CONTOUR_BANDING_FIX.md` for the multi-session hunt that led here.
+- `rebuild_sand_dunes.py` uses corrected `np.gradient(sy) / SCALE` (1:8 scale correction).
+- `rebuild_rock_exposure/windthrow/floodplain` use OLD inflated math with thresholds tuned to it. Don't fix it without retuning the thresholds.
 - Aspect (direction, not magnitude) does NOT need the SCALE correction.
 - Gaea's `slope.tif` is non-linearly normalized — `slope_norm * 90 ≠ degrees`. Use `eco_grads.cliff_deg` for actual angles.
 
@@ -179,19 +185,24 @@ CLAUDE.md has the must-not-break version. This section adds the WHY for context.
 ## 7. OPEN WORK / ROADMAP
 
 ### Next session priority
-1. **Riparian bare-dirt hole** — preexisting bug surfaced by `validate_3x3.py`'s `no_bare_dirt_surface` check against baseline `51_53`. Zone window = MIXED_FOREST 85% + TEMPERATE_RAINFOREST 15%; ~10-12% of river pixels end up as raw `dirt`. Hunt in `core/surface_decorator.py` riparian-band handlers for those two biomes. Full details in `memory/project_vandir_status.md` 2026-04-10 entry and in CLAUDE.md TOP PRIORITY.
-2. **Stratification rings fix** — see CLAUDE.md TOP PRIORITY. Downgraded by user in S42 ("not that big") but still on list.
+1. **Ecotone dither width** (24px) — grass bleed at biome boundaries is too wide.
+2. **Beach blob/staircasing** on tile (35,77).
+3. **Desert pavement ground cover** — dead_bush/short_dry_grass/tall_dry_grass still pending.
+4. **Stratification rings fix** — downgraded by user in S42 ("not that big"), likely subsumed by geology pass (CLAUDE.md DIRECTION #3).
 
-### Apply Physical Realism Layer pattern to other masks
-2. Snow cap north accumulation by `north_factor`
-3. Windthrow orientation by aspect + wind direction
-4. Forest density by aspect (south-facing drier)
-5. Coastal beaches by flow + slope + concavity
-6. Riparian banks by flow magnitude (currently uniform)
+### Resolved items (moved from next-session)
+- ~~Riparian bare-dirt hole~~ STRICKEN S43 — validator false positive, not a real bug.
+- ~~Snow cap north accumulation by `north_factor`~~ DONE S51 — precompute mask `snow_caps_north.tif`.
+- ~~Coastal beaches~~ DONE S51 — `rebuild_beach.py` → `beach.tif`, gap==9, Y=63 constraint.
+- ~~Stone contour-line banding~~ FIXED S54 — `compute_cliff_deg()` smoothing + riparian exclusion.
+
+### Apply Physical Realism Layer pattern to remaining masks
+2. Windthrow orientation by aspect + wind direction
+3. Forest density by aspect (south-facing drier)
+4. Riparian banks by flow magnitude (currently uniform)
 
 ### New global masks
-7. **Coastal beaches** — `rebuild_beach.py` → `beach_sand.tif`. Distance-to-ocean × slope gate × concavity. 5-15 block strip.
-8. **Dune morphology** — `rebuild_dune_morph.py` → `dune_morph.tif`. Anisotropic noise along wind axis as height offset within sand zones. (Deferred from S40.)
+5. **Dune morphology** — `rebuild_dune_morph.py` → `dune_morph.tif`. Anisotropic noise along wind axis as height offset within sand zones. (Deferred from S40.)
 
 ### Hydrology cleanup
 9. **Meander on connectivity extension channels** — `enforce_connectivity()` extensions currently don't get the spline meander treatment, only the main NMS rivers.
@@ -281,6 +292,12 @@ A one-line index of major milestones. Full session details previously lived in C
 - **S45** Phase 0.75 shadow-mode hookup landed (`run_passes([], ctx)` wired into `decorate_surface()` behind `config/thresholds.json → surface_pipeline.shadow_mode` flag + `VANDIR_SHADOW=1` env override, try/except-wrapped). 31 unit tests green; flag-OFF + flag-ON 3×3 runs clean on 48_48 / 51_53 — zero new PASS→FAIL flips. Session inserted §11 Phase 0.75 + session-kickoff pillar checkoff to prevent future phase-number drift.
 - **S46** Phase 1.5 "Lithology wiring scaffolding" landed. Session began Phase 1 per handoff but codebase recon surfaced a **spec-vs-code architectural drift**: §11 Phase 1 targeted `column_generator.fill_column(...)` which does not exist; `column_generator` emits only a sparse `ColumnResult.blocks` dict that the .mca path never reads for mid-column fill. Real injection point is `core/chunk_writer.build_column_array()`. Surfaced to user per new Codebase-reconciliation rule; user picked "fatten the real path". §11 Phase 1 preserved verbatim but marked SUPERSEDED, new **Phase 1.5** subsection inserted. Scope: 4 new optional kwargs on `build_column_array()` (`lithology_tile`, `sediment_thickness_tile`, `soil_horizon_depth_tile`, `use_new_geology`) + pass-through through `process_tile_columns_v2` / `generate_columns`; early-out guard makes flag-OFF byte-identical to S45; flag-ON raises `NotImplementedError` deferred to S47; 5 new unit tests. Tile choice corrected from 36_20 (desert, wrong) to **59_53** (windthrow / temperate mountain reference) as new 3×3 baseline. New §19 Spec-vs-Code Drift Log started in `PHYSICAL_REALISM_REFACTOR.md`; CLAUDE.md session-kickoff pillar checkoff extended with step 5 "Codebase reconciliation check". **Stop point: Phase 1.5 complete; Phase 2 (real geology content in flag-ON branch) next.**
 - **S47** Phase 1.75 "Real geology content" landed + flag flipped ON + surface decorator gating + visual tuning. Geology sublayers 1-4 working in-game: deepslate bedrock band, lithology-palette basement banding (randomised 4-10 block thickness, XZ waviness, ±3Y per-column noise), flow-driven sediment, slope-driven soil horizon. Surface decorator gated: gap==5 rock uses soil palette (grass/coarse_dirt/gravel/packed_mud) instead of legacy terracotta/basalt mesh when geology ON. Found + fixed lithology read coordinate bug (reading at full-res offsets from 1:8 mask → all zeros). Palettes expanded to 6-8 blocks per group. In-game verified on 24_80 (124-block cliffs, sedimentary+deepslate contact) and 59_53 (temperate rainforest). 46/46 unit tests. **Stop point: all-biome surface gating next.**
+- **S48** Phase 2.0 — Temperate Mountain pilot layers: `temperate_cliff_face` (≥35° lithology-keyed rock), `temperate_talus_apron` (18-35° cobblestone/gravel), `vertical_fluting` (overlay: columnar weathering stripes on claimed cliffs). Surface pipeline wired into `decorate_surface()` behind feature flag.
+- **S49** Biome consolidation, ground cover gating, cliff_deg staircase aliasing fix (`compute_cliff_deg` with Gaussian smoothing added to `eco_gradients.py`). Stone banding partially reduced but not eliminated.
+- **S50** Phase 2.75 partial — 3 new layers (`river_bar`, `desert_pavement`, `beach_surface`), `ForestSurface` removed (legacy decorator handles forest floor). Beach deferred to precompute mask approach.
+- **S51** Snow cap north + beach as precompute masks. `snow_caps_north.tif` via `rebuild_rock_exposure.py`, `beach.tif` via `rebuild_beach.py`. Gap==9 (beach) added with Y=63 constraint. Sand dune gap fixed to never override floodplain/rock/alpine/snow. 24_80 baseline snapshotted.
+- **S52+S53** GrassTerrace biome-aware scatter, eco overlay restored with organic-only surface blocks (stone→packed_mud etc.), legacy slope zone deletion in column_generator, noise_layers stone purge (7 biomes). Stone banding still visible in-game.
+- **S54** **Stone contour-line banding ROOT CAUSE + river bank fix.** (1) `run_pipeline.py` computed `cliff_deg` from raw `np.gradient(surface_y)` — every 1-block step = 45°, firing cliff/talus layers at every contour line. Fixed: replaced with `compute_cliff_deg()` (sigma=1.5 Gaussian). (2) River banks showed cobble/gravel because carved channels exceed thresholds even after smoothing. Fixed: `riparian_proximity >= 0.3` exclusion on both layers. Both validated in-game on (51,53). See `memory/CONTOUR_BANDING_FIX.md`.
 
 ---
 
@@ -306,9 +323,9 @@ Severity key:
 
 4. **Single-threaded mask rebuilds.** 2-8 min × 6 rebuild scripts = 20-40 min to refresh all masks after one config edit. Some are independent (sand_dunes vs rock_exposure) and could run in parallel. Needs: investigate shared-memory cost vs win.
 
-5. **Stratification rings bug (current CLAUDE.md TOP PRIORITY, deferred 2026-04-10 behind cleanup).** Localized cosmetic, every desert-region render inherits it. Fixed scope, 3 pre-identified candidate fixes. P1 severity at scale (one cliff cross-section per mountain); P0 for annoyance-of-knowing-it's-broken.
+5. **Stratification rings bug (downgraded S42, likely subsumed by geology pass).** Localized cosmetic in desert regions. CLAUDE.md DIRECTION #3 notes the geology pass likely subsumes this. P1→P2 pending geology completion.
 
-6. **Inflated slope math in `rebuild_rock_exposure/windthrow/floodplain` + `core/eco_gradients.py`.** CLAUDE.md says "works but ugly, don't touch without retuning thresholds." That's a landmine. Any later eco_gradients refactor will re-break these three masks. Needs: explicit migration plan + coordinated retune in one session, not piecemeal.
+6. **Inflated slope math in `rebuild_rock_exposure/windthrow/floodplain`.** These rebuild scripts still use the old inflated `np.gradient` math with thresholds tuned to it. `run_pipeline.py` and `eco_gradients.py` now use smoothed `compute_cliff_deg()` (S54 fix). The rebuild scripts are independent — they don't share thresholds with the surface pipeline — but the inconsistency is a landmine. Needs: explicit migration plan + coordinated retune in one session.
 
 7. ~~**No mask sanity validator.**~~ **RESOLVED (S41-42).** `tools/validate_masks.py` checks dtype + shape + coverage % bounds per mask from `config/validation_affects.json`. `tools/validate_3x3.py` runs 9 tiles through pre-MCA pipeline with per-tile + seam checks, supports baseline-diff (`--baseline`) for regression detection, and delta mode (`--affects-key`) to skip unaffected checks. Two 3×3 baselines committed: `tests/baselines/3x3/48_48` (ocean) and `51_53` (land, known failures). Remaining gap: per-zone distribution diffs — a regression that scrambles zone mix but keeps total coverage in-band will still pass. Filed as TODO against the baseline system.
 
