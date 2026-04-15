@@ -62,6 +62,7 @@ class EcoGradients(NamedTuple):
     snow_caps_gradient: np.ndarray   # float32 [0,1] raw snow cap gradient for dither
     sand_dunes_gradient: np.ndarray  # float32 [0,1] sand dune gradient for dither
     beach_gradient:      np.ndarray  # float32 [0,1] beach proximity gradient for dither
+    beach_edge_mask:     np.ndarray  # bool — pixels in beach dither zone that did NOT get sand (for edge-palette painting in surface_decorator)
     alpine_biome_source: np.ndarray  # (H, W) object str — nearest non-alpine biome name
 
 
@@ -260,6 +261,7 @@ def compute_eco_gradients(
     #           then bare > windthrow > meadow (smallest features win ties).
 
     gap_mask = np.zeros((H, W), dtype=np.uint8)
+    beach_edge_mask = np.zeros((H, W), dtype=bool)  # S55: pixels in beach dither zone that stay biome (get overwritten with light biome-block mix in surface_decorator)
 
     # Per-biome gap frequency targets (fraction of biome area)
     # Tuple order: (meadow, windthrow, bare, floodplain)
@@ -459,7 +461,13 @@ def compute_eco_gradients(
             sd_jittered = sand_dunes + _sd_noise
             # Wide gap zone (0.05 threshold) — probabilistic dither in
             # surface_decorator handles edge fade across the full range.
-            gap_mask[sd_avail & (sd_jittered >= 0.05)] = 8
+            # S55: biome gate — sand_dunes mask overreaches into
+            # DESERT_STEPPE_TRANSITION (65%) and SEMI_ARID_SHRUBLAND (80%).
+            # Restrict gap==8 to true dune desert; other arid biomes use
+            # their own palette for incidental sand patches.
+            _sd_biome_ok = (biome_grid == "SAND_DUNE_DESERT") if biome_grid is not None else np.ones((H, W), dtype=bool)
+            gap_mask[sd_avail & (sd_jittered >= 0.05) & _sd_biome_ok] = 8
+            del _sd_biome_ok
             del sd_jittered, _sd_noise, sd_avail, water_mask_sd
 
             # ── Post-pass: enforce monotonicity ──────────────────────────
@@ -495,16 +503,165 @@ def compute_eco_gradients(
             gap_mask[wt_candidate] = 2
         # ── End windthrow ─────────────────────────────────────────────────
 
-        # ── Beach (gap==9) — coastal sand at Y=63 only (S51 rework) ─────
-        # Precomputed by rebuild_beach.py: EDT from ocean at 1:8, tight
-        # elevation + slope gate.  Here we enforce the hard Y=63 constraint
-        # and claim gap==0 only.  No simplex jitter — mask shape IS the shape.
-        if beach is not None and beach.max() > 0.01:
-            water_mask_bch = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
-            bch_avail = (land_mask & ~water_mask_bch & (gap_mask == 0)
-                         & (surface_y == 63))  # Y=63 only — user directive
-            gap_mask[bch_avail & (beach >= 0.05)] = 9
-            del bch_avail, water_mask_bch
+        # ── Beach (gap==9) — biome-gated coastline band with dither (S55) ──
+        # Approach:
+        #   1. Ocean seed = surface_y < 63 AND not river — rivers don't make beaches.
+        #   2. EDT from ocean → per-pixel distance-to-coast in blocks.
+        #   3. Per-biome core width: base + amp * width_noise (Gaussian-blurred
+        #      random field, sigma=8, gives 8–16 block coherent lobes — "wave
+        #      action reached further here than there").
+        #   4. Dither zone beyond core = 50% of core width, probability fades
+        #      linearly from 1.0 at core edge to 0.0 at outer edge.  Decision
+        #      coin is a second Gaussian-blurred random field (sigma=3, finer)
+        #      so the edge breaks into organic fingers rather than salt-and-
+        #      pepper noise.
+        #   5. Eligibility gate = beach.tif >= 0.05 (tight elevation+slope mask
+        #      from rebuild_beach.py) AND biome class in allowed set.
+        #   6. Biomes split into full-beach (ocean-facing coasts), shallow-beach
+        #      (PNW-style forest coasts — rainforest, boreal, deciduous), and
+        #      no-beach (everything else: tundra/frozen, arid/dunes, alpine,
+        #      karst, mangrove/tidal which have their own wet treatment,
+        #      inland forests like birch/mixed).
+        from scipy.ndimage import distance_transform_edt as _edt_bch
+        from scipy.ndimage import gaussian_filter as _gf_bch
+
+        _FULL_BEACH_BIOMES = (
+            "COASTAL_HEATH", "EASTERN_TEMPERATE_COAST",
+            "RAINFOREST_COAST", "LUSH_RAINFOREST_COAST",
+        )
+        _SHALLOW_BEACH_BIOMES = (
+            "TEMPERATE_RAINFOREST", "BOREAL_TAIGA", "TEMPERATE_DECIDUOUS",
+        )
+
+        water_mask_bch = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
+        _ocean = (surface_y < 63) & ~water_mask_bch  # strict + excl. rivers
+
+        if _ocean.any() and (~_ocean).any() and biome_grid is not None:
+            # --- Per-biome base width + amplitude ---
+            _full_bch = np.zeros((H, W), dtype=bool)
+            _shallow_bch = np.zeros((H, W), dtype=bool)
+            for _b in _FULL_BEACH_BIOMES:
+                _full_bch |= (biome_grid == _b)
+            for _b in _SHALLOW_BEACH_BIOMES:
+                _shallow_bch |= (biome_grid == _b)
+
+            # S55 v8 tuning: flip core:dither ratio — tiny always-sand core
+            # at the waterline, huge dither zone for visible mixing.
+            # Total width similar to v7 but dominated by the mix band.
+            _base_width = np.where(
+                _full_bch, np.float32(4.0),    # v7=11; thin solid sand at waterline
+                np.where(_shallow_bch, np.float32(2.0), np.float32(0.0)),
+            ).astype(np.float32)
+            _amp = np.where(
+                _full_bch, np.float32(2.0),    # v7=6; small width jitter — core is tight
+                np.where(_shallow_bch, np.float32(1.0), np.float32(0.0)),
+            ).astype(np.float32)
+
+            _any_beach_biome = _full_bch | _shallow_bch
+            if _any_beach_biome.any():
+                _dist_from_ocean = _edt_bch(~_ocean).astype(np.float32)
+
+                # --- Gaussian-blurred noise field for width modulation ------
+                # Same pattern as hydrology_precompute.py:694 — seeded RNG,
+                # standard normal, then Gaussian blur.  sigma=8 → 8–16 block
+                # coherent lobes.
+                _bch_rng = np.random.default_rng(99001 + tile_x * 97 + tile_z)
+                _wn_raw = _gf_bch(
+                    _bch_rng.standard_normal((H, W)).astype(np.float32),
+                    sigma=12,   # S55 v2: was 8; larger lobes = longer stretches
+                )
+                _wn_lo, _wn_hi = float(_wn_raw.min()), float(_wn_raw.max())
+                if _wn_hi > _wn_lo:
+                    _width_noise = (2.0 * (_wn_raw - _wn_lo)
+                                    / (_wn_hi - _wn_lo) - 1.0).astype(np.float32)
+                else:
+                    _width_noise = np.zeros_like(_wn_raw)
+                del _wn_raw
+
+                # --- Core + total widths (non-beach biomes = 0) -------------
+                # S55 v5: no slope gate.  v3's hard cliff gate and v4's
+                # slope multiplier both killed all beach because smoothed
+                # cliff_deg on any coastal rise exceeds the thresholds.
+                # Biome gate is the right filter — if biome is
+                # COASTAL_HEATH/RAINFOREST_COAST/etc., paint beach along
+                # every coast within range, regardless of terrain rise.
+                _core_width = np.maximum(
+                    _base_width + _amp * _width_noise, 0.0
+                ).astype(np.float32)
+                _core_width[~_any_beach_biome] = 0.0
+                _dither_width = _core_width * np.float32(3.0)  # S55 v8: was 0.8; huge mix zone dominates the beach visually
+                _total_width = _core_width + _dither_width
+
+                # --- Eligibility ------------------------------------------
+                # S55 v10: beach stomps meadow (gap==1) AND floodplain
+                # (gap==4) in its coastal zone.  Inland floodplain is
+                # unaffected — the distance constraint via _bch_core /
+                # _in_dither naturally limits beach to the near-ocean
+                # band.  Beach still yields to rock (5), alpine_meadow (6),
+                # snow (7), sand_dune (8) — those are physically dominant.
+                # (Floodplain near the coast is delta/tidal flats, which
+                # read as beach visually, not grass clearings.)
+                _bch_eligible = (
+                    land_mask & ~water_mask_bch
+                    & ((gap_mask == 0) | (gap_mask == 1) | (gap_mask == 4))
+                    & _any_beach_biome
+                    & (_dist_from_ocean > 0)
+                )
+
+                # --- Core: always beach ------------------------------------
+                _bch_core = _bch_eligible & (_dist_from_ocean <= _core_width)
+
+                # --- Dither zone: probability fades from 1.0 → 0.0 ---------
+                _in_dither = (
+                    _bch_eligible
+                    & (_dist_from_ocean > _core_width)
+                    & (_dist_from_ocean <= _total_width)
+                )
+                _t = np.clip(
+                    (_dist_from_ocean - _core_width)
+                    / np.maximum(_dither_width, np.float32(0.5)),
+                    0.0, 1.0,
+                )
+                # S55 v9: clamp prob to [0.15, 0.85] across dither zone
+                # so EVERY pixel in the zone has both sand AND biome as
+                # possibilities.  Guarantees salt-and-pepper mixing
+                # throughout, not solid-sand→solid-biome sub-bands.
+                # Previously was (1 - _t) spanning 0..1, which created
+                # mostly-sand inner half and mostly-biome outer half.
+                _place_prob = np.clip(1.0 - _t, 0.15, 0.85).astype(np.float32)
+
+                # Second Gaussian-blurred random field, finer sigma for edge
+                # fingers (different seed than width noise).
+                _dr_raw = _gf_bch(
+                    _bch_rng.random((H, W)).astype(np.float32),
+                    sigma=1,   # S55 v9: was 2; near per-pixel salt-and-pepper
+                )
+                _dr_lo, _dr_hi = float(_dr_raw.min()), float(_dr_raw.max())
+                if _dr_hi > _dr_lo:
+                    _dith_coin = ((_dr_raw - _dr_lo)
+                                  / (_dr_hi - _dr_lo)).astype(np.float32)
+                else:
+                    _dith_coin = _dr_raw
+                del _dr_raw
+
+                _bch_dithered = _in_dither & (_dith_coin < _place_prob)
+
+                gap_mask[_bch_core | _bch_dithered] = 9
+
+                # S55 v2: record pixels that are in the dither zone but did NOT
+                # get sand.  surface_decorator overwrites these with a Gaussian-
+                # blurred mix of grass_block / coarse_dirt / podzol (sparingly)
+                # so the transition from sand reads as a gradient into the
+                # adjoining biome rather than a hard cutoff against whatever
+                # the biome palette painted (which can be podzol-heavy).
+                beach_edge_mask[_in_dither & ~_bch_dithered] = True
+
+                del (_dist_from_ocean, _width_noise, _core_width,
+                     _dither_width, _total_width,
+                     _bch_eligible, _bch_core, _in_dither, _t,
+                     _place_prob, _dith_coin, _bch_dithered, _bch_rng)
+            del _full_bch, _shallow_bch, _base_width, _amp, _any_beach_biome
+        del _ocean, water_mask_bch
         # ── End beach ────────────────────────────────────────────────────
 
         # -- Per-biome meadow thresholding --
@@ -622,6 +779,7 @@ def compute_eco_gradients(
         snow_caps_gradient=sc_grad,
         sand_dunes_gradient=sd_grad,
         beach_gradient=bch_grad,
+        beach_edge_mask=beach_edge_mask,
         alpine_biome_source=_alpine_bio_src,
     )
 

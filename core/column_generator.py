@@ -505,15 +505,11 @@ def generate_column(
             px, py, noise_gens["slope_mix"], cfg["slope_surface"],
         )
 
-    # ── 5. Shoreline override ─────────────────────────────────────────────────
-    if is_shore and not is_ocean:
-        dist_above = surface_y - SEA_LEVEL
-        shore_result = shoreline_surface(
-            biome, surface_y, dist_above, slope_norm,
-            px, py, noise_gens["slope_mix"], cfg["shoreline"],
-        )
-        if shore_result:
-            surface_blk, subsurface_blk = shore_result
+    # ── 5. Shoreline override — REMOVED S55 ─────────────────────────────────
+    # Legacy sand/gravel beach via column_generator is replaced by the
+    # programmatic beach in eco_gradients (gap==9, coastline EDT + slope
+    # width + edge dither).  The old system used a fixed 4-block
+    # dist-above-sea-level gate that produced blocky results at 1:8 scale.
 
     # ── 6. Build block dict (sparse — only non-stone non-air entries) ─────────
     blocks: dict[int, str] = {}
@@ -554,11 +550,11 @@ def generate_column(
         for y in range(surface_y + 1, SEA_LEVEL + 1):
             blocks[y] = "water"
 
-        # Near-shore underwater sand
-        if is_shore and depth_below <= cfg["shoreline"]["sand_underwater_depth"]:
-            blocks[surface_y] = "sand"
-            if surface_y - 1 > BEDROCK_Y:
-                blocks[surface_y - 1] = "sandstone"
+        # Near-shore underwater sand — REMOVED S55.
+        # Produced "long straight lines / large blob" of sand on the seafloor
+        # because it's a binary depth-threshold with no dither.  Underwater
+        # coastal treatment will be revisited in a dedicated pass later.
+        # Seafloor reverts to underwater_floor_block() for all depths.
 
     # ── 8. Snow cap ───────────────────────────────────────────────────────────
     snow_layer = False

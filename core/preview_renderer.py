@@ -131,7 +131,7 @@ def render_tile(
     rgba = np.zeros((H, W, 4), dtype=np.uint8)
     rgba[:, :, 3] = 255  # fully opaque
 
-    ocean_mask = surface_y <= sea_level_y
+    ocean_mask = surface_y < sea_level_y  # S55: strict; Y=63 is sea-level LAND, not ocean
 
     if mode == "height":
         # Greyscale: normalize surface_y to [0,255]

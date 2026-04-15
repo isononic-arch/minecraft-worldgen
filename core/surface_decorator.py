@@ -1259,6 +1259,15 @@ def decorate_surface(
                 if not use_new_geology:
                     subsurface_blocks[beach_px] = "sandstone"
 
+            # ── Beach edge (S55 v7): no overwrite.
+            # The gap==9 placement in eco_gradients already creates the
+            # gradient (sand probability 1.0 → 0.0 across the dither zone).
+            # Pixels that don't get sand simply retain whatever the biome
+            # palette painted — moss_block, mud, coarse_dirt, podzol, etc.
+            # This preserves biome character and lets ground cover plant
+            # vegetation through the transition band normally.  No plain-
+            # grass-block buffer between sand and forest.
+
     # --- Gap edge probabilistic dither ----------------------------------------
     # At meadow/windthrow/floodplain edges, blend the gap's grass_block surface
     # with the surrounding biome's surface block.  Uses distance-from-gap-interior
@@ -1610,20 +1619,31 @@ def _apply_ecotone_dither(
 
     Skips ocean pixels and single-biome tiles.
     """
-    from scipy.ndimage import distance_transform_edt
+    from scipy.ndimage import distance_transform_edt, gaussian_filter
 
     H, W = biome_grid.shape
     eco_cfg   = cfg.get("eco_ground_cover", {})
-    width_px  = int(eco_cfg.get("ecotone_width_px", 24))
+    width_px  = int(eco_cfg.get("ecotone_width_px", 48))   # S55 v2: was 24; user wants much wider biome-to-biome gradient
     sharpness = float(eco_cfg.get("ecotone_sigmoid_sharpness", 4.0))
 
     unique_biomes = [b for b in np.unique(biome_grid) if not str(b).startswith("_")]
     if len(unique_biomes) < 2:
         return  # single-biome tile — nothing to blend
+        # NOTE: this also skips biome boundaries that straddle tile seams
+        # (different biome on this tile vs. the neighbour).  Cross-tile
+        # ecotone awareness is a deferred carry-forward.
 
-    # Seeded RNG for deterministic dithering
+    # Seeded RNG for deterministic dithering.  S55 v2: Gaussian-blurred to give
+    # coherent salt-and-pepper lobes (matching the beach dither pattern)
+    # rather than pure per-pixel static noise.
     rng = np.random.default_rng(tile_x * 48271 ^ tile_y * 31337 ^ 0xEC0D17E)
-    rand_field = rng.random((H, W)).astype(np.float32)
+    _rand_raw = gaussian_filter(rng.random((H, W)).astype(np.float32), sigma=3)
+    _rr_lo, _rr_hi = float(_rand_raw.min()), float(_rand_raw.max())
+    if _rr_hi > _rr_lo:
+        rand_field = ((_rand_raw - _rr_lo) / (_rr_hi - _rr_lo)).astype(np.float32)
+    else:
+        rand_field = _rand_raw
+    del _rand_raw
 
     # For each biome, compute distance-to-boundary (signed: positive = inside)
     # and find the nearest neighbour biome at each pixel.
@@ -2157,6 +2177,15 @@ def _apply_ground_cover(
                 eco_density_mod[sand_dune_px] = 0.05  # bare sand
                 beach_px = gap_mask == 9
                 eco_density_mod[beach_px] = 0.02  # bare beach
+                # S55 v8: thin vegetation on the beach-edge transition zone
+                # (dither pixels that did NOT become sand) so the underlying
+                # biome floor blocks — mud, coarse_dirt, moss_block, podzol —
+                # show through the plants.  Without this, ground cover hides
+                # the salt-and-pepper mix and the transition looks like a
+                # hard sand→forest cutoff from aerial view.
+                _beach_edge_mod = getattr(eco_grads, "beach_edge_mask", None)
+                if _beach_edge_mod is not None and _beach_edge_mod.any():
+                    eco_density_mod[_beach_edge_mod] = 0.15  # 15% vegetation
 
     # ---- Species colony map -----------------------------------------------
     # Hash-based colony assignment: divides tile into ~48px cells,
