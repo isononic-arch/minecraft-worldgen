@@ -353,6 +353,7 @@ def place_schematics(
     tile_y:        int,
     eco_grads=None,                    # Optional EcoGradients from eco_gradients.py
     cliff_deg:    np.ndarray | None = None,  # (H,W) float32 degrees
+    clearing_field: np.ndarray | None = None,  # (H,W) float32 [0,1] — meadow clearing noise (S57 Phase 3a)
 ) -> list[PlacementRecord]:
     """
     Compute schematic placements for one tile.
@@ -400,6 +401,29 @@ def place_schematics(
 
         # Alpine meadow (gap==6): allow sparse scattered krummholz trees
         # — don't suppress from land_mask, handled via density below
+
+    # S57 Phase 3a: Suppress trees in meadow clearing interior (biome-gated).
+    # Clearing edge thinning is applied as a density modifier below, not a
+    # hard suppression.
+    _CLEARING_BIOMES_TREE = frozenset({
+        "TEMPERATE_RAINFOREST", "TEMPERATE_DECIDUOUS", "BOREAL_TAIGA",
+        "MIXED_FOREST", "BIRCH_FOREST", "RIPARIAN_WOODLAND",
+    })
+    _clearing_interior_px = None
+    _clearing_seam_px = None
+    if clearing_field is not None:
+        from core.meadow_clearing_field import (
+            CLEARING_INTERIOR_THRESHOLD as _CF_THR_TR,
+            CLEARING_EDGE_BAND as _CF_BAND_TR,
+        )
+        _cltr_biome = np.zeros((H, W), dtype=bool)
+        for _cb in _CLEARING_BIOMES_TREE:
+            _cltr_biome |= (biome_grid == _cb)
+        if _cltr_biome.any():
+            _clearing_interior_px = _cltr_biome & (clearing_field < _CF_THR_TR)
+            _clearing_seam_px = _cltr_biome & (np.abs(clearing_field - _CF_THR_TR) < _CF_BAND_TR) & ~_clearing_interior_px
+            if _clearing_interior_px.any():
+                land_mask = land_mask & ~_clearing_interior_px
 
         # Edge transitions with noisy dither into forest
         # Windthrow/meadow: wider ragged edge (6px, noise-driven suppression)
@@ -491,6 +515,18 @@ def place_schematics(
                 eco_density_tile = eco_density_tile * tree_thin
             else:
                 eco_density_tile = tree_thin
+
+    # S57 Phase 3a: Clearing seam tree thinning (~40% of normal density).
+    # Creates the "scattered trees spilling into clearing" look.  Interior is
+    # already fully suppressed via land_mask above.
+    if _clearing_seam_px is not None and _clearing_seam_px.any():
+        _seam_thin = np.ones((H, W), dtype=np.float32)
+        _seam_thin[_clearing_seam_px] = 0.40
+        if eco_density_tile is not None:
+            eco_density_tile = eco_density_tile * _seam_thin
+        else:
+            eco_density_tile = _seam_thin
+        del _seam_thin
 
     # ── Stage B: Pre-compute species habitat score maps ───────────────────
     habitats_cfg = cfg.get("species_habitats", {})

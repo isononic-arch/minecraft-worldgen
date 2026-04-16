@@ -941,6 +941,22 @@ Geology fills `vol` in Y range `[Y_MIN+1, surface_y-3]`. The surface decorator's
 
 ---
 
+### Phase 3a — Meadow clearings + boreal moss (S57, 2026-04-16)
+
+**Why a new decimal subsection:** Phase 3 as originally specced is a full rewrite of ground cover + vegetation into 7-8 Pass 3/4 Layer-protocol classes. That's a much larger scope than a single session. Phase 3a is the hybrid-approach foundation — wires the existing `meadow_clearing_field.py` (Phase 0 scaffolding) into the legacy `_apply_ground_cover` and `place_schematics` systems without rewriting them. Achieves the single biggest visual improvement (forest clearings) with minimal architectural churn. Phase 3b (next session) handles cross-tile ecotone / seam awareness. Full Pass 3/4 Layer-protocol rewrite is deferred to a later phase.
+
+**Scope:**
+1. `meadow_clearing_field` (Phase 0 scaffolding, functional since S44) wired into `run_pipeline.py`, `tools/_pipeline_runner.py`, `tools/validate_test_tile.py`. Single shared noise field read by both ground cover and tree placement — clearings and tree-free zones align on the exact same seam deterministically.
+2. Surface block override in clearings (biome-gated to 6 temperate forested biomes): forest-floor blocks → grass_block in interior, probabilistic shift in seam band.
+3. Ground cover override in clearings (+ floodplain gap==4): short_grass-dominant interior, tall_grass band at seam. Sparse flowers at both.
+4. Tree density suppression: full in interior (removed from land_mask), 40% in seam.
+5. Boreal moss carpet concavity modulation (BOREAL_TAIGA only) + snow-biome exclusion (moss_carpet blocks snow_layer accumulation).
+6. Zone 40 biome inheritance propagated to `_pipeline_runner.py` and `validate_test_tile.py` (previously only in `run_pipeline.py`).
+
+**Exit criteria:** (51,53) tile shows organic-blob forest clearings with grass_block surface + short_grass cover; tall_grass bands at clearing edges; trees thin approaching and absent in clearings; boreal moss denser in basins; no moss in snowy biomes. No regressions in (24,80) or (25,80).
+
+---
+
 ### Phase 3 — Temperate Mountain Pass 3 + 4 (week 4)
 
 **Deliverables:**
@@ -1956,4 +1972,38 @@ cliff_deg = core_eco.compute_cliff_deg(surface_y)
 - Snow tuning (peak detector coverage still feels slightly random)
 - Aspect convention drift
 - world_studio.py duplicate BIOME_TO_MC
+
+---
+
+### S57 — 2026-04-16: Phase 3a — Meadow clearings + boreal moss modulation
+
+**Phase state (end of S57 Phase 3a):**
+- Landed this session: **Phase 3a** (meadow clearing system + boreal moss concavity modulation). Sits between Phase 2.75e and Phase 3.
+- §11 currently at: **Phase 3a inserted as decimal between Phase 2.75e and Phase 3**.
+- Next session starts: **Phase 3b** (cross-tile ecotone / seam awareness) — user's top carry-forward priority.
+
+**What landed:**
+
+1. **`meadow_clearing_field` wired into pipeline** — `run_pipeline.py` + `tools/_pipeline_runner.py` + `tools/validate_test_tile.py` now compute the shared low-freq noise field (wavelength 256 blocks, seed 0xBEEFCAFE) once per tile and pass it to both `decorate_surface()` and `place_schematics()`. Single field — both consumers read identical seam geometry. Phase 0 helper (`core/meadow_clearing_field.py`) was already functional; S57 activates it.
+
+2. **Surface block override in clearings** (`core/surface_decorator.py:decorate_surface`) — after block mixing, before gap overrides. Biome-gated to `{TEMPERATE_RAINFOREST, TEMPERATE_DECIDUOUS, BOREAL_TAIGA, MIXED_FOREST, BIRCH_FOREST, RIPARIAN_WOODLAND}`. Inside clearing interior (field < 0.38): `podzol` / `dirt` / `moss_block` / `rooted_dirt` → `grass_block` (full); `coarse_dirt` → `grass_block` (90%, 10% kept as patches — matches gap==1 meadow pattern). At clearing seam (|field - 0.38| < 0.06): probabilistic shift with ramp from 0 at outer edge to 1 at threshold.
+
+3. **Ground cover override in clearings** (`core/surface_decorator.py:_apply_ground_cover`) — post-pass after main per-biome species loop. Also includes `gap_mask == 4` (floodplain corridors). Interior: density 0.75 with 94% `short_grass` + 5% `fern` + 1% flower mix (`dandelion`/`poppy`/`oxeye_daisy`, ~1 per 500 blocks). Seam: density 0.65 with 60% `tall_grass` + 20% `short_grass` + 15% `fern` + 5% flower mix (`poppy`/`oxeye_daisy`/`cornflower`/`dandelion`). Only paints where surface is `grass_block` (step 2 converts these pixels).
+
+4. **Tree density suppression** (`core/schematic_placement.py:place_schematics`) — biome-gated. Clearing interior: fully removed from `land_mask` (no trees). Clearing seam: density multiplied by 0.4 (40% of normal, scattered trees spilling into clearing).
+
+5. **Boreal moss concavity modulation** (`core/surface_decorator.py:_apply_ground_cover`) — per-species density multiplier for `moss_carpet` / `pale_moss_carpet`. In `BOREAL_TAIGA`: density × (0.5 + 0.5 × concavity_norm), range [0.5, 1.0] — denser in basins. In snow biomes (`SNOWY_BOREAL_TAIGA` / `ARCTIC_TUNDRA` / `FROZEN_FLATS`): zeroed. MC's snow_layer requires solid top-face; moss_carpet is non-full-block and blocks accumulation.
+
+6. **Zone 40 EDT inheritance propagated to `_pipeline_runner.py` + `validate_test_tile.py`** — both validators now apply the S57 Phase 2.75e biome inheritance fix (zone 40 pixels adopt nearest non-alpine biome via `alpine_biome_source`). Previously only `run_pipeline.py` had this.
+
+**Files modified:** `run_pipeline.py`, `core/surface_decorator.py`, `core/schematic_placement.py`, `tools/_pipeline_runner.py`, `tools/validate_test_tile.py`, `CLAUDE.md`, `PHYSICAL_REALISM_REFACTOR.md`.
+
+**Deferred carry-forward:**
+- **Phase 3b — Cross-tile ecotone (seam awareness)** — user's stated top priority. Dedicated next session. Needs padded biome_grid reads from neighbour tiles (48px overlap) so `_apply_ecotone_dither()` can soften biome transitions that fall on tile seams. Touches `tile_streamer.py`, `run_pipeline.py`, `biome_assignment.py`, `_apply_ecotone_dither`.
+- Ground cover ecotone (current `_apply_ecotone_dither` only handles surface blocks)
+- Per-biome symmetric edge recipes (asymmetric desert↔forest behaviors)
+- Layer-protocol rewrite of ground cover
+- Alpine flower field rarity system
+- Pass 4 Poisson-disk vegetation rewrite
+- diag_suitability_field.py upgrade from stub to real
 

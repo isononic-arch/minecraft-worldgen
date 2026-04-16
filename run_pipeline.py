@@ -107,6 +107,7 @@ def _process_tile(args: dict) -> dict:
     core_noise          = importlib.import_module("core.noise_fields")
     core_schem_loader   = importlib.import_module("core.schematic_loader")
     core_eco            = importlib.import_module("core.eco_gradients")
+    core_clearing       = importlib.import_module("core.meadow_clearing_field")
 
     t0 = time.perf_counter()
 
@@ -247,6 +248,15 @@ def _process_tile(args: dict) -> dict:
         if alpine_any.any():
             biome_grid[alpine_any] = eco_grads.alpine_biome_source[alpine_any]
 
+    # ---- Step 6d: Meadow clearing field (S57 Phase 3a) ----
+    # Shared low-freq noise field read by both surface_decorator (ground cover
+    # + surface block override in clearings) and schematic_placement (tree
+    # density suppression).  Single field -> trees and grass clearings align
+    # on the same seam deterministically.
+    clearing_field = core_clearing.compute_meadow_clearing_field(
+        tile_x, tile_y, H=surface_y.shape[0], W=surface_y.shape[1]
+    )
+
     # ---- Step 7: Surface decoration ----
     _use_geo = bool(cfg.get("lithology", {}).get("feature_flag_enabled", False))
     _use_sp  = bool(cfg.get("surface_pipeline", {}).get("feature_flag_enabled", False))
@@ -267,6 +277,7 @@ def _process_tile(args: dict) -> dict:
         use_new_geology = _use_geo,
         use_new_surface_pipeline = _use_sp,
         lithology_tile = lithology_tile if _use_sp else None,
+        clearing_field = clearing_field,
     )
 
     # ---- Step 8: Schematic placement ----
@@ -287,6 +298,7 @@ def _process_tile(args: dict) -> dict:
         tile_y       = tile_y,
         eco_grads    = eco_grads,
         cliff_deg    = cliff_deg,
+        clearing_field = clearing_field,
     )
 
     # ---- Step 9: Chunk write ----

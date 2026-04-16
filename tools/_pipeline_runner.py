@@ -257,10 +257,26 @@ def run_tile_prelude(
             snow_gap         = masks.get("snow_gap"),
             sand_dunes       = masks.get("sand_dunes"),
             beach            = masks.get("beach"),
+            override_tile    = masks.get("override"),
         )
     except Exception as e:
         _log(f"eco_gradients failed: {e}")
         eco_grads = None
+
+    # Step 6c: Alpine biome inheritance (zone 40 -> nearest lowland biome)
+    if eco_grads is not None and hasattr(eco_grads, 'alpine_biome_source'):
+        _alpine_gap = (eco_grads.gap_mask == 5) | (eco_grads.gap_mask == 7)
+        _ov_u8 = np.round(masks["override"] * 255).astype(np.uint8)
+        _zone40 = _ov_u8 == 40
+        _alpine_any = _alpine_gap | _zone40
+        if _alpine_any.any():
+            biome_grid[_alpine_any] = eco_grads.alpine_biome_source[_alpine_any]
+
+    # Step 6d: Meadow clearing field (S57 Phase 3a)
+    import core.meadow_clearing_field as core_clearing
+    clearing_field = core_clearing.compute_meadow_clearing_field(
+        tile_x, tile_z, H=surface_y.shape[0], W=surface_y.shape[1]
+    )
 
     # ---- Step 7: surface decoration ----
     _log("decorate_surface")
@@ -283,6 +299,7 @@ def run_tile_prelude(
         use_new_geology = _use_geo,
         use_new_surface_pipeline = _use_sp,
         lithology_tile = lithology_tile if _use_sp else None,
+        clearing_field = clearing_field,
     )
 
     # ---- Step 8 (optional): schematic placement ----
@@ -303,6 +320,7 @@ def run_tile_prelude(
                 tile_y        = tile_z,
                 eco_grads     = eco_grads,
                 cliff_deg     = cliff_deg,
+                clearing_field = clearing_field,
             )
         except Exception as e:
             _log(f"place_schematics failed (non-fatal): {e}")
