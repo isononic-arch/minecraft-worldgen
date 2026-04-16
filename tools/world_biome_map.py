@@ -42,7 +42,7 @@ BIOME_COLORS: dict[str, tuple[int, int, int]] = {
     "TEMPERATE_RAINFOREST":    (  30, 120,  60),
     "BOREAL_TAIGA":            (  60, 130,  90),
     "SNOWY_BOREAL_TAIGA":      ( 180, 200, 220),
-    "ALPINE_MEADOW":           ( 140, 180, 100),
+    # "ALPINE_MEADOW" retired S56
     "ARCTIC_TUNDRA":           ( 220, 230, 240),
     "FROZEN_FLATS":            ( 240, 245, 255),
     "TEMPERATE_DECIDUOUS":     (  80, 160,  80),
@@ -80,7 +80,7 @@ def biome_color(name: str) -> tuple[int, int, int]:
 ZONE_BIOME_MAP: dict[int, str] = {
     0: "_OCEAN",
     10: "COASTAL_HEATH", 20: "TEMPERATE_RAINFOREST", 30: "BOREAL_TAIGA",
-    35: "SNOWY_BOREAL_TAIGA", 40: "ALPINE_MEADOW", 50: "ARCTIC_TUNDRA",
+    35: "SNOWY_BOREAL_TAIGA", 50: "ARCTIC_TUNDRA",  # 40 retired S56
     55: "FROZEN_FLATS", 60: "TEMPERATE_DECIDUOUS", 70: "RAINFOREST_COAST",
     80: "RIPARIAN_WOODLAND", 90: "DRY_OAK_SAVANNA", 100: "KARST_BARRENS",
     110: "BIRCH_FOREST", 115: "EASTERN_TEMPERATE_COAST", 120: "MIXED_FOREST",

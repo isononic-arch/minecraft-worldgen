@@ -82,7 +82,6 @@ BASE_DENSITY: dict[str, float] = {
     "TEMPERATE_RAINFOREST":    0.26,
     "BOREAL_TAIGA":            0.22,
     "SNOWY_BOREAL_TAIGA":      0.12,
-    "ALPINE_MEADOW":           0.06,
     "ARCTIC_TUNDRA":           0.015,
     "FROZEN_FLATS":            0.00,
     "TEMPERATE_DECIDUOUS":     0.22,
@@ -148,7 +147,7 @@ class _SchematicEntry:
 # ---------------------------------------------------------------------------
 
 _INDEX_KEY_MAP: dict[str, str] = {
-    "alpine":   "ALPINE_MEADOW",
+    "alpine":   "SNOWY_BOREAL_TAIGA",  # ALPINE_MEADOW retired S56
     "birch":    "BIRCH_FOREST",
     "btaiga":   "BOREAL_TAIGA",
     "cheath":   "COASTAL_HEATH",

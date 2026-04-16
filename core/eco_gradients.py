@@ -123,10 +123,8 @@ def compute_eco_gradients(
     biome_grid:  np.ndarray | None = None,  # (H, W) object — biome name strings
     hydro_floodplain: np.ndarray | None = None,  # (H, W) float32 [0,1] — precomputed mask
     wind_windthrow: np.ndarray | None = None,    # (H, W) float32 [0,1] — precomputed mask
-    rock_exposure: np.ndarray | None = None,     # (H, W) float32 [0,1] — precomputed mask
-    rock_exposure_tight: np.ndarray | None = None,  # (H, W) float32 [0,1] — tight rock peaks
-    snow_caps: np.ndarray | None = None,            # (H, W) float32 [0,1] — snow cap mask
-    snow_caps_north: np.ndarray | None = None,     # (H, W) float32 [0,1] — north-face snow extension (S51)
+    rock_gap: np.ndarray | None = None,            # (H, W) float32 [0,1] — Gaea slope-derived rock mask (S56)
+    snow_gap: np.ndarray | None = None,            # (H, W) float32 [0,1] — Gaea dusting-derived snow mask (S56)
     sand_dunes: np.ndarray | None = None,           # (H, W) float32 [0,1] — sand dune mask
     beach: np.ndarray | None = None,                # (H, W) float32 [0,1] — beach proximity mask
 ) -> EcoGradients:
@@ -361,78 +359,70 @@ def compute_eco_gradients(
             gap_mask[flood_candidate] = 4
         # ── End floodplain corridor ────────────────────────────────────────
 
-        # ── Rock exposure gradient (three-zone from precomputed mask) ─────
-        # PRIORITY: Rock exposure is applied BEFORE windthrow so that
-        # above-treeline ridges get rock/alpine treatment, not windthrow.
-        # Windthrow's TPI mask naturally lights up exposed ridges, but
-        # those belong to the alpine zone, not the forest gap system.
+        # ── Rock + snow from Gaea slope/dusting masks (S56) ────────────────
+        # Rock (gap==5): Gaea slope mask, biome-agnostic. Height-faded:
+        #   below ROCK_Y_FLOOR → 0% rock, above ROCK_Y_CEIL → 100%.
+        #   In-between: probability ramp dithered per-pixel.
         #
-        # Three-layer alpine system:
-        #   Layer 1 — Alpine meadow (gap==6): from rock_exposure gradient 0.3+
-        #   Layer 2 — Rock (gap==5): from rock_exposure_tight mask (peaks only)
-        #   Layer 3 — Snow (gap==7): from snow_caps mask (very tips)
-        # Each layer overrides the previous.  Dither amplitude scales with
-        # feature size: alpine 0.10, rock 0.07, snow 0.04.
-        if rock_exposure is not None and rock_exposure.max() > 0.01:
-            water_mask_re = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
-            avail = land_mask & ~water_mask_re & (gap_mask == 0)
+        # Snow (gap==7): Gaea dusting mask + slope bias + height ramp.
+        #   Dusting mask defines the REGION (which mountains get snow).
+        #   cliff_deg biases toward ridges/peaks (steep = more snow).
+        #   Height ramp kills low-elevation false positives.
+        #   Combined: snow_score = dusting * slope_factor * height_ramp.
+        ROCK_Y_FLOOR = 150.0
+        ROCK_Y_CEIL = 200.0
+        SNOW_Y_FLOOR = 250.0
+        SNOW_Y_CEIL = 275.0
+        SNOW_SLOPE_BIAS_MIN = 8.0   # degrees — below this, slope factor = 0.1
+        SNOW_SLOPE_BIAS_MAX = 30.0  # degrees — above this, slope factor = 1.0
+        SNOW_PEAK_RADIUS = 15       # pixels for local-mean peak detection
 
-            # World-space noise for organic boundaries
-            world_x0 = tile_x * W
-            world_z0 = tile_z * H
-            try:
-                import opensimplex as _ox_re
-                _xs1 = (np.arange(W, dtype=np.float64) + world_x0) / 6.0
-                _zs1 = (np.arange(H, dtype=np.float64) + world_z0) / 6.0
-                _ox_re.seed(88777)
-                _n1 = _ox_re.noise2array(_xs1, _zs1).astype(np.float32)
-                _xs2 = (np.arange(W, dtype=np.float64) + world_x0) / 24.0
-                _zs2 = (np.arange(H, dtype=np.float64) + world_z0) / 24.0
-                _ox_re.seed(88778)
-                _n2 = _ox_re.noise2array(_xs2, _zs2).astype(np.float32)
-                _jitter_base = (0.5 * _n1 + 0.5 * _n2)
-                del _n1, _n2
-            except ImportError:
-                _rng_re = np.random.default_rng(world_x0 * 73856093 ^ world_z0 * 19349663)
-                _jitter_base = (_rng_re.random((H, W)).astype(np.float32) - 0.5) * 2.0
+        water_mask_re = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
+        _sy_f = sy  # float32 surface_y, already computed above
 
-            # Layer 1: Alpine meadow — from original gradient, 0.3+ (scaled dither)
-            _jitter_alp = _jitter_base * 0.10
-            re_jittered = rock_exposure + _jitter_alp
-            gap_mask[avail & (re_jittered >= 0.3)] = 6
-            del re_jittered, _jitter_alp
+        # ── Rock gap with height fade + slope floor ──
+        ROCK_SLOPE_FLOOR = 18.0  # degrees — no rock below this slope
+        if rock_gap is not None:
+            _rg = rock_gap > 0.001  # uint8 {0,1} normalized to {0, 1/255}
+            _steep_enough = cliff_deg >= ROCK_SLOPE_FLOOR
+            _rock_height_prob = np.clip((_sy_f - ROCK_Y_FLOOR) / (ROCK_Y_CEIL - ROCK_Y_FLOOR), 0.0, 1.0)
+            _rock_rng = np.random.default_rng(tile_x * 91837 ^ tile_z * 47521)
+            _rock_coin = _rock_rng.random((H, W)).astype(np.float32)
+            rock_avail = land_mask & ~water_mask_re & (gap_mask == 0)
+            gap_mask[rock_avail & _rg & _steep_enough & (_rock_coin < _rock_height_prob)] = 5
+            del _rg, _steep_enough, _rock_height_prob, _rock_rng, _rock_coin, rock_avail
 
-            # Layer 2: Rock — from tight mask. WIDE zone (low threshold)
-            # so probabilistic dither in surface_decorator can fade rock
-            # in/out across a broad band. Per Session 39 technique.
-            if rock_exposure_tight is not None and rock_exposure_tight.max() > 0.01:
-                _jitter_rock = _jitter_base * 0.12
-                rt_jittered = rock_exposure_tight + _jitter_rock
-                # Lowered from 0.4 → 0.15 — wider gap zone, dither handles edge
-                gap_mask[avail & (rt_jittered >= 0.15)] = 5
-                alpine_avail = land_mask & ~water_mask_re & (gap_mask == 6)
-                gap_mask[alpine_avail & (rt_jittered >= 0.15)] = 5
-                del rt_jittered, _jitter_rock, alpine_avail
+        # ── Snow gap with peak detector + ridge bias + height fade ──
+        if snow_gap is not None:
+            _sg = snow_gap > 0.001
+            # Height ramp: 0 below SNOW_Y_FLOOR, 1 above SNOW_Y_CEIL
+            _snow_height = np.clip((_sy_f - SNOW_Y_FLOOR) / (SNOW_Y_CEIL - SNOW_Y_FLOOR), 0.0, 1.0)
 
-            # Layer 3: Snow — from snow_caps mask. Subtle dither.
-            # Overrides most gap types EXCEPT floodplain (gap==4) — riparian
-            # corridors must survive even at high elevation.  (S51 fix)
-            if snow_caps is not None and snow_caps.max() > 0.01:
-                _jitter_snow = _jitter_base * 0.05
-                sc_jittered = snow_caps + _jitter_snow
-                snow_avail = land_mask & ~water_mask_re & (gap_mask != 4)
-                gap_mask[snow_avail & (sc_jittered >= 0.4)] = 7
-                del sc_jittered, _jitter_snow, snow_avail
+            # Slope bias: steeper = more likely (ridges)
+            _slope_factor = np.clip(
+                (cliff_deg - SNOW_SLOPE_BIAS_MIN) / (SNOW_SLOPE_BIAS_MAX - SNOW_SLOPE_BIAS_MIN),
+                0.1, 1.0,
+            )
 
-            # Layer 3b: Snow north-face extension — precompute mask (S51).
-            # Extends gap==7 onto north-facing slopes below the main snow line.
-            # Replaces the per-tile SnowCapNorth surface layer.
-            if snow_caps_north is not None and snow_caps_north.max() > 0.01:
-                scn_avail = land_mask & ~water_mask_re & (gap_mask != 4) & (gap_mask != 7)
-                gap_mask[scn_avail & (snow_caps_north >= 0.15)] = 7
-                del scn_avail
+            # Peak detector: pixels whose surface_y exceeds the local mean
+            # are local summits/peaks. These should get snow even though
+            # they're flat (cliff_deg is low at the apex).
+            from scipy.ndimage import uniform_filter
+            _local_mean = uniform_filter(_sy_f, size=SNOW_PEAK_RADIUS * 2 + 1, mode='reflect')
+            _peak_factor = np.clip((_sy_f - _local_mean) / 10.0, 0.0, 1.0)
+            del _local_mean
 
-            del _jitter_base
+            # Combined: peaks OR ridges — whichever scores higher
+            _terrain_factor = np.maximum(_peak_factor, _slope_factor)
+            _snow_prob = _snow_height * _terrain_factor
+
+            _snow_rng = np.random.default_rng(tile_x * 73019 ^ tile_z * 58237)
+            _snow_coin = _snow_rng.random((H, W)).astype(np.float32)
+            snow_avail = land_mask & ~water_mask_re & (gap_mask != 4)
+            gap_mask[snow_avail & _sg & (_snow_coin < _snow_prob)] = 7
+            del _sg, _snow_height, _slope_factor, _peak_factor, _terrain_factor
+            del _snow_prob, _snow_rng, _snow_coin, snow_avail
+        del water_mask_re
 
         # ── Sand dunes (gap==8) — desert basin sand fields ───────────────
         # INDEPENDENT of alpine block. Sand overrides floodplain/meadow/
@@ -734,11 +724,12 @@ def compute_eco_gradients(
                 remove = np.isin(labeled, too_small)
                 gap_mask[remove] = 0
 
-    # Rock exposure gradient passthrough for tree thinning
+    # Gradient passthrough — retired fields zeroed for backward compat (S56).
+    # Surface_decorator still reads these until Step 7 cleans up.
     H, W = surface_y.shape
-    re_grad = rock_exposure if rock_exposure is not None else np.zeros((H, W), dtype=np.float32)
-    rt_grad = rock_exposure_tight if rock_exposure_tight is not None else np.zeros((H, W), dtype=np.float32)
-    sc_grad = snow_caps if snow_caps is not None else np.zeros((H, W), dtype=np.float32)
+    re_grad = np.zeros((H, W), dtype=np.float32)
+    rt_grad = np.zeros((H, W), dtype=np.float32)
+    sc_grad = np.zeros((H, W), dtype=np.float32)
     sd_grad = sand_dunes if sand_dunes is not None else np.zeros((H, W), dtype=np.float32)
     bch_grad = beach if beach is not None else np.zeros((H, W), dtype=np.float32)
 
@@ -748,7 +739,7 @@ def compute_eco_gradients(
     # from the surrounding biome — so a desert-region alpine pixel becomes
     # sand desert instead of grass meadow, eliminating the visible biome
     # boundary band between SAND_DUNE_DESERT and ALPINE_MEADOW.
-    alpine_gap = (gap_mask == 5) | (gap_mask == 6) | (gap_mask == 7)
+    alpine_gap = (gap_mask == 5) | (gap_mask == 7)  # gap==6 retired (S56)
     alpine_biome = (biome_grid == "ALPINE_MEADOW") if biome_grid is not None else np.zeros((H, W), dtype=bool)
     alpine_any = alpine_gap | alpine_biome
     if biome_grid is not None and alpine_any.any():

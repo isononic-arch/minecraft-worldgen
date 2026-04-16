@@ -35,7 +35,7 @@ OVERRIDE_BIOME_MAP: dict[int, str] = {
     20:  "TEMPERATE_RAINFOREST",
     30:  "BOREAL_TAIGA",
     35:  "SNOWY_BOREAL_TAIGA",
-    40:  "ALPINE_MEADOW",
+    40:  "SNOWY_BOREAL_TAIGA",   # was ALPINE_MEADOW — retired S56; inherits until override.tif rebuild
     50:  "ARCTIC_TUNDRA",
     55:  "FROZEN_FLATS",
     60:  "TEMPERATE_DECIDUOUS",
@@ -189,10 +189,11 @@ def _resolve_biome(terrain_class: np.ndarray, flow: np.ndarray,
     # Ice cap
     result[terrain_class == "ice_cap"] = "ARCTIC_TUNDRA"
 
-    # Alpine
+    # Alpine — ALPINE_MEADOW retired S56; both flow-classes inherit SNOWY_BOREAL_TAIGA.
+    # The override.tif EDT inheritance handles biome resolution at the map level;
+    # this fallback only fires if assign_biomes() runs (MCA generation path).
     alpine = terrain_class == "alpine"
-    result[alpine & (flow >= flow_mid)] = "ALPINE_MEADOW"
-    result[alpine & (flow <  flow_mid)] = "SNOWY_BOREAL_TAIGA"
+    result[alpine] = "SNOWY_BOREAL_TAIGA"
 
     # Highland
     high = terrain_class == "highland"

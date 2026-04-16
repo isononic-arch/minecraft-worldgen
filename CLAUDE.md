@@ -2,7 +2,7 @@
 
 *Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`. For the physical-realism refactor plan + implementation log, see `PHYSICAL_REALISM_REFACTOR.md` (§18 is the running log).*
 
-**Current state:** Session 55 (2026-04-15) — **Beach re-architecture landed (Phase 2.75c).** Abandoned S51's precompute-mask beach (`beach.tif` + Y=63 hard gate) — produced blocky/staircased shorelines with no transition. Replaced with in-`eco_gradients.py` programmatic placement: ocean EDT at 1:1, per-biome width (FULL coast base=4 amp=2, SHALLOW forest-coast base=2 amp=1), Gaussian-blurred width noise sigma=12, dither zone 3× core, probability clamped `[0.15, 0.85]` for salt-and-pepper across full zone, decision coin Gaussian-blurred sigma=1. New `EcoGradients.beach_edge_mask` tracks dither-non-sand pixels; surface_decorator thins ground cover (`eco_density_mod = 0.15`) on that mask so the biome floor blocks show through and per-block sand/mud/coarse_dirt/moss_block mixing is visible from above. Beach stomps `gap==0|1|4` (claims meadow + floodplain within its zone). In-game validated on (6,72) LUSH_RAINFOREST_COAST. Supporting fixes: (a) `sand_dunes.tif` gap==8 biome-gated to `SAND_DUNE_DESERT` only (was spilling 65%/80% into DESERT_STEPPE_TRANSITION / SEMI_ARID_SHRUBLAND); (b) `column_generator.py` underwater near-shore sand killed (straight-line seafloor blobs); (c) `preview_renderer.py:134` ocean mask strict (`< 63` not `<=`); (d) ecotone dither widened 24→48px with Gaussian-blurred random. New tool `diag_beach_debug.py` (~0.4s) for fast iteration on beach geometry — dumps `beach_regions.png` / `beach_prob.png` / `beach_coin.png`. **NEXT (options, user picks):** Phase 3 proper (Pass 3 ground cover + Pass 4 vegetation on pilot tile 36_20); OR validate widened ecotone on a multi-biome coastal tile; OR SEMI_ARID_SHRUBLAND palette tune (~9% biome-intrinsic sand inland); OR cross-tile ecotone dither at tile seams. **Carry-forward:** cross-tile ecotone at seams, SEMI_ARID_SHRUBLAND sand patches inland, desert_pavement ground cover palettes (dead_bush/short_dry_grass/tall_dry_grass), full column_generator surface code cleanup (steps 5-10 write to dead surface_blk), aspect convention drift, 51_53 flag-ON shadow hookup, palette tuning, ice in subsurface, world_studio.py duplicate BIOME_TO_MC + missing surface pipeline params.
+**Current state:** Session 56 (2026-04-16) — **Gaea slope/dusting mask swap landed (Phase 2.75d).** Replaced computed rock_exposure + snow_caps pipeline with Gaea-exported slope + dusting masks. New upscale helper (`core/upscale.py`) uses cubic-spline + blue-noise dither at 50k — eliminates staircasing by construction. `rebuild_gaea_gaps.py` stitches 8×8 Gaea tiles → 8192, upscales → 50k `rock_gap.tif` + `snow_gap.tif`. Rock gap: Gaea slope mask + height fade (Y 150→200) + slope floor (≥18°). Snow gap: Gaea dusting mask + peak detector (local height maxima) + ridge bias (cliff_deg) + height fade (Y 250→275). Retired: ALPINE_MEADOW biome (zone 40 → SNOWY_BOREAL_TAIGA), gap==6, `rebuild_rock_exposure.py`, 4 old masks (rock_exposure/rock_exposure_tight/snow_caps/snow_caps_north), Phase 2 slope layers (temperate_cliff_face/temperate_talus_apron/vertical_fluting/snow_cap_north). GrassTerrace disabled (banding culprit, needs re-scope). Surface palettes flattened for SNOWY_BOREAL_TAIGA/ARCTIC_TUNDRA/FROZEN_FLATS (noise-only, no conditional layers). packed_ice purged from all column_generator + surface_decorator palettes. In-game validated on (24,80) + (25,80). **Carry-forward:** flatten remaining biome palettes (conditional layers → noise-only), GrassTerrace re-scope or kill, grass cutoff height at elevation, rock lithology palette softening, cross-tile ecotone at seams, SEMI_ARID_SHRUBLAND sand patches inland, desert_pavement ground cover, Phase B height.tif regen from Erosion2_Out, aspect convention drift, world_studio.py duplicate BIOME_TO_MC.
 
 ---
 
@@ -31,12 +31,12 @@ Working backlog (Claude picks order, user vetoes):
 6. **Never modify `override_final.png`** — protected master. Write to `override.tif` only via `upscale_override_vectorized.py`.
 
 ### Gap mask
-**Current values:** `0`=none, `1`=meadow, `2`=windthrow, `4`=floodplain, `5`=rock, `6`=alpine_meadow, `7`=snow, `8`=sand_dune, `9`=beach. (`3` is unused — bare patches removed.)
+**Current values:** `0`=none, `1`=meadow, `2`=windthrow, `4`=floodplain, `5`=rock, `7`=snow, `8`=sand_dune, `9`=beach. (`3` unused, `6` retired S56 — was alpine_meadow.)
 
 **Application order in `eco_gradients.py`** (each claims `gap==0` unless noted):
-1. floodplain (4) → 2. alpine_meadow (6) → 3. rock (5) → 4. windthrow (2) → 5. meadow (1) → 6. **snow (7) — uses `land & ~water & gap!=4`, protects floodplain (S51 fix)** → 6b. snow_caps_north (7) — extends gap==7 onto north-facing slopes (S51, claims non-7/non-4 only) → 7. sand_dune (8) — overrides 0/1/2 only, NEVER 4/5/6/7 (S51 fix: floodplain no longer overridable) → 8. beach (9) — claims gap==0 only, Y=63 constraint.
+1. floodplain (4) → 2. **rock (5) — Gaea slope mask + height fade (Y 150→200) + slope floor (≥18°), claims gap==0 only** → 3. windthrow (2) → 4. meadow (1) → 5. **snow (7) — Gaea dusting mask + peak detector + ridge bias + height fade (Y 250→275), uses `land & ~water & gap!=4`** → 6. sand_dune (8) — overrides 0/1/2 only, NEVER 4/5/7 (S51 fix) → 7. beach (9) — claims gap==0 only, Y=63 constraint.
 
-**Final meadow override** (last pass in `decorate_surface`): dilates 2px, forces `grass_block` on gap **1 and 4 ONLY**. Never include 5/6/7/8/9 (re-creates staircases).
+**Final meadow override** (last pass in `decorate_surface`): dilates 2px, forces `grass_block` on gap **1 and 4 ONLY**. Never include 5/7/8/9 (re-creates staircases).
 
 ### Lakes
 - Shoreline = **terrain intersection** (`height < spill_elevation`). NEVER morph/blur/spline/gaussian on `hydro_lake` mask.
@@ -107,7 +107,7 @@ For SOFT organic features (forest floor, moss, grass color), noise IS appropriat
 All steps 1-15 complete. In-game validation passed (Session 15). Hydrology engine, river carver v2, ecological surface decoration, terrain-intersection lakes, three-layer alpine, sand dunes + desert rock palette all wired.
 
 **Active masks (50k):**
-- `override.tif` (NEAREST) — biome zones
+- `override.tif` (NEAREST) — biome zones (zone 40 maps to SNOWY_BOREAL_TAIGA since S56)
 - `height.tif` — terrain
 - `flow.tif` — hydrology flow accumulation
 - `slope.tif` — Gaea-normalized slope
@@ -116,13 +116,12 @@ All steps 1-15 complete. In-game validation passed (Session 15). Hydrology engin
 - `hydro_lake.tif` + `hydro_lake_wl.tif` (float32 NEAREST) — lake basins + spill elevations
 - `hydro_width.tif`, `hydro_depth.tif`, `hydro_lkdep.tif` — river/lake geometry
 - `wind_windthrow.tif` (bilinear) — gap==2
-- `rock_exposure.tif` (bilinear) — alpine gradient (gap==5,6)
-- `rock_exposure_tight.tif`, `snow_caps.tif` — gap==7
-- `snow_caps_north.tif` (bilinear) — gap==7 north-face extension (S51)
+- `rock_gap.tif` (uint8 {0,1}) — Gaea slope-derived rock mask (S56), gap==5
+- `snow_gap.tif` (uint8 {0,1}) — Gaea dusting-derived snow mask (S56), gap==7
 - `sand_dunes.tif` (bilinear) — gap==8
 - `beach.tif` (bilinear) — gap==9, Y=63 constraint in eco_gradients (S51)
 
-**Rebuild scripts:** `rebuild_centerline.py`, `rebuild_floodplain.py`, `rebuild_windthrow.py`, `rebuild_rock_exposure.py`, `rebuild_sand_dunes.py`, `rebuild_beach.py`, `generate_lake_wl.py`.
+**Rebuild scripts:** `rebuild_centerline.py`, `rebuild_floodplain.py`, `rebuild_windthrow.py`, `rebuild_gaea_gaps.py` (replaces rebuild_rock_exposure.py), `rebuild_sand_dunes.py`, `rebuild_beach.py`, `generate_lake_wl.py`.
 
 ---
 

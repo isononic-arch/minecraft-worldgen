@@ -36,10 +36,8 @@ MASK_NAMES = [
     "hydro_centerline",
     "hydro_floodplain",
     "wind_windthrow",
-    "rock_exposure",
-    "rock_exposure_tight",
-    "snow_caps",
-    "snow_caps_north",
+    "rock_gap",
+    "snow_gap",
     "sand_dunes",
     "beach",
 ]

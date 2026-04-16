@@ -83,40 +83,19 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
     ],
     "SNOWY_BOREAL_TAIGA": [
         ("podzol",            "podzol",       "base"),
-        ("podzol",            "coarse_dirt",  "eco_deep_soil"),   # sheltered valleys retain soil
-        ("coarse_dirt",       "gravel",       "eco_ridge"),       # wind-scoured ridges
-        ("grass_block",       "packed_ice",   "moisture"),
-        ("packed_ice",        "ice",          "moisture2"),
         ("podzol",            "coarse_dirt",  "noise"),
-        ("podzol",            "stone",        "erosion"),
-        ("stone",             "diorite",      "erosion2"),
         ("coarse_dirt",       "gravel",       "noise2"),
     ],
-    # ── Alpine / Arctic ──────────────────────────────────────────────────
-    "ALPINE_MEADOW": [
-        ("grass_block",       "dirt",         "base"),
-    ],
+    # ── Arctic (ALPINE_MEADOW retired S56) ──────────────────────────────
     "ARCTIC_TUNDRA": [
         ("snow_block",        "stone",        "base"),
-        ("gravel",            "stone",        "eco_ridge"),       # wind-scoured rock
-        ("coarse_dirt",       "stone",        "eco_basin"),       # frost-heaved basins
-        ("stone",             "gravel",       "erosion"),
-        ("gravel",            "stone",        "erosion2"),
         ("coarse_dirt",       "stone",        "noise"),
-        ("packed_ice",        "stone",        "moisture"),
-        ("tuff",              "andesite",     "noise2"),
-        ("snow_block",        "packed_ice",   "noise3"),
+        ("gravel",            "stone",        "noise2"),
     ],
     "FROZEN_FLATS": [
-        ("snow_block",        "packed_ice",   "base"),
-        ("coarse_dirt",       "stone",        "eco_ridge"),       # wind exposure
-        ("snow_block",        "gravel",       "eco_basin"),       # snow-filled depressions
-        ("ice",               "packed_ice",   "moisture"),
-        ("packed_ice",        "stone",        "moisture2"),
-        ("snow_block",        "gravel",       "erosion"),
-        ("gravel",            "stone",        "erosion2"),
+        ("snow_block",        "stone",        "base"),
         ("coarse_dirt",       "dirt",         "noise"),
-        ("stone",             "stone",        "noise2"),
+        ("gravel",            "stone",        "noise2"),
     ],
     # ── Temperate Forests ────────────────────────────────────────────────
     "TEMPERATE_DECIDUOUS": [
@@ -381,12 +360,7 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
         ("fern", 0.05), ("leaf_litter", 0.04), ("bush", 0.05),
         ("short_grass", 0.04), ("dead_bush", 0.03), ("resin_clump", 0.01),
     ],
-    "ALPINE_MEADOW": [
-        ("short_grass", 0.55), ("tall_grass", 0.01), ("bush", 0.08),
-        ("cornflower", 0.08), ("allium", 0.06), ("oxeye_daisy", 0.07),
-        ("azure_bluet", 0.05), ("dandelion", 0.06), ("poppy", 0.04),
-        ("pink_tulip", 0.03), ("white_tulip", 0.02),
-    ],
+    # "ALPINE_MEADOW" retired S56
     "ARCTIC_TUNDRA": [
         ("dead_bush", 0.05), ("short_dry_grass", 0.04), ("short_grass", 0.02),
     ],
@@ -1058,169 +1032,48 @@ def decorate_surface(
             # encroaches further up into the rock zone than other ecotone
             # boundaries, mimicking real alpine treeline ecology where
             # grass/krummholz fingers extend well above the general
-            # treeline along sheltered gullies and south-facing slopes.
-            #
-            # gradient 0.3-0.55: mostly grass, scattered stone outcrops
-            # gradient 0.55-0.75: increasing stone, ~50/50 at 0.75
-            # gradient 0.75-0.95: mostly stone, grass patches persist
-            # gradient 0.95+: full rock palette
-            # ── Alpine meadow (gap==6): biome→grass fade ────────────────
-            alp_px = _gap == 6
-            if alp_px.any() and eco_grads is not None and hasattr(eco_grads, 'rock_exposure_gradient'):
-                _re_grad = eco_grads.rock_exposure_gradient
-
-                # Find the biome's surface block for each alpine pixel
-                from scipy.ndimage import distance_transform_edt as _edt_rock
-                _any_alpine = (_gap == 5) | (_gap == 6) | (_gap == 7)
-                _biome_source = (~_any_alpine) & (_gap == 0)
-                if _biome_source.any():
-                    _, _idx_bio = _edt_rock(~_biome_source, return_indices=True)
-                    _biome_blk = surface_blocks[_idx_bio[0], _idx_bio[1]]
-                    del _idx_bio
-                else:
-                    _biome_blk = np.full_like(surface_blocks, "grass_block")
-
-                # Probabilistic biome→grass fade (grad 0.3-0.7)
-                _biome_prob = np.clip(1.0 - (_re_grad - 0.3) / 0.4, 0.0, 1.0)
-                _keep_biome = alp_px & (_gap_rand < _biome_prob)
-                surface_blocks[_keep_biome] = _biome_blk[_keep_biome]
-                _not_biome = alp_px & ~_keep_biome
-                surface_blocks[_not_biome] = "grass_block"
-                del _biome_prob, _keep_biome, _not_biome, _biome_blk, _biome_source
-                del _re_grad, _any_alpine
+            # ── gap==6 (alpine_meadow) RETIRED S56 — Gaea slope mask replaces ──
 
             # ── Rock (gap==5): surface block selection ─────────────────
+            # ── Rock (gap==5): exposed rock surface (S56) ─────────────────
+            # Gaea slope mask drives gap==5. Surface gets visible stone
+            # blocks directly — no cliff_deg subdivision (that causes
+            # banding). Noise scatter for visual variety only.
+            # Lithology-aware palette deferred — see plan Step 8 caveat.
             rock_px = _gap == 5
             if rock_px.any():
-                if use_new_geology:
-                    # ── Geology-aware: soil surface only, column handles subsurface ──
-                    # Cliff faces (steep) get no surface paint — geology column
-                    # shows through as the cross-section block at that Y level.
-                    # Moderate/flat slopes get naturalistic soil cover.
-                    _cliff_d = cliff_deg if cliff_deg is not None else np.zeros((H, W), dtype=np.float32)
-                    _rng = np.random.default_rng(tile_x * 48271 ^ tile_y * 31337 ^ 0xB10C)
-                    _scatter = _rng.random((H, W)).astype(np.float32)
+                _rng = np.random.default_rng(tile_x * 48271 ^ tile_y * 31337 ^ 0xB10C)
+                _scatter = _rng.random((H, W)).astype(np.float32)
 
-                    _is_cliff  = rock_px & (_cliff_d >= 35.0)
-                    _is_moderate = rock_px & (_cliff_d >= 18.0) & (_cliff_d < 35.0)
-                    _is_flat   = rock_px & (_cliff_d < 18.0)
+                # Base stone with noise-scattered variants
+                surface_blocks[rock_px] = "stone"
+                surface_blocks[rock_px & (_scatter >= 0.50) & (_scatter < 0.72)] = "andesite"
+                surface_blocks[rock_px & (_scatter >= 0.72) & (_scatter < 0.88)] = "granite"
+                surface_blocks[rock_px & (_scatter >= 0.88)] = "diorite"
+                subsurface_blocks[rock_px] = "stone"
 
-                    # Flat: grass_block base with coarse_dirt patches
-                    surface_blocks[_is_flat] = "grass_block"
-                    surface_blocks[_is_flat & (_scatter < 0.25)] = "coarse_dirt"
+                # Flow-driven wash channels (subtle sand in drainage paths)
+                if flow_tile is not None:
+                    _wash = rock_px & (flow_tile > 0.005)
+                    if _wash.any():
+                        surface_blocks[_wash] = "sand"
+                        surface_blocks[rock_px & (flow_tile > 0.020)] = "sandstone"
+                    del _wash
 
-                    # Moderate: coarse_dirt base with gravel scatter and packed_mud in wet concavities
-                    surface_blocks[_is_moderate] = "coarse_dirt"
-                    surface_blocks[_is_moderate & (_scatter < 0.30)] = "gravel"
-                    if eco_grads is not None and hasattr(eco_grads, 'concavity_norm'):
-                        _concave = eco_grads.concavity_norm > 0.60
-                        surface_blocks[_is_moderate & _concave & (_scatter < 0.50)] = "packed_mud"
-                        del _concave
+                del _rng, _scatter
 
-                    # Steep cliff: gravel scree, letting geology show through on subsurface
-                    surface_blocks[_is_cliff] = "gravel"
-                    surface_blocks[_is_cliff & (_scatter < 0.35)] = "coarse_dirt"
-
-                    # Subsurface: leave untouched — geology column fills it
-                    # (no subsurface_blocks override)
-
-                    # Flow-driven wash channels (universal, kept from legacy)
-                    if flow_tile is not None:
-                        _wash = rock_px & (flow_tile > 0.005)
-                        if _wash.any():
-                            surface_blocks[_wash] = "sand"
-                            surface_blocks[rock_px & (flow_tile > 0.020)] = "sandstone"
-                        del _wash
-
-                    del _cliff_d, _rng, _scatter, _is_cliff, _is_moderate, _is_flat
-
-                else:
-                    # ── Legacy rock painting (flag OFF) ──────────────────────
-                    # Split rock into desert (terracotta palette) vs cool (stone palette).
-                    _is_desert_b = (
-                        (biome_grid == "SAND_DUNE_DESERT") |
-                        (biome_grid == "DESERT_STEPPE_TRANSITION") |
-                        (biome_grid == "SEMI_ARID_SHRUBLAND") |
-                        (biome_grid == "DRY_OAK_SAVANNA") |
-                        (biome_grid == "DRY_WOODLAND_MAQUIS") |
-                        (biome_grid == "ALPINE_MEADOW")  # alpine in desert region
-                    )
-                    desert_rock_px = rock_px & _is_desert_b
-                    cool_rock_px = rock_px & ~_is_desert_b
-
-                    # ── Desert rock palette (terracotta multi-layer) ──
-                    if desert_rock_px.any():
-                        _apply_desert_rock_palette(
-                            surface_blocks, subsurface_blocks,
-                            desert_rock_px, surface_y, cliff_deg,
-                            flow_tile, eco_grads,
-                            cfg, tile_x, tile_y, H, W,
-                        )
-
-                    # ── Cool rock palette (existing stone/andesite/granite/diorite) ──
-                    if cool_rock_px.any():
-                        _blk_rng = np.random.default_rng(
-                            tile_x * 48271 ^ tile_y * 31337 ^ 0xB10C)
-                        _blk_rand = _blk_rng.random((H, W)).astype(np.float32)
-
-                        if eco_grads is not None and hasattr(eco_grads, 'rock_tight_gradient'):
-                            _rt_grad = eco_grads.rock_tight_gradient
-                            _stone_prob = np.clip((_rt_grad - 0.20) / 0.10, 0.0, 1.0)
-                            _is_stone = cool_rock_px & (_gap_rand < _stone_prob)
-                            _is_grass = cool_rock_px & ~_is_stone
-                            del _rt_grad, _stone_prob
-                        else:
-                            _is_stone = cool_rock_px
-                            _is_grass = np.zeros_like(cool_rock_px)
-
-                        surface_blocks[_is_stone & (_blk_rand < 0.50)] = "stone"
-                        surface_blocks[_is_stone & (_blk_rand >= 0.50) & (_blk_rand < 0.75)] = "andesite"
-                        surface_blocks[_is_stone & (_blk_rand >= 0.75) & (_blk_rand < 0.90)] = "granite"
-                        surface_blocks[_is_stone & (_blk_rand >= 0.90)] = "diorite"
-                        subsurface_blocks[_is_stone] = "stone"
-                        surface_blocks[_is_grass] = "grass_block"
-                        del _blk_rng, _blk_rand, _is_stone, _is_grass
-
-                    del _is_desert_b, desert_rock_px, cool_rock_px
-
-            # ── Snow caps (gap==7): probabilistic snow/rock dither ────────
-            # Same technique as Session 39 rock boundary fix — use the
-            # continuous snow_caps gradient for per-pixel probability.
-            # Near the edge (low gradient) some pixels stay rock, creating
-            # organic transition instead of elevation contour staircases.
+            # ── Snow caps (gap==7): snow_block replacement (S56 simplified) ──
+            # Gaea dusting mask drives gap==7. All snow pixels get snow_block.
+            # Dither edges are baked into the mask at 50k by rebuild_gaea_gaps.py
+            # (blue-noise dither), so no per-pixel probability ramp needed here.
             snow_px = _gap == 7
-            if snow_px.any() and eco_grads is not None and hasattr(eco_grads, 'snow_caps_gradient'):
-                _sc_grad = eco_grads.snow_caps_gradient
-                # Snow prob: 0% at grad=0.45, 100% at grad=0.55 — narrow edge
-                _snow_prob = np.clip((_sc_grad - 0.45) / 0.10, 0.0, 1.0)
-                _is_snow = snow_px & (_gap_rand < _snow_prob)
-                _is_rock_under = snow_px & ~_is_snow
-
-                surface_blocks[_is_snow] = "snow_block"
-                if not use_new_geology:
-                    subsurface_blocks[_is_snow] = "stone"
-                # Non-snow pixels in snow zone → stone (rock showing through)
-                _blk_rng_s = np.random.default_rng(
-                    tile_x * 48271 ^ tile_y * 31337 ^ 0x5AFC)
-                _blk_rand_s = _blk_rng_s.random((H, W)).astype(np.float32)
-                surface_blocks[_is_rock_under & (_blk_rand_s < 0.55)] = "stone"
-                surface_blocks[_is_rock_under & (_blk_rand_s >= 0.55) & (_blk_rand_s < 0.80)] = "andesite"
-                surface_blocks[_is_rock_under & (_blk_rand_s >= 0.80)] = "gravel"
-                if not use_new_geology:
-                    subsurface_blocks[_is_rock_under] = "stone"
-                del _blk_rng_s, _blk_rand_s
-
+            if snow_px.any():
+                surface_blocks[snow_px] = "snow_block"
                 # Rare powder_snow in concavities (deep snow pockets)
-                if hasattr(eco_grads, 'concavity_norm'):
-                    _powder = _is_snow & (eco_grads.concavity_norm > 0.6) & (_gap_rand < 0.15)
+                if eco_grads is not None and hasattr(eco_grads, 'concavity_norm'):
+                    _powder = snow_px & (eco_grads.concavity_norm > 0.6) & (_gap_rand < 0.15)
                     surface_blocks[_powder] = "powder_snow"
                     del _powder
-                del _sc_grad, _snow_prob, _is_snow, _is_rock_under
-            elif snow_px.any():
-                # Fallback if no gradient available
-                surface_blocks[snow_px] = "snow_block"
-                if not use_new_geology:
-                    subsurface_blocks[snow_px] = "stone"
 
             # ── Sand dunes (gap==8): pure sand ───────────────────────────
             sand_px = _gap == 8
@@ -1233,14 +1086,13 @@ def decorate_surface(
             # Where rock/alpine pixels border sand dunes, paint sand patches
             # on the rock surface — wind-deposited sand fingers licking up
             # the rocky margins. Distance-based falloff like the lake fringe.
-            if sand_px.any() and (rock_px.any() or alp_px.any()):
+            if sand_px.any() and rock_px.any():
                 from scipy.ndimage import distance_transform_edt as _edt_sand
                 # Distance from sand dune (in pixels)
                 _dist_sand = _edt_sand(~sand_px).astype(np.float32)
                 # Sand-flow zone: rock/alpine pixels within 4 px of dunes (subtle)
                 FLOW_DIST = 4.0
-                _rock_or_alp = rock_px | alp_px
-                _flow_zone = _rock_or_alp & (_dist_sand > 0) & (_dist_sand <= FLOW_DIST)
+                _flow_zone = rock_px & (_dist_sand > 0) & (_dist_sand <= FLOW_DIST)
                 if _flow_zone.any():
                     # Probability: 35% at d=1, 0% at d=4 (subtle fingers)
                     _flow_prob = np.clip(0.35 * (1.0 - (_dist_sand - 1.0) / (FLOW_DIST - 1.0)), 0.0, 0.35)
@@ -1250,7 +1102,7 @@ def decorate_surface(
                     _sand_flow = _flow_zone & (_sf_rand < _flow_prob)
                     surface_blocks[_sand_flow] = "sand"
                     del _sf_rng, _sf_rand, _flow_prob, _sand_flow
-                del _dist_sand, _flow_zone, _rock_or_alp
+                del _dist_sand, _flow_zone
 
             # ── Beach (gap==9): sand only — S51 rework ─────────────────────
             beach_px = _gap == 9
@@ -1490,9 +1342,6 @@ def decorate_surface(
             from core.surface_pipeline import run_pass as _sp_run_pass
             from core.layers.protocol import SurfaceContext as _SPCtx
             from core.layers.pass2_surface import (
-                TemperateCliffFace,
-                TemperateTalusApron,
-                VerticalFluting,
                 GrassTerrace,
                 WeatheredTop,
                 RiverBar,
@@ -1530,13 +1379,12 @@ def decorate_surface(
             # handles forest floor blocks correctly via per-biome logic + gap_mask.
             _litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
             _layers = [
-                TemperateCliffFace(lithology_config=_litho_cfg),
-                TemperateTalusApron(),
-                GrassTerrace(),
+                # TemperateCliffFace, TemperateTalusApron, VerticalFluting
+                # retired S56 — Gaea slope mask drives rock gap directly.
+                # GrassTerrace() — disabled S56 to confirm banding culprit
                 WeatheredTop(),
                 RiverBar(),
                 DesertPavement(),
-                VerticalFluting(lithology_config=_litho_cfg),
             ]
 
             _sp_ctx = _SPCtx(
@@ -2250,17 +2098,7 @@ def _apply_ground_cover(
             "short_grass": 3.0, "tall_grass": 2.5,
             "bush": 0.3,
         }
-        _ALPINE_MEADOW_SPECIES = {
-            # Dry alpine meadow: short grass dominant, sparse dry tall grass,
-            # exceedingly rare flowers and bush. No forest species.
-            "short_grass": 3.5, "tall_dry_grass": 0.8,
-            "cornflower": 0.15, "azure_bluet": 0.15, "bush": 0.08,
-            # Suppress everything else
-            "tall_grass": 0.0, "fern": 0.0, "large_fern": 0.0,
-            "azalea": 0.0, "flowering_azalea": 0.0,
-            "leaf_litter": 0.0, "moss_carpet": 0.0, "pale_moss_carpet": 0.0,
-            "poppy": 0.0, "dandelion": 0.0, "allium": 0.0, "oxeye_daisy": 0.0,
-        }
+        # _ALPINE_MEADOW_SPECIES retired S56
         _ROCK_SPECIES = {
             # Bare rock: almost nothing grows
             "dead_bush": 2.0, "short_dry_grass": 1.5,
@@ -2329,10 +2167,7 @@ def _apply_ground_cover(
                 if rock_exp_px.any():
                     mult = _ROCK_SPECIES.get(block, 0.05)
                     fd[rock_exp_px] = np.clip(fd[rock_exp_px] * mult, 0.0, 1.0)
-                alp_meadow_px = bio_mask & (gap_mask == 6)
-                if alp_meadow_px.any():
-                    mult = _ALPINE_MEADOW_SPECIES.get(block, 0.3)
-                    fd[alp_meadow_px] = np.clip(fd[alp_meadow_px] * mult, 0.0, 1.0)
+                # gap==6 (alpine_meadow) species suppression retired S56
                 snow_cap_px = bio_mask & (gap_mask == 7)
                 if snow_cap_px.any():
                     mult = _SNOW_CAP_SPECIES.get(block, 0.0)

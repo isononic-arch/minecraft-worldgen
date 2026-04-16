@@ -23,7 +23,7 @@ from core.layers.protocol import (
     SurfaceContext,
     make_result,
 )
-from core.layers.pass2_surface.temperate_cliff_face import LAND_BIOMES, SEA_LEVEL_Y
+from core.layers.pass2_surface.grass_terrace import LAND_BIOMES, SEA_LEVEL_Y
 
 # Elevation threshold for "high enough to be windswept".
 EXPOSED_MIN_Y = 180

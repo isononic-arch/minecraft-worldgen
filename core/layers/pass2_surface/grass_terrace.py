@@ -35,7 +35,19 @@ from core.layers.protocol import (
     SurfaceContext,
     make_result,
 )
-from core.layers.pass2_surface.temperate_cliff_face import LAND_BIOMES, SEA_LEVEL_Y
+# Previously imported from temperate_cliff_face (deleted S56). Inlined.
+SEA_LEVEL_Y = 63
+LAND_BIOMES: frozenset[str] = frozenset({
+    "COASTAL_HEATH", "TEMPERATE_RAINFOREST", "BOREAL_TAIGA",
+    "SNOWY_BOREAL_TAIGA", "ARCTIC_TUNDRA", "FROZEN_FLATS",
+    "TEMPERATE_DECIDUOUS", "RAINFOREST_COAST", "RIPARIAN_WOODLAND",
+    "DRY_OAK_SAVANNA", "KARST_BARRENS", "BIRCH_FOREST",
+    "EASTERN_TEMPERATE_COAST", "MIXED_FOREST", "CONTINENTAL_STEPPE",
+    "DRY_PINE_BARRENS", "SCRUBBY_HEATHLAND", "LUSH_RAINFOREST_COAST",
+    "SAND_DUNE_DESERT", "DESERT_STEPPE_TRANSITION", "SEMI_ARID_SHRUBLAND",
+    "DRY_WOODLAND_MAQUIS", "TIDAL_JUNGLE_FRINGE", "MANGROVE_COAST",
+    "FRESHWATER_FEN",
+})
 
 # Slope range: moderate terrain between flat and talus.
 TERRACE_DEG_MIN = 8.0
@@ -46,8 +58,8 @@ NORTH_FACTOR_GRASS = 0.3
 
 # Gap mask values to SKIP — these zones have their own dedicated handlers
 # and terrace logic must never overwrite them.
-_PROTECTED_GAPS = frozenset({4, 5, 6, 7, 8, 9})
-# 4=floodplain, 5=rock, 6=alpine_meadow, 7=snow, 8=sand_dune, 9=beach
+_PROTECTED_GAPS = frozenset({4, 5, 7, 8, 9})
+# 4=floodplain, 5=rock, 7=snow, 8=sand_dune, 9=beach (gap==6 retired S56)
 
 # ── Per-biome-category terrace palettes ──────────────────────────────────
 # Each entry: list of (block, probability) tuples applied in order.
@@ -78,9 +90,7 @@ _ARCTIC_BIOMES = frozenset({
     "ARCTIC_TUNDRA", "FROZEN_FLATS",
 })
 
-_ALPINE_BIOMES = frozenset({
-    "ALPINE_MEADOW",
-})
+_ALPINE_BIOMES = frozenset()  # ALPINE_MEADOW retired S56
 
 # Palette: (dominant_block, [(scatter_block, fraction), ...])
 # scatter_block overwrites dominant where noise < fraction (cumulative).

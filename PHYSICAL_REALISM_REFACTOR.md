@@ -1867,3 +1867,41 @@ cliff_deg = core_eco.compute_cliff_deg(surface_y)
 - **Fix:** §11 Phase 2.75 beach bullet marked SUPERSEDED; new §11 Phase 2.75c subsection inserted with the programmatic design; §18 S55 entry documents what landed. Supporting fixes for underwater-sand, sand_dunes overreach, preview renderer, and ecotone width all landed in the same commit — each was a compounding issue uncovered while chasing the beach.
 - **Prevention rule (carries over from S46-1):** precompute masks that require a hard threshold at 1-block resolution will always staircase. If a physical signal is needed AND the output is rasterized at 1:1, compute inline — the 1:8 precompute is an optimization, not an architecture. Masks like `override.tif` (discrete biome codes, NEAREST upscale) are fine; continuous-value masks thresholded for binary decisions are suspect.
 
+### S56 — 2026-04-15/16: Gaea slope/dusting mask swap (Phase 2.75d)
+
+**Phase state (end of S56):**
+- Landed this session: **Phase 2.75d** (Gaea slope/dusting mask swap).
+- §11 currently at: **Phase 2.75** (Phase 2.75d inserted; Phase 2.0 layers + rock_exposure lineage marked SUPERSEDED).
+- Next session starts: **Palette flattening** (strip conditional layers from all remaining biome palettes) OR **Phase 3** (ground cover + vegetation). User's call.
+
+**What landed:**
+
+1. **New upscale infrastructure** — `core/upscale.py`: `upscale_continuous_then_threshold_dither()` uses cubic-spline (scipy order=3) upscale from 8192→50k, then blue-noise dither in a transition band. Blue-noise tile generated via void-and-cluster-lite (high-pass + rank-transform). Eliminates staircasing by construction — continuous source through the upscale, threshold only at target resolution. Also provides `upscale_continuous()` for Phase B height regen.
+
+2. **Gaea mask pipeline** — `rebuild_gaea_gaps.py`: stitches 8×8 Gaea tiles (1024×1024 each, `C:\Gaea Stuff\Slope\` + `Dusting\`) into 8192×8192, writes 8k intermediates for inspection, then calls upscale helper to produce 50k `masks/rock_gap.tif` + `masks/snow_gap.tif`. Thresholds: rock T=52000 width=18000, dusting T=1500 width=800. ~7.5 min total.
+
+3. **Rock gap (gap==5) rewrite** — `core/eco_gradients.py`: Gaea slope mask + height fade (Y 150→200, probability ramp) + slope floor (cliff_deg ≥ 18°, hard gate). Below 150Y: no rock. Below 18° slope: no rock. In transition band: probabilistic via per-pixel random. `core/surface_decorator.py`: gap==5 writes stone/andesite/granite/diorite with noise scatter (50/22/16/12% split). No cliff_deg subdivision (was the banding source). Legacy rock painting (desert terracotta + cool stone palettes) deleted.
+
+4. **Snow gap (gap==7) rewrite** — Gaea dusting mask + peak detector (local height maxima via `uniform_filter` radius=15, `(surface_y - local_mean) / 10` clipped to [0,1]) + ridge bias (cliff_deg ramp 8→30°) + height fade (Y 250→275). Combined: `snow_prob = height_ramp * max(peak_factor, slope_factor)`. Peaks get snow even when flat (apex of ridge). Dusting mask controls the general REGION; terrain factors control the local placement.
+
+5. **ALPINE_MEADOW retirement** — Zone 40 in `OVERRIDE_BIOME_MAP` → `SNOWY_BOREAL_TAIGA` (runtime fallback until override.tif rebuild). `gap==6` removed from gap_mask system. ALPINE_MEADOW entries deleted from 14 files: biome_assignment, column_generator, chunk_writer, surface_decorator, schematic_placement, grass_terrace, world_studio, world_biome_map, thresholds.json.
+
+6. **Phase 2 slope layer retirement** — Deleted: `temperate_cliff_face.py`, `temperate_talus_apron.py`, `vertical_fluting.py`, `snow_cap_north.py`. `__init__.py` updated. `LAND_BIOMES` + `SEA_LEVEL_Y` constants moved to `grass_terrace.py`. Test file rewritten.
+
+7. **GrassTerrace disabled** — Confirmed as banding culprit (cliff_deg ≥ 8° threshold traces contour lines). Commented out of layer list. Re-scope or kill deferred.
+
+8. **Surface palette flattening** — SNOWY_BOREAL_TAIGA, ARCTIC_TUNDRA, FROZEN_FLATS stripped to noise-only base mix (no moisture/erosion/eco_ridge conditional layers). packed_ice purged from all column_generator + surface_decorator palettes (was bleeding through on cliff faces under snow via ecotone blending and subsurface exposure).
+
+9. **Diagnostic tool** — `diag_gaea_gaps_debug.py` (~0.8s/run): per-tile threshold iteration with `--slope-t/--slope-d/--dusting-t/--dusting-d` knobs. Dumps 6 PNGs (src/prob/gap for each mask) + optional world_overview. Confirmed Gaea mask orientation correct via correlation (+0.39 with height, ~0 with any flip).
+
+**In-game validated:** (24,80) + (25,80) mountain tiles. Rock exposure on cliffs, snow on peaks/ridges, flat podzol base between, no banding, no packed_ice.
+
+**Deferred carry-forward:**
+- Flatten remaining biome palettes (conditional layers → noise-only)
+- GrassTerrace re-scope or kill
+- Grass cutoff height at elevation
+- Rock lithology palette softening (stone/andesite stratification may look harsh)
+- Phase B: height.tif regen from Erosion2_Out using same upscale method
+- Override.tif rebuild to bake ALPINE_MEADOW EDT inheritance (currently runtime-mapped to SNOWY_BOREAL_TAIGA)
+- Cross-tile ecotone at seams, SEMI_ARID_SHRUBLAND sand, desert_pavement ground cover
+

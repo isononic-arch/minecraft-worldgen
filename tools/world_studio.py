@@ -303,7 +303,7 @@ def _terrain_class_at(h: float) -> str:
 _OVERRIDE_NAMES: dict[int, str] = {
     10: "COASTAL_HEATH",        20: "TEMPERATE_RAINFOREST",
     30: "BOREAL_TAIGA",         35: "SNOWY_BOREAL_TAIGA",
-    40: "ALPINE_MEADOW",        50: "ARCTIC_TUNDRA",
+    50: "ARCTIC_TUNDRA",  # 40 retired S56
     55: "FROZEN_FLATS",         60: "TEMPERATE_DECIDUOUS",
     70: "RAINFOREST_COAST",     80: "RIPARIAN_WOODLAND",
     90: "DRY_OAK_SAVANNA",     100: "KARST_BARRENS",
@@ -353,7 +353,6 @@ BIOME_COLORS: dict[str, tuple] = {
     "TEMPERATE_RAINFOREST":      ( 30, 120,  60),
     "BOREAL_TAIGA":              ( 60, 130,  90),
     "SNOWY_BOREAL_TAIGA":        (180, 200, 220),
-    "ALPINE_MEADOW":             (140, 180, 100),
     "ARCTIC_TUNDRA":             (220, 230, 240),
     "FROZEN_FLATS":              (240, 245, 255),
     "TEMPERATE_DECIDUOUS":       ( 80, 160,  80),
@@ -1271,7 +1270,7 @@ def _rgba_to_qpixmap(rgba: np.ndarray) -> QPixmap:
 # Cliff banding helpers  (mirrors chunk_writer.py exactly)
 # ---------------------------------------------------------------------------
 _BIOME_CLIFF_STONE: dict[str, str] = {
-    "ALPINE_MEADOW": "andesite",        "ARCTIC_TUNDRA": "andesite",
+    "ARCTIC_TUNDRA": "andesite",
     "BOREAL_TAIGA": "andesite",         "SNOWY_BOREAL_TAIGA": "andesite",
     "FROZEN_FLATS": "andesite",         "COASTAL_HEATH": "andesite",
     "SCRUBBY_HEATHLAND": "andesite",    "KARST_BARRENS": "tuff",
@@ -1341,7 +1340,6 @@ BIOME_TO_MC: dict[str, str] = {
     "TEMPERATE_RAINFOREST":      "minecraft:old_growth_spruce_taiga",
     "BOREAL_TAIGA":              "minecraft:taiga",
     "SNOWY_BOREAL_TAIGA":        "minecraft:snowy_taiga",
-    "ALPINE_MEADOW":             "minecraft:meadow",
     "ARCTIC_TUNDRA":             "minecraft:frozen_peaks",
     "FROZEN_FLATS":              "minecraft:ice_spikes",
     "TEMPERATE_DECIDUOUS":       "minecraft:forest",
@@ -4717,7 +4715,7 @@ class BiomeStudioWidget(QWidget):
         ("coastal", 0): "SAND_DUNE_DESERT",  ("coastal", 1): "COASTAL_HEATH",  ("coastal", 2): "RAINFOREST_COAST",
         ("lowland", 0): "DRY_OAK_SAVANNA",   ("lowland", 1): "MIXED_FOREST",   ("lowland", 2): "TEMPERATE_DECIDUOUS",
         ("highland",0): "CONTINENTAL_STEPPE", ("highland",1): "BOREAL_TAIGA",   ("highland",2): "TEMPERATE_RAINFOREST",
-        ("alpine",  0): "SNOWY_BOREAL_TAIGA",("alpine",  1): "ALPINE_MEADOW",  ("alpine",  2): "ALPINE_MEADOW",
+        ("alpine",  0): "SNOWY_BOREAL_TAIGA",("alpine",  1): "SNOWY_BOREAL_TAIGA",  ("alpine",  2): "SNOWY_BOREAL_TAIGA",
         ("ice_cap", 0): "ARCTIC_TUNDRA",     ("ice_cap", 1): "ARCTIC_TUNDRA",  ("ice_cap", 2): "ARCTIC_TUNDRA",
     }
 

@@ -133,6 +133,7 @@ The "what we've already burned a session on" list. If a problem here recurs, STA
 - **Schematic placement** (S34) — 9 hard-won rules (separate bush/tree passes, no leaves/fences underground, classic ID 6 → matching leaves, marker blocks → air, 3px river buffer, etc.).
 - **Stone contour-line banding** (S49-S54) — stone/andesite/cobblestone bands traced every terrain contour line. ROOT CAUSE (S54): `run_pipeline.py` computed `cliff_deg` from raw `np.gradient(surface_y)` without smoothing; every 1-block staircase step read as 45°, firing `temperate_cliff_face` (≥35°) and `temperate_talus_apron` (18-35°). Fix: replaced with `compute_cliff_deg(surface_y)` (sigma=1.5 Gaussian pre-smooth). Sessions S49-S53 fixed secondary sources (noise_layers stone, eco overlay stone, slope zone assignments) that masked the primary cause. See `memory/CONTOUR_BANDING_FIX.md`.
 - **River bank cobble/gravel** (S54) — cliff_face and talus_apron fired on carved river channel banks (2-4 block drops exceed thresholds even after smoothing). Fix: added `riparian_proximity >= 0.3` exclusion to both layers' scope masks.
+- **Gaea slope/dusting mask swap** (S56) — replaced entire computed rock_exposure + snow_caps pipeline (source of S49-S54 banding bugs) with Gaea-exported slope + dusting masks. New `core/upscale.py` cubic-spline + blue-noise dither upscale (8192→50k) eliminates staircasing by construction. Rock gap: height fade + slope floor. Snow gap: peak detector + ridge bias + height fade. ALPINE_MEADOW biome retired, Phase 2 slope layers (cliff_face/talus/fluting) deleted. GrassTerrace disabled (separate banding source). Surface palettes flattened for arctic/boreal biomes. packed_ice purged.
 
 ### Tooling
 - **`world_studio.py` integration** (S17-25) — single-pane tool: world map, voxel preview, cross-section, sim preview, biome cluster, hydro overlay, palette editor, spline editor.
@@ -185,16 +186,22 @@ CLAUDE.md has the must-not-break version. This section adds the WHY for context.
 ## 7. OPEN WORK / ROADMAP
 
 ### Next session priority
-1. **Ecotone dither width** (24px) — grass bleed at biome boundaries is too wide.
-2. **Beach blob/staircasing** on tile (35,77).
-3. **Desert pavement ground cover** — dead_bush/short_dry_grass/tall_dry_grass still pending.
-4. **Stratification rings fix** — downgraded by user in S42 ("not that big"), likely subsumed by geology pass (CLAUDE.md DIRECTION #3).
+1. **Flatten remaining biome palettes** — SNOWY_BOREAL_TAIGA/ARCTIC_TUNDRA/FROZEN_FLATS done S56; all other biomes still have conditional slope/moisture/erosion layers that cause banding. Strip to noise-only base mix.
+2. **GrassTerrace re-scope or kill** — disabled S56 (confirmed banding culprit). Decision: kill entirely, or re-scope to gap==0 non-rock only with softer thresholds.
+3. **Grass cutoff height at elevation** — no hard tree/grass cutoff by Y currently. Add height-driven transition to barren above treeline Y.
+4. **Rock lithology palette softening** — gap==5 writes stone/andesite/granite/diorite directly. In-game the stratification can look harsh. Add noise jitter per layer, softer transitions.
+5. **Desert pavement ground cover** — dead_bush/short_dry_grass/tall_dry_grass still pending.
+6. **Phase B: height.tif regen** from `C:\Gaea Stuff\Erosion2_Out.tif` using the new cubic-spline upscale. Cascades to all downstream masks.
 
 ### Resolved items (moved from next-session)
 - ~~Riparian bare-dirt hole~~ STRICKEN S43 — validator false positive, not a real bug.
-- ~~Snow cap north accumulation by `north_factor`~~ DONE S51 — precompute mask `snow_caps_north.tif`.
+- ~~Snow cap north accumulation by `north_factor`~~ DONE S51 → RETIRED S56 (Gaea dusting mask replaces).
 - ~~Coastal beaches~~ DONE S51 — `rebuild_beach.py` → `beach.tif`, gap==9, Y=63 constraint.
-- ~~Stone contour-line banding~~ FIXED S54 — `compute_cliff_deg()` smoothing + riparian exclusion.
+- ~~Stone contour-line banding~~ FIXED S54 → SUPERSEDED S56 (Phase 2 slope layers retired entirely; Gaea slope mask immune to integer-gradient banding by construction).
+- ~~Ecotone dither width~~ DONE S55 — widened 24→48px.
+- ~~Beach blob/staircasing~~ DONE S55 — programmatic beach with salt-and-pepper dither.
+- ~~ALPINE_MEADOW biome~~ RETIRED S56 — zone 40 → SNOWY_BOREAL_TAIGA, gap==6 removed.
+- ~~Rock exposure / snow caps masks~~ RETIRED S56 — replaced by Gaea slope + dusting masks.
 
 ### Apply Physical Realism Layer pattern to remaining masks
 2. Windthrow orientation by aspect + wind direction
@@ -299,6 +306,7 @@ A one-line index of major milestones. Full session details previously lived in C
 - **S52+S53** GrassTerrace biome-aware scatter, eco overlay restored with organic-only surface blocks (stone→packed_mud etc.), legacy slope zone deletion in column_generator, noise_layers stone purge (7 biomes). Stone banding still visible in-game.
 - **S54** **Stone contour-line banding ROOT CAUSE + river bank fix.** (1) `run_pipeline.py` computed `cliff_deg` from raw `np.gradient(surface_y)` — every 1-block step = 45°, firing cliff/talus layers at every contour line. Fixed: replaced with `compute_cliff_deg()` (sigma=1.5 Gaussian). (2) River banks showed cobble/gravel because carved channels exceed thresholds even after smoothing. Fixed: `riparian_proximity >= 0.3` exclusion on both layers. Both validated in-game on (51,53). See `memory/CONTOUR_BANDING_FIX.md`.
 - **S55** **Phase 2.75c — programmatic coastal beach with salt-and-pepper dither.** S51's precompute-mask beach (`beach.tif` + hard Y=63 gate) abandoned — blocky/staircased shorelines, no transition, meadow/floodplain clearings stomped coasts. Replaced with in-`eco_gradients.py` programmatic placement: ocean EDT at 1:1, biome-gated width (FULL coast 4±2, SHALLOW forest coast 2±1), Gaussian-blurred width noise sigma=12, dither zone 3× core, probability clamp `[0.15, 0.85]` for guaranteed salt-and-pepper everywhere in band, decision coin Gaussian sigma=1 near per-pixel. New `EcoGradients.beach_edge_mask` tracks dither-non-sand pixels; surface_decorator thins ground cover (0.15×) on the mask so biome floor blocks show through. Beach stomps `gap==0|1|4`. Supporting fixes: sand_dunes (gap==8) biome-gated to `SAND_DUNE_DESERT` only (was spilling 65%/80% into DESERT_STEPPE_TRANSITION / SEMI_ARID_SHRUBLAND); `column_generator` underwater near-shore sand killed; `preview_renderer` ocean mask strict (`<63`); ecotone width 24→48 + Gaussian-blurred random. New tool `diag_beach_debug.py` (~0.4s) for fast iteration. §11 Phase 2.75 beach bullet SUPERSEDED; new Phase 2.75c inserted; §19 drift entry S55-1. In-game validated on (6,72) LUSH_RAINFOREST_COAST.
+- **S56** **Phase 2.75d — Gaea slope/dusting mask swap.** Replaced computed rock_exposure + snow_caps pipeline with Gaea-exported slope + dusting masks (8192×8192, tiled 8×8 in `C:\Gaea Stuff\`). New `core/upscale.py` helper: cubic-spline upscale + blue-noise dither at 50k (eliminates staircasing by construction). `rebuild_gaea_gaps.py` stitches tiles → 8k → upscales → 50k `rock_gap.tif` + `snow_gap.tif`. Rock gap: Gaea slope + height fade (Y 150→200) + slope floor (≥18°) + blue-noise dither. Snow gap: Gaea dusting + peak detector (local height maxima via uniform_filter) + ridge bias (cliff_deg) + height fade (Y 250→275). **Retired:** ALPINE_MEADOW biome (zone 40 → SNOWY_BOREAL_TAIGA), gap==6, `rebuild_rock_exposure.py`, 4 old masks, Phase 2 slope layers (temperate_cliff_face/temperate_talus_apron/vertical_fluting/snow_cap_north). GrassTerrace disabled (banding). Surface palettes flattened for 3 arctic/boreal biomes (noise-only, no conditional layers). packed_ice purged from all palettes. In-game validated on (24,80) + (25,80).
 
 ---
 

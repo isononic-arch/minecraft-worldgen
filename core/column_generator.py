@@ -71,19 +71,15 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
         ("grass_block", "dirt",        "base"),
         ("podzol",      "coarse_dirt", "moisture"),
         ("gravel",      "stone",       "erosion"),
-        ("snow_block",  "packed_ice",  "altitude"),
+        ("snow_block",  "dirt",        "altitude"),
     ],
     "SNOWY_BOREAL_TAIGA": [
-        ("snow_block",  "packed_ice",  "base"),
-        ("powder_snow", "packed_ice",  "noise"),
+        ("snow_block",  "dirt",        "base"),
+        ("powder_snow", "dirt",        "noise"),
     ],
-    "ALPINE_MEADOW": [
-        ("grass_block", "dirt",        "base"),
-        ("gravel",      "stone",       "erosion"),
-        ("stone",       "stone",       "noise"),
-    ],
+    # "ALPINE_MEADOW" retired S56 — zone inherits nearest non-alpine biome
     "ARCTIC_TUNDRA": [
-        ("snow_block",  "packed_ice",  "base"),
+        ("snow_block",  "dirt",        "base"),
         ("stone",       "stone",       "erosion"),
         ("gravel",      "stone",       "noise"),
     ],
@@ -370,9 +366,8 @@ _BIOME_CLIFF_VARIANTS: dict[str, list[str]] = {
     "BIRCH_FOREST":            ["stone", "diorite", "andesite", "stone", "cobblestone"],
     "RIPARIAN_WOODLAND":       ["stone", "mossy_cobblestone", "cobblestone", "stone", "andesite"],
     # Alpine / Arctic — stark geological exposure
-    "ALPINE_MEADOW":           ["stone", "andesite", "diorite", "granite", "stone", "calcite"],
     "ARCTIC_TUNDRA":           ["stone", "andesite", "diorite", "stone", "gravel"],
-    "FROZEN_FLATS":            ["stone", "packed_ice", "andesite", "stone", "gravel"],
+    "FROZEN_FLATS":            ["stone", "andesite", "diorite", "stone", "gravel"],
     "SNOWY_BOREAL_TAIGA":      ["stone", "diorite", "andesite", "stone", "gravel"],
     # Arid / Desert — sandstone and terracotta
     "SAND_DUNE_DESERT":        ["sandstone", "smooth_sandstone", "sandstone", "red_sandstone", "sandstone"],
@@ -833,9 +828,9 @@ _BIOME_BASE_BLOCKS: dict[str, tuple[str, str]] = {
     "TEMPERATE_RAINFOREST":    ("podzol",        "coarse_dirt"),
     "BOREAL_TAIGA":            ("grass_block",  "dirt"),
     "SNOWY_BOREAL_TAIGA":      ("snow_block",   "dirt"),
-    "ALPINE_MEADOW":           ("grass_block",  "dirt"),
-    "ARCTIC_TUNDRA":           ("snow_block",   "packed_ice"),
-    "FROZEN_FLATS":            ("ice",          "packed_ice"),
+
+    "ARCTIC_TUNDRA":           ("snow_block",   "dirt"),
+    "FROZEN_FLATS":            ("snow_block",   "dirt"),
     "TEMPERATE_DECIDUOUS":     ("grass_block",  "dirt"),
     "RAINFOREST_COAST":        ("podzol",        "coarse_dirt"),
     "RIPARIAN_WOODLAND":       ("grass_block",  "mud"),
@@ -895,9 +890,9 @@ _BIOME_BASE_BLOCKS: dict[str, tuple[str, str]] = {
     "TEMPERATE_RAINFOREST":    ("podzol",        "coarse_dirt"),
     "BOREAL_TAIGA":            ("grass_block",  "dirt"),
     "SNOWY_BOREAL_TAIGA":      ("snow_block",   "dirt"),
-    "ALPINE_MEADOW":           ("grass_block",  "dirt"),
-    "ARCTIC_TUNDRA":           ("snow_block",   "packed_ice"),
-    "FROZEN_FLATS":            ("ice",          "packed_ice"),
+
+    "ARCTIC_TUNDRA":           ("snow_block",   "dirt"),
+    "FROZEN_FLATS":            ("snow_block",   "dirt"),
     "TEMPERATE_DECIDUOUS":     ("grass_block",  "dirt"),
     "RAINFOREST_COAST":        ("podzol",        "coarse_dirt"),
     "RIPARIAN_WOODLAND":       ("grass_block",  "mud"),

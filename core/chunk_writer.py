@@ -49,7 +49,6 @@ BIOME_TO_MC: dict[str, str] = {
     "TEMPERATE_RAINFOREST":    "minecraft:dark_forest",
     "BOREAL_TAIGA":            "minecraft:old_growth_birch_forest",
     "SNOWY_BOREAL_TAIGA":      "minecraft:snowy_taiga",
-    "ALPINE_MEADOW":           "minecraft:meadow",
     "ARCTIC_TUNDRA":           "minecraft:frozen_peaks",
     "FROZEN_FLATS":            "minecraft:snowy_plains",
     "TEMPERATE_DECIDUOUS":     "minecraft:forest",
@@ -94,7 +93,6 @@ def _b(name: str) -> str:
 # steep columns with bands of these variants instead of monotone stone.
 _BIOME_CLIFF_STONE: dict[str, str] = {
     # Alpine / arctic — cold metamorphic
-    "ALPINE_MEADOW":          "andesite",
     "ARCTIC_TUNDRA":          "andesite",
     "BOREAL_TAIGA":           "andesite",
     "SNOWY_BOREAL_TAIGA":     "andesite",
