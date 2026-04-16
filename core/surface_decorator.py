@@ -1004,28 +1004,20 @@ def decorate_surface(
             _cp_decision = _cp_rng.random((H, W)).astype(np.float32)
             _is_clearing_px = _clearing_biome & (_cp_decision < _cf_prob)
 
-            # Only paint over forest-floor blocks.  Leave gravel/stone/etc. alone.
-            _FOREST_FLOOR = ("podzol", "dirt", "coarse_dirt", "moss_block", "rooted_dirt")
+            # Paint over all forest-floor blocks INCLUDING grass_block.
+            # Inside a clearing, all forest surface blocks become grass_block
+            # (matches floodplain gap==1/==4 treatment).  The simplex blob
+            # SHAPE of the clearing provides the organic outline; the
+            # gradient probability at the edge provides per-pixel salt-and-
+            # pepper softening at the forest/clearing boundary.
+            _FOREST_FLOOR = ("grass_block", "podzol", "dirt", "coarse_dirt", "moss_block", "rooted_dirt")
             _ff_mask = np.zeros((H, W), dtype=bool)
             for _b in _FOREST_FLOOR:
                 _ff_mask |= (surface_blocks == _b)
             _paint_px = _is_clearing_px & _ff_mask
-
             if _paint_px.any():
-                # Step C: Salt-and-pepper mix (5 blocks, balanced ratios).
-                # Pattern copied from _apply_river_banks (surface_decorator.py:1863).
-                # Separate RNG seed so block-selection is decoupled from
-                # clearing-decision, but still deterministic per tile.
-                _mix_rng = np.random.default_rng(
-                    tile_x * 48271 ^ tile_y * 31337 ^ 0xC1EA5B)
-                _mix_noise = _mix_rng.random((H, W)).astype(np.float32)
-                # 40% grass_block | 25% coarse_dirt | 15% dirt | 12% rooted_dirt | 8% moss_block
-                surface_blocks[_paint_px & (_mix_noise < 0.40)] = "grass_block"
-                surface_blocks[_paint_px & (_mix_noise >= 0.40) & (_mix_noise < 0.65)] = "coarse_dirt"
-                surface_blocks[_paint_px & (_mix_noise >= 0.65) & (_mix_noise < 0.80)] = "dirt"
-                surface_blocks[_paint_px & (_mix_noise >= 0.80) & (_mix_noise < 0.92)] = "rooted_dirt"
-                surface_blocks[_paint_px & (_mix_noise >= 0.92)] = "moss_block"
-                del _mix_rng, _mix_noise
+                # Solid grass_block conversion — matches floodplain pattern.
+                surface_blocks[_paint_px] = "grass_block"
 
             del _cp_rng, _cp_decision, _cf_prob, _is_clearing_px, _ff_mask, _paint_px
         del _clearing_biome
@@ -1058,24 +1050,15 @@ def decorate_surface(
                 _fp_decision = _fp_rng.random((H, W)).astype(np.float32)
                 _fp_paint_decision = _fp_soft_zone & (_fp_decision < _fp_prob)
 
-                # Only paint forest-floor blocks (leave gravel/stone/etc.)
-                _FP_FLOOR = ("podzol", "dirt", "coarse_dirt", "moss_block", "rooted_dirt")
+                # Only paint forest-floor blocks INCLUDING grass_block.
+                _FP_FLOOR = ("grass_block", "podzol", "dirt", "coarse_dirt", "moss_block", "rooted_dirt")
                 _fp_ff = np.zeros((H, W), dtype=bool)
                 for _b in _FP_FLOOR:
                     _fp_ff |= (surface_blocks == _b)
                 _fp_paint = _fp_paint_decision & _fp_ff
-
                 if _fp_paint.any():
-                    # Same salt-and-pepper mix as clearing interior.
-                    _fpm_rng = np.random.default_rng(
-                        tile_x * 48271 ^ tile_y * 31337 ^ 0xF10D5B)
-                    _fpm_noise = _fpm_rng.random((H, W)).astype(np.float32)
-                    surface_blocks[_fp_paint & (_fpm_noise < 0.40)] = "grass_block"
-                    surface_blocks[_fp_paint & (_fpm_noise >= 0.40) & (_fpm_noise < 0.65)] = "coarse_dirt"
-                    surface_blocks[_fp_paint & (_fpm_noise >= 0.65) & (_fpm_noise < 0.80)] = "dirt"
-                    surface_blocks[_fp_paint & (_fpm_noise >= 0.80) & (_fpm_noise < 0.92)] = "rooted_dirt"
-                    surface_blocks[_fp_paint & (_fpm_noise >= 0.92)] = "moss_block"
-                    del _fpm_rng, _fpm_noise
+                    # Solid grass_block conversion — matches floodplain interior.
+                    surface_blocks[_fp_paint] = "grass_block"
                 del _fp_rng, _fp_decision, _fp_paint_decision, _fp_ff, _fp_paint
             del _fp_dist, _fp_prob, _fp_soft_zone
         del _gap_fp
@@ -2395,53 +2378,49 @@ def _apply_ground_cover(
                 _covered = _paint_gc & (_den_roll < 0.70)
 
                 if _covered.any():
-                    # Species selection mix — balanced per-pixel salt-and-pepper.
+                    # Species selection — interior favors short_grass (clearing
+                    # = grass sea per spec); tall_grass migrates to seam zone
+                    # (boundary dither band).  Interpolate cumulative thresholds
+                    # by edge_factor so the interior→seam transition is smooth.
                     _sp_rng = np.random.default_rng(
                         tile_x * 33333 ^ tile_y * 44444 ^ 0xC1EA5C)
                     _sp_noise = _sp_rng.random((H, W)).astype(np.float32)
 
-                    # Interior leaning (edge_factor low, ~deep clearing):
-                    #   short_grass=52 | fern=30 | bush=14 | leaf_litter=3 | flower=1
-                    # Seam leaning (edge_factor high, ~near forest):
+                    # Interior distribution (deep clearing, edge_factor ~ 0):
+                    #   short_grass=75 | fern=15 | bush=8 | flower=2
+                    #   (NO tall_grass — clearing interior is a grass sea)
+                    # Seam distribution (near forest, edge_factor ~ 1):
                     #   short_grass=30 | tall_grass=35 | fern=20 | bush=10 | flower=5
-                    # Interpolate thresholds by edge_factor.
-                    #
-                    # Cumulative interior thresholds (t_int):
-                    _int_t1 = 0.52  # short_grass end
-                    _int_t2 = 0.82  # fern end (0.52 + 0.30)
-                    _int_t3 = 0.96  # bush end (0.82 + 0.14)
-                    _int_t4 = 0.99  # leaf_litter end
-                    # flower: >= 0.99
+                    #   (tall_grass dominant in the transition band)
+                    # Interpolation is per-pixel via edge_factor (1 - clearing_prob).
 
-                    # Cumulative seam thresholds (t_seam):
-                    _seam_t1 = 0.30  # short_grass end
-                    _seam_t2 = 0.65  # tall_grass end (0.30 + 0.35)
-                    _seam_t3 = 0.85  # fern end (0.65 + 0.20)
-                    _seam_t4 = 0.95  # bush end (0.85 + 0.10)
+                    # Interior cumulative thresholds:
+                    _int_t1 = 0.75   # short_grass end
+                    _int_t2 = 0.75   # tall_grass skipped in interior (0 width)
+                    _int_t3 = 0.90   # fern end (0.75 + 0.15)
+                    _int_t4 = 0.98   # bush end (0.90 + 0.08)
+                    # flower: >= 0.98
+
+                    # Seam cumulative thresholds:
+                    _seam_t1 = 0.30   # short_grass end
+                    _seam_t2 = 0.65   # tall_grass end (0.30 + 0.35)
+                    _seam_t3 = 0.85   # fern end (0.65 + 0.20)
+                    _seam_t4 = 0.95   # bush end (0.85 + 0.10)
                     # flower: >= 0.95
 
-                    # Interpolated thresholds per pixel
                     _t1 = _int_t1 + _edge_factor * (_seam_t1 - _int_t1)
                     _t2 = _int_t2 + _edge_factor * (_seam_t2 - _int_t2)
                     _t3 = _int_t3 + _edge_factor * (_seam_t3 - _int_t3)
                     _t4 = _int_t4 + _edge_factor * (_seam_t4 - _int_t4)
 
-                    # Band 1: short_grass
+                    # Band 1: short_grass (always)
                     ground_cover[_covered & (_sp_noise < _t1)] = "short_grass"
-                    # Band 2: fern in interior | tall_grass in seam.  Decide
-                    # which flavor by edge_factor > 0.5 threshold (per-pixel).
-                    _band2 = _covered & (_sp_noise >= _t1) & (_sp_noise < _t2)
-                    _seam_leaning = _edge_factor >= 0.5
-                    ground_cover[_band2 & _seam_leaning] = "tall_grass"
-                    ground_cover[_band2 & ~_seam_leaning] = "fern"
-                    # Band 3: bush in interior | fern in seam.
-                    _band3 = _covered & (_sp_noise >= _t2) & (_sp_noise < _t3)
-                    ground_cover[_band3 & _seam_leaning] = "fern"
-                    ground_cover[_band3 & ~_seam_leaning] = "bush"
-                    # Band 4: leaf_litter (interior) | bush (seam).
-                    _band4 = _covered & (_sp_noise >= _t3) & (_sp_noise < _t4)
-                    ground_cover[_band4 & _seam_leaning] = "bush"
-                    ground_cover[_band4 & ~_seam_leaning] = "leaf_litter"
+                    # Band 2: tall_grass (near-zero width in interior, dominant in seam)
+                    ground_cover[_covered & (_sp_noise >= _t1) & (_sp_noise < _t2)] = "tall_grass"
+                    # Band 3: fern
+                    ground_cover[_covered & (_sp_noise >= _t2) & (_sp_noise < _t3)] = "fern"
+                    # Band 4: bush
+                    ground_cover[_covered & (_sp_noise >= _t3) & (_sp_noise < _t4)] = "bush"
                     # Band 5: flower mix
                     _fl = _covered & (_sp_noise >= _t4)
                     if _fl.any():
@@ -2453,8 +2432,7 @@ def _apply_ground_cover(
                         ground_cover[_fl & (_fl_sub >= 0.75)] = "cornflower"
                         del _fl_sub
 
-                    del _sp_rng, _sp_noise, _t1, _t2, _t3, _t4
-                    del _band2, _band3, _band4, _fl, _seam_leaning
+                    del _sp_rng, _sp_noise, _t1, _t2, _t3, _t4, _fl
                 del _den_rng, _den_roll, _covered, _edge_factor
 
             del _cgc_rng, _cgc_decision, _cgc_prob, _is_clearing_gc, _cgc_grass, _paint_gc
