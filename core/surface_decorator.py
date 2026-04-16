@@ -969,13 +969,13 @@ def decorate_surface(
         del _sy_f, _grass_fade, _grass_rng, _grass_coin, _grass_kill
     del _grass_eligible
 
-    # --- Meadow clearing surface block override (S57 Phase 3a) ----------------
-    # Noise-driven forest clearings: convert forest-floor blocks to grass_block
-    # inside the clearing interior, probabilistic shift at the clearing edge.
-    # Model after the existing gap==1 (meadow) pattern — this is a noise-driven
-    # analogue of that hydrology-driven clearing.  Runs BEFORE gap==1/==4
-    # overrides so hydrology meadows still stomp everything; clearings stomp
-    # forest surface but yield to floodplain/meadow.
+    # --- Meadow clearing surface block override (S57 Phase 3a, rewritten) -----
+    # Gradient salt-and-pepper pattern (modeled on _apply_river_banks + S55
+    # beach plateau).  Replaces forest-floor blocks with a balanced 5-block
+    # mix inside clearings; uses per-pixel decision coin across a probability
+    # ramp so the clearing/forest edge reads as salt-and-pepper, not a hard
+    # line.  Runs BEFORE gap==1/==4 overrides so hydrology meadows still win;
+    # clearings stomp forest surface but yield to floodplain/meadow.
     _CLEARING_BIOMES = frozenset({
         "TEMPERATE_RAINFOREST", "TEMPERATE_DECIDUOUS", "BOREAL_TAIGA",
         "MIXED_FOREST", "BIRCH_FOREST", "RIPARIAN_WOODLAND",
@@ -983,46 +983,102 @@ def decorate_surface(
     if clearing_field is not None:
         from core.meadow_clearing_field import (
             CLEARING_INTERIOR_THRESHOLD as _CF_THR,
-            CLEARING_EDGE_BAND as _CF_BAND,
+            CLEARING_EDGE_BAND as _CF_HALF,
         )
         _clearing_biome = np.zeros((H, W), dtype=bool)
         for _cb in _CLEARING_BIOMES:
             _clearing_biome |= (biome_grid == _cb)
         if _clearing_biome.any():
-            _cf_interior = _clearing_biome & (clearing_field < _CF_THR)
-            _cf_seam     = _clearing_biome & (np.abs(clearing_field - _CF_THR) < _CF_BAND)
-
-            _cl_rng = np.random.default_rng(
-                tile_x * 48271 ^ tile_y * 31337 ^ 0xC1EA)
-            _cl_rand = _cl_rng.random((H, W)).astype(np.float32)
-
-            # Edge probability: ramps from 0 at outer seam to 1 at threshold.
-            # t = (threshold - field) / band, clipped to [0,1].  Pixels farther
-            # into the clearing side (field < threshold) get higher shift prob.
-            _edge_t = np.clip(
-                (_CF_THR - clearing_field) / _CF_BAND + 0.5, 0.0, 1.0
+            # Step A: Gradient clearing probability.  Ramps from 1.0 (deep
+            # clearing, field <= THR - HALF) to 0.0 (deep forest, field >= THR + HALF).
+            _cf_prob = np.clip(
+                ((_CF_THR + _CF_HALF) - clearing_field) / (2.0 * _CF_HALF),
+                0.0, 1.0,
             ).astype(np.float32)
 
-            # Forest-floor blocks to convert to grass_block.
-            _FOREST_FLOOR_FULL = ("podzol", "dirt", "moss_block", "rooted_dirt")
-            # coarse_dirt: keep 10% as compacted patches (matches gap==1 meadow)
-            for _blk in _FOREST_FLOOR_FULL:
-                _px = _cf_interior & (surface_blocks == _blk)
-                if _px.any():
-                    surface_blocks[_px] = "grass_block"
-                _px_edge = _cf_seam & (surface_blocks == _blk) & (_cl_rand < _edge_t)
-                if _px_edge.any():
-                    surface_blocks[_px_edge] = "grass_block"
-            # coarse_dirt: 90% in interior, probabilistic in edge
-            _cd_int = _cf_interior & (surface_blocks == "coarse_dirt") & (_cl_rand >= 0.10)
-            if _cd_int.any():
-                surface_blocks[_cd_int] = "grass_block"
-            _cd_edge = _cf_seam & (surface_blocks == "coarse_dirt") & (_cl_rand < _edge_t * 0.9)
-            if _cd_edge.any():
-                surface_blocks[_cd_edge] = "grass_block"
+            # Step B: Per-pixel decision coin (uniform RNG, NO gaussian filter).
+            # Same seed 0xC1EA5F used in _apply_ground_cover clearing section
+            # so surface block and ground cover decisions align pixel-by-pixel.
+            _cp_rng = np.random.default_rng(
+                tile_x * 48271 ^ tile_y * 31337 ^ 0xC1EA5F)
+            _cp_decision = _cp_rng.random((H, W)).astype(np.float32)
+            _is_clearing_px = _clearing_biome & (_cp_decision < _cf_prob)
 
-            del _cl_rng, _cl_rand, _edge_t
+            # Only paint over forest-floor blocks.  Leave gravel/stone/etc. alone.
+            _FOREST_FLOOR = ("podzol", "dirt", "coarse_dirt", "moss_block", "rooted_dirt")
+            _ff_mask = np.zeros((H, W), dtype=bool)
+            for _b in _FOREST_FLOOR:
+                _ff_mask |= (surface_blocks == _b)
+            _paint_px = _is_clearing_px & _ff_mask
+
+            if _paint_px.any():
+                # Step C: Salt-and-pepper mix (5 blocks, balanced ratios).
+                # Pattern copied from _apply_river_banks (surface_decorator.py:1863).
+                # Separate RNG seed so block-selection is decoupled from
+                # clearing-decision, but still deterministic per tile.
+                _mix_rng = np.random.default_rng(
+                    tile_x * 48271 ^ tile_y * 31337 ^ 0xC1EA5B)
+                _mix_noise = _mix_rng.random((H, W)).astype(np.float32)
+                # 40% grass_block | 25% coarse_dirt | 15% dirt | 12% rooted_dirt | 8% moss_block
+                surface_blocks[_paint_px & (_mix_noise < 0.40)] = "grass_block"
+                surface_blocks[_paint_px & (_mix_noise >= 0.40) & (_mix_noise < 0.65)] = "coarse_dirt"
+                surface_blocks[_paint_px & (_mix_noise >= 0.65) & (_mix_noise < 0.80)] = "dirt"
+                surface_blocks[_paint_px & (_mix_noise >= 0.80) & (_mix_noise < 0.92)] = "rooted_dirt"
+                surface_blocks[_paint_px & (_mix_noise >= 0.92)] = "moss_block"
+                del _mix_rng, _mix_noise
+
+            del _cp_rng, _cp_decision, _cf_prob, _is_clearing_px, _ff_mask, _paint_px
         del _clearing_biome
+
+    # --- Floodplain (gap==4) edge softening (S57 Phase 3a) --------------------
+    # gap==4 is a hard hydrology mask — without softening the floodplain
+    # reads as a sharp grass-block-bordered corridor against forest.  Apply
+    # the same gradient salt-and-pepper pattern using EDT distance from the
+    # gap==4 boundary as the probability ramp.
+    if eco_grads is not None and hasattr(eco_grads, 'gap_mask'):
+        _gap_fp = eco_grads.gap_mask == 4
+        if _gap_fp.any():
+            from scipy.ndimage import distance_transform_edt as _edt_fp
+            # Distance from gap==4 pixels, measured OUTSIDE the gap.
+            # fp_dist = 0 at gap boundary, increasing outward into forest.
+            _fp_dist = _edt_fp(~_gap_fp).astype(np.float32)
+            # Softening zone: 8 blocks outside the gap==4 boundary.
+            FP_SOFT_WIDTH = 8.0
+            # Probability ramp: 1.0 at boundary → 0.0 at FP_SOFT_WIDTH.
+            # Only apply softening in the outside-gap zone (decision was already
+            # made for inside-gap pixels by the existing gap==4 override below).
+            _fp_prob = np.clip(
+                1.0 - (_fp_dist / FP_SOFT_WIDTH), 0.0, 1.0,
+            ).astype(np.float32)
+            # Only soften where we're NEAR the floodplain AND outside it.
+            _fp_soft_zone = (~_gap_fp) & (_fp_dist > 0) & (_fp_dist <= FP_SOFT_WIDTH)
+            if _fp_soft_zone.any():
+                _fp_rng = np.random.default_rng(
+                    tile_x * 48271 ^ tile_y * 31337 ^ 0xF10D50)
+                _fp_decision = _fp_rng.random((H, W)).astype(np.float32)
+                _fp_paint_decision = _fp_soft_zone & (_fp_decision < _fp_prob)
+
+                # Only paint forest-floor blocks (leave gravel/stone/etc.)
+                _FP_FLOOR = ("podzol", "dirt", "coarse_dirt", "moss_block", "rooted_dirt")
+                _fp_ff = np.zeros((H, W), dtype=bool)
+                for _b in _FP_FLOOR:
+                    _fp_ff |= (surface_blocks == _b)
+                _fp_paint = _fp_paint_decision & _fp_ff
+
+                if _fp_paint.any():
+                    # Same salt-and-pepper mix as clearing interior.
+                    _fpm_rng = np.random.default_rng(
+                        tile_x * 48271 ^ tile_y * 31337 ^ 0xF10D5B)
+                    _fpm_noise = _fpm_rng.random((H, W)).astype(np.float32)
+                    surface_blocks[_fp_paint & (_fpm_noise < 0.40)] = "grass_block"
+                    surface_blocks[_fp_paint & (_fpm_noise >= 0.40) & (_fpm_noise < 0.65)] = "coarse_dirt"
+                    surface_blocks[_fp_paint & (_fpm_noise >= 0.65) & (_fpm_noise < 0.80)] = "dirt"
+                    surface_blocks[_fp_paint & (_fpm_noise >= 0.80) & (_fpm_noise < 0.92)] = "rooted_dirt"
+                    surface_blocks[_fp_paint & (_fpm_noise >= 0.92)] = "moss_block"
+                    del _fpm_rng, _fpm_noise
+                del _fp_rng, _fp_decision, _fp_paint_decision, _fp_ff, _fp_paint
+            del _fp_dist, _fp_prob, _fp_soft_zone
+        del _gap_fp
 
     # --- Gap surface block ratio shift ----------------------------------------
     # Inside clearings, nudge surface block ratios WITHOUT changing noise type.
@@ -2277,12 +2333,14 @@ def _apply_ground_cover(
                 if sp_mask.any():
                     ground_cover[sp_mask] = block
 
-    # ---- Meadow clearing ground cover override (S57 Phase 3a) --------------
-    # Noise-driven forest clearings: override ground cover to match the
-    # meadow-style palette.  Interior = dense short_grass + trace flowers.
-    # Edge (seam band) = tall_grass band + fern + sparse flowers.  Both are
-    # biome-gated to forested biomes + floodplain corridors.  This runs AFTER
-    # the main per-biome species loop so it overrides palette output.
+    # ---- Meadow clearing ground cover override (S57 Phase 3a, rewritten) ---
+    # Gradient salt-and-pepper pattern matching surface_decorator Step 5.
+    # Uses SAME RNG seed (0xC1EA5F) as the clearing surface block decision
+    # so pixels align: a pixel with clearing surface also gets clearing cover.
+    # Species ratios follow salt-and-pepper rule (no block >55%) — balanced
+    # mix at 1-block scale, not dominant+trace.
+    # Biome-gated to forested biomes + floodplain gap==4.  Runs AFTER the
+    # main per-biome species loop so it overrides palette output.
     _CLEARING_BIOMES_GC = frozenset({
         "TEMPERATE_RAINFOREST", "TEMPERATE_DECIDUOUS", "BOREAL_TAIGA",
         "MIXED_FOREST", "BIRCH_FOREST", "RIPARIAN_WOODLAND",
@@ -2290,7 +2348,7 @@ def _apply_ground_cover(
     if clearing_field is not None:
         from core.meadow_clearing_field import (
             CLEARING_INTERIOR_THRESHOLD as _CF_THR_GC,
-            CLEARING_EDGE_BAND as _CF_BAND_GC,
+            CLEARING_EDGE_BAND as _CF_HALF_GC,
         )
         _cgc_biome = np.zeros((H, W), dtype=bool)
         for _cb in _CLEARING_BIOMES_GC:
@@ -2299,69 +2357,160 @@ def _apply_ground_cover(
         if gap_mask is not None:
             _cgc_biome |= (gap_mask == 4)
         if _cgc_biome.any():
-            _cgc_interior = _cgc_biome & (clearing_field < _CF_THR_GC)
-            _cgc_seam = _cgc_biome & (np.abs(clearing_field - _CF_THR_GC) < _CF_BAND_GC)
+            # Gradient clearing probability (identical to surface Step 5)
+            _cgc_prob = np.clip(
+                ((_CF_THR_GC + _CF_HALF_GC) - clearing_field) / (2.0 * _CF_HALF_GC),
+                0.0, 1.0,
+            ).astype(np.float32)
 
-            # Only paint ground cover on grass_block surfaces (clearing Step 5
-            # should have converted forest-floor blocks to grass_block inside
-            # the clearing; anything else got skipped — keep ground cover off
-            # those pixels).
-            _cgc_grass = surface_blocks == "grass_block"
-
-            # Separate RNG for ground cover decisions.
+            # Decision coin with SAME seed as surface block decision →
+            # pixel-aligned clearing/forest membership across both layers.
             _cgc_rng = np.random.default_rng(
-                tile_x * 48271 ^ tile_y * 31337 ^ 0xC1EAC0)
-            _cgc_rand = _cgc_rng.random((H, W)).astype(np.float32)
+                tile_x * 48271 ^ tile_y * 31337 ^ 0xC1EA5F)
+            _cgc_decision = _cgc_rng.random((H, W)).astype(np.float32)
+            _is_clearing_gc = _cgc_biome & (_cgc_decision < _cgc_prob)
 
-            # --- Interior: dense short_grass, trace flowers, sparse fern ---
-            _int_px = _cgc_interior & _cgc_grass
-            if _int_px.any():
-                # Clear existing ground cover inside clearing interior
-                ground_cover[_int_px] = ""
-                # Density ~0.75 (lush grass)
-                _int_covered = _int_px & (_cgc_rand < 0.75)
-                # Species distribution (cumulative bands):
-                #   0.00 - 0.05: fern (5% trace)
-                #   0.05 - 0.053: dandelion (0.3%)
-                #   0.053 - 0.056: poppy (0.3%)
-                #   0.056 - 0.059: oxeye_daisy (0.3%)
-                #   0.059 - 1.00: short_grass (dominant, ~94%)
-                _sp_rand = np.random.default_rng(
-                    tile_x * 11111 ^ tile_y * 22222 ^ 0xC1EA01).random((H, W)).astype(np.float32)
-                ground_cover[_int_covered & (_sp_rand < 0.05)] = "fern"
-                ground_cover[_int_covered & (_sp_rand >= 0.05) & (_sp_rand < 0.053)] = "dandelion"
-                ground_cover[_int_covered & (_sp_rand >= 0.053) & (_sp_rand < 0.056)] = "poppy"
-                ground_cover[_int_covered & (_sp_rand >= 0.056) & (_sp_rand < 0.059)] = "oxeye_daisy"
-                ground_cover[_int_covered & (_sp_rand >= 0.059)] = "short_grass"
-                del _sp_rand, _int_covered
+            # Only paint over grass_block surface (the clearing-painted pixels).
+            _cgc_grass = surface_blocks == "grass_block"
+            _paint_gc = _is_clearing_gc & _cgc_grass
 
-            # --- Seam: tall_grass band, fern, sparse flowers ---
-            _seam_px = _cgc_seam & _cgc_grass & ~_cgc_interior
-            if _seam_px.any():
-                ground_cover[_seam_px] = ""
-                _seam_covered = _seam_px & (_cgc_rand < 0.65)
-                # Seam distribution:
-                #   0.00 - 0.60: tall_grass (dominant, 60%)
-                #   0.60 - 0.80: short_grass (20%)
-                #   0.80 - 0.95: fern (15%)
-                #   0.95 - 1.00: flower mix (5%)
-                _sp_rand = np.random.default_rng(
-                    tile_x * 33333 ^ tile_y * 44444 ^ 0xC1EA02).random((H, W)).astype(np.float32)
-                ground_cover[_seam_covered & (_sp_rand < 0.60)] = "tall_grass"
-                ground_cover[_seam_covered & (_sp_rand >= 0.60) & (_sp_rand < 0.80)] = "short_grass"
-                ground_cover[_seam_covered & (_sp_rand >= 0.80) & (_sp_rand < 0.95)] = "fern"
-                # 5% flower mix split 4 ways
-                _fl = _seam_covered & (_sp_rand >= 0.95)
-                _fl_sub = np.random.default_rng(
-                    tile_x * 55555 ^ tile_y * 66666 ^ 0xC1EA03).random((H, W)).astype(np.float32)
-                ground_cover[_fl & (_fl_sub < 0.25)] = "poppy"
-                ground_cover[_fl & (_fl_sub >= 0.25) & (_fl_sub < 0.50)] = "oxeye_daisy"
-                ground_cover[_fl & (_fl_sub >= 0.50) & (_fl_sub < 0.75)] = "cornflower"
-                ground_cover[_fl & (_fl_sub >= 0.75)] = "dandelion"
-                del _sp_rand, _fl_sub, _seam_covered, _fl
+            if _paint_gc.any():
+                # Clear existing ground cover on clearing pixels so the mix is fresh.
+                ground_cover[_paint_gc] = ""
 
-            del _cgc_rng, _cgc_rand, _cgc_grass, _cgc_interior, _cgc_seam
+                # Salt-and-pepper species mix.  Interior vs seam proximity
+                # decides mix flavor via a secondary gradient: deep interior
+                # favors short_grass/fern; closer to edge mixes in tall_grass.
+                # This creates a smooth tall_grass-band character at the seam
+                # without a hard interior/seam split.
+                # edge_factor: 0 in deep interior, 1 near threshold.
+                _edge_factor = 1.0 - _cgc_prob  # [0..1], 0=deep clearing, 1=near forest
+                _edge_factor = np.clip(_edge_factor, 0.0, 1.0).astype(np.float32)
+
+                # Density floor: ~0.70 base (pixels get cover).  No density
+                # gradient based on distance; variation comes from species mix.
+                _den_rng = np.random.default_rng(
+                    tile_x * 11111 ^ tile_y * 22222 ^ 0xC1EAD0)
+                _den_roll = _den_rng.random((H, W)).astype(np.float32)
+                _covered = _paint_gc & (_den_roll < 0.70)
+
+                if _covered.any():
+                    # Species selection mix — balanced per-pixel salt-and-pepper.
+                    _sp_rng = np.random.default_rng(
+                        tile_x * 33333 ^ tile_y * 44444 ^ 0xC1EA5C)
+                    _sp_noise = _sp_rng.random((H, W)).astype(np.float32)
+
+                    # Interior leaning (edge_factor low, ~deep clearing):
+                    #   short_grass=52 | fern=30 | bush=14 | leaf_litter=3 | flower=1
+                    # Seam leaning (edge_factor high, ~near forest):
+                    #   short_grass=30 | tall_grass=35 | fern=20 | bush=10 | flower=5
+                    # Interpolate thresholds by edge_factor.
+                    #
+                    # Cumulative interior thresholds (t_int):
+                    _int_t1 = 0.52  # short_grass end
+                    _int_t2 = 0.82  # fern end (0.52 + 0.30)
+                    _int_t3 = 0.96  # bush end (0.82 + 0.14)
+                    _int_t4 = 0.99  # leaf_litter end
+                    # flower: >= 0.99
+
+                    # Cumulative seam thresholds (t_seam):
+                    _seam_t1 = 0.30  # short_grass end
+                    _seam_t2 = 0.65  # tall_grass end (0.30 + 0.35)
+                    _seam_t3 = 0.85  # fern end (0.65 + 0.20)
+                    _seam_t4 = 0.95  # bush end (0.85 + 0.10)
+                    # flower: >= 0.95
+
+                    # Interpolated thresholds per pixel
+                    _t1 = _int_t1 + _edge_factor * (_seam_t1 - _int_t1)
+                    _t2 = _int_t2 + _edge_factor * (_seam_t2 - _int_t2)
+                    _t3 = _int_t3 + _edge_factor * (_seam_t3 - _int_t3)
+                    _t4 = _int_t4 + _edge_factor * (_seam_t4 - _int_t4)
+
+                    # Band 1: short_grass
+                    ground_cover[_covered & (_sp_noise < _t1)] = "short_grass"
+                    # Band 2: fern in interior | tall_grass in seam.  Decide
+                    # which flavor by edge_factor > 0.5 threshold (per-pixel).
+                    _band2 = _covered & (_sp_noise >= _t1) & (_sp_noise < _t2)
+                    _seam_leaning = _edge_factor >= 0.5
+                    ground_cover[_band2 & _seam_leaning] = "tall_grass"
+                    ground_cover[_band2 & ~_seam_leaning] = "fern"
+                    # Band 3: bush in interior | fern in seam.
+                    _band3 = _covered & (_sp_noise >= _t2) & (_sp_noise < _t3)
+                    ground_cover[_band3 & _seam_leaning] = "fern"
+                    ground_cover[_band3 & ~_seam_leaning] = "bush"
+                    # Band 4: leaf_litter (interior) | bush (seam).
+                    _band4 = _covered & (_sp_noise >= _t3) & (_sp_noise < _t4)
+                    ground_cover[_band4 & _seam_leaning] = "bush"
+                    ground_cover[_band4 & ~_seam_leaning] = "leaf_litter"
+                    # Band 5: flower mix
+                    _fl = _covered & (_sp_noise >= _t4)
+                    if _fl.any():
+                        _fl_sub = np.random.default_rng(
+                            tile_x * 55555 ^ tile_y * 66666 ^ 0xC1EAFA).random((H, W)).astype(np.float32)
+                        ground_cover[_fl & (_fl_sub < 0.25)] = "dandelion"
+                        ground_cover[_fl & (_fl_sub >= 0.25) & (_fl_sub < 0.50)] = "poppy"
+                        ground_cover[_fl & (_fl_sub >= 0.50) & (_fl_sub < 0.75)] = "oxeye_daisy"
+                        ground_cover[_fl & (_fl_sub >= 0.75)] = "cornflower"
+                        del _fl_sub
+
+                    del _sp_rng, _sp_noise, _t1, _t2, _t3, _t4
+                    del _band2, _band3, _band4, _fl, _seam_leaning
+                del _den_rng, _den_roll, _covered, _edge_factor
+
+            del _cgc_rng, _cgc_decision, _cgc_prob, _is_clearing_gc, _cgc_grass, _paint_gc
         del _cgc_biome
+
+    # ---- Floodplain (gap==4) edge ground cover softening (S57 Phase 3a) ----
+    # Matches the surface_decorator gap==4 EDT softening. Uses same FP_SOFT_WIDTH
+    # distance + per-pixel decision to paint clearing-style ground cover on
+    # forest pixels just outside the gap==4 boundary.
+    if gap_mask is not None:
+        _fpgc_gap = gap_mask == 4
+        if _fpgc_gap.any():
+            from scipy.ndimage import distance_transform_edt as _edt_fpgc
+            _fpgc_dist = _edt_fpgc(~_fpgc_gap).astype(np.float32)
+            FPGC_SOFT_WIDTH = 8.0
+            _fpgc_prob = np.clip(
+                1.0 - (_fpgc_dist / FPGC_SOFT_WIDTH), 0.0, 1.0,
+            ).astype(np.float32)
+            _fpgc_zone = (~_fpgc_gap) & (_fpgc_dist > 0) & (_fpgc_dist <= FPGC_SOFT_WIDTH)
+            if _fpgc_zone.any():
+                _fpgc_rng = np.random.default_rng(
+                    tile_x * 48271 ^ tile_y * 31337 ^ 0xF10D50)
+                _fpgc_decision = _fpgc_rng.random((H, W)).astype(np.float32)
+                _fpgc_paint_decision = _fpgc_zone & (_fpgc_decision < _fpgc_prob)
+                _fpgc_grass = surface_blocks == "grass_block"
+                _fpgc_paint = _fpgc_paint_decision & _fpgc_grass
+
+                if _fpgc_paint.any():
+                    # Clear then apply salt-and-pepper seam mix (tall_grass-leaning
+                    # because this is the edge, not deep interior).
+                    ground_cover[_fpgc_paint] = ""
+                    _fpgc_den = np.random.default_rng(
+                        tile_x * 11111 ^ tile_y * 22222 ^ 0xF10DD0).random((H, W)).astype(np.float32)
+                    _fpgc_covered = _fpgc_paint & (_fpgc_den < 0.70)
+                    if _fpgc_covered.any():
+                        _fpgc_sp = np.random.default_rng(
+                            tile_x * 33333 ^ tile_y * 44444 ^ 0xF10D5C).random((H, W)).astype(np.float32)
+                        # Seam-leaning mix (same as clearing seam):
+                        #   30% short_grass | 35% tall_grass | 20% fern | 10% bush | 5% flower
+                        ground_cover[_fpgc_covered & (_fpgc_sp < 0.30)] = "short_grass"
+                        ground_cover[_fpgc_covered & (_fpgc_sp >= 0.30) & (_fpgc_sp < 0.65)] = "tall_grass"
+                        ground_cover[_fpgc_covered & (_fpgc_sp >= 0.65) & (_fpgc_sp < 0.85)] = "fern"
+                        ground_cover[_fpgc_covered & (_fpgc_sp >= 0.85) & (_fpgc_sp < 0.95)] = "bush"
+                        _fpgc_fl = _fpgc_covered & (_fpgc_sp >= 0.95)
+                        if _fpgc_fl.any():
+                            _fpgc_fl_sub = np.random.default_rng(
+                                tile_x * 55555 ^ tile_y * 66666 ^ 0xF10DFA).random((H, W)).astype(np.float32)
+                            ground_cover[_fpgc_fl & (_fpgc_fl_sub < 0.25)] = "dandelion"
+                            ground_cover[_fpgc_fl & (_fpgc_fl_sub >= 0.25) & (_fpgc_fl_sub < 0.50)] = "poppy"
+                            ground_cover[_fpgc_fl & (_fpgc_fl_sub >= 0.50) & (_fpgc_fl_sub < 0.75)] = "oxeye_daisy"
+                            ground_cover[_fpgc_fl & (_fpgc_fl_sub >= 0.75)] = "cornflower"
+                            del _fpgc_fl_sub
+                    del _fpgc_sp, _fpgc_covered
+                del _fpgc_rng, _fpgc_decision, _fpgc_paint_decision, _fpgc_grass, _fpgc_paint
+            del _fpgc_dist, _fpgc_prob, _fpgc_zone
+        del _fpgc_gap
 
 
 # ---------------------------------------------------------------------------
