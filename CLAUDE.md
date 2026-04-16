@@ -70,6 +70,9 @@ For HARD geological features (rock / snow / sand / basalt / stratification):
 
 For SOFT organic features (forest floor, moss, grass color), noise IS appropriate. Don't over-apply.
 
+### Noise patterns
+**READ `NOISE_PATTERNS.md` before writing any noise/random/probability code for block or ground-cover selection.** Covers salt-and-pepper (per-pixel), fBm simplex blobs, gaussian-filtered lobes, gradient+decision softening, cumulative bands. Critical gotcha: `"gaussian"` in `noise_layers_biome` is actually fBm simplex, NOT per-pixel gaussian — use `"white"` for true per-pixel salt-and-pepper.
+
 ### Performance footguns
 - **NEVER `binary_closing` with large structuring element** on 6250×6250. Use `binary_dilation(iterations=N) + binary_erosion(iterations=N)`.
 - Vectorize labeled-component iteration with `np.bincount(labeled.ravel())`. No `for i in range(n_labels): mask == i`.
@@ -143,6 +146,7 @@ All steps 1-15 complete. In-game validation passed (Session 15). Hydrology engin
 | `tools/world_biome_map.py` | **Canonical** `BIOME_COLORS` |
 | `config/thresholds.json` | All thresholds, source of truth |
 | `MASK_PIPELINE_REFERENCE.md` | Quick gap/mask reference |
+| `NOISE_PATTERNS.md` | **Noise/dither reference — READ BEFORE writing any noise/random/probability code for block selection** |
 | `ARCHITECTURE_VISION.md` | Destination/vision |
 | `PROJECT_MEMORY.md` | **Full strategic context, history, broad ruleset** |
 
