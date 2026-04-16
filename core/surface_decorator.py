@@ -2400,26 +2400,28 @@ def _apply_ground_cover(
                     _sp_noise = _sp_rng.random((H, W)).astype(np.float32)
 
                     # Interior distribution (deep clearing, edge_factor ~ 0):
-                    #   short_grass=75 | fern=15 | bush=8 | flower=2
+                    #   short_grass=76.8 | fern=15 | bush=8 | flower=0.2
                     #   (NO tall_grass — clearing interior is a grass sea)
+                    #   Flowers EXCEEDINGLY rare — ~1 per 500 covered pixels
                     # Seam distribution (near forest, edge_factor ~ 1):
-                    #   short_grass=30 | tall_grass=35 | fern=20 | bush=10 | flower=5
-                    #   (tall_grass dominant in the transition band)
+                    #   short_grass=31 | tall_grass=36 | fern=21 | bush=11.5 | flower=0.5
+                    #   (tall_grass dominant in the transition band,
+                    #    flowers still very rare — 1 per 200 covered pixels)
                     # Interpolation is per-pixel via edge_factor (1 - clearing_prob).
 
                     # Interior cumulative thresholds:
-                    _int_t1 = 0.75   # short_grass end
-                    _int_t2 = 0.75   # tall_grass skipped in interior (0 width)
-                    _int_t3 = 0.90   # fern end (0.75 + 0.15)
-                    _int_t4 = 0.98   # bush end (0.90 + 0.08)
-                    # flower: >= 0.98
+                    _int_t1 = 0.768  # short_grass end
+                    _int_t2 = 0.768  # tall_grass skipped in interior (0 width)
+                    _int_t3 = 0.918  # fern end (0.768 + 0.150)
+                    _int_t4 = 0.998  # bush end (0.918 + 0.080)
+                    # flower: >= 0.998 (0.2% = ~1 per 500)
 
                     # Seam cumulative thresholds:
-                    _seam_t1 = 0.30   # short_grass end
-                    _seam_t2 = 0.65   # tall_grass end (0.30 + 0.35)
-                    _seam_t3 = 0.85   # fern end (0.65 + 0.20)
-                    _seam_t4 = 0.95   # bush end (0.85 + 0.10)
-                    # flower: >= 0.95
+                    _seam_t1 = 0.310  # short_grass end
+                    _seam_t2 = 0.670  # tall_grass end (0.310 + 0.360)
+                    _seam_t3 = 0.880  # fern end (0.670 + 0.210)
+                    _seam_t4 = 0.995  # bush end (0.880 + 0.115)
+                    # flower: >= 0.995 (0.5% = ~1 per 200)
 
                     _t1 = _int_t1 + _edge_factor * (_seam_t1 - _int_t1)
                     _t2 = _int_t2 + _edge_factor * (_seam_t2 - _int_t2)
