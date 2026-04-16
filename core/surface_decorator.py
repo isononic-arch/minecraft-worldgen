@@ -567,10 +567,23 @@ def _gen_layer_noise(noise_type: str, scale: float, seed: int,
     Returns:
         (H, W) float32 array in [0, 1]
     """
+    if noise_type == "white" or noise_type == "per_pixel":
+        # True per-pixel uniform random — salt-and-pepper pattern.  Every
+        # pixel independently rolls, no spatial coherence.  Deterministic
+        # via seed.  World-space determinism via (px_off, py_off) hash.
+        # Use this for overlays where you want interleaved 1-block variation,
+        # NOT coherent blobs.
+        _seed_hash = (seed * 2654435761 ^ (px_off * 73856093) ^ (py_off * 19349663)) & 0xFFFFFFFF
+        rng = np.random.default_rng(_seed_hash)
+        return rng.random((H, W)).astype(np.float32)
+
     if noise_type == "simplex" or noise_type == "gaussian":
         # Multi-octave fBm (fractional Brownian motion) for natural fractal
         # edges.  3 octaves with 0.5 persistence gives detail at the base
         # scale plus two finer layers that break up blob edges.
+        # NOTE: "gaussian" is misnamed here — it produces simplex fBm, NOT
+        # per-pixel gaussian.  For actual per-pixel (salt-and-pepper) noise
+        # use "white" or "per_pixel" instead.
         try:
             import opensimplex as ox
         except ImportError:

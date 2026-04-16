@@ -364,7 +364,7 @@
       },
       {
         "name": "coarse_dirt (large)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
@@ -375,7 +375,7 @@
       },
       {
         "name": "coarse_dirt (fine)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
@@ -386,7 +386,7 @@
       },
       {
         "name": "moss_block",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "moss_block",
         "sub": "rooted_dirt",
@@ -397,7 +397,7 @@
       },
       {
         "name": "rooted_dirt",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "rooted_dirt",
         "sub": "dirt",
@@ -408,7 +408,7 @@
       },
       {
         "name": "grass_block (trace)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -432,7 +432,7 @@
       },
       {
         "name": "coarse_dirt (large)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
@@ -443,7 +443,7 @@
       },
       {
         "name": "coarse_dirt (fine)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
@@ -454,7 +454,7 @@
       },
       {
         "name": "moss_block",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "moss_block",
         "sub": "rooted_dirt",
@@ -465,7 +465,7 @@
       },
       {
         "name": "grass_block (trace)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -1024,7 +1024,7 @@
       },
       {
         "name": "coarse_dirt (large)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
@@ -1035,7 +1035,7 @@
       },
       {
         "name": "coarse_dirt (fine)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
@@ -1046,7 +1046,7 @@
       },
       {
         "name": "moss_block",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "moss_block",
         "sub": "rooted_dirt",
@@ -1057,7 +1057,7 @@
       },
       {
         "name": "rooted_dirt",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "rooted_dirt",
         "sub": "dirt",
@@ -1068,7 +1068,7 @@
       },
       {
         "name": "grass_block (trace)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -1171,7 +1171,7 @@
       },
       {
         "name": "moss_block (large)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "moss_block",
         "sub": "rooted_dirt",
@@ -1182,7 +1182,7 @@
       },
       {
         "name": "podzol (medium)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "podzol",
         "sub": "rooted_dirt",
@@ -1193,7 +1193,7 @@
       },
       {
         "name": "mud",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "mud",
         "sub": "clay",
@@ -1204,7 +1204,7 @@
       },
       {
         "name": "clay (trace)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "clay",
         "sub": "mud",
@@ -1215,7 +1215,7 @@
       },
       {
         "name": "rooted_dirt",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "rooted_dirt",
         "sub": "dirt",
@@ -1226,7 +1226,7 @@
       },
       {
         "name": "grass_block (trace)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -1456,7 +1456,7 @@
       },
       {
         "name": "podzol (large)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "podzol",
         "sub": "rooted_dirt",
@@ -1467,7 +1467,7 @@
       },
       {
         "name": "podzol (fine)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "podzol",
         "sub": "rooted_dirt",
@@ -1478,7 +1478,7 @@
       },
       {
         "name": "rooted_dirt",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "rooted_dirt",
         "sub": "dirt",
@@ -1489,7 +1489,7 @@
       },
       {
         "name": "moss_block",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "moss_block",
         "sub": "rooted_dirt",
@@ -1500,7 +1500,7 @@
       },
       {
         "name": "gravel (trace)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "gravel",
         "sub": "stone",
@@ -1511,7 +1511,7 @@
       },
       {
         "name": "grass_block (trace)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -1535,7 +1535,7 @@
       },
       {
         "name": "podzol (large)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "podzol",
         "sub": "rooted_dirt",
@@ -1546,7 +1546,7 @@
       },
       {
         "name": "podzol (fine)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "podzol",
         "sub": "rooted_dirt",
@@ -1557,7 +1557,7 @@
       },
       {
         "name": "rooted_dirt",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "rooted_dirt",
         "sub": "dirt",
@@ -1568,7 +1568,7 @@
       },
       {
         "name": "coarse_dirt",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
@@ -1579,7 +1579,7 @@
       },
       {
         "name": "mud",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "mud",
         "sub": "clay",
@@ -1590,7 +1590,7 @@
       },
       {
         "name": "grass_block (trace)",
-        "noise": "gaussian",
+        "noise": "white",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
