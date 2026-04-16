@@ -921,6 +921,26 @@ Geology fills `vol` in Y range `[Y_MIN+1, surface_y-3]`. The surface decorator's
 
 ---
 
+### Phase 2.75d — Gaea slope/dusting mask swap (S56, 2026-04-15/16)
+
+**Why a new decimal phase:** S56 replaced the entire computed `rock_exposure` + `snow_caps` pipeline with Gaea-exported slope and dusting masks, upscaled via new cubic-spline + blue-noise dither infrastructure (`core/upscale.py`). `rebuild_gaea_gaps.py` produces `rock_gap.tif` + `snow_gap.tif`. ALPINE_MEADOW biome retired (zone 40 → SNOWY_BOREAL_TAIGA at runtime). GrassTerrace disabled (confirmed banding culprit). Surface palettes flattened for 3 arctic/boreal biomes (noise-only, no conditional layers).
+
+**Exit criteria:** Rock exposure on cliffs driven by Gaea slope mask; snow on peaks driven by Gaea dusting mask with peak detector + ridge bias; no banding; no packed_ice. Validated (24,80) + (25,80).
+
+---
+
+### Phase 2.75e — Surface simplification + zone 40 biome fix (S57, 2026-04-16)
+
+**Scope:**
+1. **Eco overlay disabled** — the S53 eco condition overlay loop (`surface_decorator.py`) that re-applied eco_ridge/eco_moist/etc. from BIOME_BLOCK_PALETTES on top of noise_layers has been disabled. Eco conditions traced contour lines → visible banding. `noise_layers_biome` already provides clean noise-only surfaces for all 26 biomes.
+2. **GrassTerrace archived** — moved to `core/layers/_archived/`. Constants (LAND_BIOMES, SEA_LEVEL_Y) inlined into `weathered_top.py`. Import removed from `__init__.py` and `surface_decorator.py`.
+3. **Zone 40 MC biome inheritance fixed** — `eco_gradients.py` and `run_pipeline.py` now detect zone 40 pixels via `override_tile` uint8 == 40 instead of the dead `biome_grid == "ALPINE_MEADOW"` check (which never matched since S56 maps zone 40 → SNOWY_BOREAL_TAIGA). EDT inheritance now correctly propagates adjacent lowland biome (e.g. minecraft:desert) to zone 40 pixels.
+4. **Grass cutoff at elevation** — biome-agnostic fade: grass_block replaced with coarse_dirt above Y 325, fully gone by Y 350. Probabilistic dither in the transition band (same pattern as snow height fade). Prevents grass surfaces at alpine/mountaintop elevations.
+
+**Exit criteria:** No eco banding on any biome tile. Zone 40 tiles adjacent to deserts get `minecraft:desert` (not `minecraft:snowy_taiga`). No grass_block above Y 350. GrassTerrace import removed cleanly.
+
+---
+
 ### Phase 3 — Temperate Mountain Pass 3 + 4 (week 4)
 
 **Deliverables:**
@@ -1897,11 +1917,43 @@ cliff_deg = core_eco.compute_cliff_deg(surface_y)
 **In-game validated:** (24,80) + (25,80) mountain tiles. Rock exposure on cliffs, snow on peaks/ridges, flat podzol base between, no banding, no packed_ice.
 
 **Deferred carry-forward:**
-- Flatten remaining biome palettes (conditional layers → noise-only)
-- GrassTerrace re-scope or kill
-- Grass cutoff height at elevation
-- Rock lithology palette softening (stone/andesite stratification may look harsh)
+- ~~Flatten remaining biome palettes (conditional layers → noise-only)~~ → **DONE S57** (eco overlay loop disabled)
+- ~~GrassTerrace re-scope or kill~~ → **DONE S57** (archived)
+- ~~Grass cutoff height at elevation~~ → **DONE S57** (Y 325→350 fade)
+- Rock lithology palette softening (stone/andesite stratification may look harsh) — deferred to final cleanup pass
 - Phase B: height.tif regen from Erosion2_Out using same upscale method
-- Override.tif rebuild to bake ALPINE_MEADOW EDT inheritance (currently runtime-mapped to SNOWY_BOREAL_TAIGA)
+- ~~Override.tif rebuild to bake ALPINE_MEADOW EDT inheritance~~ → **DONE S57** (runtime EDT via override_tile zone 40 detection)
 - Cross-tile ecotone at seams, SEMI_ARID_SHRUBLAND sand, desert_pavement ground cover
+
+---
+
+### S57 — 2026-04-16: Surface simplification + zone 40 biome fix (Phase 2.75e)
+
+**Phase state (end of S57):**
+- Landed this session: **Phase 2.75e** (surface simplification + zone 40 biome fix).
+- §11 currently at: **Phase 2.75e** (Phase 2.75d + 2.75e inserted into §11).
+- Next session starts: **Phase 3** (Pass 3 ground cover + Pass 4 vegetation on pilot tile 36_20).
+
+**What landed:**
+
+1. **Eco overlay disabled** — `surface_decorator.py` lines 888-928 (the S53 eco condition overlay loop) disabled. This loop re-applied eco_ridge/eco_moist/eco_basin/eco_deep_soil/etc. from `BIOME_BLOCK_PALETTES` on top of `noise_layers_biome` output. eco_ridge traced contour lines → visible banding on all biomes that had eco_* entries (20+ biomes). `noise_layers_biome` already provides clean noise-only surfaces for all 26 biomes. `BIOME_BLOCK_PALETTES` retained as reference for the legacy fallback path.
+
+2. **GrassTerrace archived** — `core/layers/pass2_surface/grass_terrace.py` moved to `core/layers/_archived/grass_terrace.py`. Constants (`LAND_BIOMES`, `SEA_LEVEL_Y`) inlined into `weathered_top.py`. Import removed from `__init__.py` and `surface_decorator.py`. Confirmed as banding culprit in S56 (cliff_deg ≥ 8° threshold traced contour lines). No remaining imports.
+
+3. **Zone 40 MC biome inheritance fixed** — Two-part fix:
+   - `core/eco_gradients.py`: new `override_tile` parameter. Alpine biome source EDT now identifies zone 40 pixels via `override_uint8 == 40` instead of the dead `biome_grid == "ALPINE_MEADOW"` check (which never matched since S56 mapped zone 40 → SNOWY_BOREAL_TAIGA in `OVERRIDE_BIOME_MAP`).
+   - `run_pipeline.py`: Step 6c updated to use `override_tile` for zone 40 detection. Removed dead `gap_mask == 6` check. Now passes `override_tile` to `compute_eco_gradients()`.
+   - Effect: zone 40 pixels adjacent to deserts now get `minecraft:desert` biome tag (via EDT nearest non-alpine biome) instead of `minecraft:snowy_taiga`.
+
+4. **Grass cutoff at elevation** — biome-agnostic post-pass in `surface_decorator.py:decorate_surface()`. Any `grass_block` surface pixel with `surface_y >= 325` is eligible; replacement probability ramps linearly from 0 at Y=325 to 1 at Y=350. Replacement block: `coarse_dirt`. Dithered per-pixel with seeded RNG (same pattern as snow height fade in eco_gradients). Inserted after block mixing, before gap surface block ratio shift.
+
+**Deferred carry-forward:**
+- Rock lithology palette softening (deferred to final cleanup pass)
+- Cross-tile ecotone at seams
+- SEMI_ARID_SHRUBLAND sand patches inland
+- desert_pavement ground cover
+- Phase B: height.tif regen from Erosion2_Out
+- Snow tuning (peak detector coverage still feels slightly random)
+- Aspect convention drift
+- world_studio.py duplicate BIOME_TO_MC
 

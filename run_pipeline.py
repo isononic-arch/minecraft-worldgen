@@ -231,16 +231,19 @@ def _process_tile(args: dict) -> dict:
         snow_gap = masks.get("snow_gap"),
         sand_dunes = masks.get("sand_dunes"),
         beach = masks.get("beach"),
+        override_tile = masks.get("override"),
     )
 
     # ---- Step 6c: Alpine biome inheritance ----
-    # Alpine/rock/snow pixels AND any ALPINE_MEADOW biome pixel adopts the
-    # MC biome of the nearest non-alpine pixel.  This eliminates the visible
-    # biome boundary band where ALPINE_MEADOW meets adjacent biomes.
+    # Rock/snow gap pixels AND zone 40 (formerly ALPINE_MEADOW, retired S56)
+    # adopt the MC biome of the nearest non-alpine pixel via EDT.  This
+    # eliminates the biome boundary band — e.g. zone 40 near deserts gets
+    # minecraft:desert instead of minecraft:snowy_taiga.
     if hasattr(eco_grads, 'alpine_biome_source'):
-        alpine_gap = (eco_grads.gap_mask == 5) | (eco_grads.gap_mask == 6) | (eco_grads.gap_mask == 7)
-        alpine_bio = biome_grid == "ALPINE_MEADOW"
-        alpine_any = alpine_gap | alpine_bio
+        alpine_gap = (eco_grads.gap_mask == 5) | (eco_grads.gap_mask == 7)
+        _ov_u8 = np.round(masks["override"] * 255).astype(np.uint8)
+        zone40 = _ov_u8 == 40
+        alpine_any = alpine_gap | zone40
         if alpine_any.any():
             biome_grid[alpine_any] = eco_grads.alpine_biome_source[alpine_any]
 

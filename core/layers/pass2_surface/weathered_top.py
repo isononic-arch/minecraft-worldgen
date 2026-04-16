@@ -23,7 +23,19 @@ from core.layers.protocol import (
     SurfaceContext,
     make_result,
 )
-from core.layers.pass2_surface.grass_terrace import LAND_BIOMES, SEA_LEVEL_Y
+# Constants previously imported from grass_terrace (archived S57).
+SEA_LEVEL_Y = 63
+LAND_BIOMES: frozenset[str] = frozenset({
+    "COASTAL_HEATH", "TEMPERATE_RAINFOREST", "BOREAL_TAIGA",
+    "SNOWY_BOREAL_TAIGA", "ARCTIC_TUNDRA", "FROZEN_FLATS",
+    "TEMPERATE_DECIDUOUS", "RAINFOREST_COAST", "RIPARIAN_WOODLAND",
+    "DRY_OAK_SAVANNA", "KARST_BARRENS", "BIRCH_FOREST",
+    "EASTERN_TEMPERATE_COAST", "MIXED_FOREST", "CONTINENTAL_STEPPE",
+    "DRY_PINE_BARRENS", "SCRUBBY_HEATHLAND", "LUSH_RAINFOREST_COAST",
+    "SAND_DUNE_DESERT", "DESERT_STEPPE_TRANSITION", "SEMI_ARID_SHRUBLAND",
+    "DRY_WOODLAND_MAQUIS", "TIDAL_JUNGLE_FRINGE", "MANGROVE_COAST",
+    "FRESHWATER_FEN",
+})
 
 # Elevation threshold for "high enough to be windswept".
 EXPOSED_MIN_Y = 180

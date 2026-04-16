@@ -885,47 +885,12 @@ def decorate_surface(
         )
         used_noise_layers = True
 
-        # S53: eco condition overlay RESTORED with organic-only surface blocks.
-        # S52 deleted this entirely, which killed the high-frequency texture
-        # scatter that gave forest floors their character.  The problem was
-        # the block palette (granite/tuff/stone on gentle slopes), not the
-        # physical-signal-driven overlay concept.
-        #
-        # Fix: apply eco_* entries from BIOME_BLOCK_PALETTES but substitute
-        # any stone-variant surface blocks with organic equivalents.  Keep
-        # subsurface as-is (stone subsurface is fine — only visible in cliff
-        # cross-sections).
-        _STONE_TO_ORGANIC = {
-            "stone":              "packed_mud",
-            "granite":            "coarse_dirt",
-            "diorite":            "coarse_dirt",
-            "andesite":           "coarse_dirt",
-            "tuff":               "packed_mud",
-            "cobblestone":        "gravel",
-            "mossy_cobblestone":  "moss_block",
-            "deepslate":          "packed_mud",
-            "calcite":            "packed_mud",
-            "dripstone_block":    "packed_mud",
-        }
-        for _biome in np.unique(biome_grid):
-            _bname = str(_biome)
-            _palette = BIOME_BLOCK_PALETTES.get(_bname)
-            if _palette is None:
-                continue
-            _bmask = biome_grid == _biome
-            for _surf, _sub, _tag in _palette:
-                if not _tag.startswith("eco_"):
-                    continue
-                _c = cond.get(_tag)
-                if _c is None:
-                    continue
-                _apply = _bmask & _c
-                if not _apply.any():
-                    continue
-                # Replace stone variants on surface, keep subsurface as-is
-                _actual_surf = _STONE_TO_ORGANIC.get(_surf, _surf)
-                surface_blocks[_apply] = _actual_surf
-                subsurface_blocks[_apply] = _sub
+        # S53 eco overlay DISABLED S57 — palette flattening.
+        # This loop re-applied eco_* condition entries (eco_ridge, eco_moist,
+        # eco_basin, etc.) from BIOME_BLOCK_PALETTES on top of noise layers.
+        # eco_ridge traced contour lines → visible banding.  noise_layers_biome
+        # already provides clean noise-only surfaces for all 26 biomes.
+        # BIOME_BLOCK_PALETTES retained as reference for the legacy fallback path.
 
     if not used_noise_layers:
         # ── FALLBACK: legacy BIOME_BLOCK_PALETTES + condition tags ────────
@@ -979,6 +944,29 @@ def decorate_surface(
     #   TemperateCliffFace (35°+), TemperateTalusApron (18-35°),
     #   GrassTerrace (8-18°).  Keeping the function definition below for
     # reference but no longer calling it.
+
+    # --- Grass cutoff at elevation (S57) ----------------------------------------
+    # Biome-agnostic: grass_block fades out above Y 325, fully gone by Y 350.
+    # Inverse of the snow fade-in (Y 250→275) in eco_gradients.  Prevents
+    # grass surfaces at alpine/mountaintop elevations where only stone/dirt
+    # should be visible.  Replacement block = subsurface of the biome's base
+    # palette entry (usually dirt/coarse_dirt).
+    GRASS_Y_FLOOR = 325.0
+    GRASS_Y_CEIL  = 350.0
+    _grass_eligible = (surface_blocks == "grass_block") & (surface_y >= GRASS_Y_FLOOR)
+    if _grass_eligible.any():
+        _sy_f = surface_y.astype(np.float32)
+        _grass_fade = np.clip(
+            (_sy_f - GRASS_Y_FLOOR) / (GRASS_Y_CEIL - GRASS_Y_FLOOR), 0.0, 1.0
+        )
+        _grass_rng = np.random.default_rng(
+            tile_x * 73856093 ^ tile_y * 19349663 ^ 0xC0FF)
+        _grass_coin = _grass_rng.random((H, W)).astype(np.float32)
+        _grass_kill = _grass_eligible & (_grass_coin < _grass_fade)
+        if _grass_kill.any():
+            surface_blocks[_grass_kill] = "coarse_dirt"
+        del _sy_f, _grass_fade, _grass_rng, _grass_coin, _grass_kill
+    del _grass_eligible
 
     # --- Gap surface block ratio shift ----------------------------------------
     # Inside clearings, nudge surface block ratios WITHOUT changing noise type.
@@ -1342,7 +1330,6 @@ def decorate_surface(
             from core.surface_pipeline import run_pass as _sp_run_pass
             from core.layers.protocol import SurfaceContext as _SPCtx
             from core.layers.pass2_surface import (
-                GrassTerrace,
                 WeatheredTop,
                 RiverBar,
                 DesertPavement,

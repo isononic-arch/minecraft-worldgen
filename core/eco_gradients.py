@@ -127,6 +127,7 @@ def compute_eco_gradients(
     snow_gap: np.ndarray | None = None,            # (H, W) float32 [0,1] — Gaea dusting-derived snow mask (S56)
     sand_dunes: np.ndarray | None = None,           # (H, W) float32 [0,1] — sand dune mask
     beach: np.ndarray | None = None,                # (H, W) float32 [0,1] — beach proximity mask
+    override_tile: np.ndarray | None = None,        # (H, W) float32 [0,1] — raw override zone values (S57: zone 40 detection)
 ) -> EcoGradients:
     """Compute all ecological gradients for a single tile.
 
@@ -733,15 +734,20 @@ def compute_eco_gradients(
     sd_grad = sand_dunes if sand_dunes is not None else np.zeros((H, W), dtype=np.float32)
     bch_grad = beach if beach is not None else np.zeros((H, W), dtype=np.float32)
 
-    # Alpine biome source: for each alpine/rock/snow pixel AND for any
-    # ALPINE_MEADOW biome pixel (regardless of gap), find the nearest
-    # non-alpine biome name.  This lets MC biome AND surface palette inherit
-    # from the surrounding biome — so a desert-region alpine pixel becomes
-    # sand desert instead of grass meadow, eliminating the visible biome
-    # boundary band between SAND_DUNE_DESERT and ALPINE_MEADOW.
-    alpine_gap = (gap_mask == 5) | (gap_mask == 7)  # gap==6 retired (S56)
-    alpine_biome = (biome_grid == "ALPINE_MEADOW") if biome_grid is not None else np.zeros((H, W), dtype=bool)
-    alpine_any = alpine_gap | alpine_biome
+    # Alpine biome source: for each alpine/rock/snow pixel AND zone 40 pixel
+    # (formerly ALPINE_MEADOW, retired S56), find the nearest non-alpine
+    # biome name via EDT.  This lets MC biome AND surface palette inherit
+    # from the surrounding lowland biome — so a desert-region alpine pixel
+    # gets minecraft:desert instead of minecraft:snowy_taiga.
+    # S57: zone 40 detection via override_tile (biome_grid says SNOWY_BOREAL_TAIGA
+    # for zone 40 since S56, so the old == "ALPINE_MEADOW" check was dead code).
+    alpine_gap = (gap_mask == 5) | (gap_mask == 7)
+    if override_tile is not None:
+        _override_uint8 = np.round(override_tile * 255).astype(np.uint8)
+        zone40_pixels = _override_uint8 == 40
+    else:
+        zone40_pixels = np.zeros((H, W), dtype=bool)
+    alpine_any = alpine_gap | zone40_pixels
     if biome_grid is not None and alpine_any.any():
         non_alpine = land_mask & ~alpine_any
         if non_alpine.any():
