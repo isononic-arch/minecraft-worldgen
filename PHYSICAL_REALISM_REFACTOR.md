@@ -1975,35 +1975,68 @@ cliff_deg = core_eco.compute_cliff_deg(surface_y)
 
 ---
 
-### S57 — 2026-04-16: Phase 3a — Meadow clearings + boreal moss modulation
+### S57 — 2026-04-16: Phase 3a — Meadow clearings, boreal moss, forest palette rebalance, noise patterns doc
 
 **Phase state (end of S57 Phase 3a):**
-- Landed this session: **Phase 3a** (meadow clearing system + boreal moss concavity modulation). Sits between Phase 2.75e and Phase 3.
+- Landed this session: **Phase 3a** (complete). Multiple iterations on clearing appearance — final state is solid-grass clearings with gradient salt-and-pepper edge softening, rebalanced forest palettes, and a new white-noise type.
 - §11 currently at: **Phase 3a inserted as decimal between Phase 2.75e and Phase 3**.
 - Next session starts: **Phase 3b** (cross-tile ecotone / seam awareness) — user's top carry-forward priority.
 
-**What landed:**
+**What landed (7 commits on top of master):**
 
-1. **`meadow_clearing_field` wired into pipeline** — `run_pipeline.py` + `tools/_pipeline_runner.py` + `tools/validate_test_tile.py` now compute the shared low-freq noise field (wavelength 256 blocks, seed 0xBEEFCAFE) once per tile and pass it to both `decorate_surface()` and `place_schematics()`. Single field — both consumers read identical seam geometry. Phase 0 helper (`core/meadow_clearing_field.py`) was already functional; S57 activates it.
+1. **`meadow_clearing_field` wired into pipeline** — `run_pipeline.py` + `tools/_pipeline_runner.py` + `tools/validate_test_tile.py` now compute the shared low-freq noise field (wavelength 256 blocks, seed 0xBEEFCAFE, single-octave simplex) once per tile and pass it to both `decorate_surface()` and `place_schematics()`. Single field — both consumers read identical seam geometry. Phase 0 helper (`core/meadow_clearing_field.py`) was already functional; S57 activates it.
 
-2. **Surface block override in clearings** (`core/surface_decorator.py:decorate_surface`) — after block mixing, before gap overrides. Biome-gated to `{TEMPERATE_RAINFOREST, TEMPERATE_DECIDUOUS, BOREAL_TAIGA, MIXED_FOREST, BIRCH_FOREST, RIPARIAN_WOODLAND}`. Inside clearing interior (field < 0.38): `podzol` / `dirt` / `moss_block` / `rooted_dirt` → `grass_block` (full); `coarse_dirt` → `grass_block` (90%, 10% kept as patches — matches gap==1 meadow pattern). At clearing seam (|field - 0.38| < 0.06): probabilistic shift with ramp from 0 at outer edge to 1 at threshold.
+2. **Clearing surface blocks (final: solid grass + gradient edge)** — `core/surface_decorator.py:decorate_surface`, after block mixing, before gap overrides. Biome-gated to `{TEMPERATE_RAINFOREST, TEMPERATE_DECIDUOUS, BOREAL_TAIGA, MIXED_FOREST, BIRCH_FOREST, RIPARIAN_WOODLAND}`.
+   - **Gradient probability field:** `clearing_prob = clip((THR + HALF - field) / (2*HALF), 0, 1)`. 1.0 deep in clearing, 0.0 deep in forest, linear ramp across ~10-block seam.
+   - **Per-pixel decision coin** (uniform `rng.random`, seed `0xC1EA5F`): each pixel independently rolls "is this clearing?" against the gradient probability. Produces salt-and-pepper fingers interleaving at the clearing/forest boundary.
+   - **Inside clearing pixels:** all forest-floor blocks (including grass_block) → `grass_block` (solid conversion, matching floodplain gap==4 pattern). The simplex blob SHAPE of the clearing provides the organic outline; the gradient edge provides per-pixel boundary softening. The initial 5-block salt-and-pepper mix inside the clearing was abandoned — user feedback: clearings should read as grass seas (spec), not mixed textures.
 
-3. **Ground cover override in clearings** (`core/surface_decorator.py:_apply_ground_cover`) — post-pass after main per-biome species loop. Also includes `gap_mask == 4` (floodplain corridors). Interior: density 0.75 with 94% `short_grass` + 5% `fern` + 1% flower mix (`dandelion`/`poppy`/`oxeye_daisy`, ~1 per 500 blocks). Seam: density 0.65 with 60% `tall_grass` + 20% `short_grass` + 15% `fern` + 5% flower mix (`poppy`/`oxeye_daisy`/`cornflower`/`dandelion`). Only paints where surface is `grass_block` (step 2 converts these pixels).
+3. **Floodplain gap==4 EDT edge softening** — identical pattern applied at the hydrology boundary. EDT from `gap == 4` mask gives per-pixel distance outside the floodplain; 8-block soft zone gets per-pixel gradient decision + solid grass conversion. Prevents floodplain reading as a sharp-bordered corridor.
 
-4. **Tree density suppression** (`core/schematic_placement.py:place_schematics`) — biome-gated. Clearing interior: fully removed from `land_mask` (no trees). Clearing seam: density multiplied by 0.4 (40% of normal, scattered trees spilling into clearing).
+4. **Clearing ground cover ratios (final)** — `_apply_ground_cover` post-pass, biome-gated + `gap_mask == 4`. Same RNG seed `0xC1EA5F` as surface block decision so pixels align pixel-for-pixel.
+   - **Interior** (`edge_factor ~ 0`): 76.8% short_grass, 15% fern, 8% bush, 0.2% flower mix (≈1/500, spec: "extremely rare, barely-there background trace"). NO tall_grass — clearing interior is a grass sea.
+   - **Seam** (`edge_factor ~ 1`): 31% short_grass, 36% tall_grass, 21% fern, 11.5% bush, 0.5% flower mix (≈1/200). Tall_grass concentrated in the transition band.
+   - Cumulative thresholds interpolated per-pixel by `edge_factor = 1 - clearing_prob` for smooth interior→seam transition.
 
-5. **Boreal moss concavity modulation** (`core/surface_decorator.py:_apply_ground_cover`) — per-species density multiplier for `moss_carpet` / `pale_moss_carpet`. In `BOREAL_TAIGA`: density × (0.5 + 0.5 × concavity_norm), range [0.5, 1.0] — denser in basins. In snow biomes (`SNOWY_BOREAL_TAIGA` / `ARCTIC_TUNDRA` / `FROZEN_FLATS`): zeroed. MC's snow_layer requires solid top-face; moss_carpet is non-full-block and blocks accumulation.
+5. **Tree density suppression** — `core/schematic_placement.py:place_schematics`, biome-gated to CLEARING_BIOMES. Clearing interior: fully removed from `land_mask` (no trees). Clearing seam: density × 0.4 (40%, scattered trees spilling into clearing).
 
-6. **Zone 40 EDT inheritance propagated to `_pipeline_runner.py` + `validate_test_tile.py`** — both validators now apply the S57 Phase 2.75e biome inheritance fix (zone 40 pixels adopt nearest non-alpine biome via `alpine_biome_source`). Previously only `run_pipeline.py` had this.
+6. **Boreal moss concavity modulation** — per-species density multiplier for `moss_carpet` / `pale_moss_carpet`. In `BOREAL_TAIGA`: density × (0.5 + 0.5 × concavity_norm), range [0.5, 1.0] — denser in basins. In snow biomes (`SNOWY_BOREAL_TAIGA` / `ARCTIC_TUNDRA` / `FROZEN_FLATS`): zeroed. MC's snow_layer requires solid top-face; moss_carpet is non-full-block and blocks accumulation.
 
-**Files modified:** `run_pipeline.py`, `core/surface_decorator.py`, `core/schematic_placement.py`, `tools/_pipeline_runner.py`, `tools/validate_test_tile.py`, `CLAUDE.md`, `PHYSICAL_REALISM_REFACTOR.md`.
+7. **Forest biome palette rebalance (6 biomes)** — `noise_layers_biome` in `config/thresholds.json`. Previous state: all 6 forest biomes had `grass_block` as BASE at coverage=1.0 scale=60 — produced giant simplex grass blobs visible under tree canopy. Rewritten so forest floor reads as dirt/podzol/moss dominant with sparse sun-flecked grass:
+   - MIXED_FOREST: base=podzol, grass 8%
+   - TEMPERATE_DECIDUOUS: base=coarse_dirt, grass 9%
+   - BOREAL_TAIGA: base=podzol, grass 6%
+   - BIRCH_FOREST: base=podzol, grass 12% (brighter canopy lets more light through)
+   - TEMPERATE_RAINFOREST: base=moss_block, grass 5% (dense PNW canopy)
+   - RIPARIAN_WOODLAND: base=coarse_dirt, grass 10%
+
+8. **`"white"` noise type added** — `_gen_layer_noise` at `core/surface_decorator.py:570`. Root cause discovered mid-session: `"gaussian"` in `noise_layers_biome` was a misnamed alias — it fell through to the same multi-octave fBm simplex branch as `"simplex"`. ALL biome overlays tagged `"gaussian"` were producing coherent blobs, not per-pixel gaussian. Added real `"white"` / `"per_pixel"` type that uses uniform `rng.random((H,W))`, deterministic via seed + world-space hash. All 6 forest biome overlays switched from `"gaussian"` → `"white"`. Result: each overlay now independently rolls per-pixel, forest floor reads as 1-block-scale salt-and-pepper.
+
+9. **`NOISE_PATTERNS.md`** — new canonical reference at project root documenting 5 noise/dither patterns in the codebase (salt-and-pepper, fBm simplex, gaussian-filtered lobes, gradient+decision, cumulative bands), classification rules, anti-patterns, and canonical code references. Linked from `CLAUDE.md` KEY FILES + HARD RULES → Noise patterns. Should prevent the repeated salt-and-pepper misclassifications that hit 3 times in this session.
+
+10. **Zone 40 EDT inheritance propagated to `_pipeline_runner.py` + `validate_test_tile.py`** — both validators now apply the S57 Phase 2.75e biome inheritance fix (zone 40 pixels adopt nearest non-alpine biome via `alpine_biome_source`). Previously only `run_pipeline.py` had this.
+
+**Iteration history (lessons):**
+- **Iteration 1** (f2a95c5): clearing interior = solid grass_block, 10% coarse_dirt. User: "messed up noise ratios, follow river bank salt-and-pepper."
+- **Iteration 2** (bcb5daa): clearing interior = 5-block salt-and-pepper mix + gradient edge softening. User: "still see simplex blobs on half the surface."
+- **Diagnosis**: my code painted over podzol/dirt/etc. but SKIPPED grass_block — biome noise_layers base was 100% grass_block simplex which stayed visible under trees.
+- **Iteration 3** (9dd0a61): include grass_block in forest-floor list (solid grass in clearings, matches floodplain); rebalance forest biome palettes to low-grass. User: "STILL simplex, giant dirt blobs. Nothing seems to be independently rolling."
+- **Root cause**: `"gaussian"` in config = fBm simplex, not per-pixel. ALL overlays producing blobs.
+- **Iteration 4** (31ddfdf): add real `"white"` noise type, switch forest overlays. User: "Beautiful."
+- **Iteration 5** (ff33727): NOISE_PATTERNS.md canonical reference.
+- **Iteration 6** (b2564eb): drop clearing flower rate 2%/5% → 0.2%/0.5% per user feedback.
+
+**Files modified:** `run_pipeline.py`, `core/surface_decorator.py`, `core/schematic_placement.py`, `tools/_pipeline_runner.py`, `tools/validate_test_tile.py`, `config/thresholds.json`, `CLAUDE.md`, `PHYSICAL_REALISM_REFACTOR.md`. **New:** `NOISE_PATTERNS.md`.
 
 **Deferred carry-forward:**
 - **Phase 3b — Cross-tile ecotone (seam awareness)** — user's stated top priority. Dedicated next session. Needs padded biome_grid reads from neighbour tiles (48px overlap) so `_apply_ecotone_dither()` can soften biome transitions that fall on tile seams. Touches `tile_streamer.py`, `run_pipeline.py`, `biome_assignment.py`, `_apply_ecotone_dither`.
-- Ground cover ecotone (current `_apply_ecotone_dither` only handles surface blocks)
-- Per-biome symmetric edge recipes (asymmetric desert↔forest behaviors)
-- Layer-protocol rewrite of ground cover
-- Alpine flower field rarity system
-- Pass 4 Poisson-disk vegetation rewrite
-- diag_suitability_field.py upgrade from stub to real
+- Schematic placement end-to-end verification (validator showed 0 placements on (51,53) — need to confirm trees are actually placing before Phase 4 rewrite).
+- Ground cover ecotone (current `_apply_ecotone_dither` only handles surface blocks).
+- Per-biome symmetric edge recipes (asymmetric desert↔forest behaviors).
+- Rename misleading `"gaussian"` → `"simplex_fbm"` in noise_layers_biome config (sweep all 26 biomes, keep alias).
+- Layer-protocol rewrite of ground cover.
+- Alpine flower field rarity system.
+- Pass 4 Poisson-disk vegetation rewrite.
+- diag_suitability_field.py upgrade from stub to real.
+- Pre-existing bare-dirt FAIL on (51,53) in MIXED_FOREST/TEMPERATE_RAINFOREST (~12712 pixels — documented as unrelated to this work).
 
