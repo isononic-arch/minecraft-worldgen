@@ -1688,8 +1688,8 @@ def _apply_ecotone_dither(
 
     H, W = biome_grid.shape
     eco_cfg   = cfg.get("eco_ground_cover", {})
-    width_px  = int(eco_cfg.get("ecotone_width_px", 48))   # S55 v2: was 24; user wants much wider biome-to-biome gradient
-    sharpness = float(eco_cfg.get("ecotone_sigmoid_sharpness", 4.0))
+    width_px  = int(eco_cfg.get("ecotone_width_px", 30))   # S58: 48 → 30. Linear ramp now used; 30 = visible fade extent on each side of boundary.
+    sharpness = float(eco_cfg.get("ecotone_sigmoid_sharpness", 4.0))  # legacy, only used if cfg sets ecotone_use_linear=False
 
     unique_biomes = [b for b in np.unique(biome_grid) if not str(b).startswith("_")]
     if len(unique_biomes) < 2:
@@ -1698,17 +1698,15 @@ def _apply_ecotone_dither(
         # (different biome on this tile vs. the neighbour).  Cross-tile
         # ecotone awareness is a deferred carry-forward.
 
-    # Seeded RNG for deterministic dithering.  S55 v2: Gaussian-blurred to give
-    # coherent salt-and-pepper lobes (matching the beach dither pattern)
-    # rather than pure per-pixel static noise.
+    # Seeded RNG for deterministic dithering. S58: reverted from S55 v2
+    # gaussian-filtered (sigma=3 → §3 coherent 3-10 block lobes) back to
+    # true per-pixel uniform random — NOISE_PATTERNS §1 salt-and-pepper
+    # to match the §4 gradient+decision spec the dither implements.
+    # Lobed decision coin produced visible "fingers" perpendicular to the
+    # boundary; per-pixel coin gives the soft 1-block-scale fade the user
+    # asked for.
     rng = np.random.default_rng(tile_x * 48271 ^ tile_y * 31337 ^ 0xEC0D17E)
-    _rand_raw = gaussian_filter(rng.random((H, W)).astype(np.float32), sigma=3)
-    _rr_lo, _rr_hi = float(_rand_raw.min()), float(_rand_raw.max())
-    if _rr_hi > _rr_lo:
-        rand_field = ((_rand_raw - _rr_lo) / (_rr_hi - _rr_lo)).astype(np.float32)
-    else:
-        rand_field = _rand_raw
-    del _rand_raw
+    rand_field = rng.random((H, W)).astype(np.float32)
 
     # For each biome, compute distance-to-boundary (signed: positive = inside)
     # and find the nearest neighbour biome at each pixel.
@@ -1785,57 +1783,39 @@ def _apply_ecotone_dither(
         mask = biome_grid == bname
         dist_inside[mask] = d[mask]
 
-    # S58: Boundary meander — perturb the distance field with a low-frequency
-    # simplex fBm so the effective biome boundary the sigmoid sees is a
-    # curving, meandering line in world space rather than the straight
-    # EDT-derived distance. Without this, softening fingers run strictly
-    # perpendicular to the boundary with no along-boundary curvature, which
-    # reads as an obvious straight-line artifact at tile seams. The
-    # perturbation is computed in world-space coords (via px_off/py_off) so
-    # the meander is seamless across tile boundaries — neighbouring tiles
-    # that share a biome boundary on their halos get the same meander shape.
+    # S58: Boundary meander disabled (default amp=0). Was used when the
+    # biome boundary itself was a straight EDT line; now soften_biome_boundaries
+    # produces a wide organic boundary at the assignment level, so additional
+    # distance perturbation is redundant and noisy.
     _meander_cfg = cfg.get("ecotone_meander", {}) if isinstance(cfg, dict) else {}
-    _meander_amp_blocks = float(_meander_cfg.get("amplitude_px", 12.0))
-    _meander_scale = float(_meander_cfg.get("scale", 40.0))
-    _meander_octaves = int(_meander_cfg.get("octaves", 2))
+    _meander_amp_blocks = float(_meander_cfg.get("amplitude_px", 0.0))
     if _meander_amp_blocks > 0.0:
-        _px_off = tile_x * W
-        _py_off = tile_y * H
-        # Reuse the decoration_density generator for world-seamless noise.
+        _meander_scale = float(_meander_cfg.get("scale", 40.0))
+        _meander_octaves = int(_meander_cfg.get("octaves", 2))
         _meander_noise = _noise_tile(
-            _ecotone_meander_gen(cfg), H, W, _px_off, _py_off,
+            _ecotone_meander_gen(cfg), H, W, tile_x * W, tile_y * H,
             scale=_meander_scale, octaves=_meander_octaves,
         )
-        _meander_offset = (_meander_noise - 0.5) * 2.0 * _meander_amp_blocks
-        dist_inside_effective = dist_inside + _meander_offset.astype(np.float32)
+        dist_inside_effective = dist_inside + ((_meander_noise - 0.5) * 2.0 * _meander_amp_blocks).astype(np.float32)
     else:
         dist_inside_effective = dist_inside
 
-    # Blend probability: at boundary edge (dist=0) → 50% swap,
-    # deep inside (dist=width_px) → ~0% swap.
-    # Sigmoid: P(swap) = 1 / (1 + exp(sharpness * (dist/width - 0.5)))
-    # This gives high swap probability near edge, low deep inside.
-    t = dist_inside_effective[has_neighbour] / width_px  # [0, 1]: 0=boundary, 1=deep inside
-    swap_prob = 1.0 / (1.0 + np.exp(sharpness * (t - 0.5)))
-
-    # Modulate with noise for organic edges (±20% perturbation).
-    # S58: max swap ceiling lowered from 0.95 → 0.35. The old ceiling caused
-    # small-area biomes bordering large ones (e.g. 40k-pixel taiga next to
-    # 220k-pixel desert) to end up with 25–30% of their own pixels painted
-    # with the neighbour's dominant block, because nearly all of the small
-    # biome is within width_px of the boundary and the sigmoid pegs those
-    # pixels at ~95% swap. 0.35 turns the dither into decoration rather than
-    # replacement — each biome retains clear character in its own territory.
-    # S58: default cap lowered from 0.35 → 0.0 — block dither is now
-    # redundant because the boundary itself is wobbled at the biome-
-    # assignment level via soften_biome_boundaries(). Set cap > 0 to
-    # re-enable the per-pixel block swap as a decoration on top of the
-    # biome wobble.
-    _swap_cap = float(cfg.get("eco_ground_cover", {}).get("ecotone_swap_cap", 0.0))
+    # S58: Linear ramp + per-pixel salt-and-pepper, NOISE_PATTERNS §4 spec.
+    # Was sigmoid + cap, which produced a flat-plateau-then-drop pattern that
+    # didn't read as a true gradient. Linear ramp gives a clean visible
+    # 30-block fade from max-swap at the boundary to 0 at width_px deep.
+    # Cap controls max swap rate at the boundary (0.5 = up to 50% of
+    # right-at-boundary pixels get swapped to neighbour blocks).
+    _swap_cap = float(cfg.get("eco_ground_cover", {}).get("ecotone_swap_cap", 0.5))
     if _swap_cap <= 0.0:
         return  # dither disabled
+    t = dist_inside_effective[has_neighbour] / width_px  # 0=boundary, 1=width_px deep
+    # Linear ramp: cap at boundary → 0 at width_px.
+    swap_prob = np.clip(_swap_cap * (1.0 - t), 0.0, _swap_cap)
+    # Light ±20% modulation by noise_b for additional spatial variation in
+    # the swap probability ramp itself (subtler than the per-pixel decision).
     noise_at = noise_b[has_neighbour]
-    swap_prob = np.clip(swap_prob * (0.8 + 0.4 * noise_at), 0.0, _swap_cap)
+    swap_prob = swap_prob * (0.8 + 0.4 * noise_at)
 
     # Stochastic swap: if rand < swap_prob, adopt neighbour's block
     do_swap = rand_field[has_neighbour] < swap_prob

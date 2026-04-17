@@ -354,6 +354,7 @@ def place_schematics(
     eco_grads=None,                    # Optional EcoGradients from eco_gradients.py
     cliff_deg:    np.ndarray | None = None,  # (H,W) float32 degrees
     clearing_field: np.ndarray | None = None,  # (H,W) float32 [0,1] — meadow clearing noise (S57 Phase 3a)
+    surface_blocks: np.ndarray | None = None,  # (H,W) object str — for snow-surface skip (S58)
 ) -> list[PlacementRecord]:
     """
     Compute schematic placements for one tile.
@@ -515,6 +516,49 @@ def place_schematics(
                 eco_density_tile = eco_density_tile * tree_thin
             else:
                 eco_density_tile = tree_thin
+
+    # ── S58 Per-biome treeline density modifier ─────────────────────────
+    # Linear fade-out of tree density above per-biome y_top, fully zero by
+    # y_top + fade_blocks. Stored in cfg.treelines so each biome can have
+    # its own treeline (alpine biomes lower, valley biomes higher).
+    treelines_cfg = cfg.get("treelines", {}) if isinstance(cfg, dict) else {}
+    if treelines_cfg:
+        # Build per-pixel y_top + fade arrays from biome lookup.
+        _default = treelines_cfg.get("_default", {"y_top": 230, "fade_blocks": 30})
+        y_top_tile = np.full((H, W), float(_default.get("y_top", 230)), dtype=np.float32)
+        fade_tile  = np.full((H, W), float(_default.get("fade_blocks", 30)), dtype=np.float32)
+        for biome, entry in treelines_cfg.items():
+            if biome == "_default" or not isinstance(entry, dict):
+                continue
+            mask = (biome_grid == biome)
+            if mask.any():
+                y_top_tile[mask] = float(entry.get("y_top", _default.get("y_top", 230)))
+                fade_tile[mask]  = float(entry.get("fade_blocks", _default.get("fade_blocks", 30)))
+        # Compute linear-ramp density mult: 1.0 below y_top, 0.0 above y_top+fade.
+        sy_f = surface_y.astype(np.float32)
+        treeline_mult = np.clip(1.0 - (sy_f - y_top_tile) / np.maximum(fade_tile, 1.0), 0.0, 1.0).astype(np.float32)
+        if eco_density_tile is not None:
+            eco_density_tile = eco_density_tile * treeline_mult
+        else:
+            eco_density_tile = treeline_mult
+        del y_top_tile, fade_tile, treeline_mult
+
+    # ── S58 No trees on snow surface ───────────────────────────────────
+    # Skip placement when the surface block at the candidate pixel is one
+    # of MC's snow / ice variants. Trees placed on snow_layer or snow_block
+    # appear floating because the schematic anchors at the snow surface
+    # rather than the buried ground beneath. This applies even after the
+    # zone-40 → BOREAL_ALPINE remap eliminates most natural snow.
+    _SNOW_SURFACE_BLOCKS = frozenset({
+        "snow", "snow_block", "powder_snow", "ice", "packed_ice", "blue_ice",
+    })
+    snow_surface_mask = None
+    if surface_blocks is not None:
+        snow_surface_mask = np.zeros((H, W), dtype=bool)
+        for _blk in _SNOW_SURFACE_BLOCKS:
+            snow_surface_mask |= (surface_blocks == _blk)
+        if snow_surface_mask.any():
+            land_mask = land_mask & ~snow_surface_mask
 
     # S57 Phase 3a: Clearing seam tree thinning (~40% of normal density).
     # Creates the "scattered trees spilling into clearing" look.  Interior is

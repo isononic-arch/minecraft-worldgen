@@ -35,7 +35,7 @@ OVERRIDE_BIOME_MAP: dict[int, str] = {
     20:  "TEMPERATE_RAINFOREST",
     30:  "BOREAL_TAIGA",
     35:  "SNOWY_BOREAL_TAIGA",
-    40:  "SNOWY_BOREAL_TAIGA",   # was ALPINE_MEADOW — retired S56; inherits until override.tif rebuild
+    40:  "BOREAL_ALPINE",        # was ALPINE_MEADOW (S56→SNOWY_BOREAL_TAIGA, S58 first→BOREAL_TAIGA); S58 final → BOREAL_ALPINE: SNOWY_BOREAL_TAIGA's surface palette + non-snowy minecraft:taiga MC biome (no freeze, no precipitation snow)
     50:  "ARCTIC_TUNDRA",
     55:  "FROZEN_FLATS",
     60:  "TEMPERATE_DECIDUOUS",
@@ -443,6 +443,105 @@ def soften_biome_boundaries(
     # keep whatever the inheritance step decided, not be re-flipped by noise.
     if protect_zone_40 is not None:
         out[protect_zone_40] = biome_grid[protect_zone_40]
+
+    return out
+
+
+def ridge_watershed_override(
+    biome_grid: np.ndarray,        # (H, W) object str
+    height: np.ndarray,            # (H, W) float32 in [0, 1] (normalized terrain)
+    *,
+    altitude_threshold: float = 0.55,  # normalized; >0.55 ≈ MC Y > 140
+    ridge_smoothing_sigma: float = 10.0,
+    lowland_sample_band_px: int = 64,  # how far past the ridge to sample lowland biome
+) -> np.ndarray:
+    """Hard-override high-altitude pixels with a watershed-determined biome.
+
+    Detects a 1D ridge axis (per-row column of max altitude, smoothed) and
+    classifies each high-altitude pixel as WEST or EAST of the ridge.
+    Auto-detects which lowland biome occupies each side by sampling the
+    most-common non-high pixel within a horizontal band on that side.
+    Each high-altitude pixel is then overwritten with the corresponding
+    side's lowland biome.
+
+    Effect: a clean watershed split for the alpine zone — west-face pixels
+    inherit the windward lowland, east-face pixels inherit the leeward
+    lowland. No EDT polygons, no downslope chaining; just a vertical
+    cut at the ridge axis applied to everything above the altitude
+    threshold.
+
+    Args:
+        biome_grid:           Source biome assignment (modified copy returned).
+        height:               Normalized height [0,1]; HIGH = HIGH terrain.
+        altitude_threshold:   Pixels with height > this are subject to override.
+                              0.55 ≈ raw 36000 ≈ MC Y 140 per the terrain spline.
+        ridge_smoothing_sigma: Gaussian sigma applied to ridge_col(row) to
+                              smooth jagged per-row argmax noise.
+        lowland_sample_band_px: Width of the horizontal sampling band on each
+                              side of the ridge for biome auto-detection.
+
+    Returns:
+        (H, W) object array; high-altitude pixels reassigned to west-side
+        or east-side lowland biome. If the tile has no high pixels or only
+        one side has lowland samples, returns biome_grid unchanged.
+    """
+    H, W = biome_grid.shape
+    high_mask = height > altitude_threshold
+    if not high_mask.any():
+        return biome_grid.copy()
+
+    # ---- Phase 1: per-row ridge column = argmax(height) along row, smoothed.
+    # If a row has no high pixels, ridge_col is undefined; we still get a
+    # value (argmax of the lows) but skip override on rows with no high pixels.
+    ridge_col_raw = np.argmax(height, axis=1).astype(np.float32)
+    try:
+        from scipy.ndimage import gaussian_filter1d
+        ridge_col = gaussian_filter1d(ridge_col_raw, sigma=ridge_smoothing_sigma)
+    except ImportError:
+        ridge_col = ridge_col_raw
+    ridge_col_int = np.clip(np.round(ridge_col).astype(np.int32), 0, W - 1)
+
+    # ---- Phase 2: side classification.
+    cols = np.arange(W, dtype=np.int32).reshape(1, -1)
+    ridge_per_pixel = ridge_col_int.reshape(-1, 1)
+    is_west = cols < ridge_per_pixel  # (H, W)
+    is_east = cols > ridge_per_pixel  # ridge column itself excluded → no override there
+
+    # ---- Phase 3: auto-detect lowland biome per side.
+    low_mask = ~high_mask
+    # Sample within band immediately west of ridge (covers most realistic cases)
+    band_west = is_west & low_mask
+    band_east = is_east & low_mask
+    # Optionally further restrict by horizontal distance from ridge.
+    if lowland_sample_band_px > 0:
+        # distance from ridge in columns
+        col_dist = np.abs(cols - ridge_per_pixel)  # (H, W)
+        band_close = col_dist <= lowland_sample_band_px * 4  # 4x band for sampling robustness
+        band_west = band_west & band_close
+        band_east = band_east & band_close
+
+    def _most_common_biome(mask):
+        if not mask.any():
+            return None
+        from collections import Counter
+        c = Counter(biome_grid[mask].tolist())
+        # Filter out empty / underscore-prefixed biome names.
+        for name, _n in c.most_common():
+            if name and not str(name).startswith("_"):
+                return name
+        return None
+
+    west_biome = _most_common_biome(band_west)
+    east_biome = _most_common_biome(band_east)
+
+    # ---- Phase 4: apply override to high-altitude pixels.
+    out = biome_grid.copy()
+    if west_biome is not None:
+        out[high_mask & is_west] = west_biome
+    if east_biome is not None:
+        out[high_mask & is_east] = east_biome
+    # Pixels exactly at ridge_col stay as their original biome (single-column
+    # divider — visually negligible at 512×512, prevents an arbitrary tiebreak).
 
     return out
 

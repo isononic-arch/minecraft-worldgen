@@ -48,6 +48,7 @@ BIOME_TO_MC: dict[str, str] = {
     "COASTAL_HEATH":           "minecraft:plains",
     "TEMPERATE_RAINFOREST":    "minecraft:dark_forest",
     "BOREAL_TAIGA":            "minecraft:old_growth_birch_forest",
+    "BOREAL_ALPINE":           "minecraft:taiga",   # S58: ex-zone-40 alpine; non-snowy MC biome with snowy-taiga surface palette
     "SNOWY_BOREAL_TAIGA":      "minecraft:snowy_taiga",
     "ARCTIC_TUNDRA":           "minecraft:frozen_peaks",
     "FROZEN_FLATS":            "minecraft:snowy_plains",
@@ -95,6 +96,7 @@ _BIOME_CLIFF_STONE: dict[str, str] = {
     # Alpine / arctic — cold metamorphic
     "ARCTIC_TUNDRA":          "andesite",
     "BOREAL_TAIGA":           "andesite",
+    "BOREAL_ALPINE":          "andesite",
     "SNOWY_BOREAL_TAIGA":     "andesite",
     "FROZEN_FLATS":           "andesite",
     "COASTAL_HEATH":          "andesite",

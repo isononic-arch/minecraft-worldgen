@@ -957,22 +957,72 @@ Geology fills `vol` in Y range `[Y_MIN+1, surface_y-3]`. The surface decorator's
 
 ---
 
-### Phase 3b — Cross-tile ecotone / seam awareness (S58, 2026-04-16)
+### Phase 3b — Cross-tile ecotone + biome boundary rework + alpine biome (S58, 2026-04-16/17)
 
-**Why a new decimal subsection:** Phase 3a wired the within-tile clearing/ecotone behavior. The ecotone dither at `core/surface_decorator.py:_apply_ecotone_dither` softens biome boundaries via gradient-probability + gaussian-filtered decision coin (NOISE_PATTERNS §3 + §4), but it early-exits at `len(unique_biomes) < 2`, so biome transitions that fall exactly on tile seams get zero softening — reads as a hard line in-world (user's stated top carry-forward from S57). Phase 3b adds 48px halo reads of the 5 `assign_biomes` input masks from neighbour tiles so the dither operates on a padded 608×608 biome grid, picking up seam-only transitions as if they were within-tile. Explicitly NOT a full Pass 3/4 Layer-protocol rewrite — that stays deferred to Phase 3.
+**Why a new decimal subsection:** Phase 3a wired the within-tile clearing/ecotone behavior. Phase 3b began as "make the seam ecotone work" (cross-tile padded biome_grid for `_apply_ecotone_dither`) and grew into a substantial rework of biome boundary appearance, alpine handling, and tree placement. The session went through 17 iterations across 3 broad approaches before landing — the §18 entry below has the full journey including the v8 alpine-inheritance branch (preserved as `backup/s58-v8-inheritance`).
 
-**Scope:**
-1. `core/tile_streamer.py:read_tile` gains `pad_px` + `mask_subset` params. When `pad_px > 0`, returns `(H+2*pad_px, W+2*pad_px)` arrays with rasterio Window math that handles negative offsets (for tiles at world edge) via source-bounds intersection + out-of-world zero-fill.
-2. `run_pipeline.py`, `tools/_pipeline_runner.py`, `tools/validate_test_tile.py` each get a "Step 6c2" that reads a 48-px halo of `{height, slope, flow, erosion, override}` and runs `assign_biomes` on it to produce `biome_grid_padded`. Inner 512×512 is overwritten with the authoritative inner `biome_grid` (post alpine-inheritance) so the halo is the only new data.
-3. `core/surface_decorator.py:decorate_surface` gains a `biome_grid_padded` kwarg. When supplied and correctly-shaped, it:
-   - Paints a padded surface_blocks / subsurface_blocks via `_apply_noise_layers` on the padded biome grid (halo-only visible effect — inner is immediately overwritten with the authoritative inner arrays that already went through river banks, gap painting, clearings, etc.).
-   - Builds a padded `noise_b` via `_noise_tile` with the SAME OpenSimplex fBm generator as the inner, world-coords offset by `-pad_px` so the padded field is byte-continuous with the inner (verified: max diff = 0.0).
-   - Builds a padded gap_mask (inner from eco_grads, halo zeros — halo pixels aren't swap candidates anyway, we slice inner back afterward).
-   - Calls the existing `_apply_ecotone_dither` unchanged on the padded arrays, then slices the inner 512×512 back into the authoritative `surface_blocks` / `subsurface_blocks`.
-   - Flag-OFF fallback: if `biome_grid_padded` is None or wrong-shaped, falls through to the pre-S58 unpadded dither call.
-4. Each tile only WRITES to its own inner 512×512. Halo is read-only reference data. No cross-worker coordination — each side of a seam paints its own softening pattern from its own RNG seed. Accepted: finger patterns differ across the seam but both are organic.
+**Scope (final, post-iteration):**
 
-**Exit criteria:** (24,80) ↔ (25,80) SAND_DUNE_DESERT / SNOWY_BOREAL_TAIGA seam in-game shows salt-and-pepper fingers between biomes instead of a hard line. No regressions in existing tile behavior (flag-OFF fallback preserves pre-S58 output byte-for-byte when orchestrator doesn't pass `biome_grid_padded`).
+1. **Cross-tile ecotone halo (the original Phase 3b core):**
+   - `core/tile_streamer.py:read_tile` gains `pad_px` + `mask_subset` params. When `pad_px > 0`, returns `(H+2*pad_px, W+2*pad_px)` arrays with rasterio Window math handling negative offsets (world-edge tiles) via source-bounds intersection + out-of-world zero-fill.
+   - 3 orchestrators (`run_pipeline.py`, `tools/_pipeline_runner.py`, `tools/validate_test_tile.py`) each get a "Step 6c2" that reads a 512-px-padded halo of the 5 `assign_biomes` input masks, runs `assign_biomes` on the padded grid, applies boundary softening, then extracts an inner-plus-48 (608²) window for the dither.
+   - `core/surface_decorator.py:decorate_surface` gains a `biome_grid_padded` kwarg. When provided, paints padded surface_blocks via `_apply_noise_layers`, builds a padded `noise_b` via `_noise_tile` (world-seamless), padded gap_mask, runs `_apply_ecotone_dither` on padded arrays, slices inner 512×512 back. Flag-OFF fallback preserves pre-S58 behavior.
+
+2. **`soften_biome_boundaries` helper** (`core/biome_assignment.py`):
+   - For each biome, compute distance-to-this-biome (EDT) and add an independent per-biome simplex fBm noise offset (scale=200, amplitude=40, octaves=2). Reassign each pixel near a boundary to the biome with the smallest perturbed distance.
+   - World-seamless via per-biome `_soften_gen_for_biome(name)` deterministic seed; cross-tile padded version uses same offset math.
+   - Replaces the EDT-straight biome boundaries with wide organic curves at the assignment level.
+
+3. **Block dither rewrite** (`core/surface_decorator.py:_apply_ecotone_dither`):
+   - Sigmoid + cap → linear ramp + cap (`swap_prob = clip(cap * (1 - dist/width), 0, cap)`). Removes the flat-plateau artifact of sigmoid.
+   - Decision coin: gaussian-filtered (S55 v2, sigma=3, §3 lobes) → per-pixel uniform random (NOISE_PATTERNS §1, true salt-and-pepper, matching §4 spec).
+   - `ecotone_width_px`: 48 → 30 (config in `eco_ground_cover.ecotone_width_px`).
+   - `ecotone_swap_cap`: 0.95 → 0.5 (config in `eco_ground_cover.ecotone_swap_cap`). Symmetric ~7-8% mix on each side of the boundary.
+   - Boundary meander (perturbing `dist_inside` with low-freq noise) added then disabled — redundant once `soften_biome_boundaries` produces wide organic boundaries.
+
+4. **`BOREAL_ALPINE` new biome** (zone 40, ex-`ALPINE_MEADOW`):
+   - `OVERRIDE_BIOME_MAP[40]`: `SNOWY_BOREAL_TAIGA` (S56) → `BOREAL_ALPINE`.
+   - `BIOME_TO_MC["BOREAL_ALPINE"] = "minecraft:taiga"` (non-snowy MC biome — no precipitation snow, no freeze).
+   - `noise_layers_biome["BOREAL_ALPINE"]` = exact copy of `SNOWY_BOREAL_TAIGA` palette (podzol-dominant, gravel/coarse_dirt accents). Visual stays "snowy alpine"; climate stays warm.
+   - `_BIOME_CLIFF_STONE["BOREAL_ALPINE"] = "andesite"`.
+   - World-wide effect: ~1.27M pixels of zone 40 (3.24% of world) switch from forced-snowy to non-snowy with snowy-textured palette. Intentionally-painted zone 35 stays as `SNOWY_BOREAL_TAIGA`.
+
+5. **Schematic loader strips snow blocks** (`core/schematic_loader.py`):
+   - `_SPONGE_BLOCK_REMAP["snow"] = "air"` — kills baked `snow_layer` accumulation in `.schem` schematics.
+   - Same remap applied in `_load_classic_schematic` so `.schematic` files (3 sbtaiga spruce variants with hundreds of snow_layer blocks each) get cleaned at load time too.
+   - Snow on the GROUND (placed by MC's natural snowfall on snowy biomes) is unaffected — only baked-into-schematic snow gets stripped.
+
+6. **Per-biome treelines** (config-driven in `config/thresholds.json:treelines`):
+   - Linear density fade: `density_mult = clamp(1 - (Y - y_top) / fade_blocks, 0, 1)`.
+   - Final values (post +80 bump from initial baselines): _default y_top=310, BOREAL_TAIGA=280, MIXED_FOREST=280, TEMPERATE_RAINFOREST=280, TEMPERATE_DECIDUOUS=270, BIRCH_FOREST=270, SNOWY_BOREAL_TAIGA=260, BOREAL_ALPINE=250, RIPARIAN_WOODLAND=210, ARCTIC_TUNDRA=180, FROZEN_FLATS=160. fade_blocks 25-30 for forest biomes, 10-15 for arctic.
+   - Implementation: `core/schematic_placement.py` builds per-pixel `y_top_tile` + `fade_tile` from biome lookup, multiplies `eco_density_tile` by the resulting `treeline_mult`.
+
+7. **No trees on snow surface** (`core/schematic_placement.py`):
+   - `surface_blocks` added as new param to `place_schematics`.
+   - Skips placement if `surface_blocks[r,c]` ∈ `{snow, snow_block, powder_snow, ice, packed_ice, blue_ice}`. Prevents the floating-tree-on-snow-block visual.
+   - Wired through 3 orchestrators.
+
+8. **Slope cutoff tightened** (`config/thresholds.json:eco_placement`):
+   - `slope_penalty_start_deg`: 30 → 18 (initial v14) → 30 (final v15+, user pulled back). Trees fade starts at 30° slope.
+   - `slope_penalty_full_deg`: 55 → 35 (v14) → 45 (final). Trees fully zero at 45° slope.
+   - Together with the snow-skip and treelines, eliminates floating-on-cliff and floating-on-peak trees.
+
+**What was tried and removed:**
+
+- **v8 downslope alpine inheritance** (`eco_gradients.propagate_biome_downslope`): replaced EDT-nearest alpine inheritance with flow-following propagation. Symmetric across seams via 256-pad then 512-pad inheritance halo. Worked technically but produced visible "polygonal watershed" regions in the biome map (each plateau got uniformly assigned to its downhill biome, creating sharp polygon edges between watersheds). Backed up at branch `backup/s58-v8-inheritance` (commit `8e792a8`); function still lives in `eco_gradients.py` for re-enable.
+- **v9-v10 ridge_watershed_override**: detected per-row argmax(altitude) ridge axis, auto-detected lowland biome on each side, hard-overrode all high-altitude pixels to side biome. Produced clean watershed split but in-game showed "weird conflicts" per user. Function `ridge_watershed_override` still lives in `biome_assignment.py` for re-enable; orchestrators no longer call it.
+
+**Exit criteria (met):**
+- (24,80) ↔ (25,80) SAND_DUNE_DESERT/BOREAL_ALPINE/SNOWY_BOREAL_TAIGA seams show wide organic boundary wobble + per-pixel salt-and-pepper fade. No square/polygonal artifacts.
+- BOREAL_ALPINE areas have snowy-textured surface palette but no actual snowfall/freeze.
+- No floating trees on cliffs (slope cutoff at 45°), no floating trees on snow (snow-skip), no trees above per-biome treeline.
+- No baked snow on tree branches anywhere (3 sbtaiga spruce variants previously had 100-156 snow_layer blocks each — now 0).
+- Flag-OFF fallback preserves pre-S58 output byte-for-byte when orchestrator doesn't pass `biome_grid_padded`.
+
+**Phase state (end of S58):**
+- Landed this session: **Phase 3b** (complete after 17 iterations).
+- §11 currently at: **Phase 3b inserted as decimal between Phase 3a and Phase 3**.
+- Next session starts: **Phase 3 proper (Pass 3/4 Layer-protocol rewrite)** OR another carry-forward — user's call.
 
 ---
 
@@ -2058,4 +2108,66 @@ cliff_deg = core_eco.compute_cliff_deg(surface_y)
 - Pass 4 Poisson-disk vegetation rewrite.
 - diag_suitability_field.py upgrade from stub to real.
 - Pre-existing bare-dirt FAIL on (51,53) in MIXED_FOREST/TEMPERATE_RAINFOREST (~12712 pixels — documented as unrelated to this work).
+
+
+### S58 — 2026-04-17: Phase 3b — Cross-tile ecotone, biome boundary rework, BOREAL_ALPINE biome, schematic placement constraints
+
+**Phase state (end of S58 Phase 3b):**
+- Landed this session: **Phase 3b** (complete). 17 iterations across 3 broad approaches before landing — see "Iteration history" below.
+- §11 currently at: **Phase 3b inserted as decimal between Phase 3a and Phase 3**.
+- Next session starts: **Phase 3 proper (Pass 3/4 Layer-protocol rewrite)** OR pick from carry-forward — user's call.
+
+**Final landed scope** (8 buckets — see §11 Phase 3b for full file/line detail):
+1. Cross-tile ecotone halo (`tile_streamer.read_tile` pad_px + mask_subset; `decorate_surface` biome_grid_padded kwarg; 512-px inheritance halo).
+2. `soften_biome_boundaries` — wide organic biome boundaries via per-biome simplex noise (scale=200, amp=40).
+3. `_apply_ecotone_dither` rewrite — sigmoid → linear ramp, gaussian-filtered → per-pixel salt-and-pepper, width 30, cap 0.5.
+4. `BOREAL_ALPINE` biome — zone 40 ex-`ALPINE_MEADOW` gets SNOWY_BOREAL_TAIGA palette + non-snowy `minecraft:taiga` MC biome.
+5. Schematic loader strips baked snow_layer (sponge + classic remap).
+6. Per-biome treelines (config-driven, +80 from initial baselines).
+7. No-trees-on-snow check in placement.
+8. Slope cutoff for trees: 30°→45° (loosened from initial v14 18°→35°).
+
+**Iteration history (all 17 versions, why each was tried + why discarded):**
+
+- **v1-v3** (cross-tile ecotone core, no inheritance changes yet): Phase 3b's original spec — 48px halo, padded biome_grid, dither sees seam transitions. Worked but exposed the EDT-nearest alpine inheritance as visibly fuzzy at ridges. Backup branch: `backup/s58-v8-inheritance` for the inheritance variant.
+- **v4** (256-pad inheritance): widened halo so each tile's downslope inheritance saw enough context. Reduced "square seams" but introduced visible polygonal watershed regions in the biome map — each plateau got assigned to one downhill biome creating sharp polygon edges.
+- **v5-v6** (boundary meander + smaller cap): added simplex perturbation to dither distance field for finger curvature. Cap dropped 0.95 → 0.35 then 0.5 to fix small-biome over-flooding (taiga next to desert was 29% sand-painted).
+- **v7-v8** (boundary softening replaces dither, dither cap=0): introduced `soften_biome_boundaries` to wobble biome assignment itself; disabled dither. Inheritance kept. Backed up at `backup/s58-v8-inheritance` (commit `8e792a8`) before next pivot.
+- **v9-v10** (ridge_watershed_override): replaced inheritance with per-row argmax(altitude) ridge detection + auto-detected lowland-side biomes. Clean watershed split mathematically but produced "weird conflicts" in-game per user.
+- **v11** (revert all override + inheritance): both downslope and ridge-override removed. Per-pixel uniform random salt-and-pepper dither matching NOISE_PATTERNS §1+§4 spec.
+- **v12** (linear ramp dither): final dither shape — clean linear gradient, 30-block fade each side, cap 0.5. ~7-8% mix on each side of boundary.
+- **v13** (zone 40 → BOREAL_TAIGA + snow strip): killed force-snowy on alpine; stripped baked tree-snow from sbtaiga spruces.
+- **v14** (BOREAL_ALPINE + treelines + slope tighten + snow-skip): introduced new biome with snowy palette + warm climate. Tree placement gets altitude fade, snow-surface skip, tighter slope.
+- **v15** (slope loosen): user pulled slope back from 18°/35° → 30°/45° for more visible trees on slopes.
+- **v16** (treelines +50): bumped baselines so peaks stay treed.
+- **v17** (treelines +80 final): another +30 bump. Most Vandir mountains (median peak Y 159) stay forested top-to-bottom; only top 10% of peaks (Y 309+) show bare rock.
+
+**World-stats analysis run during session** (informed treeline decisions):
+- 30% of Vandir is land. Median land elevation Y 102, 95th pct Y 235.
+- 1169 detected mountain peaks. Median peak Y 159, 90th pct peak Y 309, max Y 448.
+- Zone distribution: 60% ocean, then BOREAL_TAIGA 2.91%, SNOWY_BOREAL_TAIGA 2.39%, retired-ALPINE-zone-40 3.24%, ARCTIC_TUNDRA 1.34%, FROZEN_FLATS 0.18%.
+
+**Files modified:**
+- `core/biome_assignment.py` — `OVERRIDE_BIOME_MAP[40]` → BOREAL_ALPINE; new `soften_biome_boundaries` + `_soften_gen_for_biome` + `_noise_tile_simple`; `ridge_watershed_override` (added then removed from runners but kept in module).
+- `core/eco_gradients.py` — new `propagate_biome_downslope` (added then removed from runners but kept in module — used by `backup/s58-v8-inheritance`).
+- `core/surface_decorator.py` — `decorate_surface` gets `biome_grid_padded` kwarg + halo-prep + slice-back block; `_apply_ecotone_dither` rewritten (linear ramp, per-pixel salt-and-pepper, configurable cap, optional meander). `_ecotone_meander_gen` helper added.
+- `core/tile_streamer.py` — `read_tile` gets `pad_px` + `mask_subset` params with negative-offset handling.
+- `core/schematic_loader.py` — `_SPONGE_BLOCK_REMAP["snow"] = "air"`; remap also applied in `_load_classic_schematic`.
+- `core/schematic_placement.py` — `surface_blocks` param added; per-biome treeline density modifier; snow-surface skip mask.
+- `core/chunk_writer.py` — `BIOME_TO_MC["BOREAL_ALPINE"] = "minecraft:taiga"`; `_BIOME_CLIFF_STONE["BOREAL_ALPINE"] = "andesite"`.
+- `run_pipeline.py`, `tools/_pipeline_runner.py`, `tools/validate_test_tile.py` — Step 6c2 (padded biome_grid + soften), Step 6c.5 (inner soften), `place_schematics` gets `surface_blocks` arg; Step 6c (alpine inheritance) reverted to no-op for clarity.
+- `config/thresholds.json` — new `treelines` section (11 entries), `BOREAL_ALPINE` palette, `eco_placement.slope_penalty_*` updated, `ecotone_meander` defaults.
+
+**Validation:**
+- In-game spot-check on (24,80)+(25,80) seam at `/tp @s 12800 250 41216`. Multiple iterations confirmed by user before landing.
+- No 3×3 baseline regression check this session — user opted for in-game-only validation per their preference. Pre-existing baselines (48,48 ocean, 51,53 mixed forest) remain valid for next session.
+
+**Deferred carry-forward:**
+- Phase 3 proper — full Pass 3/4 Layer-protocol rewrite of ground cover + vegetation.
+- World-wide regen — multiple changes affect global biome map (BOREAL_ALPINE, treelines). Ready for full 50k generation when user calls it.
+- Schematic placement end-to-end verification on tiles other than (24,80)+(25,80).
+- Ground cover ecotone (current `_apply_ecotone_dither` only handles surface_blocks, not ground_cover).
+- `ridge_watershed_override` and `propagate_biome_downslope` left in source — could be re-enabled with config flag if user wants alpine inheritance back.
+- Boundary meander in dither — coded but disabled (`amplitude_px = 0` default). Re-enable via `cfg.ecotone_meander.amplitude_px > 0`.
+- NOISE_PATTERNS.md update — could add §6 for "linear ramp + per-pixel salt-and-pepper" (the v12 final dither shape) as a canonical pattern.
 

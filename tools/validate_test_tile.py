@@ -593,21 +593,11 @@ def main() -> int:
         print(f"[validate] WARN: eco_gradients failed: {e}")
         eco_grads = None
 
-    # Step 6c: Alpine biome inheritance (zone 40 -> nearest lowland biome)
-    _alpine_any_inner = None
-    if eco_grads is not None and hasattr(eco_grads, 'alpine_biome_source'):
-        _alpine_gap = (eco_grads.gap_mask == 5) | (eco_grads.gap_mask == 7)
-        _ov_u8 = np.round(masks["override"] * 255).astype(np.uint8)
-        _zone40 = _ov_u8 == 40
-        _alpine_any_inner = _alpine_gap | _zone40
-        if _alpine_any_inner.any():
-            biome_grid[_alpine_any_inner] = eco_grads.alpine_biome_source[_alpine_any_inner]
-
-    # Step 6c.5: Soften biome boundaries (S58) — see run_pipeline.py
+    # Step 6c: REMOVED S58 (see run_pipeline.py)
+    # Step 6c.5: Soften biome boundaries (S58)
     biome_grid = core_biome.soften_biome_boundaries(
         biome_grid, tx * TILE_SIZE, tz * TILE_SIZE,
         amplitude_px=40.0, scale=200.0, octaves=2,
-        protect_zone_40=_alpine_any_inner,
     )
 
     # Step 6c2: Padded biome_grid for cross-tile ecotone (S58 Phase 3b)
@@ -630,15 +620,11 @@ def main() -> int:
             override_tile=_padded_masks["override"],
             noise_fields=noise, cfg=cfg,
         )
-        import core.eco_gradients as _core_eco_local
-        _ov8_pad = np.round(_padded_masks["override"] * 255).astype(np.uint8)
-        _zone40_pad = _ov8_pad == 40
-        _land_pad = _padded_masks["height"] > (17050.0 / 65535.0)
-        _bg_big = _core_eco_local.propagate_biome_downslope(
-            biome_grid=_bg_big,
-            alpine_mask=_zone40_pad,
-            terrain_h=_padded_masks["height"],
-            land_mask=_land_pad,
+        _bg_big = core_biome.soften_biome_boundaries(
+            _bg_big,
+            tx * TILE_SIZE - _INHERITANCE_PAD_PX,
+            tz * TILE_SIZE - _INHERITANCE_PAD_PX,
+            amplitude_px=40.0, scale=200.0, octaves=2,
         )
         _bg_big[_INHERITANCE_PAD_PX:_INHERITANCE_PAD_PX + TILE_SIZE,
                 _INHERITANCE_PAD_PX:_INHERITANCE_PAD_PX + TILE_SIZE] = biome_grid
@@ -706,6 +692,7 @@ def main() -> int:
                 eco_grads     = eco_grads,
                 cliff_deg     = cliff_deg,
                 clearing_field = clearing_field,
+                surface_blocks = surface_blk,
             )
         except Exception as e:
             print(f"[validate] WARN: schematic placement failed: {e}")

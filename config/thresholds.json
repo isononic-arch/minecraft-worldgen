@@ -1871,6 +1871,63 @@
         "seed": 43,
         "is_base": false
       }
+    ],
+    "BOREAL_ALPINE": [
+      {
+        "name": "snow_block",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "podzol",
+        "coverage": 1.0,
+        "scale": 60,
+        "seed": 42,
+        "is_base": true
+      },
+      {
+        "name": "coarse_dirt (noise2)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "gravel",
+        "coverage": 0.28,
+        "scale": 12,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "gravel (erosion)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "stone",
+        "coverage": 0.35,
+        "scale": 6,
+        "seed": 43,
+        "is_base": false
+      },
+      {
+        "name": "podzol (noise)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "coarse_dirt",
+        "coverage": 0.46,
+        "scale": 60,
+        "seed": 42,
+        "is_base": false
+      },
+      {
+        "name": "snow_block (moisture)",
+        "noise": "gaussian",
+        "enabled": true,
+        "block": "grass_block",
+        "sub": "coarse_dirt",
+        "coverage": 0.72,
+        "scale": 116,
+        "seed": 44,
+        "is_base": false
+      }
     ]
   },
   "eco_gradients": {
@@ -1924,7 +1981,7 @@
       1.5
     ],
     "slope_penalty_start_deg": 30,
-    "slope_penalty_full_deg": 55,
+    "slope_penalty_full_deg": 45,
     "habitat_score_floor": 0.05
   },
   "species_habitats": {
@@ -3363,5 +3420,51 @@
     "shadow_mode": false,
     "feature_flag_enabled": true,
     "_comment": "Phase 0.75 shadow_mode: smoke test (output discarded). Phase 2.0 feature_flag_enabled: when true, runs temperate cliff/talus/fluting layers and merges into surface_blocks. Legacy path preserved as fallback for unclaimed pixels."
+  },
+  "treelines": {
+    "_default": {
+      "y_top": 310,
+      "fade_blocks": 30
+    },
+    "BOREAL_TAIGA": {
+      "y_top": 280,
+      "fade_blocks": 30
+    },
+    "SNOWY_BOREAL_TAIGA": {
+      "y_top": 260,
+      "fade_blocks": 25
+    },
+    "BOREAL_ALPINE": {
+      "y_top": 250,
+      "fade_blocks": 25
+    },
+    "TEMPERATE_RAINFOREST": {
+      "y_top": 280,
+      "fade_blocks": 30
+    },
+    "MIXED_FOREST": {
+      "y_top": 280,
+      "fade_blocks": 30
+    },
+    "TEMPERATE_DECIDUOUS": {
+      "y_top": 270,
+      "fade_blocks": 30
+    },
+    "BIRCH_FOREST": {
+      "y_top": 270,
+      "fade_blocks": 30
+    },
+    "ARCTIC_TUNDRA": {
+      "y_top": 180,
+      "fade_blocks": 15
+    },
+    "FROZEN_FLATS": {
+      "y_top": 160,
+      "fade_blocks": 10
+    },
+    "RIPARIAN_WOODLAND": {
+      "y_top": 210,
+      "fade_blocks": 25
+    }
   }
 }

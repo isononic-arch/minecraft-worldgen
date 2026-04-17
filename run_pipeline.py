@@ -235,20 +235,18 @@ def _process_tile(args: dict) -> dict:
         override_tile = masks.get("override"),
     )
 
-    # ---- Step 6c: Alpine biome inheritance ----
-    if hasattr(eco_grads, 'alpine_biome_source'):
-        alpine_gap = (eco_grads.gap_mask == 5) | (eco_grads.gap_mask == 7)
-        _ov_u8 = np.round(masks["override"] * 255).astype(np.uint8)
-        zone40 = _ov_u8 == 40
-        alpine_any = alpine_gap | zone40
-        if alpine_any.any():
-            biome_grid[alpine_any] = eco_grads.alpine_biome_source[alpine_any]
+    # ---- Step 6c: REMOVED S58 ----
+    # Both the downslope alpine inheritance (v8, backup branch
+    # backup/s58-v8-inheritance) and the ridge watershed override (v9,
+    # produced "weird conflicts" in-game) are disabled. Alpine pixels
+    # keep their assign_biomes default (SNOWY_BOREAL_TAIGA per
+    # OVERRIDE_BIOME_MAP since S56). The soften+dither below handles
+    # the visible biome-to-biome transition.
 
     # ---- Step 6c.5: Soften biome boundaries (S58) ----
     biome_grid = core_biome_assign.soften_biome_boundaries(
         biome_grid, tile_x * w, tile_y * h,
         amplitude_px=40.0, scale=200.0, octaves=2,
-        protect_zone_40=alpine_any if hasattr(eco_grads, 'alpine_biome_source') else None,
     )
 
     # ---- Step 6c2: Padded biome_grid for cross-tile ecotone (S58 Phase 3b) ----
@@ -289,22 +287,12 @@ def _process_tile(args: dict) -> dict:
             noise_fields  = noise,
             cfg           = cfg,
         )
-        # Padded downslope inheritance + boundary softening (cross-tile sym).
-        _ov8_pad = np.round(_padded_masks["override"] * 255).astype(np.uint8)
-        _zone40_pad = _ov8_pad == 40
-        _land_pad = _padded_masks["height"] > (17050.0 / 65535.0)
-        _bg_big = core_eco.propagate_biome_downslope(
-            biome_grid = _bg_big,
-            alpine_mask = _zone40_pad,
-            terrain_h = _padded_masks["height"],
-            land_mask = _land_pad,
-        )
+        # Padded boundary softening (cross-tile symmetric, no ridge override).
         _bg_big = core_biome_assign.soften_biome_boundaries(
             _bg_big,
             tile_x * w - _INHERITANCE_PAD_PX,
             tile_y * h - _INHERITANCE_PAD_PX,
             amplitude_px=40.0, scale=200.0, octaves=2,
-            protect_zone_40=_zone40_pad,
         )
         # Overwrite the innermost 512×512 with the authoritative inner
         # biome_grid (which went through the Step 6c inner-scale inheritance
@@ -375,6 +363,7 @@ def _process_tile(args: dict) -> dict:
         eco_grads    = eco_grads,
         cliff_deg    = cliff_deg,
         clearing_field = clearing_field,
+        surface_blocks = surface_blk,
     )
 
     # ---- Step 9: Chunk write ----

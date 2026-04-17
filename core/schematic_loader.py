@@ -131,6 +131,13 @@ _SPONGE_BLOCK_REMAP: dict[str, str] = {
     "crimson_fence_gate":   "air",
     "warped_fence_gate":    "air",
     "pale_oak_fence_gate":  "air",
+    # S58: strip baked-in snow accumulation from schematics. Snow on the
+    # GROUND (placed by MC's natural snowfall on snowy biomes) is unaffected.
+    # 3 sbtaiga spruce variants had hundreds of snow_layer blocks baked into
+    # their branches/canopy from the source build; that reads as visually
+    # off in lower-altitude/non-snowy areas where those schematics now
+    # appear (e.g. zone 35 SNOWY_BOREAL_TAIGA in temperate latitudes).
+    "snow":                 "air",
 }
 
 
@@ -331,6 +338,9 @@ def _load_classic_schematic(path: Path) -> SchemData:
                     3: "jungle_slab"}.get(dat & 7, "oak_slab")
         else:
             name = _CLASSIC_ID_MAP.get(bid, "air")  # unknown → air (not stone)
+        # Apply global remap (snow→air, fence_gate→air, etc.) so classic
+        # .schematic files get the same treatment as modern .schem files.
+        name = _SPONGE_BLOCK_REMAP.get(name, name)
         blocks[y, z, x] = name
         palette[bid] = name
 
