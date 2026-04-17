@@ -49,19 +49,33 @@ def read_tile(
     row_off: int,
     width:   int = 512,
     height:  int = 512,
+    pad_px:  int = 0,
+    mask_subset: Union[list, tuple, set, None] = None,
 ) -> dict[str, np.ndarray]:
     """
     Read one tile window from all mask TIFFs.
 
     Args:
-        masks_dir:  Directory containing mask TIFFs.
-        col_off:    X pixel offset (= tile_x * TILE_SIZE).
-        row_off:    Y pixel offset (= tile_z * TILE_SIZE).
-        width:      Tile width in pixels (default 512).
-        height:     Tile height in pixels (default 512).
+        masks_dir:     Directory containing mask TIFFs.
+        col_off:       X pixel offset (= tile_x * TILE_SIZE).
+        row_off:       Y pixel offset (= tile_z * TILE_SIZE).
+        width:         Inner tile width in pixels (default 512).
+        height:        Inner tile height in pixels (default 512).
+        pad_px:        Halo width in pixels to read around the tile (default 0).
+                       When > 0, the returned arrays are
+                       (height + 2*pad_px, width + 2*pad_px).
+                       Out-of-world pixels (negative coords or past the raster
+                       edge) are zero-filled. Phase 3b cross-tile ecotone (S58).
+        mask_subset:   Optional iterable of mask names to read. When provided,
+                       only these masks are read (others are omitted from the
+                       result). When None, all MASK_NAMES are read. Useful
+                       together with pad_px=48 to cheaply fetch only the 5
+                       assign_biomes inputs at padded shape.
 
     Returns:
-        Dict mapping mask name → (height, width) float32 ndarray in [0, 1].
+        Dict mapping mask name → float32 ndarray in [0, 1].
+        When pad_px == 0: shape (height, width).
+        When pad_px > 0:  shape (height + 2*pad_px, width + 2*pad_px).
         Missing masks return zero arrays of the correct shape.
     """
     try:
@@ -73,10 +87,18 @@ def read_tile(
     masks_dir = Path(masks_dir)
     result: dict[str, np.ndarray] = {}
 
-    for name in MASK_NAMES:
+    # Effective window: inner tile expanded by pad_px on all sides.
+    eff_col_off = col_off - pad_px
+    eff_row_off = row_off - pad_px
+    eff_w = width  + 2 * pad_px
+    eff_h = height + 2 * pad_px
+
+    names = list(mask_subset) if mask_subset is not None else MASK_NAMES
+
+    for name in names:
         path = masks_dir / f"{name}.tif"
         if not path.exists():
-            result[name] = np.zeros((height, width), dtype=np.float32)
+            result[name] = np.zeros((eff_h, eff_w), dtype=np.float32)
             continue
 
         try:
@@ -84,43 +106,60 @@ def read_tile(
                 # override.tif is built by upscale_override_vectorized.py with
                 # FLIP_Z=True and fliplr applied — it is already in the same
                 # coordinate system as height.tif. Read it straight.
-                # Clip window to raster bounds
-                w = min(width,  src.width  - col_off)
-                h = min(height, src.height - row_off)
-                if w <= 0 or h <= 0:
-                    result[name] = np.zeros((height, width), dtype=np.float32)
+
+                # Compute source-space intersection with effective window.
+                # The effective window spans [eff_col_off, eff_col_off+eff_w)
+                # in source coords. Clip to source bounds; anything outside
+                # becomes zero-fill in the output array.
+                src_col_start = max(0, eff_col_off)
+                src_row_start = max(0, eff_row_off)
+                src_col_end   = min(src.width,  eff_col_off + eff_w)
+                src_row_end   = min(src.height, eff_row_off + eff_h)
+
+                w_read = src_col_end - src_col_start
+                h_read = src_row_end - src_row_start
+
+                if w_read <= 0 or h_read <= 0:
+                    # Window entirely outside raster — all zeros.
+                    result[name] = np.zeros((eff_h, eff_w), dtype=np.float32)
                     continue
-                win = Window(col_off, row_off, w, h)
+
+                # Destination offset inside the output array.
+                dst_col_start = src_col_start - eff_col_off
+                dst_row_start = src_row_start - eff_row_off
+
+                win = Window(src_col_start, src_row_start, w_read, h_read)
                 raw = src.read(1, window=win)
 
                 # Normalize based on dtype
                 if raw.dtype == np.uint16:
-                    tile = raw.astype(np.float32) / 65535.0
+                    tile_read = raw.astype(np.float32) / 65535.0
                 elif raw.dtype == np.uint8:
-                    tile = raw.astype(np.float32) / 255.0
+                    tile_read = raw.astype(np.float32) / 255.0
                 elif raw.dtype in (np.float32, np.float64):
-                    tile = raw.astype(np.float32)
+                    tile_read = raw.astype(np.float32)
                     # Clamp to [0,1] if needed
-                    lo, hi = float(tile.min()), float(tile.max())
+                    lo, hi = float(tile_read.min()), float(tile_read.max())
                     if hi > 1.0 or lo < 0.0:
-                        rng = hi - lo
-                        tile = (tile - lo) / rng if rng > 0 else tile * 0
+                        rng_ = hi - lo
+                        tile_read = (tile_read - lo) / rng_ if rng_ > 0 else tile_read * 0
                 else:
-                    tile = raw.astype(np.float32) / float(np.iinfo(raw.dtype).max
-                                                          if np.issubdtype(raw.dtype, np.integer)
-                                                          else 1.0)
+                    tile_read = raw.astype(np.float32) / float(
+                        np.iinfo(raw.dtype).max
+                        if np.issubdtype(raw.dtype, np.integer)
+                        else 1.0
+                    )
 
-                # Pad to full tile size if at world edge
-                if h < height or w < width:
-                    padded = np.zeros((height, width), dtype=np.float32)
-                    padded[:h, :w] = tile
-                    tile = padded
+                # Place the read data into the correctly-sized output array,
+                # zero-filling any out-of-world strip.
+                out = np.zeros((eff_h, eff_w), dtype=np.float32)
+                out[dst_row_start:dst_row_start + h_read,
+                    dst_col_start:dst_col_start + w_read] = tile_read
+                result[name] = out
 
-                result[name] = tile
-
-        except Exception as e:
+        except Exception:
             # Non-fatal: return zeros and continue
-            result[name] = np.zeros((height, width), dtype=np.float32)
+            result[name] = np.zeros((eff_h, eff_w), dtype=np.float32)
 
     return result
 

@@ -107,6 +107,116 @@ def _get(cfg: dict, *keys, default=None):
     return node
 
 
+def propagate_biome_downslope(
+    biome_grid: np.ndarray,                # (H, W) object str — biome names
+    alpine_mask: np.ndarray,               # (H, W) bool — pixels to inherit for
+    terrain_h: np.ndarray,                 # (H, W) numeric — higher = higher elevation
+    land_mask: np.ndarray | None = None,   # (H, W) bool — optional land constraint
+) -> np.ndarray:
+    """Assign each alpine pixel the biome that is downhill from it.
+
+    Computes 8-connected steepest-descent flow direction from ``terrain_h`` and
+    iteratively propagates biome labels from non-alpine ("settled") pixels up
+    the flow field into alpine pixels. Each alpine pixel inherits the biome
+    of whatever lowland it flows into — naturally splitting a ridge between
+    two lowland biomes along the watershed line.
+
+    Used by (S58 Phase 3b):
+      - ``compute_eco_gradients`` on the inner 512×512 tile (pass surface_y
+        as ``terrain_h``).
+      - Cross-tile ecotone padded-halo inheritance in ``run_pipeline.py`` /
+        ``tools/_pipeline_runner.py`` / ``tools/validate_test_tile.py`` (pass
+        padded height as ``terrain_h``). Since the computation is deterministic
+        in ``terrain_h`` + ``alpine_mask`` + ``biome_grid``, both sides of a
+        tile seam compute the same inheritance for any shared world pixel —
+        that symmetry is what makes the ecotone dither see a coherent biome
+        transition across the seam.
+
+    Stranded alpine pixels (closed alpine basins / flat plateaus with no
+    descent chain reaching a non-alpine neighbour) fall back to EDT-nearest.
+
+    Args:
+        biome_grid:  Source biome names. Non-alpine entries are used as
+                     settled labels. Alpine entries are ignored.
+        alpine_mask: True at pixels to re-label.
+        terrain_h:   Elevation proxy (int16 surface_y or float height — only
+                     the local ordering matters; any monotonic transform of
+                     height produces identical flow directions).
+        land_mask:   If supplied, non-alpine pixels are constrained to
+                     ``land_mask & ~alpine_mask``; otherwise every non-alpine
+                     pixel is eligible.
+
+    Returns:
+        (H, W) object array with alpine pixels re-labeled.
+    """
+    H, W = biome_grid.shape
+    if biome_grid is None or not alpine_mask.any():
+        return biome_grid.copy() if biome_grid is not None else np.full((H, W), "", dtype=object)
+
+    if land_mask is not None:
+        non_alpine = land_mask & ~alpine_mask
+    else:
+        non_alpine = ~alpine_mask
+
+    if not non_alpine.any():
+        return biome_grid.copy()
+
+    # --- Phase 1: 8-connected steepest-descent direction ---
+    _th_pad = np.full((H + 2, W + 2), np.float32(np.inf), dtype=np.float32)
+    _th_pad[1:-1, 1:-1] = terrain_h.astype(np.float32)
+    _NEIGH = [
+        (-1, -1), (-1, 0), (-1, 1),
+        ( 0, -1),          ( 0, 1),
+        ( 1, -1), ( 1, 0), ( 1, 1),
+    ]
+    _neigh_stack = np.stack(
+        [_th_pad[1 + _dy:1 + _dy + H, 1 + _dx:1 + _dx + W]
+         for _dy, _dx in _NEIGH],
+        axis=0,
+    )
+    _argmin_k = np.argmin(_neigh_stack, axis=0).astype(np.int8)
+    _min_h = _neigh_stack.min(axis=0)
+    _cur_h = terrain_h.astype(np.float32)
+    _has_descent = _min_h < _cur_h
+    _dy_lut = np.array([n[0] for n in _NEIGH], dtype=np.int8)
+    _dx_lut = np.array([n[1] for n in _NEIGH], dtype=np.int8)
+    _dy_arr = _dy_lut[_argmin_k]
+    _dx_arr = _dx_lut[_argmin_k]
+    _dy_arr[~_has_descent] = 0
+    _dx_arr[~_has_descent] = 0
+    del _th_pad, _neigh_stack, _min_h, _cur_h, _argmin_k
+
+    # --- Phase 2: iterative propagation ---
+    out = biome_grid.copy()
+    settled = non_alpine.copy()
+    MAX_ITERS = max(H, W)
+    for _ in range(MAX_ITERS):
+        pending_rs, pending_cs = np.where(alpine_mask & ~settled)
+        if len(pending_rs) == 0:
+            break
+        tr = pending_rs + _dy_arr[pending_rs, pending_cs]
+        tc = pending_cs + _dx_arr[pending_rs, pending_cs]
+        valid = (tr >= 0) & (tr < H) & (tc >= 0) & (tc < W)
+        pending_rs = pending_rs[valid]
+        pending_cs = pending_cs[valid]
+        tr = tr[valid]
+        tc = tc[valid]
+        go = settled[tr, tc]
+        if not go.any():
+            break
+        out[pending_rs[go], pending_cs[go]] = out[tr[go], tc[go]]
+        settled[pending_rs[go], pending_cs[go]] = True
+
+    # --- Phase 3: EDT fallback for stranded pixels ---
+    stranded = alpine_mask & ~settled
+    if stranded.any():
+        from scipy.ndimage import distance_transform_edt as _edt_bio
+        _, _idx = _edt_bio(~non_alpine, return_indices=True)
+        out[stranded] = biome_grid[_idx[0][stranded], _idx[1][stranded]]
+
+    return out
+
+
 def compute_eco_gradients(
     surface_y:   np.ndarray,    # (H, W) int16 -- MC Y coordinates
     flow_f:      np.ndarray,    # (H, W) float32 [0, 1]
@@ -735,12 +845,25 @@ def compute_eco_gradients(
     bch_grad = beach if beach is not None else np.zeros((H, W), dtype=np.float32)
 
     # Alpine biome source: for each alpine/rock/snow pixel AND zone 40 pixel
-    # (formerly ALPINE_MEADOW, retired S56), find the nearest non-alpine
-    # biome name via EDT.  This lets MC biome AND surface palette inherit
-    # from the surrounding lowland biome — so a desert-region alpine pixel
-    # gets minecraft:desert instead of minecraft:snowy_taiga.
-    # S57: zone 40 detection via override_tile (biome_grid says SNOWY_BOREAL_TAIGA
-    # for zone 40 since S56, so the old == "ALPINE_MEADOW" check was dead code).
+    # (formerly ALPINE_MEADOW, retired S56), determine which lowland biome it
+    # inherits. S58 Phase 3b replaces the old EDT-nearest rule with
+    # DOWNSLOPE PROPAGATION: each alpine pixel inherits the biome that is
+    # downhill from it, following the 8-connected steepest-descent flow
+    # direction until the flow exits the alpine zone into lowland.
+    #
+    # Why: EDT-nearest produces a fuzzy "contested" strip along a ridgeline
+    # separating two lowland biomes (e.g. desert west / taiga east) — pixels
+    # near the crest are roughly equidistant to both biomes, so tiny distance
+    # deltas flip their inheritance, giving a noisy boundary. Downslope flow
+    # cleanly splits the ridge along the watershed line: west-face pixels
+    # flow west and inherit the west biome; east-face pixels flow east and
+    # inherit the east biome. This also gives rainshadow for free — the
+    # leeward face naturally inherits the drier biome when one exists on
+    # that side.
+    #
+    # S57: zone 40 detection via override_tile (biome_grid says
+    # SNOWY_BOREAL_TAIGA for zone 40 since S56, so the old
+    # == "ALPINE_MEADOW" check was dead code).
     alpine_gap = (gap_mask == 5) | (gap_mask == 7)
     if override_tile is not None:
         _override_uint8 = np.round(override_tile * 255).astype(np.uint8)
@@ -748,17 +871,12 @@ def compute_eco_gradients(
     else:
         zone40_pixels = np.zeros((H, W), dtype=bool)
     alpine_any = alpine_gap | zone40_pixels
-    if biome_grid is not None and alpine_any.any():
-        non_alpine = land_mask & ~alpine_any
-        if non_alpine.any():
-            from scipy.ndimage import distance_transform_edt as _edt_bio
-            _, _idx_bio = _edt_bio(~non_alpine, return_indices=True)
-            _alpine_bio_src = biome_grid[_idx_bio[0], _idx_bio[1]]
-            del _idx_bio
-        else:
-            _alpine_bio_src = biome_grid.copy() if biome_grid is not None else np.full((H, W), "", dtype=object)
-    else:
-        _alpine_bio_src = biome_grid.copy() if biome_grid is not None else np.full((H, W), "", dtype=object)
+    _alpine_bio_src = propagate_biome_downslope(
+        biome_grid=biome_grid,
+        alpine_mask=alpine_any,
+        terrain_h=surface_y,
+        land_mask=land_mask,
+    )
 
     return EcoGradients(
         aspect=aspect,

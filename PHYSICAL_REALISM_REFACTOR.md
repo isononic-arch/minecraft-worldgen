@@ -957,6 +957,25 @@ Geology fills `vol` in Y range `[Y_MIN+1, surface_y-3]`. The surface decorator's
 
 ---
 
+### Phase 3b — Cross-tile ecotone / seam awareness (S58, 2026-04-16)
+
+**Why a new decimal subsection:** Phase 3a wired the within-tile clearing/ecotone behavior. The ecotone dither at `core/surface_decorator.py:_apply_ecotone_dither` softens biome boundaries via gradient-probability + gaussian-filtered decision coin (NOISE_PATTERNS §3 + §4), but it early-exits at `len(unique_biomes) < 2`, so biome transitions that fall exactly on tile seams get zero softening — reads as a hard line in-world (user's stated top carry-forward from S57). Phase 3b adds 48px halo reads of the 5 `assign_biomes` input masks from neighbour tiles so the dither operates on a padded 608×608 biome grid, picking up seam-only transitions as if they were within-tile. Explicitly NOT a full Pass 3/4 Layer-protocol rewrite — that stays deferred to Phase 3.
+
+**Scope:**
+1. `core/tile_streamer.py:read_tile` gains `pad_px` + `mask_subset` params. When `pad_px > 0`, returns `(H+2*pad_px, W+2*pad_px)` arrays with rasterio Window math that handles negative offsets (for tiles at world edge) via source-bounds intersection + out-of-world zero-fill.
+2. `run_pipeline.py`, `tools/_pipeline_runner.py`, `tools/validate_test_tile.py` each get a "Step 6c2" that reads a 48-px halo of `{height, slope, flow, erosion, override}` and runs `assign_biomes` on it to produce `biome_grid_padded`. Inner 512×512 is overwritten with the authoritative inner `biome_grid` (post alpine-inheritance) so the halo is the only new data.
+3. `core/surface_decorator.py:decorate_surface` gains a `biome_grid_padded` kwarg. When supplied and correctly-shaped, it:
+   - Paints a padded surface_blocks / subsurface_blocks via `_apply_noise_layers` on the padded biome grid (halo-only visible effect — inner is immediately overwritten with the authoritative inner arrays that already went through river banks, gap painting, clearings, etc.).
+   - Builds a padded `noise_b` via `_noise_tile` with the SAME OpenSimplex fBm generator as the inner, world-coords offset by `-pad_px` so the padded field is byte-continuous with the inner (verified: max diff = 0.0).
+   - Builds a padded gap_mask (inner from eco_grads, halo zeros — halo pixels aren't swap candidates anyway, we slice inner back afterward).
+   - Calls the existing `_apply_ecotone_dither` unchanged on the padded arrays, then slices the inner 512×512 back into the authoritative `surface_blocks` / `subsurface_blocks`.
+   - Flag-OFF fallback: if `biome_grid_padded` is None or wrong-shaped, falls through to the pre-S58 unpadded dither call.
+4. Each tile only WRITES to its own inner 512×512. Halo is read-only reference data. No cross-worker coordination — each side of a seam paints its own softening pattern from its own RNG seed. Accepted: finger patterns differ across the seam but both are organic.
+
+**Exit criteria:** (24,80) ↔ (25,80) SAND_DUNE_DESERT / SNOWY_BOREAL_TAIGA seam in-game shows salt-and-pepper fingers between biomes instead of a hard line. No regressions in existing tile behavior (flag-OFF fallback preserves pre-S58 output byte-for-byte when orchestrator doesn't pass `biome_grid_padded`).
+
+---
+
 ### Phase 3 — Temperate Mountain Pass 3 + 4 (week 4)
 
 **Deliverables:**

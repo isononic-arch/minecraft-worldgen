@@ -236,10 +236,6 @@ def _process_tile(args: dict) -> dict:
     )
 
     # ---- Step 6c: Alpine biome inheritance ----
-    # Rock/snow gap pixels AND zone 40 (formerly ALPINE_MEADOW, retired S56)
-    # adopt the MC biome of the nearest non-alpine pixel via EDT.  This
-    # eliminates the biome boundary band — e.g. zone 40 near deserts gets
-    # minecraft:desert instead of minecraft:snowy_taiga.
     if hasattr(eco_grads, 'alpine_biome_source'):
         alpine_gap = (eco_grads.gap_mask == 5) | (eco_grads.gap_mask == 7)
         _ov_u8 = np.round(masks["override"] * 255).astype(np.uint8)
@@ -247,6 +243,85 @@ def _process_tile(args: dict) -> dict:
         alpine_any = alpine_gap | zone40
         if alpine_any.any():
             biome_grid[alpine_any] = eco_grads.alpine_biome_source[alpine_any]
+
+    # ---- Step 6c.5: Soften biome boundaries (S58) ----
+    biome_grid = core_biome_assign.soften_biome_boundaries(
+        biome_grid, tile_x * w, tile_y * h,
+        amplitude_px=40.0, scale=200.0, octaves=2,
+        protect_zone_40=alpine_any if hasattr(eco_grads, 'alpine_biome_source') else None,
+    )
+
+    # ---- Step 6c2: Padded biome_grid for cross-tile ecotone (S58 Phase 3b) ----
+    # Two different halo widths used here:
+    #   INHERITANCE_PAD_PX=256 — wider context for downslope alpine inheritance,
+    #       so each alpine pixel can follow the flow direction across up to a
+    #       half-tile of neighbour terrain before hitting EDT fallback. Without
+    #       this, each tile's inheritance sees only its own 512×512 window plus
+    #       the narrow ecotone halo, and alpine plateaus larger than a tile
+    #       produce per-tile-local decisions that disagree at seams → visible
+    #       "square" seam artifacts.
+    #   ECOTONE_PAD_PX=48 — narrower halo actually fed to _apply_ecotone_dither;
+    #       this is a *softening width*, not a lookup range. Widening it would
+    #       stretch the sigmoid in unhelpful ways.
+    # Pipeline: read masks at the wider inheritance halo, run assign_biomes +
+    # downslope inheritance on (512+2*256)² = 1024², overwrite the innermost
+    # 512² with the authoritative inner biome_grid (post Step 6c inheritance),
+    # then slice out the inner-plus-48 (608²) window as the dither's input.
+    _INHERITANCE_PAD_PX = 512  # S58: full-tile context on each side
+    _ECOTONE_PAD_PX = 48
+    biome_grid_padded = None
+    try:
+        _padded_masks = core_tile_stream.read_tile(
+            masks_dir   = masks_dir,
+            col_off     = col_off,
+            row_off     = row_off,
+            width       = w,
+            height      = h,
+            pad_px      = _INHERITANCE_PAD_PX,
+            mask_subset = ("height", "slope", "flow", "erosion", "override"),
+        )
+        _bg_big = core_biome_assign.assign_biomes(
+            height_tile   = _padded_masks["height"],
+            slope_tile    = _padded_masks["slope"],
+            flow_tile     = _padded_masks["flow"],
+            erosion_tile  = _padded_masks["erosion"],
+            override_tile = _padded_masks["override"],
+            noise_fields  = noise,
+            cfg           = cfg,
+        )
+        # Padded downslope inheritance + boundary softening (cross-tile sym).
+        _ov8_pad = np.round(_padded_masks["override"] * 255).astype(np.uint8)
+        _zone40_pad = _ov8_pad == 40
+        _land_pad = _padded_masks["height"] > (17050.0 / 65535.0)
+        _bg_big = core_eco.propagate_biome_downslope(
+            biome_grid = _bg_big,
+            alpine_mask = _zone40_pad,
+            terrain_h = _padded_masks["height"],
+            land_mask = _land_pad,
+        )
+        _bg_big = core_biome_assign.soften_biome_boundaries(
+            _bg_big,
+            tile_x * w - _INHERITANCE_PAD_PX,
+            tile_y * h - _INHERITANCE_PAD_PX,
+            amplitude_px=40.0, scale=200.0, octaves=2,
+            protect_zone_40=_zone40_pad,
+        )
+        # Overwrite the innermost 512×512 with the authoritative inner
+        # biome_grid (which went through the Step 6c inner-scale inheritance
+        # and matches the surface_blocks painted downstream).
+        _bg_big[_INHERITANCE_PAD_PX:_INHERITANCE_PAD_PX + h,
+                _INHERITANCE_PAD_PX:_INHERITANCE_PAD_PX + w] = biome_grid
+        # Extract inner-plus-48 window for the ecotone dither.
+        _lo = _INHERITANCE_PAD_PX - _ECOTONE_PAD_PX
+        _hi_r = _INHERITANCE_PAD_PX + h + _ECOTONE_PAD_PX
+        _hi_c = _INHERITANCE_PAD_PX + w + _ECOTONE_PAD_PX
+        biome_grid_padded = _bg_big[_lo:_hi_r, _lo:_hi_c].copy()
+        del _bg_big
+    except Exception as _ecotone_pad_exc:  # noqa: BLE001
+        # Non-fatal: fall back to unpadded ecotone dither.
+        print(f"[ecotone_pad] WARN tile=({tile_x},{tile_y}): "
+              f"{type(_ecotone_pad_exc).__name__}: {_ecotone_pad_exc}")
+        biome_grid_padded = None
 
     # ---- Step 6d: Meadow clearing field (S57 Phase 3a) ----
     # Shared low-freq noise field read by both surface_decorator (ground cover
@@ -278,6 +353,7 @@ def _process_tile(args: dict) -> dict:
         use_new_surface_pipeline = _use_sp,
         lithology_tile = lithology_tile if _use_sp else None,
         clearing_field = clearing_field,
+        biome_grid_padded = biome_grid_padded,
     )
 
     # ---- Step 8: Schematic placement ----

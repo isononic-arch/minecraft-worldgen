@@ -322,6 +322,160 @@ def _apply_biome_patch_noise(biome_grid: np.ndarray,
 
 
 # ---------------------------------------------------------------------------
+# BIOME BOUNDARY SOFTENING (S58)
+# ---------------------------------------------------------------------------
+
+_SOFTEN_BOUNDARY_GEN_CACHE: dict = {}
+
+
+def _soften_gen_for_biome(biome_name: str):
+    """OpenSimplex generator seeded deterministically per biome name.
+
+    Independent generators per biome ensure each biome's boundary wobbles
+    along its own organic curve — using the same generator for all biomes
+    would shift everything in lockstep and produce no visible wobble.
+    """
+    cached = _SOFTEN_BOUNDARY_GEN_CACHE.get(biome_name)
+    if cached is not None:
+        return cached
+    try:
+        from opensimplex import OpenSimplex
+    except ImportError:
+        raise ImportError("opensimplex package required for biome boundary softening")
+    seed = abs(hash(("vandir_biome_soften", biome_name))) & 0x7FFFFFFF
+    gen = OpenSimplex(seed=seed)
+    _SOFTEN_BOUNDARY_GEN_CACHE[biome_name] = gen
+    return gen
+
+
+def soften_biome_boundaries(
+    biome_grid: np.ndarray,                # (H, W) object str
+    px_off: int, py_off: int,              # world-space tile origin (for seamless noise)
+    *,
+    amplitude_px: float = 48.0,            # max boundary shift in blocks
+    scale: float = 60.0,                   # noise wavelength in blocks
+    octaves: int = 2,
+    protect_zone_40: np.ndarray | None = None,  # (H, W) bool — alpine override pixels NOT to wobble
+) -> np.ndarray:
+    """Replace hard biome boundaries with wobbly organic curves.
+
+    For each pair of adjacent biomes, compute distance-to-each via EDT and
+    perturb each distance map with that biome's own world-seamless simplex
+    noise field. Reassign each pixel near a boundary to the biome with the
+    smallest perturbed distance. Pixels deep inside any biome's interior
+    (further than ~amplitude_px from any boundary) keep their original biome.
+
+    The result is a wide, organic transition zone where biome ASSIGNMENT
+    itself is the wobble — not the per-pixel block dither. Each biome
+    paints its own clean palette via the existing noise_layers_biome
+    mechanism; the visible "softening" comes from where biomes meet.
+
+    World-seamless: identical inputs at the same world coords produce
+    identical biome assignments, so neighbouring tiles agree on shared
+    boundary pixels (the cross-tile-ecotone padded path uses this too).
+
+    Args:
+        biome_grid:    (H, W) object array of biome name strings.
+        px_off, py_off: World-space pixel origin of this grid's top-left
+                       corner. For inner tile: tile_x * 512. For padded
+                       inheritance grid: tile_x * 512 - inheritance_pad_px.
+        amplitude_px:  How far a boundary can shift via noise. Boundaries
+                       wobble within roughly ±amplitude_px of their original
+                       position; the affected zone is ~2*amplitude_px wide.
+        scale:         OpenSimplex wavelength. ~60 blocks gives organic
+                       blob-shaped boundary curves.
+        octaves:       fBm octave count.
+        protect_zone_40: Optional mask of zone-40 pixels that should NOT
+                       wobble — they got their biome via downslope alpine
+                       inheritance and shouldn't be re-flipped by noise.
+
+    Returns:
+        (H, W) object array — modified copy of biome_grid.
+    """
+    from scipy.ndimage import distance_transform_edt as _edt
+
+    H, W = biome_grid.shape
+    biomes = [b for b in np.unique(biome_grid) if not str(b).startswith("_") and str(b)]
+    if len(biomes) < 2 or amplitude_px <= 0:
+        return biome_grid.copy()
+
+    # Stack: perturbed_dists[i, r, c] = distance from (r,c) to biome[i]
+    # plus an independent low-freq noise offset.
+    perturbed = np.full((len(biomes), H, W), np.inf, dtype=np.float32)
+    for i, b in enumerate(biomes):
+        is_b = (biome_grid == b)
+        if not is_b.any():
+            continue
+        dist_to_b = _edt(~is_b).astype(np.float32)  # 0 inside b, positive outside
+        # Per-biome noise field, world-coord seamless.
+        noise_field = _noise_tile_simple(
+            _soften_gen_for_biome(str(b)),
+            H, W, px_off, py_off,
+            scale=scale, octaves=octaves,
+        )
+        # Remap [0,1] → [-1,1] then scale to amplitude.
+        noise_signed = (noise_field - 0.5) * 2.0
+        perturbed[i] = dist_to_b + noise_signed * amplitude_px
+
+    # For each pixel, pick the biome with the smallest perturbed distance.
+    argmin_b = np.argmin(perturbed, axis=0)
+
+    # Only REASSIGN pixels close to an original boundary. Pixels deep
+    # inside their biome (own_depth > amplitude_px) keep their original
+    # biome regardless of noise — prevents large interior blocks from
+    # flipping just because their noise spike happened to align with
+    # another biome's noise dip.
+    own_depth = np.zeros((H, W), dtype=np.float32)
+    for b in biomes:
+        is_b = (biome_grid == b)
+        if not is_b.any():
+            continue
+        own_depth_b = _edt(is_b).astype(np.float32)
+        own_depth[is_b] = own_depth_b[is_b]
+    near_boundary = own_depth <= amplitude_px
+
+    out = biome_grid.copy()
+    biomes_arr = np.array(biomes, dtype=object)
+    new_assignment = biomes_arr[argmin_b]
+    out[near_boundary] = new_assignment[near_boundary]
+
+    # Restore protected zone-40 pixels (downslope-inherited) — they should
+    # keep whatever the inheritance step decided, not be re-flipped by noise.
+    if protect_zone_40 is not None:
+        out[protect_zone_40] = biome_grid[protect_zone_40]
+
+    return out
+
+
+def _noise_tile_simple(gen, H: int, W: int,
+                       px_off: int, py_off: int,
+                       scale: float, octaves: int) -> np.ndarray:
+    """Lightweight fBm tile generator (mirrors core/surface_decorator._noise_tile
+    but locally-defined to avoid a cross-module import cycle).
+    """
+    try:
+        import opensimplex as ox
+    except ImportError:
+        raise ImportError("opensimplex required for soften_biome_boundaries")
+
+    xs = (np.arange(W, dtype=np.float64) + px_off) / scale
+    ys = (np.arange(H, dtype=np.float64) + py_off) / scale
+    base_seed = getattr(gen, '_seed', 42007)
+    accumulated = np.zeros((H, W), dtype=np.float64)
+    amp = 1.0
+    freq = 1.0
+    norm = 0.0
+    for o in range(octaves):
+        ox.seed(base_seed + o)
+        accumulated += ox.noise2array(xs * freq, ys * freq) * amp
+        norm += amp
+        amp *= 0.5
+        freq *= 2.0
+    out = (accumulated / max(norm, 1e-9) + 1.0) / 2.0  # → [0, 1]
+    return np.clip(out, 0.0, 1.0).astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
 # MAIN ENTRY POINT
 # ---------------------------------------------------------------------------
 

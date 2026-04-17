@@ -495,6 +495,30 @@ def _fbm(gen, x: float, y: float, octaves: int = 3) -> float:
     return max(0.0, min(1.0, (val + 2.0) / 4.0))
 
 
+_ECOTONE_MEANDER_GEN_CACHE: dict = {}
+
+
+def _ecotone_meander_gen(cfg: dict):
+    """Lazily-created OpenSimplex generator dedicated to ecotone boundary
+    meander (S58). Separate seed so the meander field is uncorrelated with
+    the decoration_density generator used for surface-block noise — two
+    fBm streams at different scales overlapping on the same tile would
+    otherwise lock into visible moiré patterns.
+    """
+    seeds_cfg = cfg.get("noise_seeds", {}) if isinstance(cfg, dict) else {}
+    seed = int(seeds_cfg.get("ecotone_meander", 42007))
+    cached = _ECOTONE_MEANDER_GEN_CACHE.get(seed)
+    if cached is not None:
+        return cached
+    try:
+        from opensimplex import OpenSimplex
+    except ImportError:
+        raise ImportError("opensimplex package required for ecotone meander")
+    gen = OpenSimplex(seed=seed)
+    _ECOTONE_MEANDER_GEN_CACHE[seed] = gen
+    return gen
+
+
 def _noise_tile(gen, tile_h: int, tile_w: int,
                 px_offset: int, py_offset: int,
                 scale: float, octaves: int = 3) -> np.ndarray:
@@ -777,6 +801,7 @@ def decorate_surface(
     use_new_surface_pipeline: bool = False,  # Phase 2.0: run new layer-based surface pipeline for temperate cliffs
     lithology_tile: np.ndarray | None = None,  # (H/8, W/8) uint8 lithology group IDs — upscaled internally
     clearing_field: np.ndarray | None = None,  # (H, W) float32 [0,1] — meadow clearing noise (S57 Phase 3a)
+    biome_grid_padded: np.ndarray | None = None,  # (H+2*pad, W+2*pad) str — neighbour-tile biome halo (S58 Phase 3b)
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute surface and subsurface block arrays for a tile.
@@ -1312,13 +1337,109 @@ def decorate_surface(
 
     # --- Biome boundary ecotone dither (AFTER banks so it blends edges) ------
     _gap_for_ecotone = eco_grads.gap_mask if (eco_grads is not None and hasattr(eco_grads, 'gap_mask')) else None
-    _apply_ecotone_dither(
-        surface_blocks, subsurface_blocks,
-        biome_grid, noise_b, cfg,
-        tile_x, tile_y,
-        gap_mask=_gap_for_ecotone,
-        use_new_geology=use_new_geology,
+
+    # S58 Phase 3b — cross-tile seam softening.
+    # When the orchestrator provides a padded biome_grid (inner H,W surrounded
+    # by a halo of neighbour-tile biomes), run the ecotone dither on a padded
+    # surface_blocks/subsurface_blocks array so transitions that fall exactly
+    # on tile seams get the same gradient-probability softening as within-tile
+    # transitions. Each tile only writes to its own inner pixels; the halo is
+    # read-only reference data, so no cross-worker coordination is needed.
+    _use_padded_ecotone = (
+        biome_grid_padded is not None
+        and biome_grid_padded.ndim == 2
+        and biome_grid_padded.shape[0] > H
+        and biome_grid_padded.shape[1] > W
+        and (biome_grid_padded.shape[0] - H) == (biome_grid_padded.shape[1] - W)
+        and (biome_grid_padded.shape[0] - H) % 2 == 0
     )
+
+    if _use_padded_ecotone:
+        _pad_px = (biome_grid_padded.shape[0] - H) // 2
+        Hpad = H + 2 * _pad_px
+        Wpad = W + 2 * _pad_px
+        _inner = (slice(_pad_px, _pad_px + H), slice(_pad_px, _pad_px + W))
+
+        # Allocate padded surface/subsurface arrays. Seed with "stone" so any
+        # halo pixel that no noise-layer entry covers still reads as valid
+        # block (matches decorate_surface's own default seed at line 881).
+        surface_blocks_padded    = np.full((Hpad, Wpad), "stone", dtype=object)
+        subsurface_blocks_padded = np.full((Hpad, Wpad), "stone", dtype=object)
+
+        # Paint halo using the same per-biome noise-layer stacks that painted
+        # the inner tile. The function iterates np.unique(biome_grid_padded)
+        # so biomes only present in the halo get painted too. We pass the
+        # padded-grid world-space offset (tile origin minus pad_px) so noise
+        # fields stay spatially consistent with the inner tile's painting.
+        _noise_layers_cfg = cfg.get("noise_layers_biome") if isinstance(cfg, dict) else None
+        if _noise_layers_cfg:
+            _apply_noise_layers(
+                surface_blocks_padded, subsurface_blocks_padded,
+                biome_grid_padded, _noise_layers_cfg,
+                Hpad, Wpad,
+                tile_x * W - _pad_px, tile_y * H - _pad_px,
+            )
+
+        # Overwrite the inner region with the authoritative inner arrays
+        # (which include river banks, gap painting, clearings — all the layers
+        # applied before this point in decorate_surface).
+        surface_blocks_padded[_inner]    = surface_blocks
+        subsurface_blocks_padded[_inner] = subsurface_blocks
+
+        # Build padded noise_b using the SAME OpenSimplex fBm generator as
+        # the inner-tile noise_b (line 803). World-space coords shifted by
+        # -_pad_px on each axis so the padded field is continuous with the
+        # inner field (inner 512x512 of padded matches the inner noise_b
+        # byte-for-byte — it's the same deterministic function of world
+        # coord). _apply_ecotone_dither reads this at line 1765 for ±20%
+        # organic-edge modulation.
+        _den_cfg = cfg["decoration_density_noise"]
+        _den_gen = noise_fields["decoration_density"]
+        noise_b_padded = _noise_tile(
+            _den_gen, Hpad, Wpad,
+            tile_x * W - _pad_px, tile_y * H - _pad_px,
+            scale=_den_cfg["scale"], octaves=_den_cfg["octaves"],
+        )
+
+        # Build padded gap_mask — inner from eco_grads.gap_mask, halo=0 (no
+        # gap protection outside inner, but halo pixels aren't swap candidates
+        # anyway since the dither's swap writes land within its own bookkeeping
+        # and we slice to inner after).
+        if _gap_for_ecotone is not None:
+            gap_mask_padded = np.zeros((Hpad, Wpad), dtype=_gap_for_ecotone.dtype)
+            gap_mask_padded[_inner] = _gap_for_ecotone
+        else:
+            gap_mask_padded = None
+
+        # Run ecotone dither on padded arrays. Writes land into both inner
+        # and halo regions; we then extract the inner slice back into the
+        # authoritative surface/subsurface arrays used by the rest of
+        # decorate_surface.
+        _apply_ecotone_dither(
+            surface_blocks_padded, subsurface_blocks_padded,
+            biome_grid_padded, noise_b_padded, cfg,
+            tile_x, tile_y,
+            gap_mask=gap_mask_padded,
+            use_new_geology=use_new_geology,
+        )
+
+        # Slice inner back — this is the Phase 3b output.
+        surface_blocks[...]    = surface_blocks_padded[_inner]
+        subsurface_blocks[...] = subsurface_blocks_padded[_inner]
+
+        # Free the padded scratch arrays; they aren't needed downstream.
+        del surface_blocks_padded, subsurface_blocks_padded
+        del noise_b_padded
+        if gap_mask_padded is not None:
+            del gap_mask_padded
+    else:
+        _apply_ecotone_dither(
+            surface_blocks, subsurface_blocks,
+            biome_grid, noise_b, cfg,
+            tile_x, tile_y,
+            gap_mask=_gap_for_ecotone,
+            use_new_geology=use_new_geology,
+        )
 
     # --- Ground cover --------------------------------------------------------
     # NOTE: ground cover is applied here provisionally; if the surface pipeline
@@ -1664,16 +1785,57 @@ def _apply_ecotone_dither(
         mask = biome_grid == bname
         dist_inside[mask] = d[mask]
 
+    # S58: Boundary meander — perturb the distance field with a low-frequency
+    # simplex fBm so the effective biome boundary the sigmoid sees is a
+    # curving, meandering line in world space rather than the straight
+    # EDT-derived distance. Without this, softening fingers run strictly
+    # perpendicular to the boundary with no along-boundary curvature, which
+    # reads as an obvious straight-line artifact at tile seams. The
+    # perturbation is computed in world-space coords (via px_off/py_off) so
+    # the meander is seamless across tile boundaries — neighbouring tiles
+    # that share a biome boundary on their halos get the same meander shape.
+    _meander_cfg = cfg.get("ecotone_meander", {}) if isinstance(cfg, dict) else {}
+    _meander_amp_blocks = float(_meander_cfg.get("amplitude_px", 12.0))
+    _meander_scale = float(_meander_cfg.get("scale", 40.0))
+    _meander_octaves = int(_meander_cfg.get("octaves", 2))
+    if _meander_amp_blocks > 0.0:
+        _px_off = tile_x * W
+        _py_off = tile_y * H
+        # Reuse the decoration_density generator for world-seamless noise.
+        _meander_noise = _noise_tile(
+            _ecotone_meander_gen(cfg), H, W, _px_off, _py_off,
+            scale=_meander_scale, octaves=_meander_octaves,
+        )
+        _meander_offset = (_meander_noise - 0.5) * 2.0 * _meander_amp_blocks
+        dist_inside_effective = dist_inside + _meander_offset.astype(np.float32)
+    else:
+        dist_inside_effective = dist_inside
+
     # Blend probability: at boundary edge (dist=0) → 50% swap,
     # deep inside (dist=width_px) → ~0% swap.
     # Sigmoid: P(swap) = 1 / (1 + exp(sharpness * (dist/width - 0.5)))
     # This gives high swap probability near edge, low deep inside.
-    t = dist_inside[has_neighbour] / width_px  # [0, 1]: 0=boundary, 1=deep inside
+    t = dist_inside_effective[has_neighbour] / width_px  # [0, 1]: 0=boundary, 1=deep inside
     swap_prob = 1.0 / (1.0 + np.exp(sharpness * (t - 0.5)))
 
-    # Modulate with noise for organic edges (±20% perturbation)
+    # Modulate with noise for organic edges (±20% perturbation).
+    # S58: max swap ceiling lowered from 0.95 → 0.35. The old ceiling caused
+    # small-area biomes bordering large ones (e.g. 40k-pixel taiga next to
+    # 220k-pixel desert) to end up with 25–30% of their own pixels painted
+    # with the neighbour's dominant block, because nearly all of the small
+    # biome is within width_px of the boundary and the sigmoid pegs those
+    # pixels at ~95% swap. 0.35 turns the dither into decoration rather than
+    # replacement — each biome retains clear character in its own territory.
+    # S58: default cap lowered from 0.35 → 0.0 — block dither is now
+    # redundant because the boundary itself is wobbled at the biome-
+    # assignment level via soften_biome_boundaries(). Set cap > 0 to
+    # re-enable the per-pixel block swap as a decoration on top of the
+    # biome wobble.
+    _swap_cap = float(cfg.get("eco_ground_cover", {}).get("ecotone_swap_cap", 0.0))
+    if _swap_cap <= 0.0:
+        return  # dither disabled
     noise_at = noise_b[has_neighbour]
-    swap_prob = np.clip(swap_prob * (0.8 + 0.4 * noise_at), 0.0, 0.95)
+    swap_prob = np.clip(swap_prob * (0.8 + 0.4 * noise_at), 0.0, _swap_cap)
 
     # Stochastic swap: if rand < swap_prob, adopt neighbour's block
     do_swap = rand_field[has_neighbour] < swap_prob
