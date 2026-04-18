@@ -625,6 +625,29 @@ def place_schematics(
     rows_arr, cols_arr = np.where(land_mask)
     order = np_rng.permutation(len(rows_arr))
 
+    # S59: Ecotone seam dither for schematic placement.
+    # Precompute per-pixel swap mask + neighbour biome using the same
+    # geometry as the surface/GC dither (30-block linear ramp, 0.5 cap).
+    # At rolled candidates, override biome_str to the neighbour biome so the
+    # entries list swaps — mixes tree species at biome seams. Independent coin
+    # from surface/sub (seed 0xEC0D17E) and GC (0x9C0DEC0); uses 0x5C0DEC0
+    # for "schematic ecotone".
+    # Inner-only (no padding) — cross-tile symmetry is cosmetic carry-forward.
+    _seam_has_nb: np.ndarray | None = None
+    _seam_nb: np.ndarray | None = None
+    _seam_swap_grid: np.ndarray | None = None
+    try:
+        from core.surface_decorator import _compute_ecotone_swap_fields as _ecotone_fields
+        _fields = _ecotone_fields(biome_grid, cfg, gap_mask=None, noise_b=None)
+        if _fields is not None:
+            _seam_has_nb, _seam_nb, _seam_sp, _, _, _ = _fields
+            _seam_rng = np.random.default_rng(tile_seed ^ 0x5C0DEC0)
+            _seam_coin = _seam_rng.random((H, W)).astype(np.float32)
+            _seam_swap_grid = _seam_coin < _seam_sp
+    except Exception:
+        # Dither is best-effort — failure doesn't break placement.
+        _seam_swap_grid = None
+
     # Split index into trees and bushes per biome
     def _filter_entries(entries, schem_type):
         return [e for e in entries if e.schem_type == schem_type]
@@ -639,6 +662,12 @@ def place_schematics(
             col = int(cols_arr[idx])
 
             biome_str = str(biome_grid[row, col])
+            # S59: ecotone seam dither — swap to neighbour biome's entries list
+            # at rolled pixels so species mix across biome boundaries.
+            if _seam_swap_grid is not None and _seam_swap_grid[row, col]:
+                _alt = str(_seam_nb[row, col])
+                if _alt and _alt in index:
+                    biome_str = _alt
             all_entries = index.get(biome_str)
             if not all_entries:
                 continue

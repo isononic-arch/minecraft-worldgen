@@ -1455,6 +1455,16 @@ def decorate_surface(
         clearing_field=clearing_field,
     )
 
+    # S59: Ecotone dither for ground cover — symmetric with surface/subsurface
+    # dither above, same 30-block linear ramp + per-pixel salt-and-pepper, but
+    # independent coin (different RNG seed). Must run before water cleanup so
+    # swapped GC near water still gets cleared.
+    _apply_ecotone_dither_ground_cover(
+        ground_cover, biome_grid, noise_b, cfg,
+        tile_x, tile_y,
+        gap_mask=_gap_for_ecotone,
+    )
+
     # --- Clear floating vegetation near water --------------------------------
     # Ground_cover on river_meta > 0 pixels (bank/water) and adjacent pixels
     # appears to float over the water surface.  Clear it all.
@@ -1866,6 +1876,154 @@ def _apply_ecotone_dither(
             subsurface_blocks[target_r, target_c] = subsurface_blocks[sampled_r, sampled_c]
 
 
+def _compute_ecotone_swap_fields(
+    biome_grid: np.ndarray,   # (H, W) object str
+    cfg:        dict,
+    gap_mask:   np.ndarray | None = None,
+    noise_b:    np.ndarray | None = None,   # (H, W) float32 [0, 1]; None = no modulation
+) -> tuple | None:
+    """S59: Shared ecotone-swap geometry for GC and schematic seam dither.
+
+    Returns ``(has_neighbour, neighbour_biome, swap_prob_grid, biome_names,
+    width_px, swap_cap)`` or ``None`` when the dither is disabled or there is
+    no multi-biome boundary to soften.
+
+    ``swap_prob_grid`` is an ``(H, W)`` float32 field — 0 outside the ramp,
+    ``cap * (1 - dist/width)`` inside, optionally modulated by
+    ``0.8 + 0.4 * noise_b`` for ±20% organic-edge variation. Callers roll
+    their own per-pixel coin and compare to this grid.
+
+    Note: no padding — runs on the caller's biome grid as-is.
+    """
+    from scipy.ndimage import distance_transform_edt
+
+    H, W = biome_grid.shape
+    eco_cfg  = cfg.get("eco_ground_cover", {})
+    width_px = int(eco_cfg.get("ecotone_width_px", 30))
+    swap_cap = float(eco_cfg.get("ecotone_swap_cap", 0.5))
+    if swap_cap <= 0.0:
+        return None
+
+    unique_biomes = [b for b in np.unique(biome_grid) if not str(b).startswith("_")]
+    if len(unique_biomes) < 2:
+        return None
+
+    dist_maps: dict[str, np.ndarray] = {}
+    other_dist_maps: dict[str, np.ndarray] = {}
+    for biome in unique_biomes:
+        bname = str(biome)
+        mask = biome_grid == biome
+        if not mask.any():
+            continue
+        dist_maps[bname]       = distance_transform_edt(mask).astype(np.float32)
+        other_dist_maps[bname] = distance_transform_edt(~mask).astype(np.float32)
+    biome_names = list(dist_maps.keys())
+    if len(biome_names) < 2:
+        return None
+
+    near_boundary = np.zeros((H, W), dtype=bool)
+    for d in dist_maps.values():
+        near_boundary |= (d > 0) & (d <= width_px)
+    if not near_boundary.any():
+        return None
+
+    neighbour_biome = np.empty((H, W), dtype=object)
+    neighbour_biome[:] = ""
+    min_other_dist = np.full((H, W), np.inf, dtype=np.float32)
+    for bname in biome_names:
+        d = other_dist_maps[bname]
+        is_other = (biome_grid != bname) & near_boundary
+        closer = is_other & (d < min_other_dist)
+        if closer.any():
+            neighbour_biome[closer] = bname
+            min_other_dist[closer] = d[closer]
+
+    has_neighbour = near_boundary & (neighbour_biome != "")
+    if gap_mask is not None:
+        has_neighbour = has_neighbour & (gap_mask != 5) & (gap_mask != 6) & (gap_mask != 7) & (gap_mask != 8) & (gap_mask != 9)
+    if not has_neighbour.any():
+        return None
+
+    # (H, W) dist_inside grid
+    dist_inside = np.zeros((H, W), dtype=np.float32)
+    for bname, d in dist_maps.items():
+        mask = biome_grid == bname
+        dist_inside[mask] = d[mask]
+
+    # Linear ramp → ±20% noise modulation → zero outside has_neighbour
+    t = dist_inside / width_px
+    swap_prob_grid = np.clip(swap_cap * (1.0 - t), 0.0, swap_cap).astype(np.float32)
+    if noise_b is not None:
+        swap_prob_grid = (swap_prob_grid * (0.8 + 0.4 * noise_b)).astype(np.float32)
+    swap_prob_grid = np.where(has_neighbour, swap_prob_grid, 0.0).astype(np.float32)
+
+    return has_neighbour, neighbour_biome, swap_prob_grid, biome_names, width_px, swap_cap
+
+
+def _apply_ecotone_dither_ground_cover(
+    ground_cover: np.ndarray,   # (H, W) object — modified in-place
+    biome_grid:   np.ndarray,   # (H, W) object (str)
+    noise_b:      np.ndarray,   # (H, W) float32 [0, 1] — for ±20% ramp modulation
+    cfg:          dict,
+    tile_x:       int,
+    tile_y:       int,
+    gap_mask:     np.ndarray | None = None,
+) -> None:
+    """S59: Ground cover counterpart to ``_apply_ecotone_dither``.
+
+    Same shape (30-block linear ramp, 0.5 cap, per-pixel uniform salt-and-pepper,
+    ±20% noise_b modulation) as the surface/subsurface dither but with an
+    independent per-pixel coin (different RNG seed) — matches user's explicit
+    "same shape as block dither" (not "shared coin") choice in S59.
+
+    At swap pixels, sample a random pixel of the neighbour biome's area within
+    this tile and copy its ground_cover value (captures the full GC palette
+    diversity including "" air/none pixels).
+
+    No padding — runs on inner tile only. Cross-tile seam asymmetry for GC at
+    the 1-pixel tile boundary is accepted as a cosmetic carry-forward (noted
+    in CLAUDE.md and §18).
+    """
+    fields = _compute_ecotone_swap_fields(biome_grid, cfg, gap_mask, noise_b)
+    if fields is None:
+        return
+    has_neighbour, neighbour_biome, swap_prob_grid, biome_names, _, _ = fields
+
+    H, W = biome_grid.shape
+    # Independent per-pixel coin — different seed from surface/sub (0xEC0D17E).
+    # 0x9C0DEC0 = "ground cover ecotone" tag seed, distinct.
+    rng = np.random.default_rng(tile_x * 48271 ^ tile_y * 31337 ^ 0x9C0DEC0)
+    rand_field = rng.random((H, W)).astype(np.float32)
+
+    do_swap_grid = rand_field < swap_prob_grid
+    if not do_swap_grid.any():
+        return
+
+    swap_r, swap_c = np.where(do_swap_grid)
+    if len(swap_r) == 0:
+        return
+
+    nb_at_swap = neighbour_biome[swap_r, swap_c]
+    for bname in biome_names:
+        bname_mask = nb_at_swap == bname
+        if not bname_mask.any():
+            continue
+        biome_mask = biome_grid == bname
+        biome_pixels_r, biome_pixels_c = np.where(biome_mask)
+        if len(biome_pixels_r) == 0:
+            continue
+
+        n_swap = int(bname_mask.sum())
+        sample_idx = rng.integers(0, len(biome_pixels_r), size=n_swap)
+        sampled_r = biome_pixels_r[sample_idx]
+        sampled_c = biome_pixels_c[sample_idx]
+
+        target_r = swap_r[bname_mask]
+        target_c = swap_c[bname_mask]
+
+        ground_cover[target_r, target_c] = ground_cover[sampled_r, sampled_c]
+
+
 # ---------------------------------------------------------------------------
 # S52: _apply_slope_zones() DELETED.  Was a legacy 3-zone slope system
 # (45°/65° thresholds + 8px talus dilation) that wrote stone/gravel/
@@ -2066,23 +2224,6 @@ def _apply_river_banks(
         surface_blocks[rdirt_bank] = "rooted_dirt"
         surface_blocks[dirt_bank]  = "dirt"
         surface_blocks[clay_bank]  = "clay"
-
-        # Wadi channels — same noise proportions as bank mix but sand/sandstone
-        # CHAN_WADI = 4: carved dry channel in sand dune desert
-        wadi_core = water_core & (river_meta == 4)
-        if wadi_core.any():
-            sand_wadi   = wadi_core & (bank_noise < 0.38)
-            sstone_wadi = wadi_core & (bank_noise >= 0.38) & (bank_noise < 0.58)
-            rsand_wadi  = wadi_core & (bank_noise >= 0.58) & (bank_noise < 0.74)
-            ssm_wadi    = wadi_core & (bank_noise >= 0.74) & (bank_noise < 0.84)
-            sand2_wadi  = wadi_core & (bank_noise >= 0.84) & (bank_noise < 0.96)
-            terra_wadi  = wadi_core & (bank_noise >= 0.96)
-            surface_blocks[sand_wadi]   = "sand"
-            surface_blocks[sstone_wadi] = "sandstone"
-            surface_blocks[rsand_wadi]  = "red_sand"
-            surface_blocks[ssm_wadi]    = "smooth_sandstone"
-            surface_blocks[sand2_wadi]  = "sand"
-            surface_blocks[terra_wadi]  = "terracotta"
 
         # Lake bank grass — place short grass with rare tall grass on the
         # dry lake bank pixels (river_meta == CHAN_LAKE).

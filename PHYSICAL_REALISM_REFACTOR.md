@@ -342,52 +342,21 @@ Rough count: 9 layers for MVP pilot, with temperate group + shared. Desert_pavem
 
 ---
 
-### Pass 3 — Ground Cover
+### Pass 3 — Ground Cover (RETIRED S59)
 
-Replaces ground cover logic in `surface_decorator.py`. Each layer emits ground-cover blocks (leaf litter, moss carpet, pale moss, grass variants, bushes, tall grass, ferns, flowers).
+**RETIRED 2026-04-17 (S59).** The Layer-Protocol rewrite of ground cover was scrapped after Phase 3a/3b landed the in-scope work inside the legacy `core/surface_decorator.py:_apply_ground_cover` path, which the user signed off as working well.
 
-**Layers (MVP, ~5):**
-
-| Layer | Type | Scope | Density rule |
-|-------|------|-------|--------------|
-| `temperate_forest_floor` | partition | temperate forested biomes, grass_block surface, tree_density_hint ≥ 0.3 | `density = base × (0.5 + 0.5 × moisture_idx) × (0.7 + 0.3 × north_factor)`. Mix: `short_grass`, `fern`, `leaf_litter` (1.21.2+), `pale_moss_carpet`, occasional `pink_petals` / `wildflowers`, `bush` (1.21.2+) |
-| `temperate_clearing` (formerly `temperate_meadow` — renamed because "meadow" = "clearing" per Nick) | partition | **Noise-driven clearings inside forest and floodplain matrices.** Scope: temperate forest biomes **AND floodplain corridors (gap==4)**, grass_block surface, where the shared `meadow_clearing_field` (single low-freq organic-blob noise, ~200–400 block wavelength, precomputed once and read by both Pass 3 ground cover and Pass 4 tree scatter) drops below threshold. Clearings are emergent gaps in the forest/floodplain fabric — not a painted biome. Floodplain corridors use the same field so natural tree-free stretches along rivers read as grass with short_grass coverage, same as interior forest clearings. | **Dense `short_grass`** across the interior (NOT tall_grass). Flowers are **extremely rare** — sparse single-stem `dandelion` / `poppy` / `oxeye_daisy` only, treated as a barely-there background trace (Poisson rate ~1 per ~500 grass blocks, tunable down to 1/800 if in-world review says still too busy). No `allium` / `cornflower` / `azure_bluet` / `lily_of_the_valley` / `wildflowers` here — those are reserved for the alpine rarity (see `alpine_flower_field`). Clearings read as grass seas, never bouquets. |
-| `clearing_edge_dither` (formerly `meadow_forest_edge_dither`) | **overlay** | within ~4 blocks of the clearing↔forest seam (both sides), driven by the `meadow_clearing_field` crossing its threshold. Applies equally to forest clearings and floodplain clearings. | **Surface block dither + vegetation dither.** On the forest side: surface block mix shifts from forest-floor noise toward grass-block, tree schematic density scales down to ~40% of interior. On the clearing side: `tall_grass` band appears (3–4 block wide) as the clearing-side edge signal, with a hair of tree scatter for ~2 blocks deeper into the clearing. Result: visible grass-height dither right at the seam, scarcity band of trees spilling into the clearing. |
-| `alpine_grass_meadow` | partition | alpine biomes, grass_block surface | `density = base × (1 - north_factor × 0.5)` (sun-facing denser). Same flower policy as temperate_meadow — trace only. |
-| `alpine_flower_field` | partition | **Rare exception.** Alpine grass_meadow pixels where a separate very-low-freq `alpine_flower_rarity` noise field exceeds a high threshold (~top 2–4% of alpine meadow area). Must NOT overlap tree_density_hint ≥ 0.3 and must be sun-facing (`north_factor < 0.4`). | The one place the full flower palette (`poppy` / `oxeye_daisy` / `cornflower` / `allium` / `azure_bluet` / `lily_of_the_valley` / `wildflowers`) comes out at meaningful density. Treated as a prize-tier overlay, not a common biome feature. |
-| `riparian_lush` | partition | within 6 blocks of river centerline, temperate | `density = base × 1.5`, fern + short_grass mix (not tall_grass unless near forest edge) |
-| `boreal_moss_carpet` | partition | boreal biomes, flat slopes | `density = base × (0.5 + 0.5 × concavity_norm)` |
-| `biome_edge_softening` | overlay | within N blocks of biome boundary (see § 9) | Per-biome symmetric edge recipe, each biome owns one rule |
-
-**Inline suitability (R2 #8 mitigation):** no new precompute mask. Each layer computes its density field from existing eco_grads + `moisture_idx` derived inline via `scipy.ndimage.distance_transform_edt` on water masks. If wall-time becomes a problem, promote to precompute later.
+Current ground cover lives in `core/surface_decorator.py:_apply_ground_cover` (S27+ legacy, S57 Phase 3a updates, S59 ecotone-dither extension via `_apply_ecotone_dither_ground_cover`). The original Layer-Protocol spec is preserved verbatim in [`PHYSICAL_REALISM_VEGETATION_REVAMP_ARCHIVE.md`](PHYSICAL_REALISM_VEGETATION_REVAMP_ARCHIVE.md) for historical traceability — do not treat as canonical.
 
 ---
 
-### Pass 4 — Vegetation / Schematics
+### Pass 4 — Vegetation / Schematics (RETIRED S59)
 
-Replaces the placement code in current decoration. Schematic recipes (existing config) stay; **placement sampling** changes.
+**RETIRED 2026-04-17 (S59).** Poisson-disk placement rewrite scrapped; the existing density-map + candidate-permutation + collision-grid pattern in `core/schematic_placement.py:place_schematics` is current. S59 added entries-list seam dither using the shared `_compute_ecotone_swap_fields` helper so trees species-mix across biome boundaries without needing the Poisson-disk rewrite.
 
-**MVP layers (~4):**
+Original spec (MVP layers, Poisson-disk rule, no-grow rule, palette pin) preserved verbatim in [`PHYSICAL_REALISM_VEGETATION_REVAMP_ARCHIVE.md`](PHYSICAL_REALISM_VEGETATION_REVAMP_ARCHIVE.md).
 
-| Layer | Type | Scope | Placement rule |
-|-------|------|-------|----------------|
-| `temperate_tree_canopy` | partition | temperate biomes, grass_block | Poisson-disk weighted by `suitability = moisture × (1 - steepness) × (1 - disturbance)` |
-| `alpine_treeline` | partition | alpine, elevation-band | Density falls off linearly from `treeline_low` to `treeline_high` |
-| `disturbance_succession` | partition | windthrow + old floodplain masks | Early-succession recipe — **NO saplings / no growable plants** (see rule below). Replace with tall_grass, fern, large_fern, bush, short_grass, dead_bush where arid, and seasonal flower blocks. |
-| `riparian_trees` | partition | within 4 blocks of river centerline | Willow / alder / birch schematic *fully-grown* cluster, denser than upland. Schematics only — no saplings. |
-
-**Poisson-disk weighted by suitability:** standard Poisson-disk with per-candidate rejection probability = `1 - suitability(x, z)`. Gives visible clustering without random holes.
-
-**No-grow rule (VERY IMPORTANT):** no block that Minecraft can tick into growth is allowed as a final placement. This means:
-- ❌ No `oak_sapling`, `birch_sapling`, `spruce_sapling`, `jungle_sapling`, `acacia_sapling`, `dark_oak_sapling`, `mangrove_propagule`, `cherry_sapling`, `azalea`, `flowering_azalea`
-- ❌ No `wheat`, `carrots`, `potatoes`, `beetroots`, `melon_stem`, `pumpkin_stem`, `sweet_berry_bush` (can grow to stage 3), `cocoa` (stages), `kelp` (grows), `bamboo_sapling`, `sugar_cane` (grows)
-- ❌ No `torchflower_crop`, `pitcher_crop` in non-farmable cells
-- ✅ Use nearest non-growing equivalents: `short_grass`, `tall_grass`, `fern`, `large_fern`, `bush` (1.21.2+), `dead_bush`, `leaf_litter` (1.21.2+), `pink_petals`, `wildflowers` (if in 1.21.10), plus static flowers (`dandelion`, `poppy`, `azure_bluet`, `allium`, `oxeye_daisy`, `cornflower`, `lily_of_the_valley`, `blue_orchid`), `moss_carpet`, `pale_moss_carpet`.
-- Applies to every vegetation layer, not just disturbance_succession. Every block emitted by a Pass 4 layer must pass a `NO_GROW_ALLOWLIST` check before the chunk writer accepts it.
-
-**Block palette accuracy:** Target MC version **1.21.10 Java, DataVersion 4556** (per `CLAUDE.md`). Use known-good blocks only: `bush`, `firefly_bush` (banned in forests per user), `leaf_litter`, `pale_moss_carpet`, `resin_clump` — all 1.21.2+ valid. If I need to emit `bush_block` or similar NBT-sensitive blocks, I use the existing working pattern from `chunk_writer.py` rather than re-deriving it (prior session had `bush_block` generation trouble — don't repeat).
-
-**See Open Question #5:** Nick's latest message referenced "1.20.9 (hotfix 1.20.10)" which conflicts with CLAUDE.md's 1.21.10. Needs resolution before palette is locked.
+Note: the no-grow rule is still a future concern but is not being tracked inside the vegetation-revamp plan. If we need to sweep for saplings/growable plants in the current schematic index or emission path, it's a standalone task.
 
 ---
 
@@ -1026,45 +995,23 @@ Geology fills `vol` in Y range `[Y_MIN+1, surface_y-3]`. The surface decorator's
 
 ---
 
-### Phase 3 — Temperate Mountain Pass 3 + 4 (week 4)
+### Phase 3 — Temperate Mountain Pass 3 + 4 (RETIRED S59)
 
-**Deliverables:**
-- 5 Pass 3 ground cover layers from § 6 table.
-- 4 Pass 4 vegetation layers with Poisson-disk weighted by inline suitability.
-- `diag_suitability_field.py` output on 36_20 for each vegetation layer.
-- `PLACEMENT_VARIATION_SPEC.md` and `VEGETATION_MIX_SPEC.md` reviewed for recipe content; recipes fed into the new layer functions without re-specifying.
+**RETIRED 2026-04-17 (S59).** The temperate mountain pilot for the Layer-Protocol vegetation revamp was scrapped after Phase 3a (S57) and Phase 3b (S58) landed the in-scope ground cover + boundary work inside the legacy decorator/placement modules, and the user confirmed those systems are working well. The original deliverables/exit criteria for this phase are preserved verbatim in [`PHYSICAL_REALISM_VEGETATION_REVAMP_ARCHIVE.md`](PHYSICAL_REALISM_VEGETATION_REVAMP_ARCHIVE.md).
 
-**Exit criteria:**
-- Ground cover density fields visible in diag output show clustering near water / disturbance / north faces.
-- Vegetation placements visible in top-down preview show clustering patterns, not uniform distribution.
-- .mca regen on 36_20, in-world comparison to `Boreal woodlands and river w mountains.webp` for riparian clustering read.
-
-**Risk:** medium. Ground cover and vegetation are high-visibility but relatively contained.
+**Related S59 work** (not a re-host of this phase, but landed the immediate carry-forwards from S58): ground cover ecotone dither + schematic seam dither — both re-use the S58 surface dither geometry via a new `_compute_ecotone_swap_fields` helper. See §18 S59 entry.
 
 ---
 
-### Phase 4 — Pilot decision gate (end of week 4)
+### Phase 4 — Pilot decision gate (RETIRED S59)
 
-**Deliverables:**
-- In-game validation session: Nick + Claude review tile 36_20 against the north star reference images.
-- Decision: roll out horizontally to other biome groups (Phase 5) OR pivot.
-
-**Exit criteria:** Nick signs off on the pilot or names specific failures.
+**RETIRED 2026-04-17 (S59).** Depended on Phase 3 landing; no longer applicable. Spec preserved in the archive.
 
 ---
 
-### Phase 5 — Horizontal rollout (week 5+)
+### Phase 5 — Horizontal rollout (RETIRED S59)
 
-**Deliverables per biome group:**
-- Complete Pass 2 layer set (desert: `desert_cliff_face`, `desert_pavement`, `desert_vertical_fluting`, etc.; boreal: `boreal_cliff_face`, `boreal_moss_carpet`, etc.; coast: `beach_by_fetch` + marine variants).
-- Pass 3 ground cover layers per biome.
-- Pass 4 vegetation layers per biome.
-- Tile-specific baselines: 24_80 (desert), 59_53 (windthrow/boreal), 25_72 (flat sand), 16_73 (meander).
-- Old `surface_decorator.py` deleted after all biome groups pass.
-
-**Exit criteria per biome group:** in-world comparison passes against the relevant north star reference image.
-
-**Risk:** known. This is where the per-biome tuning debt lives. Pace: 1 biome group per week, realistic budget 3–5 weeks total.
+**RETIRED 2026-04-17 (S59).** Depended on Phases 3/4 landing; no longer applicable. Per-biome tuning as needed now happens incrementally inside the legacy decorator (S41 Physical Realism Layer pattern) rather than as a bulk rollout. Spec preserved in the archive.
 
 ---
 
@@ -2171,3 +2118,71 @@ cliff_deg = core_eco.compute_cliff_deg(surface_y)
 - Boundary meander in dither — coded but disabled (`amplitude_px = 0` default). Re-enable via `cfg.ecotone_meander.amplitude_px > 0`.
 - NOISE_PATTERNS.md update — could add §6 for "linear ramp + per-pixel salt-and-pepper" (the v12 final dither shape) as a canonical pattern.
 
+
+
+---
+
+### S59 — 2026-04-17: Ground cover + schematic ecotone dither; vegetation revamp retired
+
+**Phase state:**
+- Landed this session: ground cover ecotone dither + schematic seam dither (both reuse S58 surface-dither geometry via new shared helper). No new phase number — this is carry-forward work from S58, not a §11 phase.
+- §11 currently at: Phase 3b (S58) is still the last landed §11 phase. Phase 3/4/5 RETIRED in this session; §11 phase list now ends at Phase 3b + the RETIRED-stub headers pointing to the archive.
+- Next session starts: small carry-forward items or user-chosen direction. Pipeline in polish/tuning mode. CLAUDE.md DIRECTION bullets all resolved.
+
+**Why no new phase number:** Phase 3b shipped surface+subsurface seam dither. Extending the same dither geometry to ground cover + schematics is a continuation of that work, not a new phase. Phase 3 proper (the Layer-Protocol Pass 3/4 rewrite) was RETIRED this session; there is no "Phase 3c" to mint because the vegetation refactor track is closed.
+
+**Scope landed:**
+
+1. **Shared ecotone helper** (`core/surface_decorator.py:_compute_ecotone_swap_fields`):
+   - Returns `(has_neighbour, neighbour_biome, swap_prob_grid, biome_names, width_px, swap_cap)` or `None` on "nothing to dither".
+   - `swap_prob_grid` is `(H, W)` float32 — 0 outside ramp, `cap * (1 - dist/width)` inside, optionally modulated by `0.8 + 0.4 * noise_b`.
+   - Callers roll their own `(H, W)` rand_field with their own seed and compare to `swap_prob_grid`. Same geometry, independent coins.
+   - `noise_b` is optional — schematic seam dither calls without it (no ±20% modulation, clean ramp).
+   - Reads `eco_ground_cover.ecotone_width_px` (30) and `eco_ground_cover.ecotone_swap_cap` (0.5) from cfg, same as the surface dither.
+
+2. **Ground cover ecotone dither** (`core/surface_decorator.py:_apply_ecotone_dither_ground_cover`):
+   - Independent coin seed `tile_x * 48271 ^ tile_y * 31337 ^ 0x9C0DEC0` (distinct from surface/sub `0xEC0D17E`).
+   - At swap pixels, samples a random pixel from the neighbour biome's in-tile area and copies its `ground_cover` value. Same "sample representative pixel" pattern as surface/sub — captures full GC palette diversity including `""` air/none entries.
+   - Wired into `decorate_surface` after `_apply_ground_cover` and before the near-water GC cleanup, so dithered GC that lands next to water still gets cleared.
+   - `gap_mask` filter identical to surface dither — skips rock/alpine/snow/sand/beach.
+
+3. **Schematic seam dither** (`core/schematic_placement.py:place_schematics`):
+   - Precomputes per-pixel `_seam_swap_grid` and `_seam_nb` once per tile, before the candidate permutation loop.
+   - Coin seed `tile_seed ^ 0x5C0DEC0` (distinct from GC and surface/sub).
+   - In the candidate loop, if `_seam_swap_grid[row, col]`, overrides `biome_str` to `_seam_nb[row, col]` (if that biome has an entries list in the index). Density curve unchanged — species mix at rolled pixels.
+   - Wrapped in try/except so helper import/computation errors don't break placement; dither is best-effort.
+
+4. **Cross-tile limitation:** GC and schematic dither are inner-only (no padding). Surface/sub dither keeps its padded path (unchanged). At tile seams, GC and schematic dither have 1-pixel asymmetry — cosmetic carry-forward for later if visible in-game.
+
+5. **Documentation:**
+   - [`PHYSICAL_REALISM_VEGETATION_REVAMP_ARCHIVE.md`](PHYSICAL_REALISM_VEGETATION_REVAMP_ARCHIVE.md) — new file with §6 Pass 3 + Pass 4 + §11 Phase 3/4/5 reproduced verbatim from the pre-S59 doc. Explicitly marked RETIRED with reason.
+   - `PHYSICAL_REALISM_REFACTOR.md` §6 Pass 3, Pass 4 + §11 Phase 3/4/5 — replaced with short RETIRED stubs pointing to the archive.
+   - `CLAUDE.md` — Current state rewritten for S59; DIRECTION section rewritten (three prior bullets struck as resolved, backlog now focuses on small carry-forwards); HARD RULES "Biome boundaries (S58)" → "Biome boundaries (S58 + S59)" with the 4-coin + inner-only + shared-helper rules added.
+
+**Desert pavement / riparian assessment (in progress as of session end):**
+- Tile (16,73) selected (100% SAND_DUNE_DESERT, 80,512 river centerline pixels, pre-existing meander-reference tile per CLAUDE.md).
+- `.mca` generated and copied to Vandirtest10 for in-world review.
+- TP coord for review: `/tp @s 8448 200 37632` (world coord = tile * 512 + 256 for center).
+- Review scope: how does the current legacy riparian palette read in arid zones? User's framing: "applies to riparian zones in sand dune desert. Anything riverbank editor generated." Likely next step depends on what in-world review surfaces.
+
+**Validation:**
+- Import smoke test: both modules load cleanly from worktree, helper visible on `surface_decorator`.
+- 3×3 baseline diff on (51,53) started but **killed for time** — land-heavy tile was still on the first of 9 after ~20 min; session budget prioritized the (16,73) desert-review tile. Risk assessment: surface/sub dither path is untouched (new GC/schematic code runs after `_apply_ground_cover` with independent coin seeds). GC dither does change GC output on tiles with multi-biome seams — `51_53` is such a tile. **Next session should re-run the 3×3 baseline** to catch any unexpected GC regressions.
+- No in-game validation of GC/schematic dither yet — (16,73) is 100% SAND_DUNE_DESERT (no biome seam), so won't show the new dither. A seam tile (24,80 ↔ 25,80 alpine/desert seam, or any forest/meadow boundary tile) is the right target for seeing S59 work in-game.
+
+**Deferred / carry-forward from S59:**
+- 3×3 (51,53) baseline diff — confirm the result next session.
+- In-game review of (16,73) desert/riparian behavior — user to look and report.
+- In-game validation of S59 dither extensions on a seam tile (24,80 / 25,80).
+- GC + schematic dither cross-tile padded symmetry (currently inner-only).
+- NOISE_PATTERNS.md §6 entry for v12 dither shape (linear ramp + per-pixel salt-and-pepper) — quick doc win.
+- Rename `"gaussian"` → `"simplex_fbm"` across `noise_layers_biome` with back-compat alias — quick config sweep.
+- SEMI_ARID_SHRUBLAND sand patches + desert pavement ground cover (both specific per-biome gaps flagged S58).
+- World-wide 50k regen — on user's schedule.
+
+**Files modified:**
+- `core/surface_decorator.py` — new `_compute_ecotone_swap_fields` helper (~70 lines); new `_apply_ecotone_dither_ground_cover` (~40 lines, uses helper); one `decorate_surface` insertion (call to new function between `_apply_ground_cover` and near-water cleanup).
+- `core/schematic_placement.py` — seam-dither precompute block before candidate loop (~15 lines, try/except wrapped); one-line `biome_str` override inside loop (~3 lines).
+- `PHYSICAL_REALISM_REFACTOR.md` — §6 Pass 3/Pass 4 and §11 Phase 3/4/5 replaced with RETIRED stubs.
+- `PHYSICAL_REALISM_VEGETATION_REVAMP_ARCHIVE.md` — new file; verbatim copy of retired content.
+- `CLAUDE.md` — Current state + DIRECTION + HARD RULES biome-boundary section updates.

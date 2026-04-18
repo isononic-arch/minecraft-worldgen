@@ -19,3 +19,4 @@ validation_report/
 __pycache__/
 *.pyc
 .venv/
+logs_*.log

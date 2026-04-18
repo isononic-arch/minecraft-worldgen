@@ -229,6 +229,12 @@ def run_tile_prelude(
         tile_z           = tile_z,
     )
 
+    # S59: Scrap rivers in SAND_DUNE_DESERT — see run_pipeline.py for rationale.
+    _sdd_river = (biome_grid == "SAND_DUNE_DESERT") & (river_meta != 3)
+    if _sdd_river.any():
+        surface_y[_sdd_river]  = pre_carve_y[_sdd_river]
+        river_meta[_sdd_river] = 0
+
     # ---- Step 6b: eco gradients ----
     _log("compute_eco_gradients")
     from core.eco_gradients import compute_cliff_deg

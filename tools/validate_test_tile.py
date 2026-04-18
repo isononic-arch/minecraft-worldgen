@@ -555,6 +555,13 @@ def main() -> int:
         tile_x           = tx,
         tile_z           = tz,
     )
+
+    # S59: Scrap rivers in SAND_DUNE_DESERT — see run_pipeline.py for rationale.
+    _sdd_river = (biome_grid == "SAND_DUNE_DESERT") & (river_meta != 3)
+    if _sdd_river.any():
+        surface_y[_sdd_river]  = pre_carve_y[_sdd_river]
+        river_meta[_sdd_river] = 0
+
     # Note: col_results.surface_y is immutable (NamedTuple) but downstream
     # steps use the numpy surface_y array directly, which is already carved.
     checks.append(chk_river_meta_consistency(river_meta, surface_y))

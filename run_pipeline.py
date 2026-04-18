@@ -204,6 +204,14 @@ def _process_tile(args: dict) -> dict:
         tile_z         = tile_y,
     )
 
+    # S59: Scrap rivers in SAND_DUNE_DESERT — user opted out of wadi treatment.
+    # Restore pre-carve terrain and zero river_meta on SDD pixels. Lakes
+    # (river_meta == CHAN_LAKE == 3) are preserved per user's explicit ask.
+    _sdd_river = (biome_grid == "SAND_DUNE_DESERT") & (river_meta != 3)
+    if _sdd_river.any():
+        surface_y[_sdd_river]  = pre_carve_y[_sdd_river]
+        river_meta[_sdd_river] = 0
+
     # ---- Step 6b: Ecological gradients ----
     # Use Gaussian-smoothed cliff_deg (sigma=1.5) to eliminate 45° spikes at
     # every 1-block terrain step.  Raw np.gradient on integer surface_y treats
