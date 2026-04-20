@@ -445,10 +445,15 @@ def main() -> int:
 
     # ---- Step 4: Read masks ----
     print("[validate] Step 4: reading masks…")
+    # S60: build query-time gap config so rock_gap / snow_gap are sampled live
+    # from the 8k Gaea sources via Catmull-Rom instead of the 50k TIFs.
+    from core.gaea_gap_sampler import build_gap_config as _build_gap_cfg
+    _gap_cfg = _build_gap_cfg(cfg.get("gaea_gaps", {}), masks_dir)
     try:
         masks = core_tiles.read_tile(
             masks_dir=masks_dir, col_off=col_off, row_off=row_off,
             width=TILE_SIZE, height=TILE_SIZE,
+            gap_config=_gap_cfg,
         )
     except Exception as e:
         print(f"[validate] FATAL: tile read failed: {e}", file=sys.stderr)

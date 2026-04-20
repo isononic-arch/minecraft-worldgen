@@ -143,53 +143,65 @@ def run(
     do_dusting: bool = True,
     skip_8k_write: bool = False,
     skip_50k_write: bool = False,
+    interpolation: str = "cubic_spline",
+    out_suffix: str = "",
 ) -> None:
+    """When `interpolation="catmull_rom"`, output filenames get `out_suffix`
+    inserted before the extension so A/B can live side-by-side in masks/."""
     MASKS_DIR.mkdir(parents=True, exist_ok=True)
     t_top = time.time()
 
+    def _with_suffix(p: Path) -> Path:
+        if not out_suffix:
+            return p
+        return p.with_name(p.stem + out_suffix + p.suffix)
+
+    rock_out = _with_suffix(ROCK_GAP_50K_PATH)
+    snow_out = _with_suffix(SNOW_GAP_50K_PATH)
+
     if do_slope:
-        print("[1/2] Slope")
+        print(f"[1/2] Slope  (interpolation={interpolation})")
         slope_8k = _stitch_tiles(SLOPE_DIR, "Slope_Out")
         if not skip_8k_write:
             print(f"  writing {SLOPE_8K_PATH}")
             _write_uint16_tif(slope_8k, SLOPE_8K_PATH)
         if not skip_50k_write:
             print(
-                f"  upscaling -> {ROCK_GAP_50K_PATH} "
+                f"  upscaling -> {rock_out} "
                 f"(T={SLOPE_THRESHOLD:g}, width={SLOPE_DITHER_WIDTH:g})"
             )
             t0 = time.time()
             upscale_continuous_then_threshold_dither(
                 slope_8k,
-                ROCK_GAP_50K_PATH,
+                rock_out,
                 threshold=SLOPE_THRESHOLD,
                 dither_width=SLOPE_DITHER_WIDTH,
                 target_size=TARGET_SIZE,
-                interpolation="cubic_spline",
+                interpolation=interpolation,
             )
-            print(f"  rock_gap.tif written [{time.time() - t0:.1f}s]")
+            print(f"  {rock_out.name} written [{time.time() - t0:.1f}s]")
 
     if do_dusting:
-        print("[2/2] Dusting")
+        print(f"[2/2] Dusting  (interpolation={interpolation})")
         dusting_8k = _stitch_tiles(DUSTING_DIR, "Dusting_Out")
         if not skip_8k_write:
             print(f"  writing {DUSTING_8K_PATH}")
             _write_uint16_tif(dusting_8k, DUSTING_8K_PATH)
         if not skip_50k_write:
             print(
-                f"  upscaling -> {SNOW_GAP_50K_PATH} "
+                f"  upscaling -> {snow_out} "
                 f"(T={DUSTING_THRESHOLD:g}, width={DUSTING_DITHER_WIDTH:g})"
             )
             t0 = time.time()
             upscale_continuous_then_threshold_dither(
                 dusting_8k,
-                SNOW_GAP_50K_PATH,
+                snow_out,
                 threshold=DUSTING_THRESHOLD,
                 dither_width=DUSTING_DITHER_WIDTH,
                 target_size=TARGET_SIZE,
-                interpolation="cubic_spline",
+                interpolation=interpolation,
             )
-            print(f"  snow_gap.tif written [{time.time() - t0:.1f}s]")
+            print(f"  {snow_out.name} written [{time.time() - t0:.1f}s]")
 
     print(f"\n[rebuild_gaea_gaps] done in {time.time() - t_top:.1f}s")
 
@@ -208,11 +220,21 @@ if __name__ == "__main__":
         action="store_true",
         help="Skip the 50k upscale (stitch + 8k only; useful for orientation checks)",
     )
+    ap.add_argument(
+        "--interpolation",
+        default="cubic_spline",
+        choices=["cubic_spline", "catmull_rom", "bilinear", "quintic"],
+        help="Upscale kernel. 'catmull_rom' writes to rock_gap_catmull.tif / snow_gap_catmull.tif so the default masks are preserved for A/B.",
+    )
     args = ap.parse_args()
+
+    out_suffix = "_catmull" if args.interpolation == "catmull_rom" else ""
 
     run(
         do_slope=not args.dusting_only,
         do_dusting=not args.slope_only,
         skip_8k_write=args.skip_8k,
         skip_50k_write=args.skip_50k,
+        interpolation=args.interpolation,
+        out_suffix=out_suffix,
     )

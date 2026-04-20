@@ -505,8 +505,11 @@ class PaletteEditorWidget(QWidget):
     Hover a layer card to solo-preview its contribution.
     """
 
-    # Noise type registry
-    NOISE_TYPES = ["simplex", "gaussian", "voronoi", "mix"]
+    # Noise type registry. "simplex_fbm" is canonical for the multi-octave
+    # simplex branch; "gaussian" remains listed so back-compat configs still
+    # load but the preview renders it as actual gaussian-filtered noise
+    # (pre-existing legacy behaviour — distinct from the pipeline alias).
+    NOISE_TYPES = ["simplex_fbm", "simplex", "gaussian", "voronoi", "mix"]
 
     _PREVIEW_PX = 380    # display size
     _RENDER_PX  = 128    # internal render size (upscaled bilinear for display)
@@ -537,9 +540,9 @@ class PaletteEditorWidget(QWidget):
 
     # ── Default layer stack for new biomes ──────────────────────────────
     _DEFAULT_LAYERS = [
-        {"name": "Base Surface", "noise": "gaussian", "enabled": True,
+        {"name": "Base Surface", "noise": "simplex_fbm", "enabled": True,
          "block": "grass_block", "sub": "dirt", "coverage": 1.0, "scale": 80, "is_base": True},
-        {"name": "Stone Scatter", "noise": "gaussian", "enabled": True,
+        {"name": "Stone Scatter", "noise": "simplex_fbm", "enabled": True,
          "block": "stone", "sub": "stone", "coverage": 0.12, "scale": 40, "is_base": False},
     ]
 
@@ -601,7 +604,7 @@ class PaletteEditorWidget(QWidget):
         sz = self._RENDER_PX
         rng = np.random.default_rng(seed)
 
-        if noise_type == "simplex":
+        if noise_type in ("simplex", "simplex_fbm"):
             try:
                 import opensimplex as ox
                 ox.seed(seed)
@@ -695,7 +698,7 @@ class PaletteEditorWidget(QWidget):
             seed_val = self._NOISE_SEEDS.get(cond, 42)
             layers.append({
                 "name": f"{surf}" if cond == "base" else f"{surf} ({cond})",
-                "noise": "gaussian",
+                "noise": "simplex_fbm",
                 "enabled": True,
                 "block": surf,
                 "sub": sub,
@@ -1016,7 +1019,7 @@ class PaletteEditorWidget(QWidget):
     def _add_layer(self):
         seed = np.random.default_rng().integers(1, 99999)
         self._layers.insert(0, {
-            "name": "New Layer", "noise": "gaussian", "enabled": True,
+            "name": "New Layer", "noise": "simplex_fbm", "enabled": True,
             "block": "gravel", "sub": "stone", "coverage": 0.10,
             "scale": 50, "seed": int(seed), "is_base": False,
         })

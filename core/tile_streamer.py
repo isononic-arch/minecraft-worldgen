@@ -51,6 +51,7 @@ def read_tile(
     height:  int = 512,
     pad_px:  int = 0,
     mask_subset: Union[list, tuple, set, None] = None,
+    gap_config: Union[dict, None] = None,
 ) -> dict[str, np.ndarray]:
     """
     Read one tile window from all mask TIFFs.
@@ -95,7 +96,26 @@ def read_tile(
 
     names = list(mask_subset) if mask_subset is not None else MASK_NAMES
 
+    # S60 query-time gap sampler: for any mask name present in `gap_config`,
+    # compute the mask live by sampling its 8k Gaea source via Catmull-Rom
+    # instead of reading the 50k TIF. gap_config is produced by
+    # core.gaea_gap_sampler.build_gap_config from thresholds.json.
+    sampler_kwargs = gap_config or {}
+
     for name in names:
+        if name in sampler_kwargs:
+            try:
+                from core.gaea_gap_sampler import sample_gap_at_tile
+                result[name] = sample_gap_at_tile(
+                    col_off=col_off, row_off=row_off,
+                    width=width, height=height, pad_px=pad_px,
+                    **sampler_kwargs[name],
+                )
+                continue
+            except Exception:
+                # Fall through to TIF read on any sampler failure
+                pass
+
         path = masks_dir / f"{name}.tif"
         if not path.exists():
             result[name] = np.zeros((eff_h, eff_w), dtype=np.float32)

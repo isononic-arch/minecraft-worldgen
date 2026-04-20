@@ -2,9 +2,46 @@
 
 *Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`. For the physical-realism refactor plan + implementation log, see `PHYSICAL_REALISM_REFACTOR.md` (§18 is the running log).*
 
-**Current state:** Session 59 (2026-04-17) — **Ground cover + schematic seam dither shipped; vegetation revamp retired.** New helper `core/surface_decorator.py:_compute_ecotone_swap_fields` returns `(has_neighbour, neighbour_biome, swap_prob_grid, biome_names, width_px, swap_cap)` — shared S58 dither geometry reusable by GC + schematic passes. New `_apply_ecotone_dither_ground_cover` (same 30-block ramp + 0.5 cap + ±20% noise_b, independent coin seed `0x9C0DEC0`) called from `decorate_surface` after `_apply_ground_cover` / before water-cleanup. `core/schematic_placement.py:place_schematics` precomputes per-pixel swap mask + neighbour biome once per tile; at rolled candidates, overrides `biome_str` to `_seam_nb[row, col]` so the entries list swaps — trees species-mix across biome seams. Coin seed `0x5C0DEC0`. All inner-only (no padding) — tile-seam 1-pixel asymmetry accepted as cosmetic carry-forward. Desert pavement/riparian assessment: tile (16,73) (100% SAND_DUNE_DESERT, 80,512 river px, the pre-existing meander-reference tile in CLAUDE.md) generated for in-world review of how the legacy riparian palette behaves in arid zones. **Retired:** §11 Phase 3/4/5 and §6 Pass 3/4 Layer-Protocol vegetation revamp — scrapped after Phase 3a/3b landed the in-scope work inside the legacy decorator/placement modules. Full archive at `PHYSICAL_REALISM_VEGETATION_REVAMP_ARCHIVE.md`. Three prior DIRECTION bullets (surface physical drivers / subsurface geology / stratification rings) all resolved. Pipeline is in polish + incremental tuning mode.
+**Current state:** Session 60 (2026-04-19) — **massive single-session overhaul.** Seam routing repair + lithology repaint + query-time Catmull-Rom snow/rock + vegetation palette rewrite + floating-vegetation cleanup + high-elevation stone fade + schematic slope fixes + column-biome fix. (25,80) re-rendered 6 times through iteration. All commits pending at session wrap.
 
-**Prior state (S58, 2026-04-17):** **Phase 3b complete (17 iterations).** **Cross-tile ecotone:** `core/tile_streamer.py:read_tile` gains `pad_px` + `mask_subset`; `decorate_surface` gets `biome_grid_padded` kwarg with halo-prep + slice-back; 512-px inheritance halo computed per-tile (Step 6c2 in 3 orchestrators). **Boundary appearance reworked:** new `core/biome_assignment.py:soften_biome_boundaries` wobbles biome ASSIGNMENT itself via per-biome simplex noise (scale=200, amp=40) — wide organic boundary curves at the assignment level. `_apply_ecotone_dither` rewritten: sigmoid+cap → linear ramp+cap; gaussian-filtered (S55 v2 §3 lobes) → per-pixel uniform random (NOISE_PATTERNS §1+§4 spec); width 30, cap 0.5, ~7-8% mix per side. **New `BOREAL_ALPINE` biome** (zone 40 ex-`ALPINE_MEADOW`): SNOWY_BOREAL_TAIGA palette + `minecraft:taiga` MC biome (warm, no precipitation snow). Old S56 mapping `40 → SNOWY_BOREAL_TAIGA` retired. **Schematic loader strips baked snow_layer** globally (sponge `_SPONGE_BLOCK_REMAP["snow"]="air"` + classic remap); 3 sbtaiga spruce variants no longer have snow on branches. **Per-biome treelines** in `config/thresholds.json:treelines` (+80 from initial baselines): _default y_top=310, BOREAL_TAIGA=280, MIXED_FOREST=280, TEMPERATE_RAINFOREST=280, TEMPERATE_DECIDUOUS=270, BIRCH_FOREST=270, SNOWY_BOREAL_TAIGA=260, BOREAL_ALPINE=250, RIPARIAN_WOODLAND=210, ARCTIC_TUNDRA=180, FROZEN_FLATS=160. Linear density fade. **No-trees-on-snow** placement skip (surface block ∈ {snow, snow_block, powder_snow, ice, packed_ice, blue_ice}). **Slope cutoff** `eco_placement.slope_penalty_*` 30°→45° (loosened from initial 18°/35° tightening). **Tried-and-removed (kept in source for re-enable):** downslope alpine inheritance (`eco_gradients.propagate_biome_downslope`, backed up at branch `backup/s58-v8-inheritance` commit `8e792a8`); ridge watershed override (`biome_assignment.ridge_watershed_override`); boundary meander in dither (`ecotone_meander.amplitude_px=0` default). **Carry-forward:** Phase 3 proper (Pass 3/4 Layer-protocol rewrite); world-wide regen at user's discretion (BOREAL_ALPINE + treelines change global); schematic placement verification on tiles besides (24,80)/(25,80); ground cover ecotone (currently surface-blocks-only); NOISE_PATTERNS.md §6 entry for "linear ramp + per-pixel salt-and-pepper" pattern; rename `"gaussian"` → `"simplex_fbm"` config-wide; SEMI_ARID_SHRUBLAND sand patches; desert_pavement ground cover; Phase B height.tif regen from Erosion2_Out; aspect convention drift; world_studio.py duplicate BIOME_TO_MC.
+**Core fixes landed:**
+- **Routing repair** (3 changes in `core/schematic_placement.py`): SAND_DUNE_DESERT density 0.01→0.008 + `SAND_DUNE_DESERT` treeline entry `y_top=280 fade=20`; SAND_DUNE_DESERT removed from `NO_BUSH_BIOMES`; post-load mirror copies `SNOWY_BOREAL_TAIGA` entries into `BOREAL_ALPINE` (BA was 0+0 entries, now 29 trees + 27 bushes — was routing drift since S58).
+- **Config rename** `"gaussian"` → `"simplex_fbm"` across 112 occurrences in `config/thresholds.json` + back-compat alias in `core/surface_decorator.py:_gen_layer_noise` + `tools/world_studio.py:_gen_field`. Kills the NOISE_PATTERNS.md footgun.
+- **Lithology palette repaint** in `config/thresholds.json:3301-3417` per user direction. 6 groups edited, 2 renamed (`sedimentary → arid_basaltic`, `basaltic → temperate_basaltic`). `BOREAL_ALPINE → deepslate_metamorphic` added to `zone_to_group` (was missing).
+- **Lithology on rock-gap surface** in `core/surface_decorator.py:1160`: rock-gap (gap==5) surface blocks now per-biome via `zone_to_group`. Previously global stone/andesite/granite/diorite.
+- **Catmull-Rom + query-time gap sampler** (new `core/gaea_gap_sampler.py` + `core/upscale.py:_catmull_rom_*`): 8k Gaea slope/dusting sources sampled live at tile time via interpolating Keys a=-0.5 kernel. `config.gaea_gaps.use_query_time=true` default. Threshold + dither are runtime knobs. 5× faster than scipy B-spline zoom. `slope_dither_width 18000→40000 + blue_noise` (breaks up blobby rock interiors). `dusting_dither=none` + warpy threshold (simplex noise at scale=18 src-px, amp=350, downward bias only) — organic snow line. Baked 50k masks retained as fallback.
+
+**Vegetation overhaul** in `core/surface_decorator.py:GROUND_COVER_PALETTES`:
+- `resin_clump` removed globally.
+- All taiga biomes (BOREAL_TAIGA, SNOWY_BOREAL_TAIGA, BOREAL_ALPINE) density-bumped. BOREAL_ALPINE adds `short_dry_grass` 0.08 + `tall_dry_grass` 0.04.
+- 11 biomes gain rare flowers (`oxeye_daisy`, `dandelion`, `poppy`, `allium`, `lily_of_the_valley`, `azure_bluet`, `cornflower`) at 0.005-0.015 per species.
+- SCRUBBY_HEATHLAND + EASTERN_TEMPERATE_COAST are "wow damn flowers" biomes — SCRUBBY gets heather/gorse/bilberry color scheme (allium 0.08, dandelion 0.06, azure_bluet/oxeye_daisy 0.05, cornflower 0.04); ETC gets full Cape-Cod coastline rewrite (short_dry_grass 0.50 dominant + bush 0.12 bayberry + 5 flowers at 0.03-0.05).
+- SAND_DUNE_DESERT ground cover 5× bumped to counter the 0.05 eco_density_mod suppressor.
+
+**Floating-vegetation + terrain-cap fixes:**
+- **Air-below cleanup** (`core/chunk_writer.py:710-737`): existing water-floating check extended to also drop ground_cover with air below. One-line OR condition.
+- **High-elevation stone fade** (`core/surface_decorator.py` new post-pass): `surface_y 230→280` ramps grass/dirt/podzol → biome's lithology stone palette. Ground cover zero'd on stone-family surfaces.
+- **Schematic ground-touch validation** (`core/schematic_placement.py:766-800`): (a) per-size footprint sy-range reject `_MAX_FP_RANGE_BY_SIZE = {"sm": 4, "md": 3, "lg": 2}` — larger schematics reject more slope; (b) center-re-align uses `_SIZE_CENTER_OFF = {"sm": 2, "md": 3, "lg": 4}` offset from corner to estimate trunk position.
+- **Per-column sy in stamp_schematic** (`core/chunk_writer.py:836-895`): underground-cull for non-log blocks uses each column's own sy (`surface_y[tile_z, tile_x]`) instead of single placement center sy. Fixes "tree stuck in ground" on uphill sides. Downhill-floating leaves NOT fixed — carry-forward.
+
+**Column-biome fix** (`core/chunk_writer.py:1069`): removed `if np.all(sec_blk == "air"): continue` early-exit. All 32 sections per chunk emit with biome tag. Biome label correct at any Y including flight altitude. **REQUIRES** `vandir_height.zip` datapack in target world's `datapacks/` folder — otherwise `ArrayIndexOutOfBoundsException: Index 24 out of bounds for length 24` on chunk load (vanilla MC 1.21.10 uses 24 sections; our 32 sections overrun). Datapack was MISSING from `Vandirtest10` mid-session (caused one crash); fixed by copying from `Vandirtest7/datapacks/vandir_height.zip`. Now mandatory-install rule for any test world using S60+ chunk output.
+
+**Validator pipeline tooling (NICK PRIORITY #1 infra DONE):**
+- `tools/diag_sbt_presence.py` → `memory/sbt_presence_report.md` (59.8M SBT pixels, 31 regions 1:8-scale).
+- `tools/diag_bush_routing.py` → `memory/bush_routing_matrix.md` (0 gaps after Fix C + mirror).
+- `tools/diag_biome_sampler.py` → `memory/biome_reference_tiles.csv` + `memory/BIOME_VALIDATOR_CHECKLIST.md` (25/26 biomes have ≥50% pure tile).
+- `tools/diag_vegetation_readout.py` → `memory/vegetation_readout.md` (all 26 biomes × ground cover + surface palette dump).
+- **`schem_viewer.py` extended** with ground plane + Y-offset slider (-20..+40) + "Save & Approve" (writes `anchor_y` + `anchor_review=false` atomically) + index-only file filter.
+
+**Catmull-Rom A/B diagnostics:**
+- `tools/diag_catmull_compare.py` → `memory/catmull_compare.png` (baked A/B).
+- `tools/diag_kernel_raw_compare.py` → `memory/kernel_raw_compare.png` (no-dither raw kernel A/B).
+- `tools/diag_query_time_tile.py` → `memory/query_time_25_80*.png` (per-tile preview).
+- `tools/diag_blob_strategies.py` → `memory/blob_strategies.png` (4 threshold strategies).
+
+**(25,80) render iteration count this session: 6.** Final render (in flight at session wrap) includes ALL above fixes + per-size slope reject + per-column sy.
+
+**Prior state (S59, 2026-04-17):** Ground cover + schematic seam dither shipped; vegetation revamp retired. New helper `core/surface_decorator.py:_compute_ecotone_swap_fields` returns shared S58 dither geometry reusable by GC + schematic passes. New `_apply_ecotone_dither_ground_cover` (same 30-block ramp + 0.5 cap + ±20% noise_b, independent coin seed `0x9C0DEC0`) called from `decorate_surface` after `_apply_ground_cover` / before water-cleanup. `core/schematic_placement.py:place_schematics` precomputes per-pixel swap mask + neighbour biome once per tile; overrides `biome_str` at rolled candidates so entries list swaps. All inner-only (no padding). All non-lake rivers scrapped in SAND_DUNE_DESERT via orchestrator strip. §11 Phase 3/4/5 + §6 Pass 3/4 Layer-Protocol vegetation revamp retired to `PHYSICAL_REALISM_VEGETATION_REVAMP_ARCHIVE.md`.
 
 ---
 
@@ -18,14 +55,32 @@
 
 **Current working backlog** (Claude picks order, user vetoes):
 
-- **SEMI_ARID_SHRUBLAND sand patches** (flagged S58) — specific per-biome gap in the noise layers config.
-- **Desert pavement + riparian palette in sand dune desert** — S59 in progress: (16,73) generated for in-world review. Scope expands to "anything riverbank-editor/river-carver generated in arid zones" — current riparian palette reads as temperate-default on non-temperate biomes.
-- **Ground cover ecotone cross-tile symmetry** — S59 shipped GC + schematic ecotone dither inner-only. 1-pixel seam asymmetry at tile boundaries is cosmetic carry-forward; promote to padded if visible in-game.
-- **NOISE_PATTERNS.md §6 entry** for v12 dither shape (linear ramp + per-pixel salt-and-pepper) — quick doc win.
-- **Rename `"gaussian"` → `"simplex_fbm"`** across `noise_layers_biome` (with back-compat alias) — quick config sweep.
-- **Schematic placement verification on more tiles** — S59 covered (16,73) sand-dune-desert; others (36_20, 51_53, 24_84) not yet reviewed.
-- **Phase B `height.tif` regen from `Erosion2_Out`** — flagged, low priority unless user cares.
-- **World-wide 50k regen** — ready whenever user calls it.
+- **`vandir_height.zip` datapack — MANDATORY install per new world** (S60 addition). Any fresh Vandirtest world MUST have `saves/<world>/datapacks/vandir_height.zip` before opening the world for the first time, or chunk_writer's 32-section output will OOB on chunk load. Source: copy from any existing `Vandirtest{5,6,7}/datapacks/`. Consider: promote to the pipeline by auto-copying to `saves/` on tile write, OR a pre-flight check in `run_pipeline.py` that warns if target world's datapacks folder is empty.
+
+- **Floating schematics WORSE after S60-f19/f20** (user-flagged at session wrap, in-world review of the post-fix render). The per-column sy cull (`chunk_writer.stamp_schematic`) + per-size footprint reject (`schematic_placement._MAX_FP_RANGE_BY_SIZE = {sm:4, md:3, lg:2}`) was supposed to reduce floaters but actually made it visibly worse. Hypotheses to investigate next session: (a) per-column cull may be skipping LOG/trunk blocks too because the underground check fires for the trunk-base column when it's at the lowest sy of a sloped footprint — leaving the canopy with no trunk supporting it. (b) per-size reject removed the placements that were "ugly but supported" while letting through ones with steeper-than-2-block ranges due to corner-only sampling missing center variance. (c) the underground-cull change may interact badly with `_compute_extra_inset` which factors in sy at the sample pixel. **Next session priority** — code-review the interaction of S60-f19 + S60-f20 + `_compute_extra_inset`, possibly revert one or both, and try a post-stamp floating-leaf cleanup pass instead.
+- **Air-remapped structural gaps in schematics** — `_SPONGE_BLOCK_REMAP` turns 12 fence_gate variants + snow → air; `_CLASSIC_ID_MAP` sends unknown classic IDs → air. Creates gaps in old schematics where structural blocks supported decoration, causing floating leaves/branches. Use the S60 `schem_viewer.py` Y-editor + `anchor_review` workflow to fix schematic-by-schematic, OR audit at load time (flag entries with >5% air-remaps).
+- **Ground cover ecotone cross-tile symmetry** — S59 shipped GC + schematic ecotone dither inner-only. 1-pixel seam asymmetry at tile boundaries. Promote to padded after S60 in-world review.
+- **NOISE_PATTERNS.md §6 entry** for v12 dither shape — quick doc win (gated on S60-f21 in-world review).
+- **`_BIOME_CLIFF_STONE` (`core/chunk_writer.py:95-129`) missing BOREAL_ALPINE entry** — falls through to default, may cause cliff-face seams at alpine boundaries. User flagged "biome seamline on the rock mask in the mountains" S60.
+- **RIPARIAN_WOODLAND (zone 80) + FRESHWATER_FEN (zone 240)** have schematic entries but 0 world pixels — wasted routing; prune from index.
+- **Phase B `height.tif` regen from `Erosion2_Out`** via new Catmull-Rom — low priority unless user cares.
+- **World-wide 50k regen** — ready whenever user calls it. S60 landed significant globals: vegetation overhaul, lithology repaint, query-time rock/snow, column-biome emit-all.
+
+**Resolved / struck from backlog (S60):**
+- ~~SEMI_ARID_SHRUBLAND sand patches~~ — already-fixed per user; existing `sand (erosion)` layer in `config/thresholds.json:1355` at 38% coverage is acceptable.
+- ~~Desert pavement + riparian palette in SAND_DUNE_DESERT~~ — (16,73) in-world review: legacy riparian palette reads as a dry-wadi surface paintover with no depth alteration. Cosmetically acceptable per user. Don't revisit.
+- ~~Schematic placement verification on (36,20) / (24,84)~~ — subsumed by the new per-biome checklist (see NICK PRIORITIES).
+
+**NICK PRIORITIES (user-prioritized backlog):**
+
+1. **Per-biome schematic + vegetation placement review** — S60 infra DONE: [memory/BIOME_VALIDATOR_CHECKLIST.md](memory/BIOME_VALIDATOR_CHECKLIST.md) + [memory/biome_reference_tiles.csv](memory/biome_reference_tiles.csv) (25 of 26 biomes have ≥50% pure reference tile; 2 biomes RIPARIAN_WOODLAND + FRESHWATER_FEN absent from world). Walk-in pass NOT YET done; schedule after (25,80) S60 validation lands. Also use the S60 [schem_viewer.py](schem_viewer.py) Y-offset editor to fix any misaligned schematics during the walk.
+2. ~~**Snow mask regen without upscaling**~~ — S60 SHIPPED. See §18 S60 entry. `core/gaea_gap_sampler.py` + `core/upscale.py:_catmull_rom_*` + `config.gaea_gaps.use_query_time=true` now sample 8k Gaea slope/dusting live at tile time via Catmull-Rom, no 50k materialization. Threshold + dither mode + interpolation are runtime knobs. Defaults: `catmull_rom, dither=none` (sharp). Baked 50k TIFs retained as fallback. In-world validation at (25,80) pending.
+
+**Open questions surfaced in S60 (file when triaging):**
+- "Biome seamline on the rock mask in the mountains" (user observation) — not a mask bug; likely cliff-stone palette transition at biome boundary. See §18 S60 for assessment.
+- RIPARIAN_WOODLAND (zone 80) + FRESHWATER_FEN (zone 240) have schematic routing (42 entries) but zero world pixels. Wasted routing.
+- `_BIOME_CLIFF_STONE` hardcoded in `core/chunk_writer.py:95-129` has no BOREAL_ALPINE entry — falls through to default. May cause seams at alpine boundaries.
+- Catmull-Rom vs cubic_spline with **dither on**: effectively identical (0.09% disagreement). Kernel only matters when dither is off (0.43% disagreement for rock).
 
 **Workflow for this direction:** before editing any `core/` path that no existing 3×3 baseline exercises, snapshot a baseline first (see Workflow rule). Land-heavy reference tiles still missing baselines: `24_80`, `36_20`, `16_73`, `25_72`. Snapshot lazily — only when about to touch a code path that tile exercises.
 

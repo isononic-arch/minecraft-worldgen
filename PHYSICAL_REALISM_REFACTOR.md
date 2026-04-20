@@ -2186,3 +2186,165 @@ cliff_deg = core_eco.compute_cliff_deg(surface_y)
 - `PHYSICAL_REALISM_REFACTOR.md` — §6 Pass 3/Pass 4 and §11 Phase 3/4/5 replaced with RETIRED stubs.
 - `PHYSICAL_REALISM_VEGETATION_REVAMP_ARCHIVE.md` — new file; verbatim copy of retired content.
 - `CLAUDE.md` — Current state + DIRECTION + HARD RULES biome-boundary section updates.
+
+### S60 — 2026-04-19: Seam-bare-vegetation fix + schematic routing repair + lithology repaint + validator pipeline + query-time Catmull-Rom snow/rock
+
+**Phase state:**
+- Landed this session: (1) routing fixes + density tune that un-bare'd the BOREAL_ALPINE / SAND_DUNE_DESERT seam; (2) `gaussian → simplex_fbm` config rename + back-compat alias; (3) lithology palette repaint with two group renames; (4) validator pipeline tooling (3 diag scripts + schem_viewer extension + checklist); (5) Catmull-Rom snow/rock kernel + query-time sampler path.
+- §11 currently at: Phase 3b (S58) is still the last landed §11 phase. S60 work is all carry-forward + Nick Priority tracks, no new §11 decimal phase.
+- Next session starts: in-world validation of query-time path + new lithology on (25,80); per-biome walk using the new checklist; decide on blue_noise vs dither=none as default; possible Phase B height.tif regen using the new Catmull-Rom path.
+
+**1. Routing + density fixes for the (25,80) bare seam** (Phase 1 + 1b + 1c):
+- [core/schematic_placement.py:99](core/schematic_placement.py:99) `SAND_DUNE_DESERT.BASE_DENSITY` 0.01 → 0.008 (really rare per user).
+- [core/schematic_placement.py:62-64](core/schematic_placement.py:62) removed `SAND_DUNE_DESERT` from `NO_BUSH_BIOMES` so generic bushes (9 entries) route there.
+- [config/thresholds.json:treelines](config/thresholds.json) added `SAND_DUNE_DESERT: {y_top: 280, fade_blocks: 20}` so desert trees fade later than alpine in wobble overlap.
+- [core/schematic_placement.py:247-261](core/schematic_placement.py:247) **new post-load mirror step**: `BOREAL_ALPINE` entries = list-copy of `SNOWY_BOREAL_TAIGA` entries with `biome` field updated. Per user: "BOREAL_ALPINE should match SBT entirely." Was S58 routing drift — 44M alpine pixels had zero schematic entries because `_INDEX_KEY_MAP["alpine"]` was stuck on old ALPINE_MEADOW→SBT mapping. Now alpine gets full 29 trees + 27 bushes.
+- `_INDEX_KEY_MAP["alpine"]` stays mapped to `SNOWY_BOREAL_TAIGA` (restored S56 state); comment updated to explain the post-load mirror handles BOREAL_ALPINE.
+- (25,80) re-rendered 3× this session (Phase 1 pre-routing → Phase 1b post-routing → Phase 1c post-mirror). Final render copied to Vandirtest10 at 16:26; user verified interior populated, seam acceptable.
+
+**2. Gaussian → simplex_fbm rename** (Phase 4b precursor):
+- [config/thresholds.json](config/thresholds.json): 112 occurrences of `"noise": "gaussian"` → `"noise": "simplex_fbm"` in `noise_layers_biome`.
+- [core/surface_decorator.py:577](core/surface_decorator.py:577) `_gen_layer_noise`: docstring + dispatcher accepts `"simplex_fbm"`, keeps `"gaussian"` as back-compat alias (routes to same fBm branch); default for `layer.get("noise", ...)` now `"simplex_fbm"`.
+- [tools/world_studio.py](tools/world_studio.py) NOISE_TYPES + 4 hardcoded layer defaults + preview branch updated. Old "gaussian" still loads via back-compat.
+- Dispatcher smoke test: `simplex_fbm`, `simplex`, `gaussian` produce byte-identical output.
+- Removes the NOISE_PATTERNS.md footgun where "gaussian" was historically misread as per-pixel gaussian (it was always fBm).
+
+**3. Lithology palette repaint** (Phase 3):
+- [config/thresholds.json:3301-3417](config/thresholds.json:3301) — six groups updated per user direction.
+  - `granitic`: `[granite, dripstone_block, packed_mud, rooted_dirt]`
+  - **renamed** `sedimentary → arid_basaltic`: `[basalt, smooth_basalt, cobbled_deepslate]` (10 biomes)
+  - **renamed** `basaltic → temperate_basaltic`: `[blackstone, coal_block]`
+  - `limestone`: `[sandstone, suspicious_sand]`
+  - `deepslate_metamorphic`: `[tuff, dead_fire_coral_block, andesite, stone, cobblestone, suspicious_gravel]`
+  - `mossy_temperate`: `[cobblestone, mossy_cobblestone, tuff, dead_horn_coral_block]`
+- `zone_to_group` updated with the two renames; also **added** `BOREAL_ALPINE: deepslate_metamorphic` (was missing → falling through to `basement.deep_default_group=granitic`).
+- Verified [core/chunk_writer.py:_fill_geology_layers](core/chunk_writer.py) uses id-based palette lookup, so string renames are zero-risk.
+
+**4. Validator pipeline tooling** (Phase 4a, 4d, 4e):
+- NEW [tools/diag_sbt_presence.py](tools/diag_sbt_presence.py) → `memory/sbt_presence_report.md`. 1:8 connected-components scan (avoids 18 GiB int64 alloc). Finding: 59.8M SBT pixels (2.39% of world), 31 regions; top region 27.3M blocks at tiles x=23-40 z=8-30 adjoining BOREAL_TAIGA/ARCTIC_TUNDRA/KARST_BARRENS.
+- NEW [tools/diag_bush_routing.py](tools/diag_bush_routing.py) → `memory/bush_routing_matrix.md`. Uses real `load_index` loader so post-mirror + generic merge are captured. 0 gaps below 5 bushes across 26 biomes after Fix C.
+- NEW [tools/diag_biome_sampler.py](tools/diag_biome_sampler.py) → `memory/biome_reference_tiles.csv` + `memory/BIOME_VALIDATOR_CHECKLIST.md`. Per-biome best-tile picker. 24 biomes have ≥50% pure tile; RIPARIAN_WOODLAND (zone 80) and FRESHWATER_FEN (zone 240) absent from world but still occupy 27+15 schematic entries — flagged wasted routing.
+- [schem_viewer.py](schem_viewer.py) **extended to a minimal Y-offset editor**:
+  - Ground plane (translucent green quad + outline at `anchor_y`) toggle-able via checkbox.
+  - Y-offset slider (-20..+40) + spinbox tied to the plane.
+  - "Save & Approve" button: writes `anchor_y = val` + `anchor_review = false` atomically (temp+rename) across ALL matching entries in `schematic_index.json` (generic schems hit up to 24 biomes; multi-edit intentional for consistency).
+  - Index-only filter: only shows files referenced in `schematic_index.json` (292 of 949 on-disk in Vegetation/). Prevents accidental "all trees package" crash.
+  - New methods: `_load_schem_index`, `_find_index_entries`, `_indexed_filenames`, `_on_anchor_changed`, `_on_anchor_spin`, `_on_ground_toggle`, `_save_anchor`, `_atomic_save_index`.
+  - `SchematicViewer` gains `anchor_y`, `show_ground`, `set_anchor_y`, `_draw_ground_plane`.
+
+**5. Catmull-Rom + query-time snow/rock** (Phase 5):
+- [core/upscale.py](core/upscale.py) — new `_catmull_rom_1d`, `_catmull_rom_zoom_2d`, `_catmull_rom_at_1d`, `_zoom_or_custom` dispatcher. Interpolating Keys a=-0.5 kernel; separable 1D passes with clamp boundary. Benchmark: **5× faster than scipy.ndimage.zoom order=3** (B-spline with prefilter) on 512→4096 crops.
+- [rebuild_gaea_gaps.py](rebuild_gaea_gaps.py) `--interpolation {cubic_spline,catmull_rom,bilinear,quintic}` flag. `catmull_rom` writes to `masks/rock_gap_catmull.tif` + `masks/snow_gap_catmull.tif` so originals preserved for A/B.
+- Baked A/B topdown: [memory/catmull_compare.png](memory/catmull_compare.png) (4-panel alpine ridge crop). Disagreement: rock 0.087%, snow 0.104% — dither dominates, kernel invisible.
+- Raw no-dither A/B topdown: [memory/kernel_raw_compare.png](memory/kernel_raw_compare.png) (12-panel). Disagreement: rock 0.43%, snow 1.28% — **5-12× larger** without dither. Catmull-Rom overshoots ~50% less than cubic_spline B-spline at sharp edges. Confirms kernel choice matters only when dither is off.
+- **Query-time path** — the architecturally-right fix:
+  - NEW [core/gaea_gap_sampler.py](core/gaea_gap_sampler.py): `sample_gap_at_tile()` samples 8k Gaea source via Catmull-Rom at tile world-coords, applies threshold + optional dither ("none"/"white"/"blue_noise"). `build_gap_config()` converts `config.gaea_gaps` block to per-mask kwargs. `@lru_cache(maxsize=4)` on `_load_source` so 8k arrays stay hot per worker process.
+  - [core/tile_streamer.py:read_tile](core/tile_streamer.py) gains `gap_config` kwarg: for mask names in the config dict, sample via `gaea_gap_sampler` instead of reading the 50k TIF. Fall-through to TIF on any error. Zero change to consumers (masks dict output format identical).
+  - [config/thresholds.json](config/thresholds.json) new `gaea_gaps` block: `use_query_time: true`, `interpolation: "catmull_rom"`, `dither: "none"`, thresholds + dither widths mirror S56 values.
+  - Three orchestrators wired: [run_pipeline.py:138](run_pipeline.py:138), [tools/_pipeline_runner.py:155](tools/_pipeline_runner.py:155), [tools/validate_test_tile.py:449](tools/validate_test_tile.py:449). All call `build_gap_config(cfg["gaea_gaps"], masks_dir)` and pass to `read_tile`.
+  - 8k sources `gaea_slope_8k.tif` + `gaea_dusting_8k.tif` regenerated and copied to main-repo `masks/` (21 MB + 67 MB).
+  - Smoke test: query-time + blue_noise matches baked at 93% agreement (0.01% mean diff). Correct by construction.
+  - [memory/query_time_25_80.png](memory/query_time_25_80.png): 2×3 topdown PNG — query-time vs baked-cubic vs baked-catmull on (25,80). All within 1-2% mean.
+
+**What breaks:**
+- Tests in `tests/unit/test_phase1_75_geology.py` reference the old `"sedimentary"` and `"basaltic"` group names by string. They'll need to be renamed to `arid_basaltic` / `temperate_basaltic` or the test's fixture config updated. Not done this session; pre-existing known test fixture, not load-bearing for production.
+
+**Tried and intentionally NOT done:**
+- Did NOT reduce `soften_biome_boundaries` amplitude. The wide wobble is load-bearing for seam aesthetics per CLAUDE.md DIRECTION.
+- Did NOT globally retire SNOWY_BOREAL_TAIGA; user handles per-landmass with Axiom later. Scan report gives them the map.
+- Did NOT flip `dither: "blue_noise"` back on for the query-time default. Kept at `"none"` per user "dither off" call — sharper edges.
+- Did NOT delete `rock_gap.tif` / `snow_gap.tif` baked masks. Kept as fallback; build_gap_config returns empty dict if sources missing → read_tile falls through to TIF read.
+- Did NOT extend Y-offset workflow to the pipeline-side y_offset read. `anchor_y` is already wired into placement; the new tool just edits the same field. No pipeline changes needed.
+- Phase 4c (GC density preview) DEFERRED per plan escape-hatch.
+
+**Carry-forward / next session:**
+- In-world review of query-time + new lithology at (25,80) once render lands.
+- Per-biome walk using [memory/BIOME_VALIDATOR_CHECKLIST.md](memory/BIOME_VALIDATOR_CHECKLIST.md) — 25 tiles, TP commands included.
+- Decide blue_noise vs dither=none as default after in-world check.
+- RIPARIAN_WOODLAND + FRESHWATER_FEN routing cleanup (both biomes absent from world but hold 42 entries in the index).
+- The "biome seamline on rock mask in the mountains" the user spotted — not a mask bug, likely cliff-stone / lithology palette transition across biome boundary. Filed; defer until user wants to tackle.
+- Phase 4c GC density preview.
+- Phase B height.tif regen now has Catmull-Rom available.
+
+**Files modified/created:**
+- `core/schematic_placement.py` — density fix, NO_BUSH tweak, mirror step.
+- `core/upscale.py` — catmull_rom kernels + dispatcher.
+- `core/gaea_gap_sampler.py` — NEW, ~130 lines.
+- `core/tile_streamer.py` — `gap_config` kwarg.
+- `config/thresholds.json` — treelines, gaussian→simplex_fbm, lithology repaint, gaea_gaps block.
+- `rebuild_gaea_gaps.py` — interpolation flag, out_suffix.
+- `run_pipeline.py` — gap_config wiring.
+- `tools/_pipeline_runner.py` — gap_config wiring.
+- `tools/validate_test_tile.py` — gap_config wiring.
+- `tools/world_studio.py` — NOISE_TYPES + defaults.
+- `schem_viewer.py` — Y-offset editor + index filter.
+- `tools/diag_sbt_presence.py` — NEW.
+- `tools/diag_bush_routing.py` — NEW.
+- `tools/diag_biome_sampler.py` — NEW.
+- `tools/diag_kernel_raw_compare.py` — NEW.
+- `tools/diag_catmull_compare.py` — NEW.
+- `tools/diag_query_time_tile.py` — NEW.
+- `memory/sbt_presence_report.md` — NEW.
+- `memory/bush_routing_matrix.md` — NEW.
+- `memory/biome_reference_tiles.csv` — NEW.
+- `memory/BIOME_VALIDATOR_CHECKLIST.md` — NEW.
+- `memory/catmull_compare.png` — NEW.
+- `memory/kernel_raw_compare.png` — NEW.
+- `memory/query_time_25_80.png` — NEW.
+- `CLAUDE.md` — Current state + DIRECTION + NICK PRIORITIES updates.
+
+**Extended S60 work (same session, iterative passes on the (25,80) render):**
+
+**6. Vegetation palette overhaul + flower additions + removal of resin_clump globally:**
+- `core/surface_decorator.py:GROUND_COVER_PALETTES` — every biome reviewed per user direction. Highlights:
+  - `resin_clump` removed globally (was in BOREAL_TAIGA, SNOWY_BOREAL_TAIGA, BOREAL_ALPINE, DRY_PINE_BARRENS).
+  - BOREAL_TAIGA/SNOWY_BOREAL_TAIGA/BOREAL_ALPINE up-densified (all 3 taiga biomes — fern 0.50, short_grass 0.30 on BT; BOREAL_ALPINE adds `short_dry_grass` 0.08 + `tall_dry_grass` 0.04 per user's final request).
+  - COASTAL_HEATH, CONTINENTAL_STEPPE, DRY_OAK_SAVANNA, KARST_BARRENS, DESERT_STEPPE_TRANSITION, DRY_PINE_BARRENS, DRY_WOODLAND_MAQUIS, FRESHWATER_FEN — density bumps + new single-block `tall_dry_grass` where appropriate.
+  - SAND_DUNE_DESERT base palette 5× bumped to counter the `eco_density_mod[sand_dune_px] = 0.05` suppressor in `_apply_ground_cover`.
+  - LUSH_RAINFOREST_COAST slight dense bump; duplicate `bush` entries in RIPARIAN_WOODLAND + LUSH_RAINFOREST_COAST cleaned.
+- **Flower additions (later halved to "very rare")** across 11 biomes per user's rare-flowers directive:
+  - BOREAL_ALPINE: poppy/allium (0.01), cornflower/oxeye_daisy (0.008) — alpine wildflowers at rare density.
+  - BOREAL_TAIGA, TEMPERATE_DECIDUOUS, MIXED_FOREST, RAINFOREST_COAST: lily_of_the_valley/oxeye_daisy/azure_bluet at 0.005-0.01.
+  - CONTINENTAL_STEPPE, DRY_OAK_SAVANNA, SEMI_ARID_SHRUBLAND: dandelion/poppy/oxeye_daisy at 0.008-0.012.
+  - COASTAL_HEATH: cornflower/allium/oxeye_daisy/dandelion at 0.008-0.01.
+  - DRY_WOODLAND_MAQUIS: halved existing allium/poppy/torchflower, added oxeye_daisy 0.008.
+- **Heavy flower biomes ("wow damn flowers everywhere")** kept at original higher densities:
+  - SCRUBBY_HEATHLAND: allium 0.08, dandelion 0.06, azure_bluet/oxeye_daisy 0.05, cornflower 0.04 — heather+gorse+bilberry color scheme.
+  - EASTERN_TEMPERATE_COAST: full palette rewrite to Cape-Cod/Outer-Banks coastline vibe — short_dry_grass 0.50 dominant + bush 0.12 bayberry + 5 flowers at 0.03-0.05 (azure_bluet, dandelion, allium, cornflower, oxeye_daisy).
+
+**7. S60-f11: Air-below vegetation cleanup** (`core/chunk_writer.py:710-737`): existing water-floating-grass check extended with one line — `if below_idx == WATER_IDX or below_idx == AIR_IDX`. Previously only water-adjacent floating grass was dropped; now any ground_cover with air directly below also clears. Loop structure + water semantics untouched.
+
+**8. S60-f12: High-elevation stone palette fade** (`core/surface_decorator.py:decorate_surface` new post-pass between ecotone dither and ground cover): `surface_y >= 230` begins a ramp to `surface_y >= 280` (full fade). At faded pixels, grass/dirt-family blocks (`grass_block, podzol, coarse_dirt, packed_mud, rooted_dirt, moss_block, dirt, mycelium`) swap to the biome's lithology-group palette (same one used by gap==5 rock surface + subsurface). Follow-up: after ground cover applies, pixels with any stone-family surface block have their ground_cover cleared.
+
+**9. S60-f14 → S60-f22 → S60-f24: Column-biome fix (shipped, with datapack gate)** (`core/chunk_writer.py:1069-1078`): removed the `if np.all(sec_blk == "air"): continue` early-exit so all 32 sections emit with biome tag for flight-altitude biome-tag correctness. Mid-session this **caused `ArrayIndexOutOfBoundsException: Index 24 out of bounds for length 24` at chunk load** because `Vandirtest10/datapacks/` was empty — vanilla MC 1.21.10 expects 24 sections (height=384), our loop writes 32. Resolution: copied `vandir_height.zip` (min_y=-64, height=512) from `Vandirtest7/datapacks/` to `Vandirtest10/datapacks/`. Chunk_writer re-un-reverted to emit-all-sections. Existing 32-section .mca in Vandirtest10 loads correctly after MC restart picks up the datapack — no re-render needed. **Going-forward rule**: every new Vandirtest world requires the datapack installed BEFORE first-open. Consider pipeline-side auto-copy or pre-flight check.
+
+**10. S60-f19 + S60-f20: Schematic slope fixes** (two changes, same session):
+  - Per-size footprint reject (`core/schematic_placement.py:789`): `_MAX_FP_RANGE_BY_SIZE = {"sm": 4, "md": 3, "lg": 2}`. Was fixed `> 5` regardless of size. Larger trees reject more slope now.
+  - Per-column sy cull (`core/chunk_writer.py:stamp_schematic`): replaced single `ref_surf = surface_y[placement_center]` with `_local_surf = surface_y[tile_z, tile_x]` PER-BLOCK. Underground-cull for non-log blocks now uses each column's own sy. Uphill buried leaves now get skipped (they were allowed under the center-sy heuristic). Downhill-floating leaves are not yet addressed — would need a different mechanism (floating-leaf cleanup pass); flagged as carry-forward.
+
+**Files added/modified (extended S60):**
+- `core/chunk_writer.py` — air-below cleanup, column-biome emit-all, per-column sy in stamp_schematic.
+- `core/surface_decorator.py` — GROUND_COVER_PALETTES overhaul, high-elevation stone fade post-pass, stone-family ground-cover zeroing.
+- `core/schematic_placement.py` — per-size footprint reject.
+- `config/thresholds.json` — `gaea_gaps` block extended with `slope_dither`, `dusting_dither`, `dusting_threshold_noise_scale`, `dusting_threshold_noise_amp`.
+- `core/gaea_gap_sampler.py` — warpy-threshold support, per-mask dither override.
+- `memory/blob_strategies.png` — 4-strategy topdown A/B.
+- `memory/query_time_25_80.png` + `memory/query_time_25_80_widened_warpy.png` — tile-crop before/after.
+- `memory/vegetation_readout.md` — per-biome veg + surface-palette dump.
+- `tools/diag_blob_strategies.py`, `tools/diag_query_time_tile.py`, `tools/diag_kernel_raw_compare.py`, `tools/diag_vegetation_readout.py` — NEW diagnostic scripts.
+
+**Render history (iteration journey for (25,80)):**
+1. Phase 1 pre-routing → bare seam confirmed (expected).
+2. Phase 1b post-routing → bare seam still (BOREAL_ALPINE had no entries).
+3. Phase 1c + SBT mirror → alpine populates, first usable render.
+4. S60-f5 fixes render → mask/lithology changes visible.
+5. S60-f10 final render → flowers + ground-touch + height fade.
+6. S60-f21 (final) → + per-column sy + per-size reject. In flight as of session wrap.
+
+**Known carry-forwards into S61:**
+- Downhill-floating leaves from slope — not fixed; needs post-stamp floating-leaf cleanup OR more aggressive slope-reject.
+- Air-remapped schematic blocks (fence_gate/snow/unknown-classic-ID → air) create structural gaps in some schematics; user-driven fix via schem_viewer anchor-review flow.
+- Per-biome full in-game walk using `memory/BIOME_VALIDATOR_CHECKLIST.md` — NICK PRIORITY #1, infra ready.
+- RIPARIAN_WOODLAND (zone 80) + FRESHWATER_FEN (zone 240) have schematic entries but zero world pixels — wasted routing.
+- The "biome seamline on the rock mask in the mountains" user observation — not a mask bug; cliff-stone palette transition at biome boundaries. `_BIOME_CLIFF_STONE` (chunk_writer.py:95-129) has no BOREAL_ALPINE entry; falls through to default.
+- `gaussian → simplex_fbm` rename landed (112 occurrences in config/thresholds.json + dispatcher in core/surface_decorator.py + tools/world_studio.py); back-compat alias for old "gaussian" still works. NOISE_PATTERNS.md §6 entry (dither shape docs) still pending.

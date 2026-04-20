@@ -136,12 +136,17 @@ def _process_tile(args: dict) -> dict:
     noise = core_noise.load_noise_generators(cfg_path)
 
     # ---- Step 4: Read mask tiles via tile_streamer ----
+    # S60: build query-time gap config so rock_gap / snow_gap are sampled live
+    # from the 8k Gaea sources via Catmull-Rom instead of the 50k TIFs.
+    from core.gaea_gap_sampler import build_gap_config as _build_gap_cfg
+    _gap_cfg = _build_gap_cfg(cfg.get("gaea_gaps", {}), masks_dir)
     masks = core_tile_stream.read_tile(
         masks_dir  = masks_dir,
         col_off    = col_off,
         row_off    = row_off,
         width      = w,
         height     = h,
+        gap_config = _gap_cfg,
     )
     # masks dict keys: height, slope, erosion, flow, deposits, override, shore, river
 

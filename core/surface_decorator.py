@@ -350,15 +350,29 @@ ROCKY_SHORE_BIOMES: frozenset[str] = frozenset({
 # ---------------------------------------------------------------------------
 GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # ── Boreal / Cold ────────────────────────────────────────────────────
+    # S60: global resin_clump removal per user. Density bumps on all taiga
+    # biomes (BOREAL_TAIGA, SNOWY_BOREAL_TAIGA, BOREAL_ALPINE).
     "BOREAL_TAIGA": [
-        ("fern", 0.35), ("large_fern", 0.15), ("leaf_litter", 0.25),
-        ("moss_carpet", 0.15), ("pale_moss_carpet", 0.06), ("bush", 0.14),
-        ("sweet_berry_bush", 0.005), ("short_grass", 0.16),
-        ("resin_clump", 0.02), ("dead_bush", 0.02),
+        ("fern", 0.50), ("large_fern", 0.20), ("leaf_litter", 0.35),
+        ("moss_carpet", 0.25), ("pale_moss_carpet", 0.10), ("bush", 0.20),
+        ("sweet_berry_bush", 0.01), ("short_grass", 0.30),
+        ("dead_bush", 0.03),
+        # S60 flowers (very rare)
+        ("lily_of_the_valley", 0.005), ("oxeye_daisy", 0.005),
     ],
     "SNOWY_BOREAL_TAIGA": [
-        ("fern", 0.05), ("leaf_litter", 0.04), ("bush", 0.05),
-        ("short_grass", 0.04), ("dead_bush", 0.03), ("resin_clump", 0.01),
+        ("fern", 0.10), ("leaf_litter", 0.08), ("bush", 0.12),
+        ("short_grass", 0.18), ("short_dry_grass", 0.08),
+        ("tall_dry_grass", 0.04), ("dead_bush", 0.05),
+    ],
+    "BOREAL_ALPINE": [
+        ("fern", 0.20), ("leaf_litter", 0.16), ("bush", 0.20),
+        ("short_grass", 0.16), ("dead_bush", 0.12),
+        # S60 dry grass for alpine wind-pruned look
+        ("short_dry_grass", 0.08), ("tall_dry_grass", 0.04),
+        # S60 alpine wildflowers — rare accent
+        ("poppy", 0.01), ("allium", 0.01),
+        ("cornflower", 0.008), ("oxeye_daisy", 0.008),
     ],
     # "ALPINE_MEADOW" retired S56
     "ARCTIC_TUNDRA": [
@@ -371,6 +385,9 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
         ("fern", 0.12), ("bush", 0.18), ("moss_carpet", 0.08),
         ("azalea", 0.04), ("peony", 0.01),
         ("flowering_azalea", 0.003),
+        # S60 woodland wildflowers (very rare)
+        ("oxeye_daisy", 0.01), ("lily_of_the_valley", 0.008),
+        ("azure_bluet", 0.008),
     ],
     "BIRCH_FOREST": [
         ("short_grass", 0.48), ("tall_grass", 0.08), ("leaf_litter", 0.18),
@@ -382,6 +399,9 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
         ("fern", 0.30), ("bush", 0.20), ("large_fern", 0.08),
         ("moss_carpet", 0.12), ("sweet_berry_bush", 0.005),
         ("azalea", 0.03), ("flowering_azalea", 0.005),
+        # S60 spring-meadow wildflowers (very rare)
+        ("oxeye_daisy", 0.01), ("dandelion", 0.01),
+        ("poppy", 0.008), ("lily_of_the_valley", 0.005),
     ],
     "TEMPERATE_RAINFOREST": [
         ("fern", 0.50), ("large_fern", 0.15), ("moss_carpet", 0.30),
@@ -390,76 +410,115 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
         ("azalea", 0.03), ("flowering_azalea", 0.005),
     ],
     # ── Coastal / Heath ──────────────────────────────────────────────────
+    # S60: up short_grass density, bush rare per user + rare coastal meadow flowers.
     "COASTAL_HEATH": [
-        ("short_grass", 0.25), ("short_dry_grass", 0.10), ("tall_grass", 0.01),
-        ("bush", 0.10), ("dead_bush", 0.05), ("cornflower", 0.02),
+        ("short_grass", 0.45), ("short_dry_grass", 0.12), ("tall_grass", 0.02),
+        ("bush", 0.04), ("dead_bush", 0.05), ("cornflower", 0.01),
+        ("allium", 0.01), ("oxeye_daisy", 0.01), ("dandelion", 0.008),
     ],
+    # S60: coastline-vibe (Cape Cod / Outer Banks dune-barrens), heavy flowers.
+    # Ammophila beach grass dominant, bayberry/beach plum bush, salt-marsh
+    # flower accents.
     "EASTERN_TEMPERATE_COAST": [
-        ("short_grass", 0.25), ("tall_grass", 0.01), ("bush", 0.09),
-        ("short_dry_grass", 0.06), ("dead_bush", 0.04), ("azure_bluet", 0.02),
+        ("short_dry_grass", 0.50), ("short_grass", 0.15), ("tall_grass", 0.04),
+        ("tall_dry_grass", 0.05), ("bush", 0.12), ("dead_bush", 0.08),
+        # S60 coastline wildflowers — heavy density for "wow" factor
+        ("azure_bluet", 0.05), ("dandelion", 0.04),
+        ("allium", 0.04), ("cornflower", 0.03), ("oxeye_daisy", 0.03),
     ],
+    # S60: ensure dense per user; removed duplicate bush entry.
     "LUSH_RAINFOREST_COAST": [
-        ("fern", 0.42), ("large_fern", 0.15), ("tall_grass", 0.08),
-        ("moss_carpet", 0.16), ("leaf_litter", 0.15), ("bush", 0.10),
-        ("short_grass", 0.06), ("bush", 0.04), ("flowering_azalea", 0.02),
+        ("fern", 0.52), ("large_fern", 0.20), ("tall_grass", 0.12),
+        ("moss_carpet", 0.22), ("leaf_litter", 0.20), ("bush", 0.15),
+        ("short_grass", 0.10), ("flowering_azalea", 0.02),
         ("short_dry_grass", 0.04),
     ],
     "RAINFOREST_COAST": [
         ("fern", 0.35), ("large_fern", 0.10), ("tall_grass", 0.06),
         ("bush", 0.10), ("short_grass", 0.08), ("moss_carpet", 0.10),
         ("leaf_litter", 0.12),
+        # S60 damp-woodland flowers (very rare)
+        ("azure_bluet", 0.005), ("lily_of_the_valley", 0.005),
     ],
     # ── Dry / Arid ───────────────────────────────────────────────────────
+    # S60: up density of all + very rare prairie wildflowers per user.
     "DRY_OAK_SAVANNA": [
-        ("short_dry_grass", 0.30), ("tall_dry_grass", 0.18),
-        ("short_grass", 0.10), ("bush", 0.06), ("dead_bush", 0.05),
+        ("short_dry_grass", 0.50), ("tall_dry_grass", 0.30),
+        ("short_grass", 0.18), ("bush", 0.10), ("dead_bush", 0.08),
+        # S60 oak-savanna wildflowers (very rare)
+        ("dandelion", 0.01), ("oxeye_daisy", 0.01), ("poppy", 0.008),
     ],
+    # S60: way more short_grass + tall_dry_grass (single-block) + very rare steppe flowers.
     "CONTINENTAL_STEPPE": [
-        ("short_grass", 0.40), ("tall_grass", 0.01), ("tall_dry_grass", 0.01),
-        ("short_dry_grass", 0.06), ("bush", 0.06), ("sunflower", 0.01),
-        ("dead_bush", 0.03), ("cornflower", 0.02),
+        ("short_grass", 0.70), ("tall_grass", 0.02), ("tall_dry_grass", 0.15),
+        ("short_dry_grass", 0.20), ("bush", 0.08), ("sunflower", 0.01),
+        ("dead_bush", 0.04), ("cornflower", 0.015),
+        # S60 prairie wildflowers (very rare)
+        ("dandelion", 0.012), ("poppy", 0.01), ("oxeye_daisy", 0.01),
     ],
+    # S60: remove resin_clump, add tall_dry_grass, up all per user.
     "DRY_PINE_BARRENS": [
-        ("short_dry_grass", 0.15), ("leaf_litter", 0.10), ("dead_bush", 0.07),
-        ("short_grass", 0.08), ("bush", 0.06), ("fern", 0.05),
-        ("resin_clump", 0.02),
+        ("short_dry_grass", 0.30), ("tall_dry_grass", 0.08),
+        ("leaf_litter", 0.18), ("dead_bush", 0.12),
+        ("short_grass", 0.15), ("bush", 0.10), ("fern", 0.08),
     ],
+    # S60: "wow damn there's flowers everywhere" heathland — heather-style
+    # purple + gorse-style yellow + bilberry white.
     "SCRUBBY_HEATHLAND": [
-        ("short_grass", 0.25), ("short_dry_grass", 0.12), ("bush", 0.12),
-        ("tall_grass", 0.01), ("dead_bush", 0.06), ("azure_bluet", 0.03),
+        ("short_grass", 0.55), ("short_dry_grass", 0.20), ("bush", 0.15),
+        ("tall_grass", 0.02), ("dead_bush", 0.08),
+        # S60 heathland superbloom — heather-purple (allium) + gorse-yellow
+        # (dandelion) + bilberry-white (azure_bluet) + accent flowers
+        ("allium", 0.08), ("dandelion", 0.06),
+        ("azure_bluet", 0.05), ("oxeye_daisy", 0.05),
+        ("cornflower", 0.04),
     ],
+    # S60: bump base palette ~5x to counter the 0.05 eco_density_mod multiplier
+    # that was suppressing ground cover to near-zero. Still very rare in-world
+    # after the multiplier.
     "SAND_DUNE_DESERT": [
-        ("dead_bush", 0.03), ("short_dry_grass", 0.02), ("cactus", 0.005),
+        ("dead_bush", 0.15), ("short_dry_grass", 0.10), ("cactus", 0.02),
     ],
+    # S60: add bush infrequent, up short_dry_grass density per user (matches
+    # scrubby pattern).
     "DESERT_STEPPE_TRANSITION": [
-        ("short_dry_grass", 0.12), ("tall_dry_grass", 0.05),
-        ("dead_bush", 0.05), ("short_grass", 0.04), ("bush", 0.03),
+        ("short_dry_grass", 0.35), ("tall_dry_grass", 0.10),
+        ("dead_bush", 0.08), ("short_grass", 0.06), ("bush", 0.04),
         ("cactus", 0.005),
     ],
     "SEMI_ARID_SHRUBLAND": [
         ("short_dry_grass", 0.15), ("tall_dry_grass", 0.05),
         ("dead_bush", 0.08), ("bush", 0.08), ("short_grass", 0.06),
         ("tall_grass", 0.01),
+        # S60 desert-bloom wildflowers (very rare)
+        ("dandelion", 0.008), ("poppy", 0.008),
     ],
+    # S60: add tall_dry_grass, up short_grass, bush more infrequent per user.
+    # Mediterranean-scrub flora — halved existing flowers per user's global rare-ify.
     "DRY_WOODLAND_MAQUIS": [
-        ("short_grass", 0.20), ("short_dry_grass", 0.14), ("bush", 0.12),
-        ("tall_grass", 0.01), ("leaf_litter", 0.06), ("dead_bush", 0.04),
-        ("allium", 0.03), ("poppy", 0.04), ("torchflower", 0.02),
+        ("short_grass", 0.40), ("short_dry_grass", 0.20), ("tall_dry_grass", 0.10),
+        ("bush", 0.06), ("tall_grass", 0.02), ("leaf_litter", 0.06),
+        ("dead_bush", 0.06),
+        ("allium", 0.015), ("poppy", 0.02), ("torchflower", 0.01),
+        ("oxeye_daisy", 0.008),
     ],
+    # S60: up all, add short_grass (was 0.02, now 0.12) + tall_dry_grass per user.
     "KARST_BARRENS": [
-        ("dead_bush", 0.04), ("short_dry_grass", 0.03), ("bush", 0.02),
-        ("short_grass", 0.02),
+        ("dead_bush", 0.08), ("short_dry_grass", 0.10), ("bush", 0.05),
+        ("short_grass", 0.12), ("tall_dry_grass", 0.05),
     ],
     # ── Wetland / Riparian ───────────────────────────────────────────────
+    # S60: removed duplicate bush entry. Otherwise unchanged per user.
     "RIPARIAN_WOODLAND": [
         ("short_grass", 0.30), ("tall_grass", 0.01), ("sugar_cane", 0.15),
         ("fern", 0.10), ("bush", 0.08), ("large_fern", 0.02),
         ("moss_carpet", 0.10), ("leaf_litter", 0.08),
-        ("blue_orchid", 0.04), ("bush", 0.03),
+        ("blue_orchid", 0.04),
     ],
+    # S60: lots of bush, up grass per user.
     "FRESHWATER_FEN": [
-        ("short_grass", 0.36), ("tall_grass", 0.01), ("sugar_cane", 0.20),
-        ("fern", 0.08), ("moss_carpet", 0.12), ("bush", 0.08),
+        ("short_grass", 0.55), ("tall_grass", 0.03), ("sugar_cane", 0.20),
+        ("fern", 0.12), ("moss_carpet", 0.15), ("bush", 0.22),
         ("blue_orchid", 0.05), ("lilac", 0.005),
     ],
     "MANGROVE_COAST": [
@@ -582,7 +641,9 @@ def _gen_layer_noise(noise_type: str, scale: float, seed: int,
     uses world-space coordinates for tile-seamless generation.
 
     Args:
-        noise_type: "simplex", "gaussian", "voronoi", or "mix"
+        noise_type: "simplex_fbm" (canonical), "simplex", "voronoi", "mix", or
+                    "white"/"per_pixel". "gaussian" is a back-compat alias for
+                    "simplex_fbm" — historical misnomer kept so old configs load.
         scale:      Spatial scale parameter (matches editor scale slider)
         seed:       Deterministic seed
         H, W:       Tile dimensions (typically 512×512)
@@ -601,13 +662,13 @@ def _gen_layer_noise(noise_type: str, scale: float, seed: int,
         rng = np.random.default_rng(_seed_hash)
         return rng.random((H, W)).astype(np.float32)
 
-    if noise_type == "simplex" or noise_type == "gaussian":
+    if noise_type in ("simplex_fbm", "simplex", "gaussian"):
         # Multi-octave fBm (fractional Brownian motion) for natural fractal
         # edges.  3 octaves with 0.5 persistence gives detail at the base
         # scale plus two finer layers that break up blob edges.
-        # NOTE: "gaussian" is misnamed here — it produces simplex fBm, NOT
-        # per-pixel gaussian.  For actual per-pixel (salt-and-pepper) noise
-        # use "white" or "per_pixel" instead.
+        # "simplex_fbm" is the canonical name; "simplex" and "gaussian" are
+        # back-compat aliases kept so old configs and GUI code still load.
+        # For actual per-pixel (salt-and-pepper) noise use "white"/"per_pixel".
         try:
             import opensimplex as ox
         except ImportError:
@@ -754,7 +815,7 @@ def _apply_noise_layers(
             if not layer.get("enabled", True) or layer.get("is_base"):
                 continue
 
-            noise_type = layer.get("noise", "gaussian")
+            noise_type = layer.get("noise", "simplex_fbm")
             scale      = layer.get("scale", 60)
             seed       = layer.get("seed", 42 + i)
             coverage   = layer.get("coverage", 0.5)
@@ -1155,25 +1216,50 @@ def decorate_surface(
             # grass/krummholz fingers extend well above the general
             # ── gap==6 (alpine_meadow) RETIRED S56 — Gaea slope mask replaces ──
 
-            # ── Rock (gap==5): surface block selection ─────────────────
-            # ── Rock (gap==5): exposed rock surface (S56) ─────────────────
-            # Gaea slope mask drives gap==5. Surface gets visible stone
-            # blocks directly — no cliff_deg subdivision (that causes
-            # banding). Noise scatter for visual variety only.
-            # Lithology-aware palette deferred — see plan Step 8 caveat.
+            # ── Rock (gap==5): surface block selection via lithology palette ──
+            # S60: route rock-gap surface through `config.lithology.groups[zone_to_group[biome]].palette`
+            # so surface block variety matches subsurface geology (chunk_writer
+            # _fill_geology_layers uses the same palettes). Previously hardcoded
+            # to stone/andesite/granite/diorite regardless of biome.
             rock_px = _gap == 5
             if rock_px.any():
                 _rng = np.random.default_rng(tile_x * 48271 ^ tile_y * 31337 ^ 0xB10C)
                 _scatter = _rng.random((H, W)).astype(np.float32)
 
-                # Base stone with noise-scattered variants
-                surface_blocks[rock_px] = "stone"
-                surface_blocks[rock_px & (_scatter >= 0.50) & (_scatter < 0.72)] = "andesite"
-                surface_blocks[rock_px & (_scatter >= 0.72) & (_scatter < 0.88)] = "granite"
-                surface_blocks[rock_px & (_scatter >= 0.88)] = "diorite"
-                subsurface_blocks[rock_px] = "stone"
+                _litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
+                _zone_to_group = _litho_cfg.get("zone_to_group", {})
+                _groups = _litho_cfg.get("groups", {})
+                _DEFAULT_PAL = ["stone", "andesite", "granite", "diorite"]
 
-                # Flow-driven wash channels (subtle sand in drainage paths)
+                def _palette_for(biome_name: str) -> list:
+                    g = _zone_to_group.get(biome_name)
+                    if g and g in _groups:
+                        p = _groups[g].get("palette")
+                        if p:
+                            return p
+                    return _DEFAULT_PAL
+
+                # Per-biome rock painting: iterate only over biomes present under rock_px.
+                _rock_biomes = np.unique(biome_grid[rock_px])
+                for _bname in _rock_biomes:
+                    _b_str = str(_bname)
+                    _bm = rock_px & (biome_grid == _bname)
+                    if not _bm.any():
+                        continue
+                    _pal = _palette_for(_b_str)
+                    _n = len(_pal)
+                    # Equal-weight scatter across palette blocks
+                    for _i, _blk in enumerate(_pal):
+                        _lo = _i / _n
+                        _hi = (_i + 1) / _n
+                        _band = _bm & (_scatter >= _lo) & (_scatter < _hi)
+                        if _band.any():
+                            surface_blocks[_band] = _blk
+                    # Subsurface: palette[0] (base stone of the group)
+                    subsurface_blocks[_bm] = _pal[0]
+
+                # Flow-driven wash channels (subtle sand in drainage paths) — global,
+                # independent of lithology (water erodes everything).
                 if flow_tile is not None:
                     _wash = rock_px & (flow_tile > 0.005)
                     if _wash.any():
@@ -1441,6 +1527,51 @@ def decorate_surface(
             use_new_geology=use_new_geology,
         )
 
+    # --- S60 high-elevation stone palette fade ------------------------------
+    # Ramp grass/dirt-family surface blocks toward each biome's lithology
+    # stone palette as `surface_y` climbs. Complements the gap==5 rock logic
+    # (which fires on slope) by handling the flat-but-high case — alpine
+    # plateaus shouldn't read as grass even if slope is modest. Also kills
+    # ground cover above the full-fade band so bare rock stays bare.
+    _FADE_Y_START = 230   # 0% fade below this
+    _FADE_Y_FULL  = 280   # 100% fade above this
+    _GRASS_FAMILY = frozenset({
+        "grass_block", "podzol", "coarse_dirt", "packed_mud",
+        "rooted_dirt", "moss_block", "dirt", "mycelium",
+    })
+    _above = surface_y >= _FADE_Y_START
+    if _above.any():
+        _fade_prob = np.clip(
+            (surface_y.astype(np.float32) - _FADE_Y_START) /
+            max(1.0, float(_FADE_Y_FULL - _FADE_Y_START)),
+            0.0, 1.0,
+        )
+        _rng_fade = np.random.default_rng(tile_x * 1234567 ^ tile_y * 8765432 ^ 0xFADE)
+        _coin_fade = _rng_fade.random((H, W)).astype(np.float32)
+        _scatter_pal = _rng_fade.random((H, W)).astype(np.float32)
+        _grass_mask = np.isin(surface_blocks, list(_GRASS_FAMILY))
+        _fade_mask = _above & _grass_mask & (_coin_fade < _fade_prob)
+        if _fade_mask.any():
+            _litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
+            _zone_to_group = _litho_cfg.get("zone_to_group", {})
+            _groups = _litho_cfg.get("groups", {})
+            _DEFAULT_STONE_PAL = ["stone", "andesite", "granite", "diorite"]
+            for _bname in np.unique(biome_grid[_fade_mask]):
+                _bm = _fade_mask & (biome_grid == _bname)
+                if not _bm.any():
+                    continue
+                _g = _zone_to_group.get(str(_bname))
+                _pal = (_groups.get(_g, {}).get("palette")
+                        if _g else None) or _DEFAULT_STONE_PAL
+                _n = len(_pal)
+                for _i, _blk in enumerate(_pal):
+                    _lo = _i / _n
+                    _hi = (_i + 1) / _n
+                    _band = _bm & (_scatter_pal >= _lo) & (_scatter_pal < _hi)
+                    if _band.any():
+                        surface_blocks[_band] = _blk
+                subsurface_blocks[_bm] = _pal[0]
+
     # --- Ground cover --------------------------------------------------------
     # NOTE: ground cover is applied here provisionally; if the surface pipeline
     # runs below (use_new_surface_pipeline), a post-pipeline gating pass will
@@ -1464,6 +1595,24 @@ def decorate_surface(
         tile_x, tile_y,
         gap_mask=_gap_for_ecotone,
     )
+
+    # S60: clear ground cover on bare rock. When the high-elevation height
+    # fade converts a grass/dirt surface to stone-family blocks, flowers and
+    # grass can't still sit on top. Also catches gap==5 rock pixels where
+    # ground cover leaked through.
+    _STONE_FAMILY = frozenset({
+        "stone", "andesite", "granite", "diorite", "cobblestone", "tuff",
+        "deepslate", "cobbled_deepslate", "calcite", "dripstone_block",
+        "basalt", "smooth_basalt", "blackstone", "coal_block",
+        "mossy_cobblestone", "dead_fire_coral_block", "dead_horn_coral_block",
+        "suspicious_gravel", "suspicious_sand", "polished_granite",
+        "polished_andesite", "polished_diorite", "smooth_stone",
+        "sandstone", "red_sandstone", "smooth_sandstone", "orange_terracotta",
+        "terracotta",
+    })
+    _on_stone = np.isin(surface_blocks, list(_STONE_FAMILY))
+    if _on_stone.any():
+        ground_cover[_on_stone] = ""
 
     # --- Clear floating vegetation near water --------------------------------
     # Ground_cover on river_meta > 0 pixels (bank/water) and adjacent pixels
@@ -2938,10 +3087,10 @@ if __name__ == "__main__":
              "scale": 60, "seed": 42, "is_base": True},
         ],
         "ARCTIC_TUNDRA": [
-            {"name": "snow_block", "noise": "gaussian", "enabled": True,
+            {"name": "snow_block", "noise": "simplex_fbm", "enabled": True,
              "block": "snow_block", "sub": "stone", "coverage": 1.0,
              "scale": 60, "seed": 42, "is_base": True},
-            {"name": "gravel", "noise": "gaussian", "enabled": True,
+            {"name": "gravel", "noise": "simplex_fbm", "enabled": True,
              "block": "gravel", "sub": "stone", "coverage": 0.20,
              "scale": 15, "seed": 243, "is_base": False},
         ],

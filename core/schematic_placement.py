@@ -60,7 +60,7 @@ SIZE_VARIATION: dict[str, tuple[int, list[float]]] = {
 # Biomes excluded from bush fallback (already injected at index build time,
 # but double-guard here)
 NO_BUSH_BIOMES: frozenset[str] = frozenset({
-    "ARCTIC_TUNDRA", "FROZEN_FLATS", "SAND_DUNE_DESERT",
+    "ARCTIC_TUNDRA", "FROZEN_FLATS",
 })
 
 # Sparse bush biomes — halve base density for bush entries
@@ -96,7 +96,7 @@ BASE_DENSITY: dict[str, float] = {
     "DRY_PINE_BARRENS":        0.14,
     "SCRUBBY_HEATHLAND":       0.06,
     "LUSH_RAINFOREST_COAST":   0.26,
-    "SAND_DUNE_DESERT":        0.01,
+    "SAND_DUNE_DESERT":        0.008,
     "DESERT_STEPPE_TRANSITION":0.03,
     "SEMI_ARID_SHRUBLAND":     0.05,
     "DRY_WOODLAND_MAQUIS":     0.10,
@@ -147,7 +147,7 @@ class _SchematicEntry:
 # ---------------------------------------------------------------------------
 
 _INDEX_KEY_MAP: dict[str, str] = {
-    "alpine":   "SNOWY_BOREAL_TAIGA",  # ALPINE_MEADOW retired S56
+    "alpine":   "SNOWY_BOREAL_TAIGA",  # ALPINE_MEADOW retired S56; S60: BOREAL_ALPINE mirrors SBT via post-load step below
     "birch":    "BIRCH_FOREST",
     "btaiga":   "BOREAL_TAIGA",
     "cheath":   "COASTAL_HEATH",
@@ -243,6 +243,22 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
                         method=e.method, weight=e.weight, anchor_review=False,
                         species=e.species,
                     ))
+
+    # S60: BOREAL_ALPINE (zone 40, introduced S58) mirrors SNOWY_BOREAL_TAIGA's
+    # full entry set — per-user rule "should match SBT entirely". This covers
+    # the high-alpine tier where the schematic_index has no dedicated tree
+    # entries; alpine pixels get the same coniferous species as SBT.
+    if "SNOWY_BOREAL_TAIGA" in grouped:
+        grouped["BOREAL_ALPINE"] = [
+            _SchematicEntry(
+                path=e.path, biome="BOREAL_ALPINE", size=e.size,
+                schem_type=e.schem_type, anchor_y=e.anchor_y,
+                inset_depth=e.inset_depth, lowest_leaf_y=e.lowest_leaf_y,
+                method=e.method, weight=e.weight, anchor_review=False,
+                species=e.species,
+            )
+            for e in grouped["SNOWY_BOREAL_TAIGA"]
+        ]
 
     return grouped
 
@@ -748,6 +764,35 @@ def place_schematics(
 
             # Compute placement Y at jittered position
             sy         = int(surface_y[jittered_row, jittered_col])
+
+            # S60 ground-touch validation: the schematic's center column must
+            # rest on the ground, not the (0,0) corner of the bbox. When
+            # schematic bbox footprint is wider than the sample pixel and
+            # terrain is sloped, the sample pixel can be at a very different
+            # sy than the CENTER of the schematic. Re-align to center sy.
+            _SIZE_CENTER_OFF = {"sm": 2, "md": 3, "lg": 4}
+            _center_off = _SIZE_CENTER_OFF.get(entry.size, 3)
+            _center_r = max(0, min(H - 1, jittered_row + _center_off))
+            _center_c = max(0, min(W - 1, jittered_col + _center_off))
+            _sy_center = int(surface_y[_center_r, _center_c])
+            if abs(_sy_center - sy) > 1:
+                # Center terrain diverges from corner terrain. Use center sy
+                # as the alignment reference so the trunk sits on the ground.
+                sy = _sy_center
+
+            # S60 hard-reject: per-size footprint sy-range threshold. Larger
+            # schematics get tighter slope tolerance because their wider
+            # footprint is more likely to straddle terrain variation.
+            _fp_r0 = max(0, jittered_row - 1)
+            _fp_r1 = min(H, jittered_row + 2 * _center_off + 1)
+            _fp_c0 = max(0, jittered_col - 1)
+            _fp_c1 = min(W, jittered_col + 2 * _center_off + 1)
+            _fp = surface_y[_fp_r0:_fp_r1, _fp_c0:_fp_c1]
+            _MAX_FP_RANGE_BY_SIZE = {"sm": 4, "md": 3, "lg": 2}
+            _max_range = _MAX_FP_RANGE_BY_SIZE.get(entry.size, 3)
+            if int(_fp.max() - _fp.min()) > _max_range:
+                continue  # terrain too steep under footprint — skip placement
+
             base_y     = sy - entry.anchor_y - entry.inset_depth
             extra      = _compute_extra_inset(
                 entry.size, entry.method, base_y,

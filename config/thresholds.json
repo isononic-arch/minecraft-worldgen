@@ -272,7 +272,7 @@
       },
       {
         "name": "gravel (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "gravel",
         "sub": "stone",
@@ -283,7 +283,7 @@
       },
       {
         "name": "coarse_dirt (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "gravel",
@@ -294,7 +294,7 @@
       },
       {
         "name": "moss_block (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "moss_block",
         "sub": "dirt",
@@ -329,7 +329,7 @@
       },
       {
         "name": "gravel (erosion2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "gravel",
         "sub": "stone",
@@ -340,7 +340,7 @@
       },
       {
         "name": "packed_mud (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "packed_mud",
         "sub": "andesite",
@@ -353,7 +353,7 @@
     "BIRCH_FOREST": [
       {
         "name": "podzol (base)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "rooted_dirt",
@@ -421,7 +421,7 @@
     "BOREAL_TAIGA": [
       {
         "name": "podzol (base)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "rooted_dirt",
@@ -478,7 +478,7 @@
     "COASTAL_HEATH": [
       {
         "name": "grass_block",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -489,7 +489,7 @@
       },
       {
         "name": "coarse_dirt (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "gravel",
@@ -500,7 +500,7 @@
       },
       {
         "name": "gravel (erosion2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "gravel",
         "sub": "stone",
@@ -511,7 +511,7 @@
       },
       {
         "name": "podzol (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "coarse_dirt",
@@ -522,7 +522,7 @@
       },
       {
         "name": "sand (noise3)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "sand",
         "sub": "sandstone",
@@ -535,7 +535,7 @@
     "CONTINENTAL_STEPPE": [
       {
         "name": "grass_block",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -546,7 +546,7 @@
       },
       {
         "name": "coarse_dirt (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "stone",
@@ -557,7 +557,7 @@
       },
       {
         "name": "coarse_dirt (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "granite",
@@ -568,7 +568,7 @@
       },
       {
         "name": "coarse_dirt (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "dirt",
@@ -581,7 +581,7 @@
     "DESERT_STEPPE_TRANSITION": [
       {
         "name": "coarse_dirt",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "sandstone",
@@ -592,7 +592,7 @@
       },
       {
         "name": "sand (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "sand",
         "sub": "sandstone",
@@ -603,7 +603,7 @@
       },
       {
         "name": "red_sand (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "red_sand",
         "sub": "sandstone",
@@ -614,7 +614,7 @@
       },
       {
         "name": "grass_block (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -625,7 +625,7 @@
       },
       {
         "name": "New Layer",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "stone",
@@ -636,7 +636,7 @@
       },
       {
         "name": "New Layer",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "sand",
         "sub": "stone",
@@ -649,7 +649,7 @@
     "DRY_OAK_SAVANNA": [
       {
         "name": "coarse_dirt",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "terracotta",
@@ -660,7 +660,7 @@
       },
       {
         "name": "New Layer",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "stone",
@@ -671,7 +671,7 @@
       },
       {
         "name": "grass_block (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -684,7 +684,7 @@
     "DRY_PINE_BARRENS": [
       {
         "name": "coarse_dirt",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "sand",
@@ -695,7 +695,7 @@
       },
       {
         "name": "coarse_dirt (erosion2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "stone",
@@ -706,7 +706,7 @@
       },
       {
         "name": "sand (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "sand",
         "sub": "sandstone",
@@ -717,7 +717,7 @@
       },
       {
         "name": "New Layer",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "stone",
@@ -728,7 +728,7 @@
       },
       {
         "name": "podzol (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "coarse_dirt",
@@ -741,7 +741,7 @@
     "DRY_WOODLAND_MAQUIS": [
       {
         "name": "coarse_dirt",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "terracotta",
@@ -752,7 +752,7 @@
       },
       {
         "name": "New Layer",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "stone",
@@ -763,7 +763,7 @@
       },
       {
         "name": "grass_block (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -774,7 +774,7 @@
       },
       {
         "name": "terracotta (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "terracotta",
         "sub": "orange_terracotta",
@@ -785,7 +785,7 @@
       },
       {
         "name": "gravel (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "gravel",
         "sub": "stone",
@@ -796,7 +796,7 @@
       },
       {
         "name": "dripstone_block (noise3)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "dripstone_block",
         "sub": "stone",
@@ -809,7 +809,7 @@
     "EASTERN_TEMPERATE_COAST": [
       {
         "name": "grass_block",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -820,7 +820,7 @@
       },
       {
         "name": "sand (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "sand",
         "sub": "sandstone",
@@ -831,7 +831,7 @@
       },
       {
         "name": "gravel (erosion2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "gravel",
         "sub": "stone",
@@ -842,7 +842,7 @@
       },
       {
         "name": "clay (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "clay",
         "sub": "dirt",
@@ -853,7 +853,7 @@
       },
       {
         "name": "coarse_dirt (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "gravel",
@@ -864,7 +864,7 @@
       },
       {
         "name": "stone (noise3)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "andesite",
@@ -877,7 +877,7 @@
     "FRESHWATER_FEN": [
       {
         "name": "mud",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "mud",
         "sub": "mud",
@@ -888,7 +888,7 @@
       },
       {
         "name": "grass_block (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "mud",
@@ -899,7 +899,7 @@
       },
       {
         "name": "clay (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "clay",
         "sub": "mud",
@@ -910,7 +910,7 @@
       },
       {
         "name": "moss_block (moisture2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "moss_block",
         "sub": "mud",
@@ -921,7 +921,7 @@
       },
       {
         "name": "podzol (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "rooted_dirt",
@@ -932,7 +932,7 @@
       },
       {
         "name": "coarse_dirt (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "mud",
@@ -945,7 +945,7 @@
     "MANGROVE_COAST": [
       {
         "name": "mud",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "mud",
         "sub": "mud",
@@ -956,7 +956,7 @@
       },
       {
         "name": "clay (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "clay",
         "sub": "mud",
@@ -967,7 +967,7 @@
       },
       {
         "name": "mud (moisture2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "mud",
         "sub": "clay",
@@ -978,7 +978,7 @@
       },
       {
         "name": "moss_block (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "moss_block",
         "sub": "mud",
@@ -989,7 +989,7 @@
       },
       {
         "name": "rooted_dirt (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "rooted_dirt",
         "sub": "mud",
@@ -1000,7 +1000,7 @@
       },
       {
         "name": "sand (noise3)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "sand",
         "sub": "clay",
@@ -1013,7 +1013,7 @@
     "MIXED_FOREST": [
       {
         "name": "podzol (base)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "rooted_dirt",
@@ -1081,7 +1081,7 @@
     "RAINFOREST_COAST": [
       {
         "name": "moss_block",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "moss_block",
         "sub": "rooted_dirt",
@@ -1092,7 +1092,7 @@
       },
       {
         "name": "mud (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "mud",
         "sub": "mud",
@@ -1103,7 +1103,7 @@
       },
       {
         "name": "mud (moisture2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "mud",
         "sub": "clay",
@@ -1114,7 +1114,7 @@
       },
       {
         "name": "podzol (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "rooted_dirt",
@@ -1125,7 +1125,7 @@
       },
       {
         "name": "grass_block (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "rooted_dirt",
@@ -1136,7 +1136,7 @@
       },
       {
         "name": "mossy_cobblestone (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "stone",
@@ -1147,7 +1147,7 @@
       },
       {
         "name": "rooted_dirt (noise3)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "rooted_dirt",
         "sub": "dirt",
@@ -1160,7 +1160,7 @@
     "RIPARIAN_WOODLAND": [
       {
         "name": "coarse_dirt (base)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
@@ -1239,7 +1239,7 @@
     "SAND_DUNE_DESERT": [
       {
         "name": "sand",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "sand",
         "sub": "sand",
@@ -1250,7 +1250,7 @@
       },
       {
         "name": "sand (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "sand",
         "sub": "sandstone",
@@ -1261,7 +1261,7 @@
       },
       {
         "name": "red_sand (noise3)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "sandstone",
         "sub": "sandstone",
@@ -1274,7 +1274,7 @@
     "SCRUBBY_HEATHLAND": [
       {
         "name": "grass_block",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -1285,7 +1285,7 @@
       },
       {
         "name": "coarse_dirt (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "gravel",
@@ -1296,7 +1296,7 @@
       },
       {
         "name": "packed_mud (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "packed_mud",
         "sub": "andesite",
@@ -1307,7 +1307,7 @@
       },
       {
         "name": "sand (noise4)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "sand",
         "sub": "sandstone",
@@ -1318,7 +1318,7 @@
       },
       {
         "name": "podzol (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "coarse_dirt",
@@ -1329,7 +1329,7 @@
       },
       {
         "name": "gravel (erosion2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "stone",
@@ -1342,7 +1342,7 @@
     "SEMI_ARID_SHRUBLAND": [
       {
         "name": "coarse_dirt",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
@@ -1353,7 +1353,7 @@
       },
       {
         "name": "sand (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "sand",
         "sub": "sandstone",
@@ -1364,7 +1364,7 @@
       },
       {
         "name": "coarse_dirt (noise3)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "gravel",
@@ -1375,7 +1375,7 @@
       },
       {
         "name": "grass_block (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
@@ -1388,7 +1388,7 @@
     "SNOWY_BOREAL_TAIGA": [
       {
         "name": "snow_block",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "podzol",
@@ -1399,7 +1399,7 @@
       },
       {
         "name": "coarse_dirt (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "gravel",
@@ -1410,7 +1410,7 @@
       },
       {
         "name": "gravel (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "stone",
@@ -1421,7 +1421,7 @@
       },
       {
         "name": "podzol (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "coarse_dirt",
@@ -1432,7 +1432,7 @@
       },
       {
         "name": "snow_block (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "coarse_dirt",
@@ -1445,7 +1445,7 @@
     "TEMPERATE_DECIDUOUS": [
       {
         "name": "coarse_dirt (base)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
@@ -1524,7 +1524,7 @@
     "TEMPERATE_RAINFOREST": [
       {
         "name": "moss_block (base)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "moss_block",
         "sub": "rooted_dirt",
@@ -1603,7 +1603,7 @@
     "TIDAL_JUNGLE_FRINGE": [
       {
         "name": "mud",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "mud",
         "sub": "mud",
@@ -1614,7 +1614,7 @@
       },
       {
         "name": "moss_block (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "moss_block",
         "sub": "mud",
@@ -1625,7 +1625,7 @@
       },
       {
         "name": "clay (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "clay",
         "sub": "mud",
@@ -1636,7 +1636,7 @@
       },
       {
         "name": "mud (moisture2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "mud",
         "sub": "clay",
@@ -1647,7 +1647,7 @@
       },
       {
         "name": "podzol (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "rooted_dirt",
@@ -1658,7 +1658,7 @@
       },
       {
         "name": "coarse_dirt (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "mud",
@@ -1669,7 +1669,7 @@
       },
       {
         "name": "New Layer",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "stone",
@@ -1682,7 +1682,7 @@
     "FROZEN_FLATS": [
       {
         "name": "snow_block",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "snow_block",
         "sub": "stone",
@@ -1693,7 +1693,7 @@
       },
       {
         "name": "gravel (erosion2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "gravel",
         "sub": "stone",
@@ -1704,7 +1704,7 @@
       },
       {
         "name": "packed_mud (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "packed_mud",
         "sub": "stone",
@@ -1715,7 +1715,7 @@
       },
       {
         "name": "coarse_dirt (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
@@ -1726,7 +1726,7 @@
       },
       {
         "name": "snow_block (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "snow_block",
         "sub": "gravel",
@@ -1739,7 +1739,7 @@
     "KARST_BARRENS": [
       {
         "name": "stone",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "calcite",
         "sub": "stone",
@@ -1750,7 +1750,7 @@
       },
       {
         "name": "calcite (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "dripstone_block",
@@ -1761,7 +1761,7 @@
       },
       {
         "name": "coarse_dirt (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "stone",
@@ -1772,7 +1772,7 @@
       },
       {
         "name": "dripstone_block (noise3)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "dripstone_block",
         "sub": "stone",
@@ -1783,7 +1783,7 @@
       },
       {
         "name": "packed_mud (erosion2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "packed_mud",
         "sub": "calcite",
@@ -1794,7 +1794,7 @@
       },
       {
         "name": "calcite (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "stone",
@@ -1807,7 +1807,7 @@
     "LUSH_RAINFOREST_COAST": [
       {
         "name": "moss_block",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "moss_block",
         "sub": "rooted_dirt",
@@ -1818,7 +1818,7 @@
       },
       {
         "name": "mud (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "mud",
         "sub": "clay",
@@ -1829,7 +1829,7 @@
       },
       {
         "name": "podzol (moisture2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "rooted_dirt",
@@ -1840,7 +1840,7 @@
       },
       {
         "name": "grass_block (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "rooted_dirt",
@@ -1851,7 +1851,7 @@
       },
       {
         "name": "clay (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "clay",
         "sub": "mud",
@@ -1862,7 +1862,7 @@
       },
       {
         "name": "coarse_dirt (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "coarse_dirt",
@@ -1875,7 +1875,7 @@
     "BOREAL_ALPINE": [
       {
         "name": "snow_block",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "podzol",
@@ -1886,7 +1886,7 @@
       },
       {
         "name": "coarse_dirt (noise2)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "gravel",
@@ -1897,7 +1897,7 @@
       },
       {
         "name": "gravel (erosion)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "stone",
@@ -1908,7 +1908,7 @@
       },
       {
         "name": "podzol (noise)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
         "sub": "coarse_dirt",
@@ -1919,7 +1919,7 @@
       },
       {
         "name": "snow_block (moisture)",
-        "noise": "gaussian",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
         "sub": "coarse_dirt",
@@ -3306,75 +3306,58 @@
         "id": 1,
         "palette": [
           "granite",
-          "stone",
-          "andesite",
-          "diorite",
-          "granite",
-          "polished_granite"
+          "dripstone_block",
+          "packed_mud",
+          "rooted_dirt"
         ],
-        "description": "Intrusive igneous basement \u2014 default temperate highland."
+        "description": "Intrusive igneous basement \u2014 default temperate highland. S60 palette."
       },
-      "sedimentary": {
+      "arid_basaltic": {
         "id": 2,
-        "palette": [
-          "sandstone",
-          "smooth_sandstone",
-          "red_sandstone",
-          "sandstone",
-          "orange_terracotta",
-          "terracotta",
-          "smooth_sandstone",
-          "red_sandstone"
-        ],
-        "description": "Arid/semi-arid clastics \u2014 dune + steppe + karst margins."
-      },
-      "basaltic": {
-        "id": 3,
         "palette": [
           "basalt",
           "smooth_basalt",
-          "blackstone",
-          "basalt",
-          "tuff",
-          "smooth_basalt"
+          "cobbled_deepslate"
         ],
-        "description": "Extrusive mafic \u2014 coastal headlands, peaks."
+        "description": "Arid/semi-arid mafic \u2014 dune + steppe + karst margins. S60 renamed from 'sedimentary'."
+      },
+      "temperate_basaltic": {
+        "id": 3,
+        "palette": [
+          "blackstone",
+          "coal_block"
+        ],
+        "description": "Extrusive mafic \u2014 coastal headlands, peaks. S60 renamed from 'basaltic'."
       },
       "limestone": {
         "id": 4,
         "palette": [
-          "calcite",
-          "tuff",
-          "smooth_stone",
-          "calcite",
-          "diorite",
-          "tuff"
+          "sandstone",
+          "suspicious_sand"
         ],
-        "description": "Karst barrens + cave-prone carbonate."
+        "description": "Karst barrens + cave-prone carbonate. S60 palette."
       },
       "deepslate_metamorphic": {
         "id": 5,
         "palette": [
-          "deepslate",
           "tuff",
-          "stone",
-          "cobbled_deepslate",
+          "dead_fire_coral_block",
           "andesite",
-          "deepslate"
+          "stone",
+          "cobblestone",
+          "suspicious_gravel"
         ],
-        "description": "High-alpine / arctic basement."
+        "description": "High-alpine / arctic basement. S60 palette."
       },
       "mossy_temperate": {
         "id": 6,
         "palette": [
-          "mossy_cobblestone",
           "cobblestone",
-          "andesite",
-          "stone",
           "mossy_cobblestone",
-          "cobblestone"
+          "tuff",
+          "dead_horn_coral_block"
         ],
-        "description": "Wet temperate rainforest regolith."
+        "description": "Wet temperate rainforest regolith. S60 palette."
       }
     },
     "zone_to_group": {
@@ -3383,27 +3366,28 @@
       "BOREAL_TAIGA": "granitic",
       "SNOWY_BOREAL_TAIGA": "deepslate_metamorphic",
       "ALPINE_MEADOW": "deepslate_metamorphic",
+      "BOREAL_ALPINE": "deepslate_metamorphic",
       "ARCTIC_TUNDRA": "deepslate_metamorphic",
       "FROZEN_FLATS": "deepslate_metamorphic",
       "TEMPERATE_DECIDUOUS": "granitic",
       "RAINFOREST_COAST": "mossy_temperate",
-      "RIPARIAN_WOODLAND": "sedimentary",
-      "DRY_OAK_SAVANNA": "sedimentary",
+      "RIPARIAN_WOODLAND": "arid_basaltic",
+      "DRY_OAK_SAVANNA": "arid_basaltic",
       "KARST_BARRENS": "limestone",
       "BIRCH_FOREST": "granitic",
-      "EASTERN_TEMPERATE_COAST": "basaltic",
+      "EASTERN_TEMPERATE_COAST": "temperate_basaltic",
       "MIXED_FOREST": "granitic",
-      "CONTINENTAL_STEPPE": "sedimentary",
-      "DRY_PINE_BARRENS": "sedimentary",
-      "SCRUBBY_HEATHLAND": "sedimentary",
+      "CONTINENTAL_STEPPE": "arid_basaltic",
+      "DRY_PINE_BARRENS": "arid_basaltic",
+      "SCRUBBY_HEATHLAND": "arid_basaltic",
       "LUSH_RAINFOREST_COAST": "mossy_temperate",
-      "SAND_DUNE_DESERT": "sedimentary",
-      "DESERT_STEPPE_TRANSITION": "sedimentary",
-      "SEMI_ARID_SHRUBLAND": "sedimentary",
+      "SAND_DUNE_DESERT": "arid_basaltic",
+      "DESERT_STEPPE_TRANSITION": "arid_basaltic",
+      "SEMI_ARID_SHRUBLAND": "arid_basaltic",
       "DRY_WOODLAND_MAQUIS": "limestone",
-      "TIDAL_JUNGLE_FRINGE": "basaltic",
-      "MANGROVE_COAST": "sedimentary",
-      "FRESHWATER_FEN": "sedimentary"
+      "TIDAL_JUNGLE_FRINGE": "temperate_basaltic",
+      "MANGROVE_COAST": "arid_basaltic",
+      "FRESHWATER_FEN": "arid_basaltic"
     },
     "elevation_overrides": {
       "_comment": "Rules evaluated in order; first match wins. mc_y thresholds are post-spline.",
@@ -3465,6 +3449,29 @@
     "RIPARIAN_WOODLAND": {
       "y_top": 210,
       "fade_blocks": 25
+    },
+    "SAND_DUNE_DESERT": {
+      "y_top": 280,
+      "fade_blocks": 20
     }
+  },
+  "gaea_gaps": {
+    "_comment": "S60 query-time path. When use_query_time=true, rock_gap + snow_gap are sampled live from the 8k Gaea sources via Catmull-Rom at tile time instead of read from the 50k rock_gap.tif / snow_gap.tif. Drops ~4.6 GB of baked masks; threshold + dither become runtime knobs. See core/gaea_gap_sampler.py.",
+    "use_query_time": true,
+    "interpolation": "catmull_rom",
+    "dither": "none",
+    "slope_source_8k": "gaea_slope_8k.tif",
+    "dusting_source_8k": "gaea_dusting_8k.tif",
+    "slope_threshold": 52000.0,
+    "slope_dither_width": 40000.0,
+    "slope_dither": "blue_noise",
+    "dusting_threshold": 1500.0,
+    "dusting_dither_width": 800.0,
+    "dusting_dither": "none",
+    "dusting_threshold_noise_scale": 18.0,
+    "dusting_threshold_noise_amp": 350.0,
+    "dusting_threshold_noise_seed": 44,
+    "seed": 42,
+    "blue_noise_size": 512
   }
 }

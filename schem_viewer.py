@@ -12,7 +12,7 @@ Dependencies:
     py -m pip install PyQt6 PyOpenGL nbtlib Pillow
 """
 
-import sys, os, re, math, random, zipfile
+import sys, os, re, math, random, zipfile, json, tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -21,9 +21,12 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QLineEdit, QPushButton, QLabel, QFileDialog, QMessageBox,
     QStatusBar, QFrame, QSizePolicy, QToolBar, QComboBox,
+    QSlider, QSpinBox, QCheckBox,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor, QKeySequence, QShortcut
+
+SCHEMATIC_INDEX_PATH = Path(r"C:/Users/nicho/minecraft-worldgen/schematic_index.json")
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 from OpenGL.GL import *
 from OpenGL.GLU import *
@@ -890,6 +893,8 @@ class SchematicViewer(QOpenGLWidget):
         self._mouse_btn    = None
         self._tex_uploaded = False
         self.texture_mode  = True
+        self.anchor_y      = 0      # S60: ground plane Y within schematic space
+        self.show_ground   = True   # toggle the translucent ground quad
         self.setMinimumSize(400,400)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -900,6 +905,10 @@ class SchematicViewer(QOpenGLWidget):
         self.center = (w/2,h/2,l/2)
         self.zoom = max(w,h,l)*1.8
         self._tex_uploaded = False
+        self.update()
+
+    def set_anchor_y(self, y: int):
+        self.anchor_y = int(y)
         self.update()
 
     def initializeGL(self):
@@ -931,6 +940,8 @@ class SchematicViewer(QOpenGLWidget):
         gluLookAt(cx+ex,cy+ey,cz+ez, cx,cy,cz, 0,1,0)
 
         self._draw_grid(cx,cz)
+        if self.show_ground:
+            self._draw_ground_plane(cx, cz)
 
         use_tex = self.texture_mode and ATLAS.loaded
         glDisable(GL_TEXTURE_2D)
@@ -960,6 +971,31 @@ class SchematicViewer(QOpenGLWidget):
             glVertex3f(ox+i,0,oz); glVertex3f(ox+i,0,oz+size)
             glVertex3f(ox,0,oz+i); glVertex3f(ox+size,0,oz+i)
         glEnd()
+
+    def _draw_ground_plane(self, cx, cz):
+        """Translucent green quad at y=anchor_y representing the "ground" level
+        where the schematic will sit in-world. Drag anchor_y slider until the
+        trunk base / block base of interest meets this plane."""
+        glDisable(GL_TEXTURE_2D)
+        glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        size = max(30, int(self.zoom * 1.2))
+        ox, oz = int(cx) - size // 2, int(cz) - size // 2
+        y = self.anchor_y
+        glColor4f(0.35, 0.58, 0.32, 0.35)
+        glBegin(GL_QUADS)
+        glVertex3f(ox,       y, oz)
+        glVertex3f(ox + size, y, oz)
+        glVertex3f(ox + size, y, oz + size)
+        glVertex3f(ox,       y, oz + size)
+        glEnd()
+        glColor3f(0.45, 0.75, 0.40); glLineWidth(1.4)
+        glBegin(GL_LINE_LOOP)
+        glVertex3f(ox,       y, oz)
+        glVertex3f(ox + size, y, oz)
+        glVertex3f(ox + size, y, oz + size)
+        glVertex3f(ox,       y, oz + size)
+        glEnd()
+        glDisable(GL_BLEND)
 
     def keyPressEvent(self,e):
         if e.key()==Qt.Key.Key_T:
@@ -1096,9 +1132,36 @@ class MainWindow(QMainWindow):
         btn_r=QPushButton("Apply  ↵"); btn_r.setFixedWidth(90); btn_r.clicked.connect(self._do_rename); row.addWidget(btn_r)
         dlay.addLayout(row)
         self._lbl_info=QLabel(""); self._lbl_info.setObjectName("muted"); dlay.addWidget(self._lbl_info)
+
+        # S60: anchor_y editor row — slider + spinbox + save & approve
+        anchor_row = QHBoxLayout(); anchor_row.setSpacing(6)
+        lbl_a = QLabel("Ground Y:"); lbl_a.setFixedWidth(60); anchor_row.addWidget(lbl_a)
+        self._anchor_slider = QSlider(Qt.Orientation.Horizontal)
+        self._anchor_slider.setRange(-20, 40)
+        self._anchor_slider.setValue(0)
+        self._anchor_slider.valueChanged.connect(self._on_anchor_changed)
+        anchor_row.addWidget(self._anchor_slider, 1)
+        self._anchor_spin = QSpinBox()
+        self._anchor_spin.setRange(-20, 40); self._anchor_spin.setValue(0)
+        self._anchor_spin.setFixedWidth(64)
+        self._anchor_spin.valueChanged.connect(self._on_anchor_spin)
+        anchor_row.addWidget(self._anchor_spin)
+        self._ground_chk = QCheckBox("Show ground"); self._ground_chk.setChecked(True)
+        self._ground_chk.stateChanged.connect(self._on_ground_toggle)
+        anchor_row.addWidget(self._ground_chk)
+        self._btn_save = QPushButton("Save && Approve")
+        self._btn_save.setFixedWidth(140)
+        self._btn_save.clicked.connect(self._save_anchor)
+        anchor_row.addWidget(self._btn_save)
+        dlay.addLayout(anchor_row)
+        self._lbl_anchor_info = QLabel("(no schematic selected)")
+        self._lbl_anchor_info.setObjectName("muted")
+        dlay.addWidget(self._lbl_anchor_info)
+
         rlay.addWidget(detail); splitter.addWidget(right); splitter.setSizes([320,960])
         self._status=QStatusBar(); self.setStatusBar(self._status)
         self._status.showMessage("Open a directory to begin.")
+        self._schem_index = self._load_schem_index()
 
     def _build_shortcuts(self):
         QShortcut(QKeySequence("Return"), self, self._do_rename)
@@ -1120,15 +1183,43 @@ class MainWindow(QMainWindow):
         p=Path(path); exts={".schem",".litematic",".nbt",".schematic"}
         files=[f for f in p.rglob("*") if f.suffix.lower() in exts]
         if not files: files=[f for f in p.glob("*") if f.suffix.lower() in exts]
+        # S60: filter to only schematics referenced in schematic_index.json, so
+        # users can't accidentally open huge un-indexed files ("all trees package"
+        # crash). Fallback: if no index or no matches, show everything.
+        allowed = self._indexed_filenames()
+        if allowed:
+            indexed = [f for f in files if f.name.lower() in allowed]
+            skipped = len(files) - len(indexed)
+            if indexed:
+                files = indexed
+                self._status.showMessage(
+                    f"Showing {len(files)} indexed / {len(files)+skipped} on-disk  (skipped {skipped} un-indexed)"
+                )
         files=sorted(files, key=lambda f: f.name.lower())
         self.items=[SchematicItem(f) for f in files]
         if not files:
             all_f=list(p.rglob("*")); sample=[f.name for f in all_f[:6]]
             self._status.showMessage(f"No schematic files found. Found {len(all_f)} total: {sample}")
         else:
-            self._status.showMessage(f"Loaded {len(self.items)} files from {path}")
+            if not allowed:
+                self._status.showMessage(f"Loaded {len(self.items)} files (schematic_index.json not loaded; showing all)")
         self.setWindowTitle(f"Vandir — {p.name}  ({len(self.items)} files)")
         self._apply_filter()
+
+    def _indexed_filenames(self) -> set:
+        """Return the set of lowercased filenames referenced in schematic_index.json.
+        Used to filter `_load_directory` to the indexed subset only."""
+        if not getattr(self, "_schem_index", None):
+            return set()
+        names = set()
+        for biome, entries in self._schem_index.items():
+            if not isinstance(entries, list):
+                continue
+            for e in entries:
+                p = e.get("path", "")
+                if p:
+                    names.add(Path(p).name.lower())
+        return names
 
     def _apply_filter(self):
         text=self._search.text().lower(); tf=self._filter_type.currentIndex()
@@ -1158,6 +1249,28 @@ class MainWindow(QMainWindow):
         info=f"{w}W × {h}H × {l}L  |  {n:,} visible blocks"
         if err: info+=f"  ⚠ {err}"
         self._lbl_info.setText(info); self._status.showMessage(f"Loaded {item.path.name}  —  {info}")
+        # S60: load anchor_y from schematic_index for this file
+        matches = self._find_index_entries(item.path)
+        if matches:
+            # Use the first entry's anchor_y (all matches for the same path
+            # should have identical anchor_y). Block signals to avoid feedback.
+            a_y = int(matches[0][1].get("anchor_y", 0))
+            reviewed = any(m[1].get("anchor_review", False) for m in matches)
+            self._anchor_slider.blockSignals(True); self._anchor_spin.blockSignals(True)
+            self._anchor_slider.setValue(a_y); self._anchor_spin.setValue(a_y)
+            self._anchor_slider.blockSignals(False); self._anchor_spin.blockSignals(False)
+            self._viewer.set_anchor_y(a_y)
+            biomes = sorted({b for b, _ in matches})
+            review_str = "  ⚠ anchor_review=true" if reviewed else ""
+            self._lbl_anchor_info.setText(
+                f"{len(matches)} index entry/entries  biomes: {', '.join(biomes)}{review_str}"
+            )
+        else:
+            self._lbl_anchor_info.setText("(no schematic_index entry for this file)")
+            self._anchor_slider.blockSignals(True); self._anchor_spin.blockSignals(True)
+            self._anchor_slider.setValue(0); self._anchor_spin.setValue(0)
+            self._anchor_slider.blockSignals(False); self._anchor_spin.blockSignals(False)
+            self._viewer.set_anchor_y(0)
 
     def _do_rename(self):
         if self.current is None: return
@@ -1178,6 +1291,103 @@ class MainWindow(QMainWindow):
         row=self._list.currentRow()
         if row<self._list.count()-1: self._list.setCurrentRow(row+1)
         self._rename_edit.selectAll(); self._rename_edit.setFocus()
+
+    # ── S60: anchor_y editor (ground plane + save & approve) ──────────────
+
+    def _load_schem_index(self):
+        """Load schematic_index.json into memory. Called once at startup."""
+        try:
+            with open(SCHEMATIC_INDEX_PATH, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            self._status.showMessage(f"schematic_index.json load failed: {e}")
+            return {}
+
+    def _find_index_entries(self, path: Path) -> list:
+        """Return list of (biome_key, entry_dict) matching `path` by absolute
+        filesystem path (case-insensitive) or by filename stem fallback."""
+        if not self._schem_index:
+            return []
+        target_abs = str(path.resolve()).lower()
+        target_name = path.name.lower()
+        matches = []
+        for biome, entries in self._schem_index.items():
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                p = entry.get("path", "")
+                if not p:
+                    continue
+                if p.lower() == target_abs or Path(p).name.lower() == target_name:
+                    matches.append((biome, entry))
+        return matches
+
+    def _on_anchor_changed(self, val: int):
+        self._anchor_spin.blockSignals(True)
+        self._anchor_spin.setValue(val)
+        self._anchor_spin.blockSignals(False)
+        self._viewer.set_anchor_y(val)
+
+    def _on_anchor_spin(self, val: int):
+        self._anchor_slider.blockSignals(True)
+        self._anchor_slider.setValue(val)
+        self._anchor_slider.blockSignals(False)
+        self._viewer.set_anchor_y(val)
+
+    def _on_ground_toggle(self, state: int):
+        self._viewer.show_ground = (state == Qt.CheckState.Checked.value)
+        self._viewer.update()
+
+    def _save_anchor(self):
+        """Write current slider value as anchor_y into all matching index
+        entries, flip anchor_review=false, then atomically save the JSON."""
+        if self.current is None:
+            QMessageBox.warning(self, "No schematic", "Select a schematic first.")
+            return
+        if not self._schem_index:
+            QMessageBox.warning(self, "No index", "schematic_index.json not loaded.")
+            return
+        matches = self._find_index_entries(self.current.path)
+        if not matches:
+            QMessageBox.warning(
+                self, "No index entry",
+                f"No schematic_index.json entry matches {self.current.path.name}.\n"
+                "Cannot save anchor_y.",
+            )
+            return
+        new_y = int(self._anchor_spin.value())
+        for biome, entry in matches:
+            entry["anchor_y"] = new_y
+            entry["anchor_review"] = False
+        try:
+            self._atomic_save_index()
+        except Exception as e:
+            QMessageBox.critical(self, "Save failed", f"Could not write schematic_index.json:\n{e}")
+            return
+        self._status.showMessage(
+            f"Saved anchor_y={new_y} to {len(matches)} entry/entries for {self.current.path.name}"
+        )
+        biomes = sorted({b for b, _ in matches})
+        self._lbl_anchor_info.setText(
+            f"Saved: anchor_y={new_y} across biomes {', '.join(biomes)} (anchor_review=false)"
+        )
+
+    def _atomic_save_index(self):
+        """Write schematic_index.json via temp+rename to avoid partial writes."""
+        target = SCHEMATIC_INDEX_PATH
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            prefix="schem_index_", suffix=".json", dir=str(target.parent),
+        )
+        os.close(tmp_fd)
+        tmp = Path(tmp_path)
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(self._schem_index, f, indent=2, ensure_ascii=False)
+            os.replace(tmp, target)
+        except Exception:
+            try: tmp.unlink()
+            except Exception: pass
+            raise
 
 
 def main():

@@ -708,9 +708,11 @@ def build_column_array(
                         vol[yi, r, c] = WATER_IDX
 
     # ── Floating vegetation cleanup ──────────────────────────────────────
-    # Remove any grass-type ground_cover block (at sy+1) that has a water
-    # source block directly below it (at sy).  Exempts lily_pad.
-    # This catches grass/fern/flowers on bank pixels adjacent to water.
+    # Remove any grass-type ground_cover block (at sy+1) that does NOT have a
+    # solid support block directly below it. Cases:
+    #   (1) block at sy is water → river-bank floater (pre-S60 check)
+    #   (2) block at sy is air   → carved terrain / schematic gap (S60 add)
+    # Exempts lily_pad implicitly (not in the veg set).
     AIR_IDX = pal.air
     _VEGETATION_BLOCKS = frozenset({
         "short_grass", "tall_grass", "tall_grass[half=lower]",
@@ -729,8 +731,9 @@ def build_column_array(
                 continue
             blk_at_cover = vol[cov_yi, r, c]
             if blk_at_cover in veg_indices:
-                # Check if the block AT surface_y (below the plant) is water
-                if vol[sy_i, r, c] == WATER_IDX:
+                # S60: check both water AND air below — either is a floater.
+                below_idx = vol[sy_i, r, c]
+                if below_idx == WATER_IDX or below_idx == AIR_IDX:
                     vol[cov_yi, r, c] = AIR_IDX
                     # Also clear upper half if double-tall
                     if cov_yi + 1 < Y_RANGE and vol[cov_yi + 1, r, c] in veg_indices:
@@ -832,14 +835,17 @@ def stamp_schematic(
                             blk_arr[blk_arr == ub] = rotated
         sh, sl, sw = blk_arr.shape   # height, length (Z), width (X)
 
-        # Use the PLACEMENT CENTER's surface_y as underground reference,
-        # not each block's individual position.  On sloped terrain, edge
-        # pixels have higher surface_y which culls low leaves on small trees.
-        ref_surf = None
+        # S60: per-column surface_y lookup for the underground-cull decision.
+        # Previously used PLACEMENT CENTER's sy for every block in the bbox,
+        # which on sloped terrain allowed leaves to stamp at Y below the
+        # actual local ground ("trees stuck in ground" uphill-side symptom).
+        # Now each (tile_x, tile_z) column uses its OWN sy as the cutoff.
+        # Falls back to placement center sy if surface_y is None.
+        ref_surf_center = None
         if surface_y is not None:
             rz = min(max(local_z, 0), tile_H - 1)
             rx = min(max(local_x, 0), tile_W - 1)
-            ref_surf = int(surface_y[rz, rx])
+            ref_surf_center = int(surface_y[rz, rx])
 
         for sy in range(sh):
             world_y = place_y + sy
@@ -858,9 +864,14 @@ def stamp_schematic(
                     if "air" in block_name:
                         continue
                     bare = block_name.replace("minecraft:", "")
-                    # Prevent leaves/fences/decorative from going underground
-                    # Uses placement center's surface as reference (not per-pixel)
-                    if ref_surf is not None and world_y <= ref_surf:
+                    # S60: per-column sy cull for non-log blocks. On slopes,
+                    # local_surf can be higher than placement center → leaves
+                    # that would have stamped underground get skipped here.
+                    if surface_y is not None:
+                        _local_surf = int(surface_y[tile_z, tile_x])
+                    else:
+                        _local_surf = ref_surf_center
+                    if _local_surf is not None and world_y <= _local_surf:
                         if "log" not in bare and "wood" not in bare:
                             continue
                     # Don't overwrite existing schematic blocks
@@ -1063,9 +1074,14 @@ def _chunk_to_nbt_bytes(
             sec_blk[by_lo:by_hi, lz_lo:lz_hi, lx_lo:lx_hi] = \
                 chunk_vol[yi_lo:yi_hi, lz_lo:lz_hi, lx_lo:lx_hi]
 
-        if np.all(sec_blk == "air"):
-            continue   # omit fully-air sections to save file space
-
+        # S60: emit ALL sections, including fully-air ones. The biome_q4 tag
+        # (desert/taiga/etc.) applies vertically through the entire column so
+        # MC shows the correct biome label when the player flies above terrain.
+        # REQUIRES the `vandir_height.zip` datapack (min_y=-64, height=512) in
+        # the target world's `datapacks/` folder. Without the datapack MC uses
+        # vanilla 1.21.10 height=384 (24 sections) and emitting 32 sections
+        # triggers `ArrayIndexOutOfBoundsException: Index 24 out of bounds for
+        # length 24` at chunk load.
         sections.append(nbtlib.Compound({
             "Y":            nbtlib.Byte(sec_y),
             "block_states": _build_block_states_nbt(sec_blk),

@@ -46,6 +46,97 @@ _INTERP_TO_ORDER = {
     "lanczos": 5,
 }
 
+# Interpolation names that bypass scipy.ndimage.zoom and use custom kernels.
+# Sentinel value (not a scipy order). See `_catmull_rom_zoom_2d` below.
+_CUSTOM_INTERP = {"catmull_rom"}
+
+
+def _catmull_rom_at_1d(src: np.ndarray, coords: np.ndarray, axis: int) -> np.ndarray:
+    """Sample `src` along `axis` at explicit float positions `coords` (source-
+    index space, can be fractional) via Catmull-Rom. Edge-replicate boundary.
+    Returns float32. Used by the query-time gap sampler to sample the 8k Gaea
+    source at non-integer positions derived from a tile's world coords."""
+    N = src.shape[axis]
+    coords = np.asarray(coords, dtype=np.float32)
+    i = np.floor(coords).astype(np.int64)
+    f = (coords - i).astype(np.float32)
+    i_m1 = np.clip(i - 1, 0, N - 1)
+    i_0  = np.clip(i,     0, N - 1)
+    i_1  = np.clip(i + 1, 0, N - 1)
+    i_2  = np.clip(i + 2, 0, N - 1)
+    f2 = f * f
+    f3 = f2 * f
+    w_m1 = 0.5 * (-f + 2.0 * f2 - f3)
+    w_0  = 0.5 * (2.0 - 5.0 * f2 + 3.0 * f3)
+    w_1  = 0.5 * (f + 4.0 * f2 - 3.0 * f3)
+    w_2  = 0.5 * (-f2 + f3)
+    v_m1 = np.take(src, i_m1, axis=axis)
+    v_0  = np.take(src, i_0,  axis=axis)
+    v_1  = np.take(src, i_1,  axis=axis)
+    v_2  = np.take(src, i_2,  axis=axis)
+    shape = [1] * src.ndim
+    shape[axis] = len(coords)
+    w_m1 = w_m1.reshape(shape); w_0 = w_0.reshape(shape)
+    w_1  = w_1.reshape(shape);  w_2 = w_2.reshape(shape)
+    return (w_m1 * v_m1 + w_0 * v_0 + w_1 * v_1 + w_2 * v_2).astype(np.float32, copy=False)
+
+
+def _catmull_rom_1d(src: np.ndarray, out_len: int, axis: int) -> np.ndarray:
+    """Catmull-Rom (Keys a=-0.5) upsample of `src` along `axis` to `out_len`
+    samples. Interpolating cubic — passes through source values at grid nodes,
+    preserves sharp features better than B-spline but can slightly overshoot
+    near binary edges. Edge-replicate boundary (clamp). Returns float32."""
+    in_len = src.shape[axis]
+    if out_len == in_len:
+        return src.astype(np.float32, copy=False)
+    # Target sample positions in source-index space, aligned so the two
+    # grids share the same span endpoints.
+    t = np.arange(out_len, dtype=np.float32) * (in_len - 1) / max(out_len - 1, 1)
+    i = np.floor(t).astype(np.int64)
+    f = (t - i).astype(np.float32)
+    # 4-neighbor indices, clamped to [0, in_len-1]
+    i_m1 = np.clip(i - 1, 0, in_len - 1)
+    i_0  = np.clip(i,     0, in_len - 1)
+    i_1  = np.clip(i + 1, 0, in_len - 1)
+    i_2  = np.clip(i + 2, 0, in_len - 1)
+    # Catmull-Rom weights: P(f) = 0.5 * sum(w_k * P_k)
+    f2 = f * f
+    f3 = f2 * f
+    w_m1 = 0.5 * (-f + 2.0 * f2 - f3)
+    w_0  = 0.5 * (2.0 - 5.0 * f2 + 3.0 * f3)
+    w_1  = 0.5 * (f + 4.0 * f2 - 3.0 * f3)
+    w_2  = 0.5 * (-f2 + f3)
+    # Gather sampled rows/cols
+    v_m1 = np.take(src, i_m1, axis=axis)
+    v_0  = np.take(src, i_0,  axis=axis)
+    v_1  = np.take(src, i_1,  axis=axis)
+    v_2  = np.take(src, i_2,  axis=axis)
+    # Broadcast weights along the sampled axis
+    shape = [1] * src.ndim
+    shape[axis] = out_len
+    w_m1 = w_m1.reshape(shape); w_0 = w_0.reshape(shape)
+    w_1  = w_1.reshape(shape);  w_2 = w_2.reshape(shape)
+    return (w_m1 * v_m1 + w_0 * v_0 + w_1 * v_1 + w_2 * v_2).astype(np.float32, copy=False)
+
+
+def _catmull_rom_zoom_2d(src: np.ndarray, out_h: int, out_w: int) -> np.ndarray:
+    """2D Catmull-Rom upsample via separable 1D passes (X then Y). Returns
+    float32. Memory footprint: `(in_h, out_w)` intermediate + `(out_h, out_w)` output."""
+    stage_x = _catmull_rom_1d(src, out_w, axis=1)
+    stage_y = _catmull_rom_1d(stage_x, out_h, axis=0)
+    return stage_y
+
+
+def _zoom_or_custom(chunk: np.ndarray, scale: float, interpolation: str,
+                    out_h: int, out_w: int) -> np.ndarray:
+    """Dispatcher: Catmull-Rom goes through the custom kernel; everything else
+    uses scipy.ndimage.zoom with the B-spline order from _INTERP_TO_ORDER."""
+    if interpolation == "catmull_rom":
+        return _catmull_rom_zoom_2d(chunk, out_h, out_w)
+    order = _INTERP_TO_ORDER[interpolation]
+    return zoom(chunk, (scale, scale), order=order, mode="reflect",
+                prefilter=(order > 1))
+
 
 @lru_cache(maxsize=4)
 def make_blue_noise_tile(size: int = 512, seed: int = 42, iterations: int = 6) -> np.ndarray:
@@ -115,9 +206,10 @@ def upscale_continuous_then_threshold_dither(
     """
     if src.ndim != 2 or src.shape[0] != src.shape[1]:
         raise ValueError(f"src must be square 2D; got shape {src.shape}")
-    if interpolation not in _INTERP_TO_ORDER:
+    valid = set(_INTERP_TO_ORDER) | _CUSTOM_INTERP
+    if interpolation not in valid:
         raise ValueError(
-            f"interpolation={interpolation!r} not in {list(_INTERP_TO_ORDER)}"
+            f"interpolation={interpolation!r} not in {sorted(valid)}"
         )
 
     out_path = Path(out_path)
@@ -125,7 +217,7 @@ def upscale_continuous_then_threshold_dither(
 
     src_size = src.shape[0]
     scale = target_size / src_size
-    order = _INTERP_TO_ORDER[interpolation]
+    order = _INTERP_TO_ORDER.get(interpolation, 3)  # padding uses order=3 ≥ Catmull-Rom's 4-tap radius
     pad_src = max(order + 1, 4)  # source-row padding to avoid edge artifacts per chunk
 
     bn = make_blue_noise_tile(blue_noise_size, seed=seed)
@@ -161,9 +253,12 @@ def upscale_continuous_then_threshold_dither(
 
             chunk_src = src[y_src_start_i:y_src_end_i].astype(np.float32, copy=False)
 
-            # Zoom the padded chunk at (scale, scale). Output height includes the
-            # padding contribution; we slice it out below.
-            zoomed = zoom(chunk_src, (scale, scale), order=order, mode="reflect", prefilter=(order > 1))
+            # Zoom the padded chunk. Dispatch on interpolation: scipy zoom for
+            # B-spline orders, custom Catmull-Rom kernel otherwise.
+            chunk_h = chunk_src.shape[0]
+            out_chunk_h = max(1, int(round(chunk_h * scale)))
+            zoomed = _zoom_or_custom(chunk_src, scale, interpolation,
+                                     out_h=out_chunk_h, out_w=target_size)
 
             # Row offset inside the zoomed chunk that corresponds to global y_dst.
             local_y_off = int(round(y_dst - y_src_start_i * scale))
@@ -214,15 +309,16 @@ def upscale_continuous(
     """
     if src.ndim != 2 or src.shape[0] != src.shape[1]:
         raise ValueError(f"src must be square 2D; got shape {src.shape}")
-    if interpolation not in _INTERP_TO_ORDER:
-        raise ValueError(f"interpolation={interpolation!r} not in {list(_INTERP_TO_ORDER)}")
+    valid = set(_INTERP_TO_ORDER) | _CUSTOM_INTERP
+    if interpolation not in valid:
+        raise ValueError(f"interpolation={interpolation!r} not in {sorted(valid)}")
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     src_size = src.shape[0]
     scale = target_size / src_size
-    order = _INTERP_TO_ORDER[interpolation]
+    order = _INTERP_TO_ORDER.get(interpolation, 3)
     pad_src = max(order + 1, 4)
 
     np_dtype = np.dtype(dtype)
@@ -251,7 +347,10 @@ def upscale_continuous(
             y_src_end_i = min(src_size, int(np.ceil(y_src_end_f)) + pad_src)
 
             chunk_src = src[y_src_start_i:y_src_end_i].astype(np.float32, copy=False)
-            zoomed = zoom(chunk_src, (scale, scale), order=order, mode="reflect", prefilter=(order > 1))
+            chunk_h = chunk_src.shape[0]
+            out_chunk_h = max(1, int(round(chunk_h * scale)))
+            zoomed = _zoom_or_custom(chunk_src, scale, interpolation,
+                                     out_h=out_chunk_h, out_w=target_size)
 
             local_y_off = int(round(y_dst - y_src_start_i * scale))
             local_y_off = max(0, min(local_y_off, zoomed.shape[0] - rows))
