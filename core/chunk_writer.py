@@ -761,12 +761,11 @@ def stamp_schematic(
       - SchemData dataclass (blocks = (Y,Z,X) ndarray of block name strings)
       - Legacy dict with blocks = list of (sx, sy, sz, color, block_name, props)
     Skips air blocks. Clips to tile bounds silently.
-    Prevents leaf/fence/decorative blocks from being placed at or below surface_y.
-    Log blocks CAN go below surface (roots/trunk base).
+    S61: each column is per-placement gated (desink + float-kill). Blocks at
+    world_y <= local_surf are skipped (no buried trunks/roots). Columns whose
+    lowest post-desink schem block has a ≥2-block gap to ground are rejected
+    entirely (no floating leaves).
     """
-    # Blocks that must never be underground
-    _ABOVE_GROUND_ONLY = {"leaves", "fence", "sapling", "vine", "carpet",
-                           "lantern", "slab"}
     # Caches for overwrite check (reset per call)
     _OVERWRITABLE_CACHE: set[int] = set()
     _PROTECTED_CACHE: set[int] = set()
@@ -835,17 +834,142 @@ def stamp_schematic(
                             blk_arr[blk_arr == ub] = rotated
         sh, sl, sw = blk_arr.shape   # height, length (Z), width (X)
 
-        # S60: per-column surface_y lookup for the underground-cull decision.
-        # Previously used PLACEMENT CENTER's sy for every block in the bbox,
-        # which on sloped terrain allowed leaves to stamp at Y below the
-        # actual local ground ("trees stuck in ground" uphill-side symptom).
-        # Now each (tile_x, tile_z) column uses its OWN sy as the cutoff.
-        # Falls back to placement center sy if surface_y is None.
-        ref_surf_center = None
+        # ── S61-f5: TRUNK EXTENSION anchor + bush sink fallback ────────────
+        # Before rejecting a floating placement, try to ANCHOR it by extending
+        # its trunk log downward to ground+1. A pine floating 3 blocks gets 2-3
+        # extra spruce_log blocks beneath until it touches the ground.
+        #
+        # Strategy split:
+        #   A. Placements WITH trunk columns (≥3 consecutive logs in a column):
+        #      - No sink adjustment. Stamp at authored place_y.
+        #      - Desink hides below-ground logs.
+        #      - Post-stamp extension pass fills trunk-column gaps from
+        #        local_surf+1 up to the lowest VISIBLE log, using the schem's
+        #        primary log type.
+        #      - Reject only if worst-trunk gap > MAX_TRUNK_EXT (6 blocks) —
+        #        longer extensions read as "telephone pole" and break immersion.
+        #   B. Placements WITHOUT trunks (bushes, log-less decorations):
+        #      - Keep the f4 sink strategy: compute max gap over ground cols
+        #        (lowest_sy ≤ 2); reject if > 3, else sink by (max_gap - 1).
+        #      - No extension (nothing to fill with).
+        #
+        # Desink (skip world_y ≤ local_surf) applies in both branches — ground
+        # stays intact, no buried trunks.
+        #
+        # Falls back to no-op when surface_y is None (smoke tests etc.).
+        GROUND_COL_Y         = 2   # lowest_sy ≤ this → column is a "ground col"
+        PLACE_MAX_FLOAT_BUSH = 3   # bush: max gap before reject
+        TRUNK_RUN_MIN        = 2   # ≥N consecutive logs in a column = trunk
+        TRUNK_FIRST_MAX_Y    = 3   # lowest log sy must be ≤ this (else it's a branch)
+        MAX_TRUNK_EXT        = 6   # max blocks the extension will fill
         if surface_y is not None:
-            rz = min(max(local_z, 0), tile_H - 1)
-            rx = min(max(local_x, 0), tile_W - 1)
-            ref_surf_center = int(surface_y[rz, rx])
+            col_reject = np.zeros((sl, sw), dtype=bool)
+            col_desink = np.full((sl, sw), -(1 << 30), dtype=np.int64)
+            # Precompute non-air + log masks in one pass via unique (much
+            # cheaper than str() per cell).
+            non_air = np.ones(blk_arr.shape, dtype=bool)
+            is_log  = np.zeros(blk_arr.shape, dtype=bool)
+            # Count logs by BARE name (no blockstate) so axis=x/y/z variants
+            # of the same species aggregate → primary picks correct species.
+            log_bare_counts: dict = {}
+            for _u in np.unique(blk_arr):
+                su = str(_u)
+                if "air" in su:
+                    non_air[blk_arr == _u] = False
+                    continue
+                if "log" in su or "wood" in su:
+                    is_log[blk_arr == _u] = True
+                    bare = su.replace("minecraft:", "").split("[")[0]
+                    log_bare_counts[bare] = (
+                        log_bare_counts.get(bare, 0) + int((blk_arr == _u).sum())
+                    )
+            any_col           = non_air.any(axis=0)    # (sl, sw) bool
+            lowest_sy_col     = non_air.argmax(axis=0) # (sl, sw) int
+            log_any_col       = is_log.any(axis=0)
+            lowest_log_sy_col = is_log.argmax(axis=0)
+            # Identify trunk columns: lowest log near ground (sy ≤ TRUNK_FIRST_MAX_Y)
+            # AND ≥TRUNK_RUN_MIN consecutive logs from that position. The
+            # first-log guard excludes horizontal branches (which can have 2-3
+            # consecutive logs at an elevated Y but aren't trunk candidates).
+            is_trunk_col = np.zeros((sl, sw), dtype=bool)
+            for _sz in range(sl):
+                for _sx in range(sw):
+                    if not log_any_col[_sz, _sx]:
+                        continue
+                    first = int(lowest_log_sy_col[_sz, _sx])
+                    if first > TRUNK_FIRST_MAX_Y:
+                        continue  # logs start too high — branch, not trunk
+                    run = 0
+                    for _sy in range(first, sh):
+                        if is_log[_sy, _sz, _sx]:
+                            run += 1
+                        else:
+                            break
+                    if run >= TRUNK_RUN_MIN:
+                        is_trunk_col[_sz, _sx] = True
+            has_trunks = bool(is_trunk_col.any())
+            # Bbox out-of-tile reject + desink cutoff per column
+            for _sz in range(sl):
+                tz = local_z + _sz
+                if not (0 <= tz < tile_H):
+                    col_reject[_sz, :] = True
+                    continue
+                for _sx in range(sw):
+                    tx = local_x + _sx
+                    if not (0 <= tx < tile_W):
+                        col_reject[_sz, _sx] = True
+                        continue
+                    col_desink[_sz, _sx] = int(surface_y[tz, tx])
+            if has_trunks:
+                # Strategy A — trunk extension. Compute worst trunk gap.
+                max_trunk_gap = 0
+                for _sz in range(sl):
+                    for _sx in range(sw):
+                        if not is_trunk_col[_sz, _sx] or col_reject[_sz, _sx]:
+                            continue
+                        ls = int(col_desink[_sz, _sx])
+                        log_wy = place_y + int(lowest_log_sy_col[_sz, _sx])
+                        gap = log_wy - ls
+                        if gap > max_trunk_gap:
+                            max_trunk_gap = gap
+                if max_trunk_gap > MAX_TRUNK_EXT:
+                    return  # too far to extend cleanly — reject
+                # Pick primary log type for canopy-only-column fallback.
+                # Bare name (no axis) → MC defaults to axis=y (vertical).
+                if log_bare_counts:
+                    primary_log_bare = max(log_bare_counts, key=log_bare_counts.get)
+                    primary_log_idx = pal.idx(primary_log_bare)
+                else:
+                    primary_log_idx = None
+            else:
+                # Strategy B — bush sink. Same as S61-f4.
+                max_gap = 0
+                any_ground_col = False
+                for _sz in range(sl):
+                    for _sx in range(sw):
+                        if col_reject[_sz, _sx] or not any_col[_sz, _sx]:
+                            continue
+                        lsy = int(lowest_sy_col[_sz, _sx])
+                        if lsy > GROUND_COL_Y:
+                            continue
+                        ls = int(col_desink[_sz, _sx])
+                        gap = (place_y + lsy) - ls
+                        any_ground_col = True
+                        if gap > max_gap:
+                            max_gap = gap
+                if any_ground_col and max_gap > PLACE_MAX_FLOAT_BUSH:
+                    return
+                if max_gap > 1:
+                    place_y -= (max_gap - 1)
+                primary_log_idx = None
+        else:
+            col_reject = None
+            col_desink = None
+            has_trunks = False
+            is_trunk_col = None
+            is_log = None
+            non_air = None
+            primary_log_idx = None
 
         for sy in range(sh):
             world_y = place_y + sy
@@ -860,20 +984,16 @@ def stamp_schematic(
                     tile_x = local_x + sx
                     if tile_x < 0 or tile_x >= tile_W:
                         continue
+                    # S61 column-level gates
+                    if col_reject is not None:
+                        if col_reject[sz, sx]:
+                            continue
+                        if world_y <= col_desink[sz, sx]:
+                            continue
                     block_name = str(blk_arr[sy, sz, sx])
                     if "air" in block_name:
                         continue
                     bare = block_name.replace("minecraft:", "")
-                    # S60: per-column sy cull for non-log blocks. On slopes,
-                    # local_surf can be higher than placement center → leaves
-                    # that would have stamped underground get skipped here.
-                    if surface_y is not None:
-                        _local_surf = int(surface_y[tile_z, tile_x])
-                    else:
-                        _local_surf = ref_surf_center
-                    if _local_surf is not None and world_y <= _local_surf:
-                        if "log" not in bare and "wood" not in bare:
-                            continue
                     # Don't overwrite existing schematic blocks
                     existing_idx = vol[yi, tile_z, tile_x]
                     if existing_idx not in _OVERWRITABLE_CACHE:
@@ -887,6 +1007,79 @@ def stamp_schematic(
                     if existing_idx in _PROTECTED_CACHE:
                         continue
                     vol[yi, tile_z, tile_x] = pal.idx(bare)
+
+        # ── S61-f6: TRUNK EXTENSION pass (post-stamp, per-column log type) ──
+        # For each trunk column, fill any gap between local_surf+1 and the
+        # lowest VISIBLE schem log. Each column uses ITS OWN lowest-visible log
+        # type (stripped of axis/state props → defaults to axis=y = vertical).
+        # Multi-thick trunks with same wood extend consistently; mixed-bark
+        # trunks (e.g. branch log different from trunk log) extend with the
+        # column-local wood.
+        #
+        # Fallback: if the entire trunk column got desinked (all logs sunk
+        # below local_surf), extend up to the lowest visible canopy content
+        # anyway — prevents a floating leaf mass with no supporting trunk
+        # beneath it on steep uphill columns. Fallback uses primary_log_idx
+        # (the most-common log bare name across the placement).
+        if (surface_y is not None and has_trunks
+                and primary_log_idx is not None and non_air is not None):
+            AIR_IDX_EXT = pal.air
+            _col_log_idx_cache: dict = {}
+            for _sz in range(sl):
+                if not is_trunk_col[_sz].any():
+                    continue
+                tile_z = local_z + _sz
+                if not (0 <= tile_z < tile_H):
+                    continue
+                for _sx in range(sw):
+                    if not is_trunk_col[_sz, _sx] or col_reject[_sz, _sx]:
+                        continue
+                    tile_x = local_x + _sx
+                    if not (0 <= tile_x < tile_W):
+                        continue
+                    ls = int(col_desink[_sz, _sx])
+                    # Lowest VISIBLE log sy (first log with world_y > ls)
+                    target_sy = -1
+                    fill_idx = None
+                    for _sy in range(sh):
+                        if not is_log[_sy, _sz, _sx]:
+                            continue
+                        if place_y + _sy > ls:
+                            target_sy = _sy
+                            # Per-column: take THIS column's log type, bare
+                            col_log_name = str(blk_arr[_sy, _sz, _sx])
+                            bare = col_log_name.replace("minecraft:", "").split("[")[0]
+                            fill_idx = _col_log_idx_cache.get(bare)
+                            if fill_idx is None:
+                                fill_idx = pal.idx(bare)
+                                _col_log_idx_cache[bare] = fill_idx
+                            break
+                    if target_sy < 0:
+                        # All logs in this column sunk → fall back to canopy
+                        # content target, primary log type for fill.
+                        fill_idx = primary_log_idx
+                        for _sy in range(sh):
+                            if not non_air[_sy, _sz, _sx]:
+                                continue
+                            if place_y + _sy > ls + 1:
+                                target_sy = _sy
+                                break
+                    if target_sy < 0 or fill_idx is None:
+                        continue
+                    target_wy = place_y + target_sy
+                    if target_wy <= ls + 1:
+                        continue  # already touching — no extension needed
+                    ext_span = target_wy - (ls + 1)
+                    if ext_span > MAX_TRUNK_EXT:
+                        continue  # safety cap (already checked per-column
+                                  # gap, but this guards canopy-fallback too)
+                    # Fill from ls+1 up to target_wy-1 with per-column log.
+                    for fill_wy in range(ls + 1, target_wy):
+                        yi = fill_wy - Y_MIN
+                        if not (0 <= yi < Y_RANGE):
+                            continue
+                        if vol[yi, tile_z, tile_x] == AIR_IDX_EXT:
+                            vol[yi, tile_z, tile_x] = fill_idx
 
 
 # ---------------------------------------------------------------------------

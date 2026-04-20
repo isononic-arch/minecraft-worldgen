@@ -356,27 +356,27 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
         ("fern", 0.50), ("large_fern", 0.20), ("leaf_litter", 0.35),
         ("moss_carpet", 0.25), ("pale_moss_carpet", 0.10), ("bush", 0.20),
         ("sweet_berry_bush", 0.01), ("short_grass", 0.30),
-        ("dead_bush", 0.03),
+        ("dead_bush", 0.005),
         # S60 flowers (very rare)
         ("lily_of_the_valley", 0.005), ("oxeye_daisy", 0.005),
     ],
     "SNOWY_BOREAL_TAIGA": [
         ("fern", 0.10), ("leaf_litter", 0.08), ("bush", 0.12),
-        ("short_grass", 0.18), ("short_dry_grass", 0.08),
-        ("tall_dry_grass", 0.04), ("dead_bush", 0.05),
+        ("short_grass", 0.20), ("short_dry_grass", 0.08),
+        ("tall_dry_grass", 0.07), ("dead_bush", 0.01),
     ],
     "BOREAL_ALPINE": [
         ("fern", 0.20), ("leaf_litter", 0.16), ("bush", 0.20),
-        ("short_grass", 0.16), ("dead_bush", 0.12),
+        ("short_grass", 0.22), ("dead_bush", 0.02),
         # S60 dry grass for alpine wind-pruned look
-        ("short_dry_grass", 0.08), ("tall_dry_grass", 0.04),
+        ("short_dry_grass", 0.08), ("tall_dry_grass", 0.10),
         # S60 alpine wildflowers — rare accent
         ("poppy", 0.01), ("allium", 0.01),
         ("cornflower", 0.008), ("oxeye_daisy", 0.008),
     ],
     # "ALPINE_MEADOW" retired S56
     "ARCTIC_TUNDRA": [
-        ("dead_bush", 0.05), ("short_dry_grass", 0.04), ("short_grass", 0.02),
+        ("dead_bush", 0.01), ("short_dry_grass", 0.06), ("short_grass", 0.04),
     ],
     "FROZEN_FLATS": [],
     # ── Temperate Forests ────────────────────────────────────────────────
@@ -412,16 +412,16 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # ── Coastal / Heath ──────────────────────────────────────────────────
     # S60: up short_grass density, bush rare per user + rare coastal meadow flowers.
     "COASTAL_HEATH": [
-        ("short_grass", 0.45), ("short_dry_grass", 0.12), ("tall_grass", 0.02),
-        ("bush", 0.04), ("dead_bush", 0.05), ("cornflower", 0.01),
+        ("short_grass", 0.48), ("short_dry_grass", 0.14), ("tall_grass", 0.02),
+        ("bush", 0.04), ("dead_bush", 0.01), ("cornflower", 0.01),
         ("allium", 0.01), ("oxeye_daisy", 0.01), ("dandelion", 0.008),
     ],
     # S60: coastline-vibe (Cape Cod / Outer Banks dune-barrens), heavy flowers.
     # Ammophila beach grass dominant, bayberry/beach plum bush, salt-marsh
     # flower accents.
     "EASTERN_TEMPERATE_COAST": [
-        ("short_dry_grass", 0.50), ("short_grass", 0.15), ("tall_grass", 0.04),
-        ("tall_dry_grass", 0.05), ("bush", 0.12), ("dead_bush", 0.08),
+        ("short_dry_grass", 0.52), ("short_grass", 0.18), ("tall_grass", 0.04),
+        ("tall_dry_grass", 0.10), ("bush", 0.12), ("dead_bush", 0.01),
         # S60 coastline wildflowers — heavy density for "wow" factor
         ("azure_bluet", 0.05), ("dandelion", 0.04),
         ("allium", 0.04), ("cornflower", 0.03), ("oxeye_daisy", 0.03),
@@ -443,30 +443,30 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # ── Dry / Arid ───────────────────────────────────────────────────────
     # S60: up density of all + very rare prairie wildflowers per user.
     "DRY_OAK_SAVANNA": [
-        ("short_dry_grass", 0.50), ("tall_dry_grass", 0.30),
-        ("short_grass", 0.18), ("bush", 0.10), ("dead_bush", 0.08),
+        ("short_dry_grass", 0.52), ("tall_dry_grass", 0.34),
+        ("short_grass", 0.22), ("bush", 0.10), ("dead_bush", 0.02),
         # S60 oak-savanna wildflowers (very rare)
         ("dandelion", 0.01), ("oxeye_daisy", 0.01), ("poppy", 0.008),
     ],
     # S60: way more short_grass + tall_dry_grass (single-block) + very rare steppe flowers.
     "CONTINENTAL_STEPPE": [
-        ("short_grass", 0.70), ("tall_grass", 0.02), ("tall_dry_grass", 0.15),
+        ("short_grass", 0.72), ("tall_grass", 0.02), ("tall_dry_grass", 0.17),
         ("short_dry_grass", 0.20), ("bush", 0.08), ("sunflower", 0.01),
-        ("dead_bush", 0.04), ("cornflower", 0.015),
+        ("dead_bush", 0.01), ("cornflower", 0.015),
         # S60 prairie wildflowers (very rare)
         ("dandelion", 0.012), ("poppy", 0.01), ("oxeye_daisy", 0.01),
     ],
     # S60: remove resin_clump, add tall_dry_grass, up all per user.
     "DRY_PINE_BARRENS": [
-        ("short_dry_grass", 0.30), ("tall_dry_grass", 0.08),
-        ("leaf_litter", 0.18), ("dead_bush", 0.12),
-        ("short_grass", 0.15), ("bush", 0.10), ("fern", 0.08),
+        ("short_dry_grass", 0.34), ("tall_dry_grass", 0.14),
+        ("leaf_litter", 0.18), ("dead_bush", 0.02),
+        ("short_grass", 0.18), ("bush", 0.10), ("fern", 0.08),
     ],
     # S60: "wow damn there's flowers everywhere" heathland — heather-style
     # purple + gorse-style yellow + bilberry white.
     "SCRUBBY_HEATHLAND": [
-        ("short_grass", 0.55), ("short_dry_grass", 0.20), ("bush", 0.15),
-        ("tall_grass", 0.02), ("dead_bush", 0.08),
+        ("short_grass", 0.60), ("short_dry_grass", 0.22), ("bush", 0.15),
+        ("tall_grass", 0.02), ("dead_bush", 0.01),
         # S60 heathland superbloom — heather-purple (allium) + gorse-yellow
         # (dandelion) + bilberry-white (azure_bluet) + accent flowers
         ("allium", 0.08), ("dandelion", 0.06),
@@ -475,20 +475,21 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     ],
     # S60: bump base palette ~5x to counter the 0.05 eco_density_mod multiplier
     # that was suppressing ground cover to near-zero. Still very rare in-world
-    # after the multiplier.
+    # after the multiplier. S61: dead_bush rare-ified, grass shifted up.
     "SAND_DUNE_DESERT": [
-        ("dead_bush", 0.15), ("short_dry_grass", 0.10), ("cactus", 0.02),
+        ("dead_bush", 0.03), ("short_dry_grass", 0.18),
+        ("tall_dry_grass", 0.06), ("cactus", 0.02),
     ],
     # S60: add bush infrequent, up short_dry_grass density per user (matches
     # scrubby pattern).
     "DESERT_STEPPE_TRANSITION": [
-        ("short_dry_grass", 0.35), ("tall_dry_grass", 0.10),
-        ("dead_bush", 0.08), ("short_grass", 0.06), ("bush", 0.04),
+        ("short_dry_grass", 0.38), ("tall_dry_grass", 0.13),
+        ("dead_bush", 0.02), ("short_grass", 0.08), ("bush", 0.04),
         ("cactus", 0.005),
     ],
     "SEMI_ARID_SHRUBLAND": [
-        ("short_dry_grass", 0.15), ("tall_dry_grass", 0.05),
-        ("dead_bush", 0.08), ("bush", 0.08), ("short_grass", 0.06),
+        ("short_dry_grass", 0.17), ("tall_dry_grass", 0.09),
+        ("dead_bush", 0.02), ("bush", 0.08), ("short_grass", 0.09),
         ("tall_grass", 0.01),
         # S60 desert-bloom wildflowers (very rare)
         ("dandelion", 0.008), ("poppy", 0.008),
@@ -496,16 +497,16 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # S60: add tall_dry_grass, up short_grass, bush more infrequent per user.
     # Mediterranean-scrub flora — halved existing flowers per user's global rare-ify.
     "DRY_WOODLAND_MAQUIS": [
-        ("short_grass", 0.40), ("short_dry_grass", 0.20), ("tall_dry_grass", 0.10),
+        ("short_grass", 0.43), ("short_dry_grass", 0.22), ("tall_dry_grass", 0.13),
         ("bush", 0.06), ("tall_grass", 0.02), ("leaf_litter", 0.06),
-        ("dead_bush", 0.06),
+        ("dead_bush", 0.01),
         ("allium", 0.015), ("poppy", 0.02), ("torchflower", 0.01),
         ("oxeye_daisy", 0.008),
     ],
     # S60: up all, add short_grass (was 0.02, now 0.12) + tall_dry_grass per user.
     "KARST_BARRENS": [
-        ("dead_bush", 0.08), ("short_dry_grass", 0.10), ("bush", 0.05),
-        ("short_grass", 0.12), ("tall_dry_grass", 0.05),
+        ("dead_bush", 0.02), ("short_dry_grass", 0.12), ("bush", 0.05),
+        ("short_grass", 0.16), ("tall_dry_grass", 0.10),
     ],
     # ── Wetland / Riparian ───────────────────────────────────────────────
     # S60: removed duplicate bush entry. Otherwise unchanged per user.
@@ -3024,10 +3025,11 @@ if __name__ == "__main__":
     invalid     = [b for b in np.unique(bank_surf) if b not in valid_bank]
     assert not invalid, f"unexpected bank surface blocks: {invalid}"
 
-    # Ground cover on sand dune (non-river) should only be dead_bush or empty
+    # Ground cover on sand dune (non-river) should only be dry-desert flora
     dune_mask  = (biome_grid == "SAND_DUNE_DESERT") & (river_meta == 0)
     dune_cover = np.unique(cover[dune_mask])
-    bad_cover  = [c for c in dune_cover if c not in ("", "dead_bush")]
+    valid_dune = {"", "dead_bush", "short_dry_grass", "tall_dry_grass", "cactus"}
+    bad_cover  = [c for c in dune_cover if c not in valid_dune]
     assert not bad_cover, f"unexpected dune ground cover: {bad_cover}"
 
     print(f"  [legacy] surface blocks : {sorted(set(surf.flat))[:10]} ...")

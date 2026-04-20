@@ -765,20 +765,12 @@ def place_schematics(
             # Compute placement Y at jittered position
             sy         = int(surface_y[jittered_row, jittered_col])
 
-            # S60 ground-touch validation: the schematic's center column must
-            # rest on the ground, not the (0,0) corner of the bbox. When
-            # schematic bbox footprint is wider than the sample pixel and
-            # terrain is sloped, the sample pixel can be at a very different
-            # sy than the CENTER of the schematic. Re-align to center sy.
+            # Footprint range for per-size slope reject. _center_off is the
+            # approximate trunk offset from the (0,0) corner (half of the
+            # schematic's XZ extent for the size tier). Kept here as a
+            # footprint sampling span; sy anchoring stays at sample pixel.
             _SIZE_CENTER_OFF = {"sm": 2, "md": 3, "lg": 4}
             _center_off = _SIZE_CENTER_OFF.get(entry.size, 3)
-            _center_r = max(0, min(H - 1, jittered_row + _center_off))
-            _center_c = max(0, min(W - 1, jittered_col + _center_off))
-            _sy_center = int(surface_y[_center_r, _center_c])
-            if abs(_sy_center - sy) > 1:
-                # Center terrain diverges from corner terrain. Use center sy
-                # as the alignment reference so the trunk sits on the ground.
-                sy = _sy_center
 
             # S60 hard-reject: per-size footprint sy-range threshold. Larger
             # schematics get tighter slope tolerance because their wider
