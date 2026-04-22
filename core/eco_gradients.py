@@ -491,12 +491,16 @@ def compute_eco_gradients(
         water_mask_re = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
         _sy_f = sy  # float32 surface_y, already computed above
 
-        # ── Rock gap with height fade + slope floor ──
+        # ── Rock gap — slope-only gate (S64: Y-fade removed per user) ──
+        # ROCK_Y_FLOOR/CEIL constants retained above for reference but unused.
+        # Gaea's slope mask boundary dither provides the organic edges.
         ROCK_SLOPE_FLOOR = 18.0  # degrees — no rock below this slope
         if rock_gap is not None:
             _rg = rock_gap > 0.001  # uint8 {0,1} normalized to {0, 1/255}
             _steep_enough = cliff_deg >= ROCK_SLOPE_FLOOR
-            _rock_height_prob = np.clip((_sy_f - ROCK_Y_FLOOR) / (ROCK_Y_CEIL - ROCK_Y_FLOOR), 0.0, 1.0)
+            # S64: removed height fade — use unconditional prob=1.  Coin kept for
+            # future re-enable but currently never suppresses.
+            _rock_height_prob = np.ones_like(_sy_f, dtype=np.float32)
             _rock_rng = np.random.default_rng(tile_x * 91837 ^ tile_z * 47521)
             _rock_coin = _rock_rng.random((H, W)).astype(np.float32)
             rock_avail = land_mask & ~water_mask_re & (gap_mask == 0)

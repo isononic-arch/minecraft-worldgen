@@ -2348,3 +2348,138 @@ cliff_deg = core_eco.compute_cliff_deg(surface_y)
 - RIPARIAN_WOODLAND (zone 80) + FRESHWATER_FEN (zone 240) have schematic entries but zero world pixels — wasted routing.
 - The "biome seamline on the rock mask in the mountains" user observation — not a mask bug; cliff-stone palette transition at biome boundaries. `_BIOME_CLIFF_STONE` (chunk_writer.py:95-129) has no BOREAL_ALPINE entry; falls through to default.
 - `gaussian → simplex_fbm` rename landed (112 occurrences in config/thresholds.json + dispatcher in core/surface_decorator.py + tools/world_studio.py); back-compat alias for old "gaussian" still works. NOISE_PATTERNS.md §6 entry (dither shape docs) still pending.
+
+### S61 — 2026-04-20: Schematic placement conform (trunk extension + bush sink) + dead_bush rare-ify
+
+**Phase state:** §11 phase track retired per S59; no phase numbering this session. Landed: schematic-placement conform for (25,80) floating issues. §11 currently at: retired. Next session: S62 biome fix + final biome check walk.
+
+**Context:** S60 carry-forward flagged "floating schematics WORSE after S60-f19/f20" with two hypotheses — trunk-column cull skipping trunk-base + per-size reject letting through corner-sampling misses. User-validated in-world review at start of session confirmed both.
+
+**Key landings:**
+
+**1. S61-f1: Revert S60-f9 center-sy re-align** (`core/schematic_placement.py:767-777`). Sample-pixel sy is the anchor again. The S60 center-alignment attempt was sampling the trunk center (`_SIZE_CENTER_OFF = {"sm": 2, "md": 3, "lg": 4}`) but this interacted badly with `_compute_extra_inset` which factors sy at the sample pixel — placement center was getting anchored one block off from where the inset was computed. Revert restores S58 behavior.
+
+**2. S61-f2: Normalize 20 `inset_depth=-1` entries in `schematic_index.json` to 0.** 6 btaiga (bspruce/tamarack) + 14 dpine (ppine/scotsp/pitchp). All had solid content at Y=0 floating 1 block above ground. Root cause: human-authored anchoring rounded to -1 when they meant "ground-level anchored with 0 underground inset."
+
+**3. S61-f3 → S61-f6: `stamp_schematic` rewrite** (`core/chunk_writer.py:836-1075`). Two-strategy placement-level conform:
+
+- **Tree strategy** (triggers when there are ≥2 consecutive log blocks in any column of the footprint, AND the lowest log sy in that column is ≤ 3): post-stamp trunk extension. For each trunk column independently, find its lowest-visible-log world-Y above the column's local surface, then fill logs downward from `lowest_log_wy - 1` to `local_surf_wy + 1` using THAT column's own log type (bare name, axis stripped → vertical axis). Multi-thick trunks (2×2, 3×3) each get their own log type filled. Fallback primary log type for canopy-only columns (when all logs in a column are sunk below the column's surface). Capped at `MAX_TRUNK_EXT=6`; beyond that, reject the placement entirely.
+- **Bush strategy** (no trunk columns in footprint): S61-f4 placement-level sink. Compute max gap over all ground-touching columns (lowest_sy ≤ 2 of the footprint column). Reject placement if max gap > 3 (too steep). Otherwise sink the entire schematic by `max_gap - 1`. No per-column shaving — avoids the "half-buried bush" issue from earlier S60 attempts.
+
+- **Desink (skip `world_y ≤ local_surf`)** applies in both strategies. No per-column shaving on logs. Logs are no longer exempt from desink — they're shaved and the trunk-extend pass re-fills.
+
+**4. S61-f7: `GROUND_COVER_PALETTES` dead_bush rare-ify** (`core/surface_decorator.py`). Across all 16 biomes that used `dead_bush`, max density is 0.03 now (was 0.15 in the high end). Density shifted to `short_grass` + `tall_dry_grass`. Per user direction: "dead bushes are extremely rare — 1-in-200 instead of 1-in-7." Smoke-test assertion on SAND_DUNE_DESERT ground cover widened to accept the new grass types.
+
+**Render history (iteration count: 6):**
+1. f3 per-column float-kill — shaved too aggressively, rejected by user.
+2. f4 placement-level sink — functional but sometimes stumpy (bushes over-sank on flat ground).
+3. f5 trunk extension (single log type) — looks good, but wrong log type on mixed-species schematics.
+4. f6 multi-thick trunk + per-column log type — good, shipped.
+5. f7 user-validated in-world. "Everything else looks great."
+6. Final commit `3e4cc92` pushed to master.
+
+**Files modified (S61):**
+- `core/schematic_placement.py` — revert f9, adjust sample-pixel anchor.
+- `core/chunk_writer.py` — two-strategy stamp conform (~240 line rewrite).
+- `core/surface_decorator.py` — dead_bush ground-cover rebalance.
+- `schematic_index.json` — 20 inset_depth -1 → 0 normalizations.
+
+**Known carry-forwards into S62:**
+- **BOREAL_ALPINE altitude snow bug** (user-flagged at session wrap, in-world). Current `BOREAL_ALPINE → minecraft:taiga` (temp 0.25) means MC precipitation turns to snow above Y~256 despite our coniferous-palette override. Priority P0 S62.
+- `_log` → `_wood` end-grain swap for exposed log cut-ends (user suggestion) — stretch.
+- `_BIOME_CLIFF_STONE` BOREAL_ALPINE entry missing — still outstanding.
+- NICK PRIORITY #1 biome validator walk — infra ready, walk not yet done.
+
+---
+
+### S62 — 2026-04-20: BOREAL_ALPINE altitude snow fix via per-section sky biome override
+
+**Phase state:** §11 retired. Landed: per-section biome emit with sky-biome override. §11 currently at: retired. Next session: biome validator walk (NICK PRIORITY #1).
+
+**Context:** S61 carry-forward. User flagged snow falling on BOREAL_ALPINE above Y~256. Per CLAUDE.md hard rule, MC biome temp < 0.5 produces precipitation snow at altitude regardless of our palette/lithology overrides. The fix is the MC biome ID only — surface blocks, schematics, lithology, ground cover all stay identical.
+
+**Options evaluated:**
+1. Wholesale swap to `minecraft:meadow` (temp 0.5, no snow) — trivial but loses the taiga dark-green grass tint everywhere.
+2. Custom biome datapack — perfect look, but requires server admin to install it; fails silently if missing. Rejected for server portability (map is destined for a Paper/Spigot server).
+3. **Dual-layer sky/ground biome** — ground cells below surface = `taiga` (correct tint), sky cells above surface = `plains` (no precipitation). MC queries biome at `MOTION_BLOCKING` heightmap = surface+1 for snow placement; if that cell is plains (temp 0.8), no snow accumulates. Works on vanilla + Paper without datapacks.
+
+**Critical caveat surfaced during design:** MC biomes are stored at 4×4×4 cell granularity (since 1.18). For a surface block at world Y=200, the grass block (Y=200) and the snow query point (Y=201) land in the SAME biome cell — cell.Y=50, covers Y=200..203 (since `y >> 2 = 50` for both). Whichever biome we paint this cell decides both grass tint AND precipitation. Dual-layer cleanly separates them only when `surface_Y % 4 == 3` (25% of Y alignments).
+
+**Rule chosen:** per-4×4-patch "cell above surface" = `cell.bottom_Y >= surface_Y_max_in_patch`. Using the **max** surface Y across the 4×4 patch is conservative — guarantees the snow query at surface+1 never lands in a ground cell. Trade-off: the cell containing the immediate surface is usually painted sky (plains tint), with taiga tint retained only for the 25% of surface Y values where surface_Y+1 crosses into the next 4-block cell. Net aesthetic: alpine-meadow-style bright-green grass with coniferous tree schematics and andesite/podzol palette — plausible tree-line biome look, zero snow.
+
+**Implementation:**
+
+**1. `BIOME_TO_MC_SKY` dict** added at [core/chunk_writer.py:78](core/chunk_writer.py:78). Maps `BOREAL_ALPINE → minecraft:plains`. Biomes not in this dict keep sky==ground (fast path, original S60 behavior). Extensible for future per-biome sky overrides.
+
+**2. `_chunk_to_nbt_bytes` refactored** ([core/chunk_writer.py:1220-1295](core/chunk_writer.py:1220)):
+- Signature change: `biome_mc` (pre-translated MC names) → `biome_grid` (Vandir names). MC translation happens per-chunk inside.
+- Build `ground_q` (4,4) and `sky_q` (4,4) MC biome grids per-chunk via `BIOME_TO_MC` and `BIOME_TO_MC_SKY` lookups.
+- Compute `surface_wy_q` (4,4) — max world-Y of the highest non-air block per 4×4 patch, derived from `chunk_vol` directly.
+- `sky_active = not np.array_equal(sky_q, ground_q)` — if no biome in this chunk has a sky override, take the uniform fast path (equivalent to pre-S62 behavior — no extra allocations).
+- Per-section: 4 vertical biome cells per chunk section. For each yy∈[0..3], `cell_bottom_wy = sec_y * 16 + yy * 4`. Paint sky where `cell_bottom_wy >= surface_wy_q`, else ground.
+
+**3. `write_tile_to_region`** ([core/chunk_writer.py:1355](core/chunk_writer.py:1355)): removed the pre-translation `biome_mc = np.vectorize(BIOME_TO_MC.get)(biome_grid)` — passes `biome_grid` straight to `_chunk_to_nbt_bytes`. Saves a tile-scale np.vectorize call.
+
+**Audit:** only BOREAL_ALPINE is affected. Checked all 26 Vandir biomes in `BIOME_TO_MC` against MC temperatures:
+- Snow-intentional: SNOWY_BOREAL_TAIGA (snowy_taiga -0.5), ARCTIC_TUNDRA (frozen_peaks -0.7), FROZEN_FLATS (snowy_plains 0.0) — leave as-is.
+- Previously-buggy: **BOREAL_ALPINE (taiga 0.25)** — fixed this session.
+- All other biomes map to MC biomes with temp ≥ 0.5 or `has_precipitation=false`.
+
+**Smoke tests:**
+1. `BIOME_TO_MC_SKY` dict present, `BOREAL_ALPINE` sky = `minecraft:plains`. OK.
+2. Synthetic BOREAL_ALPINE 16×16 chunk with surface at Y=200 → per-section palette dump confirms sections at Y≤191 uniform-taiga, section at Y=192..207 mixed [plains, taiga], sections at Y≥208 uniform-plains. Transition cell at Y=200..203 painted plains (snow query at Y=201 hits plains → no snow). OK.
+3. BOREAL_TAIGA (not in sky dict) → all 32 sections uniform old_growth_birch_forest. Fast path confirmed. OK.
+
+**Render:** (25,80) full pipeline in flight at the time of this writeup. In-world validation at Vandirtest10 spawn, TP `/tp @s 12544 250 41216`, walk up to Y 270+ and confirm no snow layers form. Result pending.
+
+**Files modified (S62):**
+- `core/chunk_writer.py` — BIOME_TO_MC_SKY dict, per-section biome emit, caller adjust.
+- `PHYSICAL_REALISM_REFACTOR.md` §18 — S61 + S62 entries (this writeup).
+- `CLAUDE.md` — Current-state line + DIRECTION backlog.
+
+**Known carry-forwards into S63:**
+- If in-world render shows snow still accumulating, pivot to wholesale `minecraft:dark_forest` swap for BOREAL_ALPINE (temp 0.7, dark-green grass, no snow — closest to taiga aesthetic of any warm MC biome).
+- NICK PRIORITY #1: per-biome schematic + vegetation walk.
+- `_log` → `_wood` end-grain swap — still stretch.
+- `_BIOME_CLIFF_STONE` BOREAL_ALPINE entry — still outstanding.
+
+### S63-S68 — 2026-04-20/21: Iterative walk-feedback loop (8 sessions in one day)
+
+Multi-session iteration on user walk feedback.  Everything merged + rendered + copied to Vandirtest10 across S63-S68.
+
+**S63** — trees-in-water gate, sand dune Y-lift flag, ecotone deny-pairs, rock Y-fade removed, LRFC 13-entry prune (`lrfc_tree_hardwood_*` spruce-leaves, banyan_a + gfig_a dark_oak_leaves, trunkless mpalms), ocean decorator (palette + noise + gamma=1.3 coastline reshape + vegetation).
+
+**S64** — BOREAL_ALPINE wholesale `minecraft:plains` (abandoned dual-layer), tree footprint water gate (whole-schematic reject if any footprint column underwater), widen water buffer 5→8, Gaussian dune Y-smoothing, snow carpet pass (4 snowy biomes), ocean veg water-fill survival + kelp stalks + sea_pickle waterlogged, LRFC 13-tree prune + block audit, rock cliff Y-fade removed, **palette_editor.py** standalone tool, sand-dune Y-smoothing helper.
+
+**S65** — ARCTIC_TUNDRA snow dominance (overlay coverage 0.15→0.03), KARST + TEMP_DECID palette edits via palette_editor, per-layer fBm preview added to editor, **ocean palette rebalance** (deep tier soil-majority), kelp density 4-5x bump, procedural boulders in ocean_decorator, coral clusters (tropical-adjacent), clay lenses, MANGROVE_COAST ocean variant (mud/clay/roots), clearing threshold jitter, fence connection properties emit, carry-forward doc.
+
+**S66** — log ROOT ANCHOR (6-deep extension into ground, all wood types), biome-boundary seam smoothing extended beyond SAND_DUNE_DESERT, smooth_sandstone + end_stone added to limestone, BOREAL_TAIGA / BIRCH_FOREST / MIXED_FOREST altitude remap to BOREAL_ALPINE (→ plains, no MC weather snow at altitude), KARST_BARRENS bush density 0.05→0.30, SAND_DUNE dry grass bump, **glowstone → oak_wood** global schematic remap.
+
+**S67** — universal biome-boundary Gaussian smoothing (every boundary pixel, not just a target list), BT→BA unconditional remap (threshold=-100), SBT mountaincap dither (Y<200 always non-snowy, Y[200,250] simplex-dithered, Y>250 always snowy), root anchor runs for EVERY trunk column (was only in the has-extension branch), end_stone removed from limestone per user, snow_block + sand added to soft-soil replace list.
+
+**S67.1** — KARST_BARRENS scrubland override (`eco_density_mod >= 0.9` on KARST pixels — rock_gap was suppressing bushes to 0.045 effective), **strict snow-carpet gate** (no outward ramp bleed into non-snowy biomes).
+
+**S68** — unified SBT mountaincap decision in `surface_decorator` (drives BOTH snow carpet placement AND MC biome tag — if biome_grid stays SBT, both carpet + snowy_taiga apply; if remapped to BA, neither applies).  Gaussian intensity cranked: sigma 8→16, passes 3→6, buffer 24→36 per user "super super intense" request.  Ocean coastline smoothing also bumped (sigma 6→10, passes 2→4, buffer 18→28).
+
+**New files:**
+- `core/ocean_decorator.py` — full pass: palette/noise/gamma/vegetation/boulders/coral/clay/mangrove variant
+- `tools/palette_editor.py` — standalone per-biome noise_layers_biome editor with fBm preview, merge-safe save, row reorder, slider/spinbox toggle
+- `memory/s65_carry_forward.md` — S67+ backlog
+
+**Key config additions:**
+- `ocean.palette` + `ocean.vegetation` + `ocean.features` + `ocean.biome_variants.MANGROVE_COAST` + `ocean.coastline_shape.gamma`
+- `snow_carpet.biomes` + `sbt_mountaincap` + `sand_dune_smoothing` (universal boundary)
+- `BIOME_ALTITUDE_REMAPS` in chunk_writer (BT, BIRCH, MIXED → BA at altitude)
+
+**Render history:**
+- S63: 9-tile batch, 9/10 OK
+- S64: 14 tiles, 14/14 OK
+- S65: 5 triage
+- S66-68: ongoing 2-4 tile triage loops with user walk-feedback per iteration
+
+**Known carry-forwards into S69:**
+- Gaussian smoothing too aggressive — smooths mountain interior, creates NEW seams where ridges meet smoothed slopes.  Need to constrain to only biome-BOUNDARY ring, not interior pixels.  Or lower sigma+passes back to S67 levels (sigma 8, passes 3).
+- KARST_BARRENS bushes still too sparse in-world — user wants ~50% bush ground cover, getting maybe 10-20%.  Bump bush weight higher + possibly relax rock_gap suppression further.
+- User-mentioned S65 carry-forwards still pending: snow NW-only (altitude + override repaint), rock-groups-by-geography, LRFC↔TRAIN transition biome, full 50k regen.
+
+**User instruction at S68 wrap:** commit everything + push to master.  Session context running low.

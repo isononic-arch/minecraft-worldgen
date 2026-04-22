@@ -472,8 +472,11 @@ def generate_column(
     surface_y = gaea_to_mc_y(height_16)
 
     # ── 2. Dune geometry (SAND_DUNE_DESERT only) ──────────────────────────────
+    # S63: feature-flag disabled by default.  User found dune Y-lift caused
+    # visible biome-edge seams at (84,84) and (30,88).  Enable via
+    # cfg.sand_dunes.enabled = true to restore the raised-peak geometry.
     dune_add = 0
-    if biome == "SAND_DUNE_DESERT":
+    if biome == "SAND_DUNE_DESERT" and cfg.get("sand_dunes", {}).get("enabled", False):
         dune_add = dune_height_offset(
             px, py,
             noise_gens["dune_a"], noise_gens["dune_b"],

@@ -138,6 +138,10 @@ _SPONGE_BLOCK_REMAP: dict[str, str] = {
     # off in lower-altitude/non-snowy areas where those schematics now
     # appear (e.g. zone 35 SNOWY_BOREAL_TAIGA in temperate latitudes).
     "snow":                 "air",
+    # S66: glowstone found in at least one LRFC tree schematic (user reports
+    # a jungle tree with glowstone).  Replace with oak_wood globally — oak
+    # is the most neutral wood that won't clash with any biome's palette.
+    "glowstone":            "oak_wood",
 }
 
 

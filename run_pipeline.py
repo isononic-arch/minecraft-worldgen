@@ -532,6 +532,9 @@ def main() -> int:
     parser.add_argument("--tile-x1",    type=int, default=None, help="Tile X end (exclusive)")
     parser.add_argument("--tile-z0",    type=int, default=0,   help="Tile Z start (inclusive)")
     parser.add_argument("--tile-z1",    type=int, default=None, help="Tile Z end (exclusive)")
+    parser.add_argument("--tile-list",  type=str, default=None,
+                        help="S62: comma-separated tx,tz pairs separated by semicolons, "
+                             "e.g. '20,53;32,7;59,90'. Overrides --tile-x0..--tile-z1.")
     parser.add_argument("--dry-run",    action="store_true",
                         help="Run all steps but skip chunk writing")
     args = parser.parse_args()
@@ -559,17 +562,25 @@ def main() -> int:
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
-    # Tile range
-    tx0 = args.tile_x0
-    tx1 = args.tile_x1 if args.tile_x1 is not None else TILES_PER_AXIS
-    tz0 = args.tile_z0
-    tz1 = args.tile_z1 if args.tile_z1 is not None else TILES_PER_AXIS
-
-    tile_coords = [
-        (tx, tz)
-        for tz in range(tz0, tz1)
-        for tx in range(tx0, tx1)
-    ]
+    # Tile range (or explicit list via --tile-list)
+    if args.tile_list:
+        tile_coords = []
+        for pair in args.tile_list.split(";"):
+            pair = pair.strip()
+            if not pair:
+                continue
+            tx_s, tz_s = pair.split(",")
+            tile_coords.append((int(tx_s), int(tz_s)))
+    else:
+        tx0 = args.tile_x0
+        tx1 = args.tile_x1 if args.tile_x1 is not None else TILES_PER_AXIS
+        tz0 = args.tile_z0
+        tz1 = args.tile_z1 if args.tile_z1 is not None else TILES_PER_AXIS
+        tile_coords = [
+            (tx, tz)
+            for tz in range(tz0, tz1)
+            for tx in range(tx0, tx1)
+        ]
     total = len(tile_coords)
 
     _log(f"Pipeline start: {total} tiles, {args.threads} workers, dry_run={args.dry_run}")

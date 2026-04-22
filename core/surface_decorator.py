@@ -476,9 +476,10 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # S60: bump base palette ~5x to counter the 0.05 eco_density_mod multiplier
     # that was suppressing ground cover to near-zero. Still very rare in-world
     # after the multiplier. S61: dead_bush rare-ified, grass shifted up.
+    # S66: more dry grass variety per user — keep sparse overall.
     "SAND_DUNE_DESERT": [
-        ("dead_bush", 0.03), ("short_dry_grass", 0.18),
-        ("tall_dry_grass", 0.06), ("cactus", 0.02),
+        ("dead_bush", 0.03), ("short_dry_grass", 0.28),
+        ("tall_dry_grass", 0.14), ("cactus", 0.02),
     ],
     # S60: add bush infrequent, up short_dry_grass density per user (matches
     # scrubby pattern).
@@ -504,9 +505,10 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
         ("oxeye_daisy", 0.008),
     ],
     # S60: up all, add short_grass (was 0.02, now 0.12) + tall_dry_grass per user.
+    # S66: way more bushes per user — scrubland feel.  bush 0.05 → 0.30.
     "KARST_BARRENS": [
-        ("dead_bush", 0.02), ("short_dry_grass", 0.12), ("bush", 0.05),
-        ("short_grass", 0.16), ("tall_dry_grass", 0.10),
+        ("dead_bush", 0.02), ("short_dry_grass", 0.14), ("bush", 0.30),
+        ("short_grass", 0.18), ("tall_dry_grass", 0.10),
     ],
     # ── Wetland / Riparian ───────────────────────────────────────────────
     # S60: removed duplicate bush entry. Otherwise unchanged per user.
@@ -845,6 +847,230 @@ def _apply_noise_layers(
 # PUBLIC API
 # ---------------------------------------------------------------------------
 
+def _apply_sbt_mountaincap_remap(
+    biome_grid: np.ndarray,
+    surface_y:  np.ndarray,
+    tile_x: int,
+    tile_y: int,
+    cfg: dict,
+) -> None:
+    """S68: mountaincap remap for SNOWY_BOREAL_TAIGA.  Pixels where surface_y
+    is below MIN_Y OR in the [MIN_Y, MAX_Y] dither band with simplex noise
+    failing the threshold get remapped to BOREAL_ALPINE (in biome_grid).
+    Above MAX_Y always stays SBT.  Single unified decision drives both snow
+    carpet placement (gated on biome_grid) and MC biome tag (also gated on
+    biome_grid).  Mutates biome_grid in place."""
+    sbt_cfg = cfg.get("sbt_mountaincap", {})
+    if not sbt_cfg.get("enabled", True):
+        return
+    MIN_Y = int(sbt_cfg.get("min_y", 200))
+    MAX_Y = int(sbt_cfg.get("max_y", 250))
+    NOISE_SCALE = float(sbt_cfg.get("noise_scale", 40.0))
+    THRESHOLD = float(sbt_cfg.get("threshold", 0.0))
+    TARGET = str(sbt_cfg.get("target", "BOREAL_ALPINE"))
+
+    sbt_mask = (biome_grid == "SNOWY_BOREAL_TAIGA")
+    if not sbt_mask.any():
+        return
+
+    # Below MIN_Y: always remap (no snow at low altitude)
+    below = sbt_mask & (surface_y < MIN_Y)
+    biome_grid[below] = TARGET
+
+    # In dither band: per-pixel simplex decides
+    band = sbt_mask & (surface_y >= MIN_Y) & (surface_y < MAX_Y)
+    if band.any():
+        try:
+            from opensimplex import OpenSimplex
+        except ImportError:
+            return
+        sim = OpenSimplex(seed=(tile_x * 17 ^ tile_y * 31 ^ 0xCAFE5B7))
+        tile_wx = tile_x * biome_grid.shape[1]
+        tile_wz = tile_y * biome_grid.shape[0]
+        # Vectorised coarse sample + bilinear upsample for speed
+        from scipy.ndimage import zoom as _zoom
+        H, W = biome_grid.shape
+        step = 4
+        gy = np.arange(0, H, step)
+        gx = np.arange(0, W, step)
+        coarse = np.empty((len(gy), len(gx)), dtype=np.float32)
+        for i, y in enumerate(gy):
+            for j, x in enumerate(gx):
+                coarse[i, j] = sim.noise2((tile_wx + x) / NOISE_SCALE,
+                                          (tile_wz + y) / NOISE_SCALE)
+        noise_full = _zoom(coarse, (H / coarse.shape[0], W / coarse.shape[1]), order=1)[:H, :W]
+        # Below threshold → remap (no snow); above → keep SBT
+        remap_in_band = band & (noise_full < THRESHOLD)
+        biome_grid[remap_in_band] = TARGET
+
+
+def _apply_snow_carpet(
+    surface_blocks: np.ndarray,
+    ground_cover:   np.ndarray,
+    biome_grid:     np.ndarray,
+    cfg:            dict,
+    tile_x:         int,
+    tile_y:         int,
+) -> None:
+    """S64: place `snow[layers=1]` ground cover on snowy-biome pixels.
+    Dithered at biome boundary via a distance-transform ramp — snow prob
+    decays from 1.0 at interior to 0 at `ramp_blocks` outside the biome.
+    Per-pixel coin decides placement within the ramp.  Does not overwrite
+    existing ground_cover.  Skips water/ice/air surface blocks.
+    """
+    snow_cfg = cfg.get("snow_carpet", {})
+    if not snow_cfg.get("enabled", False):
+        return
+    biomes = set(snow_cfg.get("biomes", []))
+    if not biomes:
+        return
+    snowy = np.zeros(biome_grid.shape, dtype=bool)
+    for b in biomes:
+        snowy |= (biome_grid == b)
+    if not snowy.any():
+        return
+    # S67: strict snowy-biome gate — no outward bleed into adjacent biomes.
+    # Previously used a distance ramp that placed snow on BT/BA pixels within
+    # 30 blocks of SBT boundary; user wants clean biome-boundary separation.
+    rng = np.random.default_rng((tile_x * 7919) ^ (tile_y * 31337) ^ 0x5700FA11)
+    coin = rng.random(biome_grid.shape).astype(np.float32)
+    # Within snowy biomes: 95% placement with slight per-pixel dither for
+    # visual texture (not outward bleed).
+    place_snow = snowy & (coin < 0.95) & (ground_cover == "")
+    _NOT_SNOW_ON = frozenset({"water", "lava", "air",
+                              "ice", "packed_ice", "blue_ice", "snow_block"})
+    for blk in _NOT_SNOW_ON:
+        place_snow &= (surface_blocks != blk)
+    if place_snow.any():
+        ground_cover[place_snow] = "snow[layers=1]"
+
+
+def _smooth_all_biome_boundaries_y(
+    surface_y: np.ndarray,
+    biome_grid: np.ndarray,
+    buffer_blocks: int = 24,
+    sigma: float = 8.0,
+    passes: int = 3,
+) -> None:
+    """S67: Gaussian-smooth Y at EVERY biome boundary pixel.  Replaces per-
+    biome target list — now biome-agnostic.  Detects boundaries via 4-neighbour
+    biome difference, builds a wide ring on both sides, blends Y toward
+    blurred Y with a taper weight that peaks at the boundary."""
+    if biome_grid.size == 0:
+        return
+    # Detect boundary: pixels whose 4-neighbour has a different biome.
+    boundary = np.zeros(biome_grid.shape, dtype=bool)
+    boundary[:-1, :] |= (biome_grid[:-1, :] != biome_grid[1:, :])
+    boundary[1:, :]  |= (biome_grid[:-1, :] != biome_grid[1:, :])
+    boundary[:, :-1] |= (biome_grid[:, :-1] != biome_grid[:, 1:])
+    boundary[:, 1:]  |= (biome_grid[:, :-1] != biome_grid[:, 1:])
+    if not boundary.any():
+        return
+    from scipy.ndimage import binary_dilation, gaussian_filter, distance_transform_edt
+    ring = binary_dilation(boundary, iterations=buffer_blocks)
+    if not ring.any():
+        return
+    # Weight peaks at boundary pixels, fades to edge of ring
+    dist_from_boundary = distance_transform_edt(~boundary).astype(np.float32)
+    max_dist = max(float(buffer_blocks), 1.0)
+    weight = np.clip(1.0 - dist_from_boundary / max_dist, 0.0, 1.0)
+    weight[~ring] = 0.0
+    sy_f = surface_y.astype(np.float32)
+    for _ in range(max(1, passes)):
+        blurred = gaussian_filter(sy_f, sigma=sigma, mode='nearest')
+        sy_f = weight * blurred + (1.0 - weight) * sy_f
+    surface_y[:] = np.round(sy_f).astype(surface_y.dtype)
+
+
+def _smooth_ocean_coastline_y(
+    surface_y: np.ndarray,
+    buffer_blocks: int = 18,
+    sigma: float = 6.0,
+    passes: int = 2,
+) -> None:
+    """S66: Gaussian-smooth the Y-step at the ocean coastline (surface_y=63
+    threshold).  Softens beach cliffs and eliminates isolated Y=64 land
+    pixels surrounded by ocean.  Mutates in place."""
+    SEA_LEVEL = 63
+    below_sea = surface_y < SEA_LEVEL
+    if not below_sea.any() or below_sea.all():
+        return  # all-land or all-ocean tile
+    from scipy.ndimage import binary_dilation, gaussian_filter, distance_transform_edt
+    inside  = binary_dilation(~below_sea, iterations=buffer_blocks) & below_sea
+    outside = binary_dilation(below_sea,  iterations=buffer_blocks) & ~below_sea
+    ring = inside | outside
+    if not ring.any():
+        return
+    dist_from_edge = distance_transform_edt(ring).astype(np.float32)
+    max_dist = dist_from_edge[ring].max() if ring.any() else 1.0
+    weight = np.clip(dist_from_edge / max(max_dist, 1.0), 0.0, 1.0)
+    weight[~ring] = 0.0
+    sy_f = surface_y.astype(np.float32)
+    for _ in range(max(1, passes)):
+        blurred = gaussian_filter(sy_f, sigma=sigma, mode='nearest')
+        sy_f = weight * blurred + (1.0 - weight) * sy_f
+    surface_y[:] = np.round(sy_f).astype(surface_y.dtype)
+
+
+def _smooth_biome_boundary_y(
+    surface_y: np.ndarray,
+    biome_grid: np.ndarray,
+    target_biome: str,
+    buffer_blocks: int = 24,
+    sigma: float = 8.0,
+    passes: int = 3,
+    taper: float = 1.0,
+) -> None:
+    """
+    S65: worldedit-smooth-brush-style Gaussian erosion on a biome boundary.
+    Smooths the Y-step across a wide ring centered on the biome boundary —
+    BOTH sides (inside target + outside target within `buffer_blocks`).
+
+    Algorithm:
+      1. Compute `boundary_ring` = pixels within `buffer_blocks` of the
+         SAND_DUNE_DESERT↔neighbour boundary, on either side.
+      2. Blur surface_y with Gaussian(sigma=sigma) to get smoothed Y field.
+      3. At ring pixels, blend surface_y toward blurred Y with a weight
+         that PEAKS at the boundary and fades to zero at the ring edge.
+      4. Iterate `passes` times — each pass applied on the updated Y, so
+         the smoothing compounds into a natural arc.
+
+    The taper weight mimics worldedit's soft brush: 1.0 at the boundary,
+    0.0 at `buffer_blocks` distance.  Interior dune (far from boundary)
+    and interior non-dune (far from boundary) untouched.
+    """
+    tgt_mask = (biome_grid == target_biome)
+    if not tgt_mask.any():
+        return
+    from scipy.ndimage import binary_dilation, gaussian_filter, distance_transform_edt
+
+    # Ring: within `buffer_blocks` of boundary on EITHER side
+    inside_buf  = binary_dilation(~tgt_mask, iterations=buffer_blocks) & tgt_mask
+    outside_buf = binary_dilation(tgt_mask,  iterations=buffer_blocks) & ~tgt_mask
+    ring = inside_buf | outside_buf
+    if not ring.any():
+        return
+
+    # Weight field: 1.0 at boundary, 0.0 at buffer edge
+    # Boundary pixels have dist_to_other_side == 1 (neighbour is across).
+    # Build a distance-from-boundary field valid only within ring.
+    # Easier: distance from ~ring to ring — gives dist from nearest non-ring.
+    dist_from_edge = distance_transform_edt(ring).astype(np.float32)
+    max_dist = dist_from_edge[ring].max() if ring.any() else 1.0
+    # Taper weight: peaks at center of ring (where boundary is) vs. outer edge.
+    # Normalize dist_from_edge to [0,1] within ring.
+    weight = np.clip(dist_from_edge / max(max_dist, 1.0), 0.0, 1.0) * taper
+    # Zero outside ring
+    weight[~ring] = 0.0
+
+    sy_f = surface_y.astype(np.float32)
+    for _pass in range(max(1, passes)):
+        blurred = gaussian_filter(sy_f, sigma=sigma, mode='nearest')
+        sy_f = weight * blurred + (1.0 - weight) * sy_f
+
+    surface_y[:] = np.round(sy_f).astype(surface_y.dtype)
+
+
 def decorate_surface(
     surface_y:    np.ndarray,   # (H, W) int16
     biome_grid:   np.ndarray,   # (H, W) object (str)
@@ -882,6 +1108,29 @@ def decorate_surface(
     bm_cfg   = cfg["block_mixing"]
     px_off   = tile_x * W
     py_off   = tile_y * H
+
+    # S65/S66/S67: Y-smoothing at ALL biome boundaries — user wants the seam
+    # fix to apply regardless of biome.  Previous per-biome target list was
+    # missing pairs (e.g. SNOWY_BOREAL_TAIGA ↔ BOREAL_TAIGA).  Now: detect
+    # EVERY biome boundary pixel via neighbour difference, apply Gaussian
+    # smoothing in a wide ring centered on it.
+    if cfg.get("sand_dune_smoothing", {}).get("enabled", True):
+        _sds_cfg = cfg.get("sand_dune_smoothing", {})
+        _smooth_all_biome_boundaries_y(
+            surface_y, biome_grid,
+            buffer_blocks=int(_sds_cfg.get("buffer_blocks", 24)),
+            sigma=float(_sds_cfg.get("sigma", 8.0)),
+            passes=int(_sds_cfg.get("passes", 3)),
+        )
+        # Ocean-coastline smoothing — treat underwater-threshold as the
+        # "other side" of the boundary.  Smooths beach cliff cutoffs.
+        if _sds_cfg.get("smooth_ocean_coastline", True):
+            _smooth_ocean_coastline_y(
+                surface_y,
+                buffer_blocks=int(_sds_cfg.get("coast_buffer_blocks", 18)),
+                sigma=float(_sds_cfg.get("coast_sigma", 6.0)),
+                passes=int(_sds_cfg.get("coast_passes", 2)),
+            )
 
     # --- Build noise arrays ------------------------------------------------
     den_cfg  = cfg["decoration_density_noise"]
@@ -1091,8 +1340,14 @@ def decorate_surface(
         if _clearing_biome.any():
             # Step A: Gradient clearing probability.  Ramps from 1.0 (deep
             # clearing, field <= THR - HALF) to 0.0 (deep forest, field >= THR + HALF).
+            # S65: apply per-pixel field jitter BEFORE the threshold so the
+            # boundary has more single-block noise where two clearings (or a
+            # clearing and a forest) meet.  Amplitude = 30% of the edge band.
+            _cf_jitter_rng = np.random.default_rng(
+                tile_x * 11971 ^ tile_y * 59359 ^ 0xCBD17)
+            _cf_jitter = (_cf_jitter_rng.random((H, W)).astype(np.float32) - 0.5) * _CF_HALF * 0.6
             _cf_prob = np.clip(
-                ((_CF_THR + _CF_HALF) - clearing_field) / (2.0 * _CF_HALF),
+                ((_CF_THR + _CF_HALF) - (clearing_field + _cf_jitter)) / (2.0 * _CF_HALF),
                 0.0, 1.0,
             ).astype(np.float32)
 
@@ -1814,6 +2069,57 @@ def decorate_surface(
         _gc_cleared = _np_mask & (ground_cover != "")
         if _gc_cleared.any():
             ground_cover[_gc_cleared] = ""
+
+    # ──────────────────────────────────────────────────────────────────
+    # S68: SBT MOUNTAINCAP REMAP — unified decision before snow carpet.
+    # Where SNOWY_BOREAL_TAIGA is below altitude threshold OR in dither band
+    # with noise failing, remap biome_grid to BOREAL_ALPINE.  This:
+    #   (1) prevents snow_carpet from placing there (not in snowy list)
+    #   (2) makes chunk_writer emit plains MC tag (no weather snow)
+    # Single source of truth: if biome_grid stays SBT, both carpet + snowy_taiga
+    # tag apply.  If remapped to BA, neither applies.
+    _apply_sbt_mountaincap_remap(biome_grid, surface_y, tile_x, tile_y, cfg)
+
+    # ──────────────────────────────────────────────────────────────────
+    # S64: SNOW CARPET PASS
+    # Places `snow[layers=1]` on snowy biomes (SBT, ARCTIC_TUNDRA, FROZEN_FLATS,
+    # BOREAL_ALPINE) via ground_cover.  Boundary dither matches surface-block
+    # dither aesthetic.  Runs before the ocean pass so ocean decoration
+    # can still overwrite ground_cover on ocean pixels.
+    # ──────────────────────────────────────────────────────────────────
+    _apply_snow_carpet(
+        surface_blocks, ground_cover, biome_grid, cfg, tile_x, tile_y,
+    )
+
+    # ──────────────────────────────────────────────────────────────────
+    # S62: OCEAN DECORATION PASS
+    # Runs LAST.  Only modifies pixels where biome is _OCEAN/_DEFAULT AND
+    # surface_y < sea_level.  Land pixels are physically unreachable by
+    # this call via the `is_ocean` guard inside decorate_ocean().
+    # Feature-flagged via cfg["ocean"]["enabled"].
+    # ──────────────────────────────────────────────────────────────────
+    if cfg.get("ocean", {}).get("enabled", False):
+        try:
+            from core.ocean_decorator import decorate_ocean
+            # Tile world origin: tile_x/tile_y are tile indices; multiply by
+            # tile width (512) to get block coords for simplex seeding.
+            _tile_wx = int(tile_x) * surface_y.shape[1]
+            _tile_wz = int(tile_y) * surface_y.shape[0]
+            decorate_ocean(
+                surface_y=surface_y,
+                surface_blk=surface_blocks,
+                sub_blk=subsurface_blocks,
+                biome_grid=biome_grid,
+                cfg=cfg,
+                tile_world_x=_tile_wx,
+                tile_world_z=_tile_wz,
+                ground_cover=ground_cover,  # S63: pass for underwater vegetation
+            )
+        except Exception as _e:
+            # Ocean decoration is best-effort — a crash here should NOT
+            # break tile rendering.  Log + skip.
+            print(f"[ocean_decorator] SKIPPED (tile {tile_x},{tile_y}): {_e}",
+                  flush=True)
 
     return surface_blocks, subsurface_blocks, ground_cover
 
@@ -2564,6 +2870,15 @@ def _apply_ground_cover(
                 _beach_edge_mod = getattr(eco_grads, "beach_edge_mask", None)
                 if _beach_edge_mod is not None and _beach_edge_mod.any():
                     eco_density_mod[_beach_edge_mod] = 0.15  # 15% vegetation
+
+                # S67: KARST_BARRENS is scrubland even on rock — bushes grow in
+                # limestone cracks.  Override rock_px suppression back toward 1.0
+                # so the biome's bush density (0.30) shows through.
+                _karst_mask = biome_grid == "KARST_BARRENS"
+                if _karst_mask.any():
+                    # Keep at least 0.9 — heavy bushes on rocky karst landscape
+                    eco_density_mod[_karst_mask] = np.maximum(
+                        eco_density_mod[_karst_mask], 0.9)
 
     # ---- Species colony map -----------------------------------------------
     # Hash-based colony assignment: divides tile into ~48px cells,

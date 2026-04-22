@@ -48,7 +48,7 @@ BIOME_TO_MC: dict[str, str] = {
     "COASTAL_HEATH":           "minecraft:plains",
     "TEMPERATE_RAINFOREST":    "minecraft:dark_forest",
     "BOREAL_TAIGA":            "minecraft:old_growth_birch_forest",
-    "BOREAL_ALPINE":           "minecraft:taiga",   # S58: ex-zone-40 alpine; non-snowy MC biome with snowy-taiga surface palette
+    "BOREAL_ALPINE":           "minecraft:plains",  # S64: wholesale plains — dual-layer approach abandoned, snow never falls
     "SNOWY_BOREAL_TAIGA":      "minecraft:snowy_taiga",
     "ARCTIC_TUNDRA":           "minecraft:frozen_peaks",
     "FROZEN_FLATS":            "minecraft:snowy_plains",
@@ -75,6 +75,72 @@ BIOME_TO_MC: dict[str, str] = {
     "_OCEAN":                  "minecraft:ocean",
     "_DEFAULT":                "minecraft:plains",
 }
+
+# S62: sky-biome override — for each Vandir biome in this dict, biome cells
+# strictly above the per-column surface Y are painted with this MC biome
+# instead of BIOME_TO_MC[biome].  Purpose: stop snow/ice precipitation at
+# altitude for biomes whose ground biome is cold (MC temp < 0.5) but which
+# are NOT intended to be snowy (e.g. BOREAL_ALPINE → taiga grass tint, no
+# snow).  MC queries precipitation biome at MOTION_BLOCKING heightmap
+# (surface+1).  With sky=plains (temp 0.8) on the cell containing surface+1,
+# no snow accumulates.
+#
+# Gotcha: MC biome cells are 4×4×4.  When surface_Y and surface_Y+1 land in
+# the same 4-block Y cell (75% of Y values), that cell decides both grass
+# tint AND precipitation.  Rule we use: cell.bottom_Y >= surface_Y → paint
+# as sky.  This guarantees zero snow but means the immediate-surface cell is
+# usually plains-tinted.  Taiga tint only retained when surface_Y mod 4 == 3.
+#
+# Biomes NOT in this dict: sky == ground (no change, current behavior).
+BIOME_TO_MC_SKY: dict[str, str] = {
+    # S64: emptied — BOREAL_ALPINE now uses wholesale minecraft:plains via BIOME_TO_MC,
+    # so the per-section sky-override split is no longer needed.  Kept as a hook for
+    # future biomes that need the dual-layer approach.
+}
+
+# S67: altitude-based biome remap.  User's rule:
+# "if there is another NON snowy biome at a higher value than snowy, we
+# should swap out snowy taiga for its non snowy option."
+#
+# Interpretation: BOREAL_TAIGA (snow-at-altitude) should ALWAYS become
+# BOREAL_ALPINE (plains = no snow) — the NON-snowy variant is aesthetically
+# equivalent at ground level (same palette + schematic routing) and never
+# snows.  Unconditional remap (threshold=-64) keeps the entire biome
+# snow-free.  For SNOWY_BOREAL_TAIGA (intentionally snowy), a dither zone
+# 200-250 controls snow coverage: pixels in that band with noise > 0.5 get
+# the snow, others do not.  Above 250: snowy.  Below 200: no snow unless
+# noise hit.  Creates mountaincap look.
+BIOME_ALTITUDE_REMAPS: list[dict] = [
+    {
+        # BOREAL_TAIGA gets mapped to BOREAL_ALPINE unconditionally — MC tag
+        # becomes minecraft:plains, no weather snow.  Ground palette stays
+        # BOREAL_TAIGA via surface_decorator (since biome_grid passed in
+        # the surface pass is unchanged from assign_biomes).
+        "source":    "BOREAL_TAIGA",
+        "target":    "BOREAL_ALPINE",
+        "threshold": -100,  # effectively always-on
+    },
+    {
+        "source":    "BIRCH_FOREST",
+        "target":    "BOREAL_ALPINE",
+        "threshold": 220,
+    },
+    {
+        "source":    "MIXED_FOREST",
+        "target":    "BOREAL_ALPINE",
+        "threshold": 220,
+    },
+]
+
+# S67: SNOWY_BOREAL_TAIGA mountaincap dither.  Pixels with surface_y in
+# [200, 250] get probabilistic snowy biome based on a coarse simplex noise:
+# noise > threshold → keep SNOWY (snow), else → remap to BOREAL_ALPINE.
+# Above 250: always snowy.  Below 200: always non-snowy.  Dither scale is
+# larger than tile-local variance so you get mountain-cap patches.
+SBT_DITHER_MIN_Y = 200
+SBT_DITHER_MAX_Y = 250
+SBT_DITHER_NOISE_SCALE = 40    # blocks — bigger than local slope variation
+SBT_DITHER_THRESHOLD = 0.0     # noise > threshold → keep snowy
 
 # Block name → amulet block string (minecraft: prefix, no namespace stored here)
 # amulet uses "minecraft:stone" etc — we store bare names and prepend at write time.
@@ -639,9 +705,11 @@ def build_column_array(
         vol[yi_cov[valid_c], r_cov[valid_c], c_cov[valid_c]] = cov_idx_masked[valid_c]
 
         # Double-tall plants: place [half=upper] at sy+2 for tall_grass, large_fern, etc.
+        # S64: tall_seagrass added for underwater 2-block seagrass.
         _DOUBLE_TALL = frozenset({
             "tall_grass", "large_fern",
             "sunflower", "peony", "rose_bush", "lilac", "pitcher_plant",
+            "tall_seagrass",
         })
         cov_active = cov_flat[cover_mask][valid_c]
         is_double = np.array([str(b) in _DOUBLE_TALL for b in cov_active])
@@ -661,7 +729,62 @@ def build_column_array(
 
     # Water fill (vectorised — covers all sub-sea columns at once)
     WATER_IDX = pal.idx("water")
+
+    # S64: underwater-vegetation survival — carve ground_cover cells out of
+    # water_mask BEFORE the fill so seagrass/kelp/sea_pickle aren't overwritten.
+    _UNDERWATER_VEG = frozenset({"seagrass", "tall_seagrass", "kelp", "sea_pickle"})
+    has_uveg = np.zeros(ground_cover.shape, dtype=bool)
+    for _veg in _UNDERWATER_VEG:
+        has_uveg |= (ground_cover == _veg)
+    if has_uveg.any():
+        uveg_rows, uveg_cols = np.where(has_uveg)
+        # sy+1 (ground_cover placement)
+        uveg_yi1 = surface_y[uveg_rows, uveg_cols].astype(np.int32) + 1 - Y_MIN
+        v1 = (uveg_yi1 >= 0) & (uveg_yi1 < Y_RANGE)
+        water_mask[uveg_yi1[v1], uveg_rows[v1], uveg_cols[v1]] = False
+        # Also carve sy+2 for tall_seagrass (upper half)
+        is_tall = ground_cover[uveg_rows, uveg_cols] == "tall_seagrass"
+        if is_tall.any():
+            tall_yi2 = uveg_yi1 + 1
+            v2 = (tall_yi2 >= 0) & (tall_yi2 < Y_RANGE) & is_tall
+            water_mask[tall_yi2[v2], uveg_rows[v2], uveg_cols[v2]] = False
+
     vol[water_mask] = WATER_IDX
+
+    # S64: kelp column stamping — replace water cells from sy+1 up to top with
+    # kelp_plant, and kelp (mature) at the top.  Only where ground_cover=="kelp".
+    is_kelp = (ground_cover == "kelp")
+    if is_kelp.any():
+        try:
+            KELP_PLANT_IDX = pal.idx("kelp_plant")
+            KELP_TOP_IDX   = pal.idx("kelp[age=25]")
+        except Exception:
+            KELP_PLANT_IDX = pal.idx("kelp")
+            KELP_TOP_IDX   = pal.idx("kelp")
+        kr, kc = np.where(is_kelp)
+        # Per-column RNG for stalk height
+        _kelp_rng = np.random.default_rng(
+            (tile_world_x * 7919) ^ (tile_world_z * 31337) ^ 0xC0FFEE
+        )
+        stalk_heights = _kelp_rng.integers(5, 16, size=len(kr))   # [5, 15]
+        for i in range(len(kr)):
+            r, c = int(kr[i]), int(kc[i])
+            sy_base = int(surface_y[r, c])
+            if sy_base >= SEA_Y:
+                continue  # not actually underwater
+            top_y = min(sy_base + int(stalk_heights[i]), SEA_Y - 1)
+            stalk_lo = sy_base + 1
+            if top_y <= stalk_lo:
+                continue
+            # Fill Y = sy+1 .. top_y-1 with kelp_plant
+            for wy in range(stalk_lo, top_y):
+                yi = wy - Y_MIN
+                if 0 <= yi < Y_RANGE:
+                    vol[yi, r, c] = KELP_PLANT_IDX
+            # Top: mature kelp
+            top_yi = top_y - Y_MIN
+            if 0 <= top_yi < Y_RANGE:
+                vol[top_yi, r, c] = KELP_TOP_IDX
 
     # River water fill — above-sea-level rivers need water from carved
     # surface up to river_water_y (1 block below original terrain)
@@ -920,6 +1043,29 @@ def stamp_schematic(
                         col_reject[_sz, _sx] = True
                         continue
                     col_desink[_sz, _sx] = int(surface_y[tz, tx])
+                    # S64: footprint water gate — reject any column whose
+                    # surface is below sea level so trees never leave leaves
+                    # hanging over water from multi-column canopies.
+                    if col_desink[_sz, _sx] < 63:
+                        col_reject[_sz, _sx] = True
+            # S65: WHOLE-SCHEMATIC REJECT if ANY footprint column would
+            # stand underwater.  Previous S64 fix only skipped underwater
+            # columns, but land-side columns still left leaf clusters
+            # overhanging toward water.  Abort the entire stamp instead.
+            # (Only applies when the column has any content — an all-air
+            # column is harmless even underwater.)
+            _uwater_hit = False
+            for _sz in range(sl):
+                if _uwater_hit:
+                    break
+                for _sx in range(sw):
+                    if (col_reject[_sz, _sx]
+                            and col_desink[_sz, _sx] < 63
+                            and non_air[:, _sz, _sx].any()):
+                        _uwater_hit = True
+                        break
+            if _uwater_hit:
+                return
             if has_trunks:
                 # Strategy A — trunk extension. Compute worst trunk gap.
                 max_trunk_gap = 0
@@ -1064,22 +1210,182 @@ def stamp_schematic(
                             if place_y + _sy > ls + 1:
                                 target_sy = _sy
                                 break
+                    # S66 (fixed): ROOT ANCHOR runs for EVERY trunk column,
+                    # regardless of whether an UP-extension was needed.  User
+                    # wants roots on all sloped trees.  Previous version was
+                    # inside the `target_wy <= ls + 1: continue` branch so
+                    # flat-terrain columns never got roots.
+                    ROOT_ANCHOR_DEPTH = 6
+                    _SOFT_SOIL_NAMES = frozenset({
+                        "dirt", "grass_block", "podzol", "coarse_dirt",
+                        "rooted_dirt", "mud", "packed_mud", "moss_block",
+                        "mycelium", "mud_block", "snow_block", "sand",
+                        "red_sand",
+                    })
+                    for drop in range(1, ROOT_ANCHOR_DEPTH + 1):
+                        fill_wy_down = ls - drop + 1  # ls is surface Y, so fill ls..ls-5
+                        yi_down = fill_wy_down - Y_MIN
+                        if not (0 <= yi_down < Y_RANGE):
+                            continue
+                        existing = vol[yi_down, tile_z, tile_x]
+                        exist_name = pal.name_of(existing)
+                        exist_bare = exist_name.replace("minecraft:", "").split("[")[0]
+                        if exist_bare in _SOFT_SOIL_NAMES:
+                            vol[yi_down, tile_z, tile_x] = fill_idx
+
+                    # Only run the UP-extension fill if needed
                     if target_sy < 0 or fill_idx is None:
                         continue
                     target_wy = place_y + target_sy
                     if target_wy <= ls + 1:
-                        continue  # already touching — no extension needed
+                        continue  # already touching — no extension UP needed
                     ext_span = target_wy - (ls + 1)
                     if ext_span > MAX_TRUNK_EXT:
-                        continue  # safety cap (already checked per-column
-                                  # gap, but this guards canopy-fallback too)
-                    # Fill from ls+1 up to target_wy-1 with per-column log.
+                        continue
                     for fill_wy in range(ls + 1, target_wy):
                         yi = fill_wy - Y_MIN
                         if not (0 <= yi < Y_RANGE):
                             continue
                         if vol[yi, tile_z, tile_x] == AIR_IDX_EXT:
                             vol[yi, tile_z, tile_x] = fill_idx
+
+        # ── S62-stretch: LOG → WOOD end-grain swap ─────────────────────────
+        # `_log` blocks show cut end-grain on top/bottom faces; `_wood` shows
+        # bark on all 6 faces.  Swap `_log` → `_wood` in any stamped footprint
+        # cell where the adjacent block directly above OR below is air.  This
+        # catches: exposed tops of trunks without full canopy cover, floating
+        # end caps of thick trunks, open shelf logs.  Leaves-above does NOT
+        # trigger (canopy hides the end-grain visually).  Horizontal logs
+        # (axis=x/z) are skipped — their end grain already faces the trunk or
+        # canopy and swapping loses the cut-wood texture where it reads as
+        # a broken branch.
+        air_idx_swap = pal.air
+        _wood_idx_cache: dict = {}
+        for sy in range(sh):
+            world_y = place_y + sy
+            yi = world_y - Y_MIN
+            if yi <= 0 or yi >= Y_RANGE - 1:
+                continue
+            for sz in range(sl):
+                tile_z = local_z + sz
+                if not (0 <= tile_z < tile_H):
+                    continue
+                for sx in range(sw):
+                    tile_x = local_x + sx
+                    if not (0 <= tile_x < tile_W):
+                        continue
+                    cur_idx = vol[yi, tile_z, tile_x]
+                    cur_name = pal.name_of(cur_idx)
+                    if "_log" not in cur_name:
+                        continue
+                    # Skip horizontal logs (axis=x or axis=z).  axis=y or no
+                    # property → vertical, eligible.
+                    if "[" in cur_name:
+                        props = cur_name.split("[", 1)[1].rstrip("]")
+                        if "axis=x" in props or "axis=z" in props:
+                            continue
+                    # Need either air directly above or directly below.
+                    if (vol[yi + 1, tile_z, tile_x] != air_idx_swap
+                            and vol[yi - 1, tile_z, tile_x] != air_idx_swap):
+                        continue
+                    bare = cur_name.replace("minecraft:", "").split("[")[0]
+                    wood_bare = bare.replace("_log", "_wood")
+                    if wood_bare == bare:
+                        continue
+                    w_idx = _wood_idx_cache.get(wood_bare)
+                    if w_idx is None:
+                        try:
+                            w_idx = pal.idx(wood_bare)
+                        except Exception:
+                            _wood_idx_cache[wood_bare] = -1
+                            continue
+                        _wood_idx_cache[wood_bare] = w_idx
+                    elif w_idx == -1:
+                        continue
+                    vol[yi, tile_z, tile_x] = w_idx
+
+        # ── S65: FENCE CONNECTION PROPERTY PASS ─────────────────────────
+        # MC fences default to all-disconnected when placed via worldgen (no
+        # neighbor update triggers).  Scan every fence block in the just-
+        # stamped footprint and set north/south/east/west based on the
+        # connective block at that face.
+        _FENCE_SUFFIXES = ("_fence", "_fence_gate")  # both work the same
+        _CONNECTS = ("_fence", "_fence_gate", "_log", "_wood", "_planks",
+                      "_wall", "_stairs")
+        _SOLID_CONNECT = frozenset({
+            "stone", "cobblestone", "andesite", "granite", "diorite",
+            "deepslate", "tuff", "sandstone", "dirt", "grass_block",
+            "podzol", "moss_block",
+        })
+        def _fence_connects_to(name: str) -> bool:
+            if not name or name == "air":
+                return False
+            if any(suf in name for suf in _CONNECTS):
+                return True
+            return name in _SOLID_CONNECT
+        _fence_cache: dict = {}
+        for sy in range(sh):
+            world_y = place_y + sy
+            yi = world_y - Y_MIN
+            if yi < 0 or yi >= Y_RANGE:
+                continue
+            for sz in range(sl):
+                tile_z = local_z + sz
+                if not (0 <= tile_z < tile_H):
+                    continue
+                for sx in range(sw):
+                    tile_x = local_x + sx
+                    if not (0 <= tile_x < tile_W):
+                        continue
+                    idx_here = vol[yi, tile_z, tile_x]
+                    name_here = pal.name_of(idx_here)
+                    if "fence" not in name_here or "fence_gate" in name_here:
+                        continue
+                    # Parse bare + existing properties
+                    if "[" in name_here:
+                        bare_part, _, props_part = name_here.partition("[")
+                        existing = props_part.rstrip("]")
+                    else:
+                        bare_part = name_here
+                        existing = ""
+                    bare = bare_part.replace("minecraft:", "")
+                    # Compute neighbour connections
+                    def _neighbor_name(dz, dx):
+                        tz2, tx2 = tile_z + dz, tile_x + dx
+                        if not (0 <= tz2 < tile_H and 0 <= tx2 < tile_W):
+                            return "air"
+                        return pal.name_of(vol[yi, tz2, tx2])
+                    n_conn = _fence_connects_to(_neighbor_name(-1, 0))
+                    s_conn = _fence_connects_to(_neighbor_name(+1, 0))
+                    e_conn = _fence_connects_to(_neighbor_name(0, +1))
+                    w_conn = _fence_connects_to(_neighbor_name(0, -1))
+                    # Preserve non-connection properties
+                    kept = []
+                    if existing:
+                        for kv in existing.split(","):
+                            k, _, v = kv.partition("=")
+                            if k.strip() in ("north", "south", "east", "west"):
+                                continue
+                            if k and v:
+                                kept.append(f"{k.strip()}={v.strip()}")
+                    kept.extend([
+                        f"north={'true' if n_conn else 'false'}",
+                        f"south={'true' if s_conn else 'false'}",
+                        f"east={'true' if e_conn else 'false'}",
+                        f"west={'true' if w_conn else 'false'}",
+                    ])
+                    new_name = f"{bare}[{','.join(kept)}]"
+                    new_idx = _fence_cache.get(new_name)
+                    if new_idx is None:
+                        try:
+                            new_idx = pal.idx(new_name)
+                        except Exception:
+                            _fence_cache[new_name] = -1
+                            continue
+                        _fence_cache[new_name] = new_idx
+                    elif new_idx == -1:
+                        continue
+                    vol[yi, tile_z, tile_x] = new_idx
 
 
 # ---------------------------------------------------------------------------
@@ -1141,6 +1447,10 @@ def _build_block_states_nbt(names_yzx: np.ndarray):
         if "leaves" in bare and "persistent" not in props_dict:
             props_dict["persistent"] = nbtlib.String("true")
             props_dict.setdefault("distance", nbtlib.String("1"))
+        # S64: ensure waterlogged=true for sea_pickle placed in ocean water
+        # (seagrass/kelp are inherently water-containing, no property needed)
+        if bare == "sea_pickle" and "waterlogged" not in props_dict:
+            props_dict["waterlogged"] = nbtlib.String("true")
         entry = {"Name": nbtlib.String(full_name)}
         if props_dict:
             entry["Properties"] = nbtlib.Compound(props_dict)
@@ -1221,7 +1531,7 @@ def _chunk_to_nbt_bytes(
     cx: int, cz: int,
     vol: np.ndarray,            # (Y_RANGE, tile_h, tile_w) uint16 palette indices
     pal: BlockPalette,          # palette for index → name conversion
-    biome_mc: np.ndarray,       # (tile_h, tile_w) MC biome strings (pre-translated)
+    biome_grid: np.ndarray,     # (tile_h, tile_w) Vandir biome name strings
     tile_world_x: int, tile_world_z: int,
     tile_h: int, tile_w: int,
 ) -> bytes:
@@ -1245,13 +1555,69 @@ def _chunk_to_nbt_bytes(
     # Convert to strings for NBT building (small: 512×16×16 = 131K cells)
     chunk_vol = pal.to_strings(chunk_u16)
 
-    # Biome (Z,X) grid for this chunk — default plains for out-of-tile area
-    biome_zx = np.full((CHUNK_SZ, CHUNK_SZ), "minecraft:plains", dtype=object)
+    # Vandir biome (Z,X) grid for this chunk — default _DEFAULT for out-of-tile area
+    biome_vandir_zx = np.full((CHUNK_SZ, CHUNK_SZ), "_DEFAULT", dtype=object)
     if bx_hi > bx_lo and bz_hi > bz_lo:
-        biome_zx[lz_lo:lz_hi, lx_lo:lx_hi] = biome_mc[bz_lo:bz_hi, bx_lo:bx_hi]
+        biome_vandir_zx[lz_lo:lz_hi, lx_lo:lx_hi] = biome_grid[bz_lo:bz_hi, bx_lo:bx_hi]
 
-    # Downsample to (4,4,4) biome quanta (Y,Z,X) — same biome at all Y levels
-    biome_q4 = np.stack([biome_zx[::4, ::4]] * 4, axis=0)  # (4, 4, 4)
+    # S66/S67: altitude remap — pixels whose surface_y exceeds a threshold
+    # and whose biome matches a remap's source get reassigned to the target
+    # biome name for the MC tag emit.  S67 extends with a mountaincap dither
+    # zone for SNOWY_BOREAL_TAIGA in Y[200, 250].
+    if BIOME_ALTITUDE_REMAPS:
+        _solid_for_remap = (chunk_vol != "air")
+        _has_any_r = _solid_for_remap.any(axis=0)
+        _first_hi_r = np.argmax(_solid_for_remap[::-1, :, :], axis=0)
+        _surf_yi_r = np.where(_has_any_r, Y_RANGE - 1 - _first_hi_r, 0)
+        _surf_wy_r = _surf_yi_r + Y_MIN  # (16, 16) world Y
+        for _remap in BIOME_ALTITUDE_REMAPS:
+            src, tgt, thr = _remap["source"], _remap["target"], _remap["threshold"]
+            _hit = (biome_vandir_zx == src) & (_surf_wy_r >= thr)
+            if _hit.any():
+                biome_vandir_zx[_hit] = tgt
+
+        # S68: SBT mountaincap dither moved to surface_decorator so snow
+        # carpet AND biome tag decisions are SYNCED.  The biome_grid passed
+        # in here already has the remap applied; no duplicate logic here.
+
+    # Downsample Vandir biomes to (4, 4) biome-cell quanta
+    biome_vandir_q = biome_vandir_zx[::4, ::4]  # (4, 4)
+
+    # Ground MC biome per-cell (used for cells at or below surface)
+    ground_q = np.vectorize(
+        lambda b: BIOME_TO_MC.get(str(b), BIOME_TO_MC["_DEFAULT"])
+    )(biome_vandir_q)  # (4, 4) MC biome strings
+
+    # Sky MC biome per-cell (cells strictly above surface).  Falls back to
+    # ground biome when Vandir biome not in BIOME_TO_MC_SKY.
+    def _sky_of(b: str) -> str:
+        return BIOME_TO_MC_SKY.get(str(b),
+               BIOME_TO_MC.get(str(b), BIOME_TO_MC["_DEFAULT"]))
+    sky_q = np.vectorize(_sky_of)(biome_vandir_q)  # (4, 4)
+
+    # Fast path: if every 4×4 patch has sky == ground (no BOREAL_ALPINE etc.
+    # in this chunk), skip the per-cell Y split entirely.
+    sky_active = not np.array_equal(sky_q, ground_q)
+
+    # Per-patch surface world-Y (MIN across 4×4 block patch — S63 fix).
+    # MAX was too permissive: snow queries from LOWER surfaces in a mixed-height
+    # patch landed in ground (taiga) cells and snow still fell on BOREAL_ALPINE.
+    # MIN guarantees every cell that CONTAINS any surface becomes sky — the
+    # trade-off is more grass cells get plains tint on mixed-height patches.
+    solid_mask = (chunk_vol != "air")                 # (Y_RANGE, 16, 16)
+    has_any    = solid_mask.any(axis=0)               # (16, 16)
+    # argmax on reversed axis → index of first solid from top
+    first_hi   = np.argmax(solid_mask[::-1, :, :], axis=0)
+    surface_yi = np.where(has_any, Y_RANGE - 1 - first_hi, 0)  # (16, 16) vol-idx
+    surface_wy = surface_yi + Y_MIN                            # (16, 16) world-Y
+    # Air-only columns get a SENTINEL (max int32) so they don't drag MIN down.
+    _SENTINEL_WY = np.iinfo(np.int32).max
+    sentinel_wy  = np.where(has_any, surface_wy.astype(np.int32), _SENTINEL_WY)
+    # MIN per 4×4 patch → every cell that contains *any* surface becomes sky.
+    surface_wy_q = sentinel_wy.reshape(4, 4, 4, 4).min(axis=(1, 3))  # (4, 4)
+    # All-air patches (MIN == SENTINEL) fall through to Y_MIN so every cell sky.
+    surface_wy_q = np.where(surface_wy_q == _SENTINEL_WY, Y_MIN, surface_wy_q)
+    surface_wy_q = surface_wy_q.astype(np.int16)
 
     sections = []
     _sec_y_max = (_TEST_SECTION_Y_MAX + 1) if _TEST_SECTION_Y_MAX is not None \
@@ -1267,6 +1633,22 @@ def _chunk_to_nbt_bytes(
             sec_blk[by_lo:by_hi, lz_lo:lz_hi, lx_lo:lx_hi] = \
                 chunk_vol[yi_lo:yi_hi, lz_lo:lz_hi, lx_lo:lx_hi]
 
+        # Build (4, 4, 4) biome quanta for this section — 4 vertical cells,
+        # each covering a 4-block Y range.  Rule: cell painted sky iff
+        # cell.bottom_Y >= surface_wy_q (per 4×4 patch max).  This guarantees
+        # the MOTION_BLOCKING precipitation query (at surface+1) hits a sky
+        # cell for biomes with a sky override.
+        if sky_active:
+            biome_q4 = np.empty((4, 4, 4), dtype=object)
+            sec_bottom_wy = sec_y * CHUNK_SZ                # world Y of section bottom
+            for yy in range(4):
+                cell_bottom_wy = sec_bottom_wy + yy * 4     # scalar
+                above = cell_bottom_wy >= surface_wy_q      # (4, 4) bool
+                biome_q4[yy] = np.where(above, sky_q, ground_q)
+        else:
+            # Uniform-column fast path (original S60 behaviour)
+            biome_q4 = np.stack([ground_q] * 4, axis=0)     # (4, 4, 4)
+
         # S60: emit ALL sections, including fully-air ones. The biome_q4 tag
         # (desert/taiga/etc.) applies vertically through the entire column so
         # MC shows the correct biome label when the player flies above terrain.
@@ -1275,6 +1657,8 @@ def _chunk_to_nbt_bytes(
         # vanilla 1.21.10 height=384 (24 sections) and emitting 32 sections
         # triggers `ArrayIndexOutOfBoundsException: Index 24 out of bounds for
         # length 24` at chunk load.
+        # S62: biome_q4 is now per-section — sky-biome override for
+        # BOREAL_ALPINE and friends kills altitude snow without datapacks.
         sections.append(nbtlib.Compound({
             "Y":            nbtlib.Byte(sec_y),
             "block_states": _build_block_states_nbt(sec_blk),
@@ -1371,10 +1755,11 @@ def write_tile_to_region(
 
     Returns list of written region file paths.
     """
-    # Translate Vandir biome names → MC biome strings once for the whole tile
-    biome_mc = np.vectorize(
-        lambda b: BIOME_TO_MC.get(str(b), BIOME_TO_MC["_DEFAULT"])
-    )(biome_grid)
+    # S62: Vandir biome grid is passed to _chunk_to_nbt_bytes directly — the
+    # per-chunk MC translation happens there because the sky-biome override
+    # needs per-cell surface Y to decide ground-vs-sky.  Previous S60 code
+    # pre-translated Vandir → MC here via BIOME_TO_MC lookup; that path
+    # cannot differentiate sky cells.
 
     # Chunk range covering this tile
     CHUNK_SZ = 16
@@ -1403,7 +1788,7 @@ def write_tile_to_region(
         for cz in range(cz0, cz1 + 1):
             try:
                 compressed = _chunk_to_nbt_bytes(
-                    cx, cz, vol, pal, biome_mc,
+                    cx, cz, vol, pal, biome_grid,
                     tile_world_x, tile_world_z, tile_h, tile_w,
                 )
             except Exception as _exc:

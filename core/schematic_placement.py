@@ -68,6 +68,24 @@ SPARSE_BUSH_BIOMES: frozenset[str] = frozenset({
     "KARST_BARRENS", "MANGROVE_COAST",
 })
 
+# S63: aesthetic-conflict biome pairs — the S59 ecotone seam dither will NOT
+# swap across these pairs (either direction).  Purpose: prevent jarring
+# species crossovers like temperate-rainforest conifers bleeding into tropical
+# jungle (LUSH_RAINFOREST_COAST).  Each entry is an unordered pair.
+ECOTONE_DENY_PAIRS: frozenset[frozenset[str]] = frozenset({
+    # conifer → tropical jungle
+    frozenset({"TEMPERATE_RAINFOREST", "LUSH_RAINFOREST_COAST"}),
+    frozenset({"TEMPERATE_RAINFOREST", "TIDAL_JUNGLE_FRINGE"}),
+    frozenset({"BOREAL_TAIGA", "LUSH_RAINFOREST_COAST"}),
+    frozenset({"SNOWY_BOREAL_TAIGA", "LUSH_RAINFOREST_COAST"}),
+    # desert/arid → wet tropical/coastal
+    frozenset({"SAND_DUNE_DESERT", "LUSH_RAINFOREST_COAST"}),
+    frozenset({"SAND_DUNE_DESERT", "MANGROVE_COAST"}),
+    frozenset({"SAND_DUNE_DESERT", "TIDAL_JUNGLE_FRINGE"}),
+    # temperate-rainforest → coastal tropical RAINFOREST_COAST (ambiguous boundary)
+    frozenset({"TEMPERATE_RAINFOREST", "RAINFOREST_COAST"}),
+})
+
 # Canopy overlap exclusion radii (pixels) per size code
 CANOPY_RADIUS: dict[str, int] = {
     "sm": 3,
@@ -403,11 +421,14 @@ def place_schematics(
     rng = random.Random(tile_seed)
     np_rng = np.random.default_rng(tile_seed)
 
-    # Candidate pixel mask: land only, no river/lake banks, 3px buffer from water
+    # Candidate pixel mask: land only, no river/lake/ocean banks, 14-block buffer
+    # S65: widen buffer 8→14 per user.  Combined with the whole-schematic
+    # reject in chunk_writer.stamp_schematic, gives ~16-20 block no-tree-zone
+    # from any water edge.
     from scipy.ndimage import binary_dilation as _bd_place
-    water_pixels = river_meta > 0
-    water_buffer = _bd_place(water_pixels, iterations=5) if water_pixels.any() else water_pixels
-    land_mask = (surface_y > -64) & ~water_buffer
+    water_pixels = (river_meta > 0) | (surface_y < 63)
+    water_buffer = _bd_place(water_pixels, iterations=14) if water_pixels.any() else water_pixels
+    land_mask = (surface_y >= 63) & ~water_buffer
 
     # Suppress trees in clearing gaps (gap_mask from eco_gradients)
     if eco_grads is not None and hasattr(eco_grads, 'gap_mask'):
@@ -680,9 +701,12 @@ def place_schematics(
             biome_str = str(biome_grid[row, col])
             # S59: ecotone seam dither — swap to neighbour biome's entries list
             # at rolled pixels so species mix across biome boundaries.
+            # S63: guarded by ECOTONE_DENY_PAIRS — don't swap across aesthetic
+            # conflicts (e.g. conifers into tropical jungle).
             if _seam_swap_grid is not None and _seam_swap_grid[row, col]:
                 _alt = str(_seam_nb[row, col])
-                if _alt and _alt in index:
+                if (_alt and _alt in index
+                        and frozenset({biome_str, _alt}) not in ECOTONE_DENY_PAIRS):
                     biome_str = _alt
             all_entries = index.get(biome_str)
             if not all_entries:
