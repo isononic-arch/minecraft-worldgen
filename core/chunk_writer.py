@@ -288,7 +288,9 @@ def _compute_xz_waviness(
     band_scale_y: int,
 ) -> np.ndarray:
     """Compute XZ waviness field (H, W) int32 for tilting band boundaries."""
-    wave_amp  = max(1, band_scale_y // 3)
+    # S69: halved from //3 to //6 — band boundaries were oscillating like an EKG
+    # trace across tiles; tighter wave keeps strata more columnar.
+    wave_amp  = max(1, band_scale_y // 6)
     wave_cell = 32
 
     row_u = (np.arange(H, dtype=np.uint32) + tile_world_z)
@@ -356,6 +358,8 @@ def _apply_banded_fill(
     band_scale_y: int,
     col_y_noise: np.ndarray | None = None,
     band_lut: np.ndarray | None = None,
+    fleck_probability: float = 0.0,
+    fleck_seed: int = 0,
 ) -> None:
     """Apply Y-banded fill to vol for columns matching col_mask, Y-sliced.
 
@@ -365,9 +369,18 @@ def _apply_banded_fill(
     ``band_lut`` is an optional precomputed Y → variant-index lookup table with
     randomised band thicknesses (from ``_build_band_lut``).  When provided,
     ``band_scale_y`` is ignored and the LUT is indexed directly.
+
+    S69: ``fleck_probability`` (0.0-0.1) scatters per-voxel random variant swaps
+    inside the painted layer — a small % of voxels get overwritten with a
+    random other palette block.  Adds subtle salt-and-pepper visual noise to
+    otherwise-clean stratified bands.  Default 0.0 (off) — callers must opt in.
     """
     lut_size = band_lut.shape[0] if band_lut is not None else 0
     SLICE = 32
+    _fleck_rng = (
+        np.random.default_rng(fleck_seed & 0xFFFFFFFF)
+        if fleck_probability > 0 and n_v > 1 else None
+    )
     for y_s in range(0, vol.shape[0], SLICE):
         y_e = min(y_s + SLICE, vol.shape[0])
         cs_slice = stone_mask[y_s:y_e] & col_mask[None, :, :]
@@ -383,6 +396,16 @@ def _apply_banded_fill(
             band_idx = band_lut[np.abs(y_mod).astype(np.int32) % lut_size]
         else:
             band_idx = (y_mod // band_scale_y) % n_v
+
+        # S69: per-voxel flecking — swap ~fleck_probability % of voxels to a
+        # random other variant, producing light salt-and-pepper noise.  Only
+        # active when opted in by caller (basement lithology fill).
+        if _fleck_rng is not None:
+            fleck_coin = _fleck_rng.random(band_idx.shape, dtype=np.float32)
+            fleck_variant = _fleck_rng.integers(0, n_v, size=band_idx.shape,
+                                                dtype=np.int32)
+            band_idx = np.where(fleck_coin < fleck_probability,
+                                fleck_variant, band_idx)
 
         for vi, v_idx in enumerate(variant_indices):
             v_mask = cs_slice & (band_idx == vi)
@@ -496,9 +519,10 @@ def _fill_geology_layers(
     #     Y noise for organic folded band edges.
     xz_waviness = _compute_xz_waviness(H, W, tile_world_x, tile_world_z, band_scale_y)
 
-    # Per-column Y noise: ±3 blocks, deterministic from world position
+    # Per-column Y noise: ±1 block (S69: tightened from ±3 per user for more
+    # columnar strata appearance).  Deterministic from world position.
     _noise_rng = np.random.default_rng(tile_world_x * 73856093 ^ tile_world_z * 19349669)
-    col_y_noise = _noise_rng.integers(-3, 4, size=(H, W), dtype=np.int32)
+    col_y_noise = _noise_rng.integers(-1, 2, size=(H, W), dtype=np.int32)
 
     # Basement range: above bedrock band, below sediment bottom
     basement_mask = stone_mask & (abs_y > bedrock_band_top_y) & (abs_y < sed_bot_y[None, :, :])
@@ -522,6 +546,10 @@ def _fill_geology_layers(
             palette_idx_list, len(palette_idx_list), band_scale_y,
             col_y_noise=col_y_noise,
             band_lut=band_lut,
+            # S69: subterranean-only light flecking — ~2.5% per voxel gets
+            # swapped to a random other block in the same group palette.
+            fleck_probability=0.025,
+            fleck_seed=tile_world_x * 83492791 ^ tile_world_z * 46508633 ^ gid * 1779033703,
         )
 
     # Columns with lithology_tile==0 (water/unclassified) keep stone (already filled)
@@ -693,6 +721,33 @@ def build_column_array(
     yi_sub3 = sy_flat - 3 - Y_MIN
     valid3 = (yi_sub3 >= 0) & (yi_sub3 < Y_RANGE)
     vol[yi_sub3[valid3], r_idx[valid3], c_idx[valid3]] = sub_idx_flat[valid3]
+
+    # S69: Kill any seagrass/kelp that would pop above the water surface.
+    # Root cause: tall_seagrass at surface_y=62 (depth=1) places upper half at
+    # Y=64, one block above SEA_Y.  Also defensive against any seagrass/kelp
+    # placed where surface_y >= SEA_Y (shouldn't happen per ocean_decorator
+    # gating, but cheap to guard).  Mutates ground_cover in place so the stamp
+    # + double-tall + uveg-carve passes below all see the cleaned field.
+    _kill_tall = (ground_cover == "tall_seagrass") & (surface_y + 2 > SEA_Y)
+    if _kill_tall.any():
+        ground_cover[_kill_tall] = ""
+    _kill_short = np.isin(
+        ground_cover, ("seagrass", "kelp", "sea_pickle")
+    ) & (surface_y + 1 > SEA_Y)
+    if _kill_short.any():
+        ground_cover[_kill_short] = ""
+    # S70: Kill terrestrial ground cover at coast edges where surface_y <= SEA_Y.
+    # Prevents grass/tall_grass/ferns etc. from poking out over ocean water
+    # when a land-biome pixel sits exactly at sea level next to an ocean cell.
+    _water_plants = ("seagrass", "tall_seagrass", "kelp", "sea_pickle")
+    _kill_terrestrial = (
+        (ground_cover != "")
+        & ~np.isin(ground_cover, _water_plants)
+        & (surface_y <= SEA_Y)
+    )
+    if _kill_terrestrial.any():
+        ground_cover[_kill_terrestrial] = ""
+    cov_flat = ground_cover.ravel()
 
     # ground cover sy+1 (only where non-empty)
     cover_mask = np.array([bool(b) for b in cov_flat])

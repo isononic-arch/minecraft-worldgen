@@ -448,15 +448,23 @@
     "ramp_blocks": 30
   },
   "sand_dune_smoothing": {
-    "_comment": "S67/S68: UNIVERSAL biome-boundary Gaussian smoothing. S68 bumped intensity per user request (super super intense): sigma 8→16, passes 3→6, buffer 24→36. Applies to every biome boundary pixel.",
+    "_comment": "S69: Reverted to S67 intensity — the S68 crank (sigma=16 passes=6 buffer=36) was needed only to hide sharp Gaea dune geometry, which the new dune_flatten pass now handles at the source. Mountain interiors adjacent to biome boundaries no longer get smeared 36 blocks deep.",
     "enabled": true,
-    "buffer_blocks": 36,
-    "sigma": 16.0,
-    "passes": 6,
+    "buffer_blocks": 24,
+    "sigma": 8.0,
+    "passes": 3,
     "smooth_ocean_coastline": true,
-    "coast_buffer_blocks": 28,
-    "coast_sigma": 10.0,
-    "coast_passes": 4
+    "coast_buffer_blocks": 18,
+    "coast_sigma": 6.0,
+    "coast_passes": 2
+  },
+  "dune_flatten": {
+    "_comment": "S69: Root-cause fix for sand-dune boundary seams. Pulls gap_mask==8 pixels toward a wide-sigma neighbourhood baseline (70% baseline / 30% original), then locally smooths the dune mask + 4-block dilation. Runs BEFORE sand_dune_smoothing in decorate_surface. Disable if duneless worlds are ever wanted.",
+    "enabled": true,
+    "sigma_baseline": 30.0,
+    "flatten_strength": 0.7,
+    "local_smooth_sigma": 8.0,
+    "mask_dilation_blocks": 4
   },
   "sbt_mountaincap": {
     "_comment": "S68: unified SBT dither — one decision drives both snow carpet AND biome tag. Pixels below min_y OR with noise<threshold in [min_y,max_y] get remapped to BOREAL_ALPINE (no snow, plains tag). Above max_y always SBT (snow, snowy_taiga tag).",

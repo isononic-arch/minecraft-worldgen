@@ -161,6 +161,14 @@ def run_tile_prelude(
         width=TILE_SIZE, height=TILE_SIZE,
         gap_config=_gap_cfg,
     )
+
+    # S70: Apply hydro_region.png paint overlay (lakes + rivers).  No-op
+    # when the file is absent.  Mutates masks in place before river_carver.
+    from core.hydro_region_overlay import apply_hydro_region_overlay
+    apply_hydro_region_overlay(
+        masks, masks_dir, col_off, row_off, TILE_SIZE, verbose=verbose,
+    )
+
     noise = core_noise.load_noise_generators(cfg_path)
 
     # ---- Step 4a: read discrete lithology mask (Phase 1.75) ----

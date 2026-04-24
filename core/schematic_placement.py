@@ -65,7 +65,7 @@ NO_BUSH_BIOMES: frozenset[str] = frozenset({
 
 # Sparse bush biomes — halve base density for bush entries
 SPARSE_BUSH_BIOMES: frozenset[str] = frozenset({
-    "KARST_BARRENS", "MANGROVE_COAST",
+    "MANGROVE_COAST",
 })
 
 # S63: aesthetic-conflict biome pairs — the S59 ecotone seam dither will NOT
@@ -106,7 +106,7 @@ BASE_DENSITY: dict[str, float] = {
     "RAINFOREST_COAST":        0.24,
     "RIPARIAN_WOODLAND":       0.18,
     "DRY_OAK_SAVANNA":         0.09,
-    "KARST_BARRENS":           0.03,
+    "KARST_BARRENS":           0.20,
     "BIRCH_FOREST":            0.20,
     "EASTERN_TEMPERATE_COAST": 0.06,
     "MIXED_FOREST":            0.22,
@@ -276,6 +276,23 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
                 species=e.species,
             )
             for e in grouped["SNOWY_BOREAL_TAIGA"]
+        ]
+
+    # S69: SAND_DUNE_DESERT mirrors KARST_BARRENS bush entries only — gives
+    # dunes occasional small-scrub placements (Monahans Sandhills style).
+    # Trees are NOT mirrored; combined with SAND_DUNE_DESERT's low
+    # BASE_DENSITY (0.008) this yields very rare bush clumps, not a forest.
+    if "KARST_BARRENS" in grouped:
+        grouped["SAND_DUNE_DESERT"] = [
+            _SchematicEntry(
+                path=e.path, biome="SAND_DUNE_DESERT", size=e.size,
+                schem_type=e.schem_type, anchor_y=e.anchor_y,
+                inset_depth=e.inset_depth, lowest_leaf_y=e.lowest_leaf_y,
+                method=e.method, weight=e.weight, anchor_review=False,
+                species=e.species,
+            )
+            for e in grouped["KARST_BARRENS"]
+            if e.schem_type == "bush"
         ]
 
     return grouped

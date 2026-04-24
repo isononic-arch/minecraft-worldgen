@@ -460,6 +460,13 @@ def main() -> int:
         print(traceback.format_exc(), file=sys.stderr)
         return 2
 
+    # S70: Apply hydro_region.png paint overlay (lakes + rivers).  No-op
+    # when the file is absent.  Mutates masks in place before river_carver.
+    from core.hydro_region_overlay import apply_hydro_region_overlay
+    apply_hydro_region_overlay(
+        masks, masks_dir, col_off, row_off, TILE_SIZE, verbose=True,
+    )
+
     noise = core_noise.load_noise_generators(cfg_path)
 
     # ---- Step 4a: Read discrete lithology mask (Phase 1.75) ----

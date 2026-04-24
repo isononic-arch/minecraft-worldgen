@@ -102,12 +102,19 @@ def build_lithology(
     override_path: Path,
     height_path: Path,
     config: dict,
+    lithology_region_path: Path | None = None,
 ) -> np.ndarray:
     """Return (6250, 6250) uint8 lithology mask.
 
     Pass 0 of the lithology derivation:
       - Zone → group assignment from config.
       - Elevation overrides from config.lithology.elevation_overrides.rules.
+
+    S69: If ``lithology_region_path`` exists (typically
+    ``masks/lithology_region.png`` at 8192×8192), it serves as a per-pixel
+    override on top of the biome-derived assignment.  Non-zero pixels in
+    the region image replace the derived group_id; zero pixels fall
+    through.  Written by ``tools/override_studio.py`` Lithology tab.
     """
     override_lo = _read_downsampled_nearest(override_path, PRECOMPUTE_SCALE)
     H, W = override_lo.shape
@@ -123,6 +130,34 @@ def build_lithology(
         # else leave 0 (e.g. water codes). Consumers treat 0 as "no lithology".
 
     out = code_to_gid[override_lo]  # vectorized remap, (6250, 6250) uint8
+
+    # S69: optional per-pixel region override from lithology_region.png.
+    if lithology_region_path is not None and lithology_region_path.exists():
+        from PIL import Image as _PILImage
+        valid_ids = set(int(g["id"]) for g in config["lithology"]["groups"].values())
+        valid_ids.add(0)
+        lr_img = _PILImage.open(lithology_region_path).convert("L")
+        # Resize NEAREST to (6250, 6250). PIL uses (W, H) order.
+        lr_img_lo = lr_img.resize((W, H), _PILImage.NEAREST)
+        lr_arr = np.asarray(lr_img_lo, dtype=np.uint8)
+        # Validate: only group IDs we know about (or 0 = pass-through).
+        unique = set(np.unique(lr_arr).tolist())
+        invalid = unique - valid_ids
+        if invalid:
+            print(f"[build_lithology] WARN: lithology_region.png has invalid "
+                  f"IDs {sorted(invalid)} — zeroing them.")
+            mask = np.zeros_like(lr_arr, dtype=bool)
+            for gid in valid_ids:
+                mask |= (lr_arr == gid)
+            lr_arr = np.where(mask, lr_arr, 0).astype(np.uint8)
+        overlay_pixels = int((lr_arr > 0).sum())
+        if overlay_pixels > 0:
+            out = np.where(lr_arr > 0, lr_arr, out).astype(np.uint8)
+            print(f"[build_lithology] lithology_region.png applied: "
+                  f"{overlay_pixels:,} pixels overridden")
+        else:
+            print(f"[build_lithology] lithology_region.png present but empty "
+                  f"(all zeros) — no override applied")
 
     # Elevation overrides — currently empty rules list. Wire structure for Phase 2.
     rules = config["lithology"].get("elevation_overrides", {}).get("rules", [])
@@ -171,10 +206,13 @@ def main() -> int:
 
     override_path = args.masks / "override.tif"
     height_path = args.masks / "height.tif"
+    lithology_region_path = args.masks / "lithology_region.png"
     out_path = args.out or (args.masks / "lithology.tif")
 
     print(f"[build_lithology] reading {override_path}")
-    lith = build_lithology(override_path, height_path, config)
+    if lithology_region_path.exists():
+        print(f"[build_lithology] region overlay found: {lithology_region_path}")
+    lith = build_lithology(override_path, height_path, config, lithology_region_path)
 
     unique, counts = np.unique(lith, return_counts=True)
     total = lith.size

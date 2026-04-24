@@ -477,9 +477,11 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # that was suppressing ground cover to near-zero. Still very rare in-world
     # after the multiplier. S61: dead_bush rare-ified, grass shifted up.
     # S66: more dry grass variety per user — keep sparse overall.
+    # S69: bumped dry grass densities ~1.5x for more visible "occasional grass
+    # patches" per user — still sparse after 0.05 eco_density_mod cut.
     "SAND_DUNE_DESERT": [
-        ("dead_bush", 0.03), ("short_dry_grass", 0.28),
-        ("tall_dry_grass", 0.14), ("cactus", 0.02),
+        ("dead_bush", 0.03), ("short_dry_grass", 0.42),
+        ("tall_dry_grass", 0.22), ("cactus", 0.02),
     ],
     # S60: add bush infrequent, up short_dry_grass density per user (matches
     # scrubby pattern).
@@ -945,6 +947,43 @@ def _apply_snow_carpet(
         ground_cover[place_snow] = "snow[layers=1]"
 
 
+def _flatten_dune_regions(
+    surface_y: np.ndarray,
+    gap_mask: np.ndarray,
+    sigma_baseline: float = 30.0,
+    flatten_strength: float = 0.7,
+    local_smooth_sigma: float = 8.0,
+    mask_dilation_blocks: int = 4,
+) -> None:
+    """S69: Root-cause fix for sand-dune boundary seams.  Gaea's raw height.tif
+    contains sharp dune geometry in gap_mask==8 regions.  Pre-S69 we hid these
+    with a universal boundary smoother cranked to sigma=16 × 6 passes — but
+    that smeared 36 blocks into every mountain interior adjacent to any biome
+    boundary.  Instead: pull Y in dune regions toward a wide-sigma neighbourhood
+    baseline, then gaussian-smooth the dune interior only.  Mountain ridges
+    outside gap_mask==8 are untouched."""
+    dune = (gap_mask == 8)
+    if not dune.any():
+        return
+    from scipy.ndimage import binary_dilation, gaussian_filter
+    sy_f = surface_y.astype(np.float32)
+    # 1. Baseline = wide-sigma gaussian of surface_y (what the terrain would
+    #    look like without dune bumps riding on top).
+    baseline = gaussian_filter(sy_f, sigma=sigma_baseline, mode='nearest')
+    # 2. Blend dune pixels toward baseline.  strength=0.7 = 70% baseline + 30%
+    #    original.  Preserves some dune character without leaving sharp bumps.
+    s = float(np.clip(flatten_strength, 0.0, 1.0))
+    sy_f[dune] = sy_f[dune] * (1.0 - s) + baseline[dune] * s
+    # 3. Local smoothing pass inside a slightly dilated dune mask so the
+    #    flattened region blends smoothly with adjacent untouched terrain.
+    local_ring = binary_dilation(dune, iterations=max(1, int(mask_dilation_blocks)))
+    if local_ring.any():
+        local_blur = gaussian_filter(sy_f, sigma=local_smooth_sigma, mode='nearest')
+        weight = local_ring.astype(np.float32)
+        sy_f = weight * local_blur + (1.0 - weight) * sy_f
+    surface_y[:] = np.round(sy_f).astype(surface_y.dtype)
+
+
 def _smooth_all_biome_boundaries_y(
     surface_y: np.ndarray,
     biome_grid: np.ndarray,
@@ -1108,6 +1147,22 @@ def decorate_surface(
     bm_cfg   = cfg["block_mixing"]
     px_off   = tile_x * W
     py_off   = tile_y * H
+
+    # S69: Flatten Gaea's raw dune bumps BEFORE the universal boundary
+    # smoother.  Root-cause fix for the sand/biome seams that drove S68 to
+    # crank the boundary smoother to sigma=16 × 6 passes (which then smeared
+    # mountain ridges).  Touches gap_mask==8 pixels only; rest of world is
+    # left for the boundary smoother at S67-gentle intensity.
+    _df_cfg = cfg.get("dune_flatten", {})
+    if _df_cfg.get("enabled", True) and eco_grads is not None \
+            and hasattr(eco_grads, 'gap_mask'):
+        _flatten_dune_regions(
+            surface_y, eco_grads.gap_mask,
+            sigma_baseline=float(_df_cfg.get("sigma_baseline", 30.0)),
+            flatten_strength=float(_df_cfg.get("flatten_strength", 0.7)),
+            local_smooth_sigma=float(_df_cfg.get("local_smooth_sigma", 8.0)),
+            mask_dilation_blocks=int(_df_cfg.get("mask_dilation_blocks", 4)),
+        )
 
     # S65/S66/S67: Y-smoothing at ALL biome boundaries — user wants the seam
     # fix to apply regardless of biome.  Previous per-biome target list was
