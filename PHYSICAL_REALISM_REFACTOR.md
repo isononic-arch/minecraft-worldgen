@@ -2483,3 +2483,52 @@ Multi-session iteration on user walk feedback.  Everything merged + rendered + c
 - User-mentioned S65 carry-forwards still pending: snow NW-only (altitude + override repaint), rock-groups-by-geography, LRFC↔TRAIN transition biome, full 50k regen.
 
 **User instruction at S68 wrap:** commit everything + push to master.  Session context running low.
+
+
+### S69 — 2026-04-22/24: Override Studio tool + overlay-layer pipeline + P0 fixes
+
+**Landed this session: polish track + tooling unlock.  No phase-numbered work.  Next session starts: biome-roster validation (S70).**
+
+Three-day session focused on P0 carry-forwards from S68 and building the Override Studio paint tool to unlock user-driven world repainting.
+
+**P0 fixes:**
+- G1 dune-flatten (core/surface_decorator.py) — new _flatten_dune_regions pulls gap_mask==8 pixels toward neighbourhood baseline (sigma_baseline=30, flatten_strength=0.7) then local-smooths the dune mask.  Reverts sand_dune_smoothing to S67 intensity (sigma=8, passes=3, buffer=24).  Mountain interiors no longer smeared.  Verified (24,80).
+- G2 KARST (core/schematic_placement.py) — removed from SPARSE_BUSH_BIOMES, BASE_DENSITY 0.03->0.20.  Pure-KARST tile (34,9) rendered 4851 placements ~46 pct coverage.
+- Lithology strata (core/chunk_writer.py) — wave_amp halved (band_scale_y//6), col_y_noise +/-1, 2.5 pct per-voxel fleck scatter.
+- SAND_DUNE bush mirror — KARST bush entries mirrored at native 0.008 density.  Dry grass palette bump.
+- Seagrass + grass-above-coast cleanup (core/chunk_writer.py) — tall_seagrass killed where surface_y+2 > SEA_Y.  Terrestrial ground cover killed where surface_y <= SEA_Y.
+
+**Tool — tools/override_studio.py (new, ~1700 LOC):**
+
+Three-tab PyQt6 studio.  Shared BaseCanvas(QGraphicsView) for brush/fill/eyedropper/region-replace + undo/redo + pan/zoom.  All saves validate zone codes, shape, dtype, NEAREST round-trip, biome-vs-height alignment (flag >15 pct mismatch).  Auto-backup on overwrite.  Auto-load from main repo paths.
+
+- Biome tab: brush/fill/eyedropper(I)/region-replace(R)/paint-over/river auto-paint.  Overlays: false-color, height, ocean@Y63 crisp NEAREST, 7-band elevation (alpha 135), land-mask slider, NW-quadrant outline, override-on-ocean warning.  Elevation-band clamp.  Save-and-upscale QProcess dialog.  Hover status shows h_raw + elevation band.
+- Lithology tab: paints masks/lithology_region.png (IDs 0-6 from config).  Brush shapes: round/ridge/blob/ribbon+angle.  Scatter/density slider (transition bands).  Ocean/land + elevation-band clamps.  Overlays: biome backdrop dim, rock-exposed slopes from rock_gap.tif, ocean@Y63.  Prefill-from-zone_to_group button.
+- Hydrology tab: paints masks/hydro_region.png (4 water-only categories: lake, river, river-bank-moist, dry-channel).  Explicitly NOT biome-touching per user.  Backdrop shows biome + existing rivers/lakes.
+
+Hotkeys: Ctrl+Z/Y/Shift+Z undo/redo, Ctrl+S save, [ and ] brush size, E eraser.
+
+**Pipeline overlay integration:**
+
+- Lithology via tools/build_lithology.py — added lithology_region_path optional parameter.  Non-zero pixels in the region PNG override the biome-derived group_id via np.where.  Validates IDs.  Logs override pixel count.  Byte-identical output when file absent.  User ran with 39M pixels overridden.
+- Hydrology via core/hydro_region_overlay.py (new) — per-tile overlay applied after read_tile in both tools/_pipeline_runner.py and tools/validate_test_tile.py.  CRITICAL: naive NEAREST upsample of painted rivers to 50k created 20-block staircase chunks after the channel widener.  Gaussian smooth not enough.  FIX: skeletonize painted mask once at 8192 via skimage.morphology.skeletonize, extract 8-neighbor adjacency edges, cache.  Per-tile: rasterize each edge as a skimage.draw.line Bresenham segment at tile resolution.  Each 1-pixel 8192 diagonal becomes a 6-pixel 50k diagonal — smooth.  Lakes stay on NEAREST crop.  Uses np.maximum so existing pipeline rivers are preserved + painted additions merged in.
+
+**Canonical palette:**
+- BOREAL_ALPINE (zone 40) added to canonical BIOME_COLORS + mirror (was missing since S58 rename, crashed studio launch).
+- Full 26-biome palette revised for contrast.  Grouped by ecological family with distinct hues.
+
+**Verification tiles (all rendered + walked):**
+- (24,80) G1 dune-flatten OK
+- (34,9) G2 KARST density OK
+- (84,84) seagrass-above-water fix OK
+- (60,69) hydro overlay: 1096 skeleton pixels (784 new + 312 overlap) -> 77881 river_meta after carver widening.  Clean meander.
+- (89,52) rocky alpine (ARCTIC_TUNDRA + BOREAL_ALPINE), 194-block relief, 93 pct rock at 1:8
+- (51,53) floodplain lake: 113k lake px + 103k river px
+
+**Commit:** f81eb13 on master.  11 files, 3247 insertions, 66 deletions.
+
+**Carry-forwards into S70:**
+- Biome-roster walk via memory/BIOME_VALIDATOR_CHECKLIST.md + memory/biome_reference_tiles.csv (25 biomes).
+- Full 50k regen after roster walk.
+- World overview map refresh after regen.
+- Resolved by user this session via Override Studio: LRFC<->TEMP_RAINFOREST transition (painted), Rock groups by geography (painted region pass).  Snow NW-only deferred (user declined).
