@@ -111,13 +111,16 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
         ("rooted_dirt",       "dirt",         "noise2"),
         ("coarse_dirt",       "coarse_dirt",  "noise3"),
     ],
+    # S70: reduced mud surfaces per user — 3 mud-surface entries → 1.
+    # eco_basin and moisture use podzol/grass instead; only the most extreme
+    # moisture2 keeps mud surface for waterlogged feel.
     "RAINFOREST_COAST": [
         ("moss_block",        "rooted_dirt",  "base"),
-        ("mud",               "mud",          "eco_basin"),       # waterlogged basins
+        ("podzol",            "mud",          "eco_basin"),       # was mud surface
         ("podzol",            "rooted_dirt",  "eco_deep_soil"),   # deep humus
         ("rooted_dirt",       "dirt",         "eco_ridge"),       # wind-exposed
-        ("mud",               "mud",          "moisture"),
-        ("mud",               "clay",         "moisture2"),
+        ("grass_block",       "dirt",         "moisture"),         # was mud surface
+        ("mud",               "clay",         "moisture2"),       # extreme wet kept
         ("podzol",            "rooted_dirt",  "erosion"),
         ("gravel",            "stone",        "erosion2"),
         ("grass_block",       "rooted_dirt",  "noise"),
@@ -375,10 +378,21 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
         ("cornflower", 0.008), ("oxeye_daisy", 0.008),
     ],
     # "ALPINE_MEADOW" retired S56
+    # S70: scrubland — bumped dead_bush + short_dry_grass + bush so ground
+    # reads as sparse arctic scrub (paired with tree-density-near-zero in
+    # schematic_placement Item I).
     "ARCTIC_TUNDRA": [
-        ("dead_bush", 0.01), ("short_dry_grass", 0.06), ("short_grass", 0.04),
+        ("dead_bush", 0.05), ("short_dry_grass", 0.10),
+        ("short_grass", 0.04), ("bush", 0.04),
     ],
-    "FROZEN_FLATS": [],
+    # S70: was empty — add sparse scrubland species so the snow has some
+    # life on it. User direction: "more frequent bushes (still sparse) +
+    # dead short and dead tall grass". Surface palette (snow_block) handled
+    # via SURFACE_PALETTES separately.
+    "FROZEN_FLATS": [
+        ("dead_bush", 0.06), ("short_dry_grass", 0.06),
+        ("tall_dry_grass", 0.04), ("bush", 0.05),
+    ],
     # ── Temperate Forests ────────────────────────────────────────────────
     "TEMPERATE_DECIDUOUS": [
         ("leaf_litter", 0.35), ("short_grass", 0.30), ("tall_grass", 0.08),
@@ -411,10 +425,13 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     ],
     # ── Coastal / Heath ──────────────────────────────────────────────────
     # S60: up short_grass density, bush rare per user + rare coastal meadow flowers.
+    # S70: flowers reduced ×0.2 (very sparse per user). Bush density
+    # doubled in schematic_placement (Item K), not here.
     "COASTAL_HEATH": [
         ("short_grass", 0.48), ("short_dry_grass", 0.14), ("tall_grass", 0.02),
-        ("bush", 0.04), ("dead_bush", 0.01), ("cornflower", 0.01),
-        ("allium", 0.01), ("oxeye_daisy", 0.01), ("dandelion", 0.008),
+        ("bush", 0.04), ("dead_bush", 0.01),
+        ("cornflower", 0.002), ("allium", 0.002),
+        ("oxeye_daisy", 0.002), ("dandelion", 0.0016),
     ],
     # S60: coastline-vibe (Cape Cod / Outer Banks dune-barrens), heavy flowers.
     # Ammophila beach grass dominant, bayberry/beach plum bush, salt-marsh
@@ -442,11 +459,12 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     ],
     # ── Dry / Arid ───────────────────────────────────────────────────────
     # S60: up density of all + very rare prairie wildflowers per user.
+    # S70: flowers ×0.5 per user.
     "DRY_OAK_SAVANNA": [
         ("short_dry_grass", 0.52), ("tall_dry_grass", 0.34),
         ("short_grass", 0.22), ("bush", 0.10), ("dead_bush", 0.02),
-        # S60 oak-savanna wildflowers (very rare)
-        ("dandelion", 0.01), ("oxeye_daisy", 0.01), ("poppy", 0.008),
+        # S70 oak-savanna wildflowers (halved from S60)
+        ("dandelion", 0.005), ("oxeye_daisy", 0.005), ("poppy", 0.004),
     ],
     # S60: way more short_grass + tall_dry_grass (single-block) + very rare steppe flowers.
     "CONTINENTAL_STEPPE": [
@@ -508,9 +526,10 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     ],
     # S60: up all, add short_grass (was 0.02, now 0.12) + tall_dry_grass per user.
     # S66: way more bushes per user — scrubland feel.  bush 0.05 → 0.30.
+    # S70: more short_grass, less dry/dead grass per user.
     "KARST_BARRENS": [
-        ("dead_bush", 0.02), ("short_dry_grass", 0.14), ("bush", 0.30),
-        ("short_grass", 0.18), ("tall_dry_grass", 0.10),
+        ("dead_bush", 0.02), ("short_dry_grass", 0.05), ("bush", 0.30),
+        ("short_grass", 0.45), ("tall_dry_grass", 0.05),
     ],
     # ── Wetland / Riparian ───────────────────────────────────────────────
     # S60: removed duplicate bush entry. Otherwise unchanged per user.
@@ -1941,6 +1960,17 @@ def decorate_surface(
     if eco_grads is not None and hasattr(eco_grads, 'gap_mask'):
         from scipy.ndimage import binary_dilation as _bd_meadow_final
         _raw_meadow = (eco_grads.gap_mask == 1) | (eco_grads.gap_mask == 4)
+        # S70: skip RIPARIAN_WOODLAND + FRESHWATER_FEN + LUSH_RAINFOREST_COAST
+        # + SAND_DUNE_DESERT.  Those biomes had floodplain (gap=4) suppressed
+        # in eco_gradients (Item C), but if any meadow (gap=1) survives the
+        # dilation we don't want it to force grass over what the user wants
+        # there (trees / sand surface).  S70-f2 added LUSH; S70-f4 added DUNE.
+        if biome_grid is not None:
+            _raw_meadow = _raw_meadow & ~(
+                (biome_grid == "RIPARIAN_WOODLAND")
+                | (biome_grid == "FRESHWATER_FEN")
+                | (biome_grid == "LUSH_RAINFOREST_COAST")
+                | (biome_grid == "SAND_DUNE_DESERT"))
         if _raw_meadow.any():
             _final_meadow = _bd_meadow_final(_raw_meadow, iterations=2)
             # Don't expand into water, rock, snow, alpine meadow, sand dune, or beach
@@ -2115,7 +2145,12 @@ def decorate_surface(
             "terracotta", "orange_terracotta", "brown_terracotta",
             "white_terracotta", "yellow_terracotta", "red_terracotta",
             "light_gray_terracotta",
-            "packed_mud", "sand", "red_sand",
+            "packed_mud",
+            # S70-f5: REMOVED sand, red_sand, suspicious_sand — these DO
+            # support cactus, dead_bush, short_dry_grass, tall_dry_grass
+            # in MC 1.21+.  Keeping them in the list nuked ALL vegetation
+            # on SAND_DUNE_DESERT (sand surface), which was the bug user
+            # reported as "literal zero vegetation in dunes".
             "snow_block", "powder_snow", "ice", "packed_ice", "blue_ice",
         })
         _np_mask = np.zeros((H, W), dtype=bool)
@@ -2913,7 +2948,11 @@ def _apply_ground_cover(
                 snow_cap_px = gap_mask == 7
                 eco_density_mod[snow_cap_px] = 0.02  # almost nothing on snow
                 sand_dune_px = gap_mask == 8
-                eco_density_mod[sand_dune_px] = 0.05  # bare sand
+                # S70-f5: was 0.05 (95% suppress) → 0.20 (80% suppress).
+                # Diagnostic showed only ~1160 plants per 262k tile (<0.5%).
+                # User wants "rareish but visible" general desert vegetation.
+                # 4x bump → ~4600 plants/tile = ~1 per 56 px = clearly visible.
+                eco_density_mod[sand_dune_px] = 0.20
                 beach_px = gap_mask == 9
                 eco_density_mod[beach_px] = 0.02  # bare beach
                 # S55 v8: thin vegetation on the beach-edge transition zone
@@ -2977,6 +3016,9 @@ def _apply_ground_cover(
             continue
         n_species = len(palette)
 
+        # S70-f5 DIAG (kept silent — turn on by setting _DIAG_SD True).
+        _DIAG_SD = False
+
         # Noise multiplier in [floor, 1.0], further modulated by ecology + slope
         density_mult = floor + (1.0 - floor) * noise_b
         density_mult = density_mult * eco_density_mod * slope_density_mod
@@ -3008,14 +3050,22 @@ def _apply_ground_cover(
             "dead_bush": 0.02,
         }
         _SAND_DUNE_SPECIES = {
-            # Sand dunes: predominantly bare sand. Very rare bushes.
-            "dead_bush": 0.05, "short_dry_grass": 0.02,
-            # Suppress everything else
-            "tall_grass": 0.0, "tall_dry_grass": 0.0,
+            # Sand dunes (gap==8): S70 — gap==8 strictly fires only in
+            # SAND_DUNE_DESERT after the Item D strict gate, so these
+            # multipliers are by definition the SAND_DUNE_DESERT defaults.
+            # User direction (S70-f5): general desert vegetation on dunes,
+            # NOT wadi-near-river patches.  Grass species + dead bushes +
+            # very rare cacti.  No wet-biome species (ferns, moss, flowers).
+            "bush": 0.5,
+            "dead_bush": 0.6,
+            "short_dry_grass": 0.6,
+            "tall_dry_grass": 0.5,
+            "cactus": 0.7,          # S70-f5: was missing (default 0) — restore very rare cacti
+            # Suppress everything else (ferns, mosses, flowers — wet)
+            "tall_grass": 0.0,
             "fern": 0.0, "large_fern": 0.0, "leaf_litter": 0.0,
             "moss_carpet": 0.0, "pale_moss_carpet": 0.0,
             "azalea": 0.0, "flowering_azalea": 0.0,
-            "bush": 0.0,
         }
         _FLOODPLAIN_SPECIES = {
             "tall_grass": 3.5, "short_grass": 2.0,

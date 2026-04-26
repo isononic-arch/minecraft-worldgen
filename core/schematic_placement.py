@@ -60,7 +60,9 @@ SIZE_VARIATION: dict[str, tuple[int, list[float]]] = {
 # Biomes excluded from bush fallback (already injected at index build time,
 # but double-guard here)
 NO_BUSH_BIOMES: frozenset[str] = frozenset({
-    "ARCTIC_TUNDRA", "FROZEN_FLATS",
+    # S70: removed FROZEN_FLATS — user wants sparse bush+dead-grass on the
+    # snow surface (still sparse but not zero).
+    "ARCTIC_TUNDRA",
 })
 
 # Sparse bush biomes — halve base density for bush entries
@@ -96,25 +98,26 @@ CANOPY_RADIUS: dict[str, int] = {
 # Base placement density per biome (probability a candidate pixel is attempted)
 # Tuned conservatively — final density also multiplied by decoration noise
 BASE_DENSITY: dict[str, float] = {
-    "COASTAL_HEATH":           0.05,
+    "COASTAL_HEATH":           0.10,   # S70 was 0.05 — double for bush density per user
     "TEMPERATE_RAINFOREST":    0.26,
-    "BOREAL_TAIGA":            0.22,
-    "SNOWY_BOREAL_TAIGA":      0.12,
-    "ARCTIC_TUNDRA":           0.015,
-    "FROZEN_FLATS":            0.00,
+    "BOREAL_TAIGA":            0.40,   # S70 was 0.22 — substantial tree-density bump
+    "SNOWY_BOREAL_TAIGA":      0.22,   # S70 was 0.12 — taiga tree-density bump
+    "BOREAL_ALPINE":           0.16,   # S70 new entry — slight bump above SBT mirror baseline
+    "ARCTIC_TUNDRA":           0.005,  # S70 was 0.015 — was "hella trees"; user wants scrubland
+    "FROZEN_FLATS":            0.04,   # S70 was 0.00 — sparse bushes + dead grass per user
     "TEMPERATE_DECIDUOUS":     0.22,
     "RAINFOREST_COAST":        0.24,
     "RIPARIAN_WOODLAND":       0.18,
     "DRY_OAK_SAVANNA":         0.09,
-    "KARST_BARRENS":           0.20,
+    "KARST_BARRENS":           0.35,   # S70-f2 was 0.20 — user wants higher bush ratio post-walk; clustering still applies
     "BIRCH_FOREST":            0.20,
     "EASTERN_TEMPERATE_COAST": 0.06,
     "MIXED_FOREST":            0.22,
-    "CONTINENTAL_STEPPE":      0.06,
+    "CONTINENTAL_STEPPE":      0.005,  # S70 was 0.06 — was reading as alpine boreal; user wants no/sparse trees
     "DRY_PINE_BARRENS":        0.14,
     "SCRUBBY_HEATHLAND":       0.06,
-    "LUSH_RAINFOREST_COAST":   0.26,
-    "SAND_DUNE_DESERT":        0.008,
+    "LUSH_RAINFOREST_COAST":   0.36,   # S70-f4 was 0.26 — denser tropical canopy per user
+    "SAND_DUNE_DESERT":        0.020,   # S70-f5 was 0.008 — bump bush schematic density 2.5x for "rareish bush" look
     "DESERT_STEPPE_TRANSITION":0.03,
     "SEMI_ARID_SHRUBLAND":     0.05,
     "DRY_WOODLAND_MAQUIS":     0.10,
@@ -447,6 +450,33 @@ def place_schematics(
     water_buffer = _bd_place(water_pixels, iterations=14) if water_pixels.any() else water_pixels
     land_mask = (surface_y >= 63) & ~water_buffer
 
+    # S70 Item M: distance-from-water field, blocks-at-50k.  Used to gate
+    # palm species (rfpalm, mpalm, cpalm) in LUSH_RAINFOREST_COAST so palms
+    # only fire within 32 blocks of ocean / lake / river edge.
+    from scipy.ndimage import distance_transform_edt as _dt_water
+    if water_pixels.any():
+        dist_to_water_blocks = _dt_water(~water_pixels).astype(np.float32)
+    else:
+        # No water in tile — anywhere is "far from water"
+        dist_to_water_blocks = np.full((H, W), 1e6, dtype=np.float32)
+
+    # S70 Item N: karst bush clustering noise.  Modulates bush density
+    # for KARST_BARRENS so bushes form groves rather than evenly-distributed
+    # sprinkle.  Scale 60 blocks; output [0.3, 1.7] multiplier (mean 1.0).
+    try:
+        import opensimplex as _ox_karst_mod
+        _ox_karst = _ox_karst_mod.OpenSimplex(seed=(tile_seed ^ 0xCA757) & 0x7FFFFFFF)
+        _kx = ((np.arange(W) + px_off) / 60.0).astype(np.float64)
+        _kz = ((np.arange(H) + py_off) / 60.0).astype(np.float64)
+        _karst_noise = _ox_karst.noise2array(_kx, _kz).astype(np.float32)  # [-1, 1]
+        # S70-f4: widened range [0.0, 2.5] for sharper grove vs sparse contrast
+        # (was [0.3, 1.7]).  User wants more density in clusters AND more
+        # sparse outside them.  Mean density also bumps from 1.0 -> 1.25.
+        karst_density_mult = (0.0 + 2.5 * (_karst_noise * 0.5 + 0.5)).astype(np.float32)
+        del _kx, _kz, _karst_noise
+    except ImportError:
+        karst_density_mult = np.ones((H, W), dtype=np.float32)
+
     # Suppress trees in clearing gaps (gap_mask from eco_gradients)
     if eco_grads is not None and hasattr(eco_grads, 'gap_mask'):
         gap = eco_grads.gap_mask
@@ -733,6 +763,16 @@ def place_schematics(
             if not entries:
                 continue
 
+            # S70 Item M: palm distance gate for LUSH_RAINFOREST_COAST.
+            # Palms only fire within 32 blocks of water edge.  Far from
+            # water, exclude palm species and fall through to other tropics.
+            if biome_str == "LUSH_RAINFOREST_COAST" and pass_type == "tree":
+                if dist_to_water_blocks[row, col] >= 32.0:
+                    entries = [e for e in entries
+                               if e.species not in ("rfpalm", "mpalm", "cpalm")]
+                    if not entries:
+                        continue
+
             # Base density × noise
             base_d = BASE_DENSITY.get(biome_str, 0.05)
             final_d = base_d * float(density_mult[row, col])
@@ -746,6 +786,11 @@ def place_schematics(
                 final_d *= 0.4
                 if biome_str in SPARSE_BUSH_BIOMES:
                     final_d *= 0.5
+                # S70 Item N: karst bush clustering — simplex modulation
+                # at scale 60 blocks creates grove patches rather than
+                # uniform sprinkle.  Multiplier ranges [0.3, 1.7], mean 1.0.
+                if biome_str == "KARST_BARRENS":
+                    final_d *= float(karst_density_mult[row, col])
 
             if rng.random() >= final_d:
                 continue

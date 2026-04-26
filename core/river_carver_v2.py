@@ -954,9 +954,26 @@ def carve_rivers(
 
         river_depth_map[river_channel] *= bowl * flow_mod
 
-    # ── 7. Carve river channels ───────────────────────────────────────────
+    # ── 7. Carve river channels (S70: spline-smoothed water_y) ────────────
+    # S70 Item P: smooth target water_y along the river skeleton so adjacent
+    # centerline pixels at different terrain heights end up at the SAME
+    # water level.  Without this, the water surface tilts visibly across the
+    # channel width on hillsides — see "River challenge.png" in worktree root
+    # for the bug.  5x5 minimum filter on river-only mask gives "moving min
+    # along flow" since the centerline is thin (1-2 px) and 5x5 catches
+    # immediate upstream/downstream pixels.  Banks dig DOWN to the smoothed
+    # water level; never fill UP where terrain is already lower.
     if river_channel.any():
-        carve_depth = np.round(river_depth_map).astype(np.int32)
+        from scipy.ndimage import minimum_filter as _mf_water_y
+        pre_carve_water_y = surface_out.astype(np.float32) - river_depth_map
+        # Replace non-river pixels with +inf so they don't contaminate the min.
+        pre_carve_water_y = np.where(river_channel, pre_carve_water_y, np.float32(1e6))
+        smoothed_water_y = _mf_water_y(pre_carve_water_y, size=5)
+
+        # carve_depth per river pixel = surface_out - smoothed_water_y
+        carve_depth = np.zeros((H, W), dtype=np.int32)
+        _diff = surface_out[river_channel].astype(np.float32) - smoothed_water_y[river_channel]
+        carve_depth[river_channel] = np.round(_diff).astype(np.int32)
         carve_depth[river_channel & (carve_depth < 1)] = 1
 
         max_allowed = surface_out - (BEDROCK_Y + 3)

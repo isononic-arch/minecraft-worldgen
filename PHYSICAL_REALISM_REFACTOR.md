@@ -2532,3 +2532,108 @@ Hotkeys: Ctrl+Z/Y/Shift+Z undo/redo, Ctrl+S save, [ and ] brush size, E eraser.
 - Full 50k regen after roster walk.
 - World overview map refresh after regen.
 - Resolved by user this session via Override Studio: LRFC<->TEMP_RAINFOREST transition (painted), Rock groups by geography (painted region pass).  Snow NW-only deferred (user declined).
+
+---
+
+### S70 — 2026-04-24: Stale-override upscale fix + paint-region edge smoothing + map diagnostic overhaul
+
+**Landed this session: polish + tooling + diagnostic infra. No phase-numbered work. Next session: user walks the 26-biome roster + flags issues.**
+
+**Phase state:** Landed this session — polish.  §11 currently at — polish.  Next session starts — polish + biome walk follow-ups.
+
+Session opened with goal "walk every biome in-world, verify S69 changes, flag regressions."  Discovered three compounding data-freshness bugs that made the walk impossible until fixed:
+
+**Bug 1 — Stale override.tif (blocker):**  `masks/override.tif` was Apr 20, four days older than `override_final.png` (Apr 24).  Override Studio's `Save` button writes override_final.png only; only `Ctrl+Shift+S` triggers upscale.  Fixed by running `upscale_override_vectorized.py`.
+
+**Bug 2 — Stale-composite bug in upscale (blocker, root cause):**  After regenerating override.tif, tile (9,68) still showed zone 20 (TEMPERATE_RAINFOREST) when override_final.png showed zone 70 (RAINFOREST_COAST) + 120 + 160.  Root cause in `upscale_override_vectorized.py:272`:
+```python
+composite = np.where(vec_arr > 0, vec_arr, base_arr)
+```
+This makes `override_vectorized.png` (stale Apr 20 file) WIN over `override_final.png` (user's fresh Apr 24 paint) wherever vectorized is non-zero — which is basically everywhere.  And `CONTOUR_SMOOTH = False` means vectorized provides zero smoothing benefit — just corruption.  Workaround: `cp override_final.png override_vectorized.png` (backup retained at `.bak_s70_stale`), re-run upscale.  SW continent zones then matched user's paint: zone 70 (5.43%), zone 160 (6.47%), zone 40 (5.27%).
+
+**Bug 3 — `hydro_centerline.tif` values 128 + 255 silently dropped by world map:**  Value 128 = wadi, 255 = braid fill (per `rebuild_centerline.py:85`).  Together 16.4M pixels = 97.5% of all river signal.  World map's original render only matched Strahler orders 1-5 (427k pixels).  User couldn't see rivers and mistakenly thought they were missing from the world.  Fixed in `tools/diag_world_map_comprehensive.py` S70.
+
+**Infrastructure built this session:**
+
+- `core/region_overlay_smoothing.py` (new):
+  - `smooth_region_paint(arr, median_kernel=7, jitter_passes=4)` — median + boundary-jitter on palette-ID arrays.  Preserves zero-mask (unpainted regions stay 0, no paint invasion / erosion).  Used by `tools/build_lithology.py` before 8192→6250 NEAREST decimate.  Before: brush-edge aliasing created blocky palette transitions at tile boundaries in-world.  After: organic boundaries mirroring override.tif pipeline.
+  - `clean_painted_river_mask(mask, opening_radius=2, prune_max_branch_len=8)` — morphological opening + iterative endpoint peel on painted river masks before skeletonize.  Removes "four-leaf-clover" brush-dab artifacts from wide-brush river paint.  Applied in both `core/hydro_region_overlay.py` (chunk gen) and `tools/diag_world_map_comprehensive.py` (map).
+- `tools/diag_world_map_comprehensive.py` (new, ~600 LOC):
+  - 6250×6250 RGB map, 11 layers, ~72s render.
+  - Layers: ocean-depth gradient → biome color → hillshade multiply → beaches → sand dunes → floodplain → rock-exposure tinted by lithology (6 group colors) → snow-peaks tinted by lithology → rivers (Strahler 1-5 + braid 255 + wadi 128) → painted-river merge (skeletonize + cleanup + dilate) → lakes → tile grid + legend.
+  - `MAP_NO_PAINTED_RIVERS=1` env: skip hydro_region.png overlay.
+  - `MAP_IN_GAME=1` env: render true carved-footprint widths (no display-dilation).  Simulates river_carver_v2 widening by reading hydro_width.tif.
+  - Reads `masks/lithology.tif` at native 6250 (no resampling).  Uses `max-pool 2x` for centerline + rock/snow (preserves thin features).  Reads BIOME_COLORS from `tools/world_biome_map.py` canonical; OVERRIDE_BIOME_MAP from `core/biome_assignment.py`.
+- `tools/build_lithology.py` — wired `smooth_region_paint` at 8192 source before resize.  Verified byte-identical distribution when run against fresh override (same lithology_region.png, same pixel counts, only edges reshaped).
+- `core/hydro_region_overlay.py` — replaced inline `skeletonize` in `_build_river_edges` with `clean_painted_river_mask` call.  In-game painted rivers now have the same cleanup as map preview.
+
+**Verified data flow after all three fixes:**
+
+1. `override_final.png` (Apr 24 15:24, user paint) → `upscale_override_vectorized.py` (with override_vectorized = override_final workaround) → `override.tif` (Apr 24 17:32, 50k authoritative).
+2. `override.tif` + `lithology_region.png` → `build_lithology.py` (with smoothing) → `lithology.tif` (Apr 24 17:12, 6250 organic edges).
+3. `override.tif` + `lithology.tif` + hydro masks + `hydro_region.png` (cleaned skeletons) → `diag_world_map_comprehensive.py` → `memory/world_map_s70.png` (all layers authoritative).
+
+**Key numbers after S70 fixes:**
+
+- Lithology region overlay: 39M pixels at 6250 from 67M source at 8192 (99.999% of world painted by user).  Distribution: 75% temperate_basaltic, 9.5% granitic, 6.8% deepslate_metamorphic, 6% arid_basaltic, 1.3% limestone, 1.1% mossy_temperate.
+- World map rivers: 234k braid-body pixels + 23k wadi + 8.7k Strahler halo.  Carve-sim adds only 86 pixels (river_carver_v2's distance-transform adds ~1 map-pixel to widest rivers; braid fill already pre-widens).  Braid-fill IS in-game footprint to within 1 map pixel.
+- Painted-river cleanup: 15.3k 8k-skel → 10k after opening+prune → 7k at 6250 (−35%, clover stubs gone).  11.3k → 7.1k centerline.
+- Biome roster discovery: RIPARIAN_WOODLAND zone 80 now at tile (73,53) 51% pure, 3.8M world pixels.  FRESHWATER_FEN zone 240 now at tile (8,74) 45%, 197k.  Pre-S70 CSV listed both as absent — they were present in override_final.png but not in stale override.tif.  CSV + `memory/BIOME_VALIDATOR_CHECKLIST.md` updated.
+
+**Kicked off at session close:**
+
+- `output/render_biome_roster.sh` — autonomous 24-tile render chain (main roster).  Copies each .mca to Vandirtest10/region/ as produced.  Logs per-tile to `output/log_{BIOME}_{X}_{Z}.txt` + chain progress to `output/chain_log.txt`.
+- `output/render_biome_supplement.sh` — 2-tile supplement (RIPARIAN_WOODLAND + FRESHWATER_FEN) polls for main chain's "Chain DONE" marker then runs.
+- Expected total wall time: ~4-5 hours.  26 biomes covered end-to-end.
+
+**Carry-forwards into S71:**
+
+- User walks 26 biomes in-world using updated checklist.  Mark Y/N columns (Visually OK, GC OK, Schematics OK, Palette OK).  File issues per biome.
+- Full 50k regen AFTER walk lands a clean slate (lithology + override + region overlays).
+- Promote Override Studio `Save` → always-upscale, or add `run_pipeline.py` mtime warning, so S70's stale-override bug can't recur.
+- Migrate `cp override_final.png override_vectorized.png` workaround into `upscale_override_vectorized.py` as either (a) invert composite (`np.where(base > 0, base, vec)`) or (b) delete the vectorized branch entirely.  Either way commit the fix.
+- Document hydro_centerline.tif {128=wadi, 255=braid} in CLAUDE.md CURRENT PIPELINE STATE + MASK_PIPELINE_REFERENCE.md so future readers don't silently drop 97% of river pixels.
+
+**Commit:** uncommitted at session close pending biome-walk validation.  Files touched: `core/region_overlay_smoothing.py` (new), `core/hydro_region_overlay.py` (skeleton cleanup hook), `tools/build_lithology.py` (smoothing wired), `tools/diag_world_map_comprehensive.py` (new), `CLAUDE.md` (current-state + S70 backlog), `memory/biome_reference_tiles.csv` (zones 80+240 refreshed), `memory/BIOME_VALIDATOR_CHECKLIST.md` (zones 80+240 refreshed), `PHYSICAL_REALISM_REFACTOR.md` (this §18 entry), `override_vectorized.png` (swapped with override_final.png, .bak_s70_stale retained).
+
+---
+
+### S70 continuation — 2026-04-25/26: Plan + 17 items + 5 follow-up patches (f1-f5b)
+
+Continuing the same S70 session into a 3-day arc.  Plan-mode pass produced `starry-cuddling-moth.md` covering 17 items A-Q.  Then four iteration loops (f1-f5b) on user walk feedback.
+
+**Items A-Q implemented:** see `memory/S70_handoff.md` for the full table.  Highlights:
+- **A** BIOME_TO_MC: ARCTIC_TUNDRA → snowy_plains, DRY_WOODLAND_MAQUIS → wooded_badlands.
+- **C/E** Floodplain + meadow override skip in RIPARIAN_WOODLAND, FRESHWATER_FEN, LUSH_RAINFOREST_COAST, SAND_DUNE_DESERT.
+- **D** Sand-dune strict gate (no fall-through when biome_grid is None).
+- **F** _SAND_DUNE_SPECIES bumped + cactus restored to dict.
+- **G/H** Per-biome palette tweaks (flowers /5 in coastal_heath, mud reduction in rainforest_coast, etc).
+- **I/J/K/L** Tree + bush densities overhauled (BOREAL_TAIGA 0.22→0.40, ARCTIC_TUNDRA 0.015→0.005, KARST 0.20→0.35, etc).
+- **M** Palm distance gate for LUSH_RAINFOREST_COAST (palms only within 32 blocks of water).
+- **N** KARST bush clustering simplex modulator (initially [0.3, 1.7], later widened to [0.0, 2.5] in f4).
+- **O** Removed cpalm from RAINFOREST_COAST.
+- **P** River water_y spline smoothing — 5×5 minimum_filter on river_channel pre-carve.  Fixes "River challenge.png" hillside-tilt bug.  **Not in-world validated yet.**
+- **Q** world_studio.py imports BIOME_TO_MC from chunk_writer (sync).
+
+**Follow-up patches (per walk feedback):**
+
+- **f1 (deprecated):** Initial bush-sink height gate `sh<=4` for "small trees as columns of leaves" bug.  Didn't resolve the issue.  Fully reverted in f5.
+- **f2:** TRUNK_RUN_MIN 2→1 (catch single-log small trees as trees).  Plus extended floodplain skip to LUSH_RAINFOREST_COAST + KARST density bump 0.20→0.35.
+- **f3:** Added `clean_painted_river_mask` (morphological opening + endpoint pruning) to remove four-leaf-clover artifacts from wide-brush hydro paint.  Reverted f2's TRUNK_RUN_MIN=1 because it caused branch-extension artifacts on bigger trees.  Removed SAND_DUNE_DESERT from `river_bar.ARID_BIOMES` (no wadi streaks in dunes).
+- **f4:** Added `cactus: 0.7` to _SAND_DUNE_SPECIES.  KARST clustering range widened [0.3,1.7] → [0.0,2.5].  LUSH BASE_DENSITY 0.26→0.36.  Added water-overhang code path (`canopy-anchor pass` + S65 reject loosening + water-trunk allowance in trunk extension).  Reverted in f5 because user said canopy-anchor made bug WORSE.
+- **f5/f5b:** Reverted ALL f4 water-overhang code (canopy-anchor, S65 loosening, water-trunk extension, air-or-water overwrite).  Plan-B trunk threshold introduced (`runs >= max(TRUNK_RUN_MIN, max_run * TRUNK_RUN_FRAC)`, FRAC=0.6→0.85 in f5b).  **Critical bug found and fixed:** `_NON_PLANTABLE` filter at `surface_decorator.py:2139` (inside `if use_new_surface_pipeline` block) included sand/red_sand/suspicious_sand → was killing ALL ground cover on SAND_DUNE_DESERT.  Removed those from the kill set.  Combined with Item F's species multipliers + `eco_density_mod[sand_dune_px] = 0.20` (was 0.05), this fixes "literal zero vegetation in dunes".
+
+**Pipeline-level fixes (during S70 follow-ups):**
+- Stale-vectorized bug in `upscale_override_vectorized.py`: composite line 272 `np.where(vec_arr > 0, vec_arr, base_arr)` made stale `override_vectorized.png` dominate fresh `override_final.png`.  Workaround: `cp override_final.png override_vectorized.png` before upscale.
+- Phase 4.5 + 4.6 added: ocean-Y prune (clear zone codes where height < SEA_LEVEL_RAW=17050, 227M pixels cleared in user's world) + coastal-zone repaint (32-block band, distance-transform fill from inland).  Phases live in `upscale_override_vectorized.py`.
+- ALIGN_SCALE 1.01→1.00 (was causing 100-500-block painted-feature drift).
+- MEDIAN_KERNEL 17→9.
+- biome_reference_tiles.csv refreshed via `tools/diag_biome_sampler.py` against pruned override.  EASTERN_TEMPERATE_COAST, TIDAL_JUNGLE_FRINGE, SCRUBBY_HEATHLAND, SEMI_ARID_SHRUBLAND now have land-only reference tiles.
+
+**Walked tiles validated this session (with f5b fixes applied):**
+- DRY_OAK_SAVANNA (29,76): trunk fix mostly works; a few "appendages" still on `_b_sm`/`_f_lg` schematics (low-canopy structure).
+- LUSH_RAINFOREST_COAST (6,68): density good, palms shore-only, no floodplain mud.  ✅
+- KARST_BARRENS (34,9): clustering [0.0,2.5] looks right — clear groves vs sparse desert.  ✅
+- SAND_DUNE_DESERT (18,66): final render at 17:50 Apr 26 — pending walk verification.
+
+**Carry-forward to next session:** see `memory/S70_handoff.md`.  Final autonomous chain (~22 tiles + 4 ocean-replacement) needed before commit.

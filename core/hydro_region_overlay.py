@@ -58,12 +58,19 @@ _cache_path: Path | None = None
 
 def _build_river_edges(hr_arr: np.ndarray) -> list[tuple[int, int, int, int]]:
     """Skeletonize painted rivers globally and return adjacency-edge list.
-    Each edge is (y1, x1, y2, x2) in 8192 coordinates."""
-    from skimage.morphology import skeletonize
+    Each edge is (y1, x1, y2, x2) in 8192 coordinates.
+
+    S70: runs clean_painted_river_mask — morphological opening removes
+    tiny specks, iterative endpoint peeling trims short dangling
+    branches (the 'four-leaf clover' artifact from wide brush strokes).
+    """
+    from core.region_overlay_smoothing import clean_painted_river_mask
     river_mask_8k = hr_arr == 2
     if not river_mask_8k.any():
         return []
-    skel_8k = skeletonize(river_mask_8k)
+    skel_8k = clean_painted_river_mask(river_mask_8k,
+                                        opening_radius=2,
+                                        prune_max_branch_len=8)
     ys, xs = np.where(skel_8k)
     skel_set = set(zip(ys.tolist(), xs.tolist()))
     edges: list[tuple[int, int, int, int]] = []

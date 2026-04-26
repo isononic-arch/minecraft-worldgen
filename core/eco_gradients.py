@@ -467,6 +467,19 @@ def compute_eco_gradients(
             # Exclude water and off-land pixels
             water_mask_fp = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
             flood_candidate = flood_precomputed & land_mask & ~water_mask_fp
+            # S70: skip floodplain in RIPARIAN_WOODLAND + FRESHWATER_FEN
+            # + LUSH_RAINFOREST_COAST + SAND_DUNE_DESERT.  User directions:
+            # - first three biomes: trees should survive (not wiped by mud)
+            # - SAND_DUNE_DESERT (S70-f4): floodplain (gap=4) was outranking
+            #   sand_dune (gap=8) near rivers, causing grass_block surfaces
+            #   in dune river channels via the final meadow override.
+            #   Skipping flood in dunes lets sand_dune claim those pixels.
+            if biome_grid is not None:
+                _flood_skip = ((biome_grid == "RIPARIAN_WOODLAND")
+                               | (biome_grid == "FRESHWATER_FEN")
+                               | (biome_grid == "LUSH_RAINFOREST_COAST")
+                               | (biome_grid == "SAND_DUNE_DESERT"))
+                flood_candidate &= ~_flood_skip
             gap_mask[flood_candidate] = 4
         # ── End floodplain corridor ────────────────────────────────────────
 
@@ -568,9 +581,14 @@ def compute_eco_gradients(
             # surface_decorator handles edge fade across the full range.
             # S55: biome gate — sand_dunes mask overreaches into
             # DESERT_STEPPE_TRANSITION (65%) and SEMI_ARID_SHRUBLAND (80%).
-            # Restrict gap==8 to true dune desert; other arid biomes use
-            # their own palette for incidental sand patches.
-            _sd_biome_ok = (biome_grid == "SAND_DUNE_DESERT") if biome_grid is not None else np.ones((H, W), dtype=bool)
+            # S70: STRICT gate — gap==8 ONLY fires where biome_grid is
+            # present AND biome == SAND_DUNE_DESERT.  No fall-through.
+            # User direction: sand dune terrain morphing should ONLY be
+            # in the sand dune desert.  If biome_grid is absent, skip.
+            if biome_grid is None:
+                _sd_biome_ok = np.zeros((H, W), dtype=bool)
+            else:
+                _sd_biome_ok = (biome_grid == "SAND_DUNE_DESERT")
             gap_mask[sd_avail & (sd_jittered >= 0.05) & _sd_biome_ok] = 8
             del _sd_biome_ok
             del sd_jittered, _sd_noise, sd_avail, water_mask_sd

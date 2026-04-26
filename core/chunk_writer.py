@@ -50,7 +50,7 @@ BIOME_TO_MC: dict[str, str] = {
     "BOREAL_TAIGA":            "minecraft:old_growth_birch_forest",
     "BOREAL_ALPINE":           "minecraft:plains",  # S64: wholesale plains — dual-layer approach abandoned, snow never falls
     "SNOWY_BOREAL_TAIGA":      "minecraft:snowy_taiga",
-    "ARCTIC_TUNDRA":           "minecraft:frozen_peaks",
+    "ARCTIC_TUNDRA":           "minecraft:snowy_plains",  # S70: was frozen_peaks (jagged ice spikes); user wants flat snow scrubland
     "FROZEN_FLATS":            "minecraft:snowy_plains",
     "TEMPERATE_DECIDUOUS":     "minecraft:forest",
     "RAINFOREST_COAST":        "minecraft:old_growth_birch_forest",
@@ -67,7 +67,7 @@ BIOME_TO_MC: dict[str, str] = {
     "SAND_DUNE_DESERT":        "minecraft:desert",
     "DESERT_STEPPE_TRANSITION":"minecraft:savanna_plateau",
     "SEMI_ARID_SHRUBLAND":     "minecraft:savanna",
-    "DRY_WOODLAND_MAQUIS":     "minecraft:sparse_jungle",
+    "DRY_WOODLAND_MAQUIS":     "minecraft:wooded_badlands",  # S70: was sparse_jungle (bright green); user wants timber-badlands dry look
     "TIDAL_JUNGLE_FRINGE":     "minecraft:sparse_jungle",
     "MANGROVE_COAST":          "minecraft:mangrove_swamp",
     "FRESHWATER_FEN":          "minecraft:swamp",
@@ -1037,7 +1037,7 @@ def stamp_schematic(
         # Falls back to no-op when surface_y is None (smoke tests etc.).
         GROUND_COL_Y         = 2   # lowest_sy ≤ this → column is a "ground col"
         PLACE_MAX_FLOAT_BUSH = 3   # bush: max gap before reject
-        TRUNK_RUN_MIN        = 2   # ≥N consecutive logs in a column = trunk
+        TRUNK_RUN_MIN        = 2   # S70-f5 reverted from 1 back to 2 — single-log columns getting flagged as trunks caused branch-extension artifacts on bigger trees.  Original behavior: ≥2 consecutive logs = trunk.
         TRUNK_FIRST_MAX_Y    = 3   # lowest log sy must be ≤ this (else it's a branch)
         MAX_TRUNK_EXT        = 6   # max blocks the extension will fill
         if surface_y is not None:
@@ -1066,10 +1066,16 @@ def stamp_schematic(
             log_any_col       = is_log.any(axis=0)
             lowest_log_sy_col = is_log.argmax(axis=0)
             # Identify trunk columns: lowest log near ground (sy ≤ TRUNK_FIRST_MAX_Y)
-            # AND ≥TRUNK_RUN_MIN consecutive logs from that position. The
-            # first-log guard excludes horizontal branches (which can have 2-3
-            # consecutive logs at an elevated Y but aren't trunk candidates).
-            is_trunk_col = np.zeros((sl, sw), dtype=bool)
+            # AND consecutive log run from that position.
+            # S70-f5: relative-run threshold — column qualifies only if its
+            # run is ≥ max(TRUNK_RUN_MIN, max_run * TRUNK_RUN_FRAC).  This
+            # filters branch logs that have shorter consecutive runs than
+            # the main trunk (e.g., dosav_tree_soak_b_sm has main trunk
+            # run=6 but branch columns at run=2..3 were qualifying as
+            # "trunks", causing trunk-extension to fill fake side-trunks
+            # under leaf clusters → bushy "no visible trunk" look).
+            TRUNK_RUN_FRAC = 0.85   # S70-f5b: bumped from 0.6 — adjacent biome (DESERT_STEPPE_TRANSITION) still showed bushy fake trunks at 0.6
+            runs = np.zeros((sl, sw), dtype=np.int32)
             for _sz in range(sl):
                 for _sx in range(sw):
                     if not log_any_col[_sz, _sx]:
@@ -1083,8 +1089,10 @@ def stamp_schematic(
                             run += 1
                         else:
                             break
-                    if run >= TRUNK_RUN_MIN:
-                        is_trunk_col[_sz, _sx] = True
+                    runs[_sz, _sx] = run
+            max_run = int(runs.max()) if runs.size else 0
+            trunk_threshold = max(TRUNK_RUN_MIN, int(max_run * TRUNK_RUN_FRAC))
+            is_trunk_col = (runs >= trunk_threshold) & (runs > 0)
             has_trunks = bool(is_trunk_col.any())
             # Bbox out-of-tile reject + desink cutoff per column
             for _sz in range(sl):
@@ -1109,6 +1117,10 @@ def stamp_schematic(
             # overhanging toward water.  Abort the entire stamp instead.
             # (Only applies when the column has any content — an all-air
             # column is harmless even underwater.)
+            # S70-f5: reverted f4 relaxation — the canopy-anchor pass made
+            # branch leaves WORSE by adding fake logs under them.  User
+            # wants floating leaves above ground (natural look), not
+            # synthesized trunks under every leaf cluster.
             _uwater_hit = False
             for _sz in range(sl):
                 if _uwater_hit:
@@ -1123,6 +1135,7 @@ def stamp_schematic(
                 return
             if has_trunks:
                 # Strategy A — trunk extension. Compute worst trunk gap.
+                # S70-f5: reverted f4 — back to original (skip col_reject).
                 max_trunk_gap = 0
                 for _sz in range(sl):
                     for _sx in range(sw):
@@ -1143,7 +1156,11 @@ def stamp_schematic(
                 else:
                     primary_log_idx = None
             else:
-                # Strategy B — bush sink. Same as S61-f4.
+                # Strategy B — bush sink.  S70: real fix for "columns of
+                # leaves" bug moved to TRUNK_RUN_MIN=1 above (catches
+                # single-log small trees as trees instead of bushes).
+                # This bush-sink path now only runs for schematics with
+                # genuinely zero log blocks anywhere — true leafy bushes.
                 max_gap = 0
                 any_ground_col = False
                 for _sz in range(sl):

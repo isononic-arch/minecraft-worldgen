@@ -37,8 +37,9 @@ from core.layers.protocol import (
 SEA_LEVEL_Y = 63
 
 # Arid biomes where river bars form.
+# S70-f3: SAND_DUNE_DESERT removed — user wants only sand there, no
+# coarse_dirt/packed_mud wadi-bar streaks.  Other arid biomes still get bars.
 ARID_BIOMES: frozenset[str] = frozenset({
-    "SAND_DUNE_DESERT",
     "DESERT_STEPPE_TRANSITION",
     "SEMI_ARID_SHRUBLAND",
     "DRY_OAK_SAVANNA",

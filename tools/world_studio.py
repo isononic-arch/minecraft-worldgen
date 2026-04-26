@@ -1341,34 +1341,11 @@ def _banded_stone(biome: str, wx: int, wz: int, mc_y: int, bsy: int) -> str:
 # ---------------------------------------------------------------------------
 # Pipeline runner — runs steps 1-7 in a worker thread
 # ---------------------------------------------------------------------------
-BIOME_TO_MC: dict[str, str] = {
-    "COASTAL_HEATH":             "minecraft:windswept_hills",
-    "TEMPERATE_RAINFOREST":      "minecraft:old_growth_spruce_taiga",
-    "BOREAL_TAIGA":              "minecraft:taiga",
-    "SNOWY_BOREAL_TAIGA":        "minecraft:snowy_taiga",
-    "ARCTIC_TUNDRA":             "minecraft:frozen_peaks",
-    "FROZEN_FLATS":              "minecraft:ice_spikes",
-    "TEMPERATE_DECIDUOUS":       "minecraft:forest",
-    "RAINFOREST_COAST":          "minecraft:old_growth_birch_forest",
-    "RIPARIAN_WOODLAND":         "minecraft:dark_forest",
-    "DRY_OAK_SAVANNA":           "minecraft:savanna",
-    "KARST_BARRENS":             "minecraft:windswept_gravelly_hills",
-    "BIRCH_FOREST":              "minecraft:birch_forest",
-    "EASTERN_TEMPERATE_COAST":   "minecraft:beach",
-    "MIXED_FOREST":              "minecraft:forest",
-    "CONTINENTAL_STEPPE":        "minecraft:plains",
-    "DRY_PINE_BARRENS":          "minecraft:wooded_badlands",
-    "SCRUBBY_HEATHLAND":         "minecraft:windswept_hills",
-    "LUSH_RAINFOREST_COAST":     "minecraft:jungle",
-    "SAND_DUNE_DESERT":          "minecraft:desert",
-    "DESERT_STEPPE_TRANSITION":  "minecraft:savanna_plateau",
-    "SEMI_ARID_SHRUBLAND":       "minecraft:savanna",
-    "DRY_WOODLAND_MAQUIS":       "minecraft:sparse_jungle",
-    "TIDAL_JUNGLE_FRINGE":       "minecraft:sparse_jungle",
-    "MANGROVE_COAST":            "minecraft:mangrove_swamp",
-    "FRESHWATER_FEN":            "minecraft:swamp",
-    "_OCEAN":                    "minecraft:ocean",
-}
+# S70: import canonical mapping from core/chunk_writer.py instead of duplicating.
+# Earlier this dict had drifted from chunk_writer in 5 entries (COASTAL_HEATH,
+# TEMPERATE_RAINFOREST, FROZEN_FLATS, KARST_BARRENS, SCRUBBY_HEATHLAND), causing
+# preview/runtime mismatch.  Single source of truth lives in chunk_writer.
+from core.chunk_writer import BIOME_TO_MC  # noqa: E402
 
 def run_pipeline(tx: int, tz: int, cfg: dict, progress_cb=None) -> dict:
     """

@@ -132,13 +132,19 @@ def build_lithology(
     out = code_to_gid[override_lo]  # vectorized remap, (6250, 6250) uint8
 
     # S69: optional per-pixel region override from lithology_region.png.
+    # S70: apply organic-edge smoothing (median + boundary jitter) at
+    # source 8192 before NEAREST decimation — mirrors override.tif
+    # pipeline. Without it the raw 8192→6250 resize exposed brush
+    # aliasing as blocky palette transitions in-world.
     if lithology_region_path is not None and lithology_region_path.exists():
         from PIL import Image as _PILImage
+        from core.region_overlay_smoothing import smooth_region_paint
         valid_ids = set(int(g["id"]) for g in config["lithology"]["groups"].values())
         valid_ids.add(0)
         lr_img = _PILImage.open(lithology_region_path).convert("L")
-        # Resize NEAREST to (6250, 6250). PIL uses (W, H) order.
-        lr_img_lo = lr_img.resize((W, H), _PILImage.NEAREST)
+        lr_src = smooth_region_paint(np.asarray(lr_img, dtype=np.uint8))
+        lr_img_smoothed = _PILImage.fromarray(lr_src, mode="L")
+        lr_img_lo = lr_img_smoothed.resize((W, H), _PILImage.NEAREST)
         lr_arr = np.asarray(lr_img_lo, dtype=np.uint8)
         # Validate: only group IDs we know about (or 0 = pass-through).
         unique = set(np.unique(lr_arr).tolist())
