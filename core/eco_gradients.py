@@ -547,6 +547,11 @@ def compute_eco_gradients(
             _snow_rng = np.random.default_rng(tile_x * 73019 ^ tile_z * 58237)
             _snow_coin = _snow_rng.random((H, W)).astype(np.float32)
             snow_avail = land_mask & ~water_mask_re & (gap_mask != 4)
+            # S71-3 final: snow_gap APPLIES to AT (per user direction) — AT
+            # cells outside this tile's main area appear at peaks and need the
+            # snowgap to show snowy summits.  Schematic placement still has the
+            # snow_in_arctic exception in `full_suppress` so sparse pines/bushes
+            # can place on snowgap cells.
             gap_mask[snow_avail & _sg & (_snow_coin < _snow_prob)] = 7
             del _sg, _snow_height, _slope_factor, _peak_factor, _terrain_factor
             del _snow_prob, _snow_rng, _snow_coin, snow_avail

@@ -442,13 +442,12 @@
     "enabled": true,
     "biomes": [
       "SNOWY_BOREAL_TAIGA",
-      "ARCTIC_TUNDRA",
-      "FROZEN_FLATS"
+      "ARCTIC_TUNDRA"
     ],
     "ramp_blocks": 30
   },
   "sand_dune_smoothing": {
-    "_comment": "S69: Reverted to S67 intensity — the S68 crank (sigma=16 passes=6 buffer=36) was needed only to hide sharp Gaea dune geometry, which the new dune_flatten pass now handles at the source. Mountain interiors adjacent to biome boundaries no longer get smeared 36 blocks deep.",
+    "_comment": "S69: Reverted to S67 intensity \u00e2\u20ac\u201d the S68 crank (sigma=16 passes=6 buffer=36) was needed only to hide sharp Gaea dune geometry, which the new dune_flatten pass now handles at the source. Mountain interiors adjacent to biome boundaries no longer get smeared 36 blocks deep.",
     "enabled": true,
     "buffer_blocks": 24,
     "sigma": 8.0,
@@ -467,7 +466,7 @@
     "mask_dilation_blocks": 4
   },
   "sbt_mountaincap": {
-    "_comment": "S68: unified SBT dither — one decision drives both snow carpet AND biome tag. Pixels below min_y OR with noise<threshold in [min_y,max_y] get remapped to BOREAL_ALPINE (no snow, plains tag). Above max_y always SBT (snow, snowy_taiga tag).",
+    "_comment": "S68: unified SBT dither \u00e2\u20ac\u201d one decision drives both snow carpet AND biome tag. Pixels below min_y OR with noise<threshold in [min_y,max_y] get remapped to BOREAL_ALPINE (no snow, plains tag). Above max_y always SBT (snow, snowy_taiga tag).",
     "enabled": true,
     "min_y": 200,
     "max_y": 250,
@@ -654,19 +653,8 @@
     ],
     "ARCTIC_TUNDRA": [
       {
-        "name": "New Layer",
-        "noise": "mix",
-        "enabled": true,
-        "block": "coarse_dirt",
-        "sub": "stone",
-        "coverage": 0.03,
-        "scale": 5,
-        "seed": 85737,
-        "is_base": false
-      },
-      {
-        "name": "snow_block",
-        "noise": "simplex",
+        "name": "snow_block base",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "snow_block",
         "sub": "stone",
@@ -676,25 +664,47 @@
         "is_base": true
       },
       {
-        "name": "gravel (erosion2)",
+        "name": "gravel scatter",
         "noise": "simplex_fbm",
         "enabled": true,
         "block": "gravel",
         "sub": "stone",
-        "coverage": 0.03,
-        "scale": 15,
+        "coverage": 0.16,
+        "scale": 8,
         "seed": 243,
         "is_base": false
       },
       {
-        "name": "packed_mud (noise2)",
+        "name": "packed_mud scatter",
         "noise": "simplex_fbm",
         "enabled": true,
         "block": "packed_mud",
-        "sub": "andesite",
-        "coverage": 0.03,
-        "scale": 14,
-        "seed": 355,
+        "sub": "stone",
+        "coverage": 0.21,
+        "scale": 12,
+        "seed": 311,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt mossy patches",
+        "noise": "simplex_fbm",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "dirt",
+        "coverage": 0.52,
+        "scale": 20,
+        "seed": 137,
+        "is_base": false
+      },
+      {
+        "name": "snow_block over gravel",
+        "noise": "simplex_fbm",
+        "enabled": true,
+        "block": "snow_block",
+        "sub": "gravel",
+        "coverage": 0.65,
+        "scale": 131,
+        "seed": 555,
         "is_base": false
       }
     ],
@@ -2029,58 +2039,36 @@
     ],
     "FROZEN_FLATS": [
       {
-        "name": "snow_block",
+        "name": "grass_block base",
         "noise": "simplex_fbm",
         "enabled": true,
-        "block": "snow_block",
-        "sub": "stone",
+        "block": "grass_block",
+        "sub": "dirt",
         "coverage": 1.0,
         "scale": 60,
         "seed": 42,
         "is_base": true
       },
       {
-        "name": "gravel (erosion2)",
-        "noise": "simplex_fbm",
+        "name": "podzol salt-and-pepper",
+        "noise": "white",
         "enabled": true,
-        "block": "gravel",
-        "sub": "stone",
-        "coverage": 0.16,
-        "scale": 8,
-        "seed": 243,
+        "block": "podzol",
+        "sub": "dirt",
+        "coverage": 0.5,
+        "scale": 1,
+        "seed": 137,
         "is_base": false
       },
       {
-        "name": "packed_mud (noise2)",
-        "noise": "simplex_fbm",
-        "enabled": true,
-        "block": "packed_mud",
-        "sub": "stone",
-        "coverage": 0.21,
-        "scale": 12,
-        "seed": 355,
-        "is_base": false
-      },
-      {
-        "name": "coarse_dirt (noise)",
+        "name": "coarse_dirt clusters",
         "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
-        "coverage": 0.52,
-        "scale": 20,
-        "seed": 42,
-        "is_base": false
-      },
-      {
-        "name": "snow_block (erosion)",
-        "noise": "simplex_fbm",
-        "enabled": true,
-        "block": "snow_block",
-        "sub": "gravel",
-        "coverage": 0.65,
-        "scale": 131,
-        "seed": 43,
+        "coverage": 0.18,
+        "scale": 12,
+        "seed": 211,
         "is_base": false
       }
     ],
@@ -2296,10 +2284,11 @@
   },
   "eco_ground_cover": {
     "canopy_suppression_factor": 0.4,
-    "ecotone_width_px": 24,
+    "ecotone_width_px": 40,
     "ecotone_sigmoid_sharpness": 4.0,
     "colony_scale_px": 48,
-    "colony_density_boost": 1.8
+    "colony_density_boost": 1.8,
+    "ecotone_swap_cap": 0.75
   },
   "eco_riparian": {
     "band_widths": [

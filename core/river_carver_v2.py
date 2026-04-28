@@ -954,80 +954,229 @@ def carve_rivers(
 
         river_depth_map[river_channel] *= bowl * flow_mod
 
-    # ── 7. Carve river channels (S70: spline-smoothed water_y) ────────────
-    # S70 Item P: smooth target water_y along the river skeleton so adjacent
-    # centerline pixels at different terrain heights end up at the SAME
-    # water level.  Without this, the water surface tilts visibly across the
-    # channel width on hillsides — see "River challenge.png" in worktree root
-    # for the bug.  5x5 minimum filter on river-only mask gives "moving min
-    # along flow" since the centerline is thin (1-2 px) and 5x5 catches
-    # immediate upstream/downstream pixels.  Banks dig DOWN to the smoothed
-    # water level; never fill UP where terrain is already lower.
-    if river_channel.any():
-        from scipy.ndimage import minimum_filter as _mf_water_y
-        pre_carve_water_y = surface_out.astype(np.float32) - river_depth_map
-        # Replace non-river pixels with +inf so they don't contaminate the min.
-        pre_carve_water_y = np.where(river_channel, pre_carve_water_y, np.float32(1e6))
-        smoothed_water_y = _mf_water_y(pre_carve_water_y, size=5)
+    # ── 7. Carve river channels (S71-3: WP-style guardrails) ──────────────
+    # Replaces S70 5x5 minimum_filter + S71 valley smoothing β.  Adapted from
+    # sijmen_v_b's WorldPainter river script.  For each centerline pixel:
+    #   1. Width (block-radius) from Strahler order × hydro_width.
+    #   2. avg_terrain = Gaussian-smoothed surface_y (sigma proportional to
+    #      width) — captures the "mean elevation under a circle of radius
+    #      width" without per-pixel circle iteration.
+    #   3. slope = magnitude of smoothed surface_y gradient.
+    #   4. Per-pixel in `width` radius:
+    #        factor = clamp(dist_to_centerline / width, 0, 0.99)
+    #        depth  = width * RIVER_DEPTH_FRAC + 1.5
+    #        guard  = 4.2 * clamp(slope, DYKE_MIN, GUARDRAIL_MAX)
+    #        new_y  = (1-f) * (avg - depth + f * depth * guard)
+    #               + f * surface_y
+    #   5. water_y = avg - 0.5 - slope_correction (lowers on wide+steep)
+    # Effect: river cuts a soft valley with raised berms on slopes;
+    # cross-section is naturally concave; water never sits above land.
+    # S71-3 final-river: combine all centerlines (river_channel + conn_channel_mask)
+    # into one footprint set so connectivity channels also get water_y_field.
+    # This addresses "river deltas — land connects but water doesn't".
+    river_full_mask = river_channel | (conn_channel_mask & (surface_out > SEA_LEVEL) & ~lake_mask)
 
-        # carve_depth per river pixel = surface_out - smoothed_water_y
-        carve_depth = np.zeros((H, W), dtype=np.int32)
-        _diff = surface_out[river_channel].astype(np.float32) - smoothed_water_y[river_channel]
-        carve_depth[river_channel] = np.round(_diff).astype(np.int32)
-        carve_depth[river_channel & (carve_depth < 1)] = 1
+    # Pre-allocate water_y_field (default -1 = no water at this pixel).
+    water_y_field = np.full((H, W), -1, dtype=np.int16)
 
-        max_allowed = surface_out - (BEDROCK_Y + 3)
-        carve_depth = np.minimum(carve_depth, max_allowed)
-        carve_depth = np.maximum(carve_depth, 0)
+    if river_full_mask.any():
+        from scipy.ndimage import gaussian_filter as _gf
 
-        carve_px = river_channel & (carve_depth > 0)
-        surface_out[carve_px] -= carve_depth[carve_px]
+        # 7.1 — per-centerline width (block half-radius), from Strahler order.
+        # WP-style: slope-aware width: width = base + 2 * slope^2.
+        _ORDER_TO_WIDTH = {1: 2.5, 2: 3.0, 3: 4.0, 4: 5.5, 5: 7.0}
+        width_at_pixel = np.zeros((H, W), dtype=np.float32)
+        for _o in range(1, 6):
+            _m = river_full_mask & (order_u8 == _o)
+            if _m.any():
+                width_at_pixel[_m] = _ORDER_TO_WIDTH.get(_o, 4.0)
+        # Pixels with order 0 but on centerline (incl. conn_channel): small default
+        _no_o = river_full_mask & (order_u8 == 0)
+        if _no_o.any():
+            width_at_pixel[_no_o] = 2.5
 
-        # Set river_meta for channel pixels
+        # 7.2 — avg_terrain: Gaussian-smoothed surface_y (sigma=4 captures
+        # ~7-9 block circle, matches typical river width).
+        avg_terrain = _gf(surface_out.astype(np.float32), sigma=4.0)
+
+        # 7.3 — slope magnitude (smoothed gradient)
+        _sy_smooth = _gf(surface_out.astype(np.float32), sigma=2.0)
+        _gy, _gx = np.gradient(_sy_smooth)
+        slope_mag = np.sqrt(_gx * _gx + _gy * _gy).astype(np.float32)
+        del _sy_smooth, _gy, _gx
+
+        # WP slope-aware width: width += 2 * slope^2 (steep needs guardrail headroom)
+        slope_at_centerline = np.zeros((H, W), dtype=np.float32)
+        slope_at_centerline[river_full_mask] = slope_mag[river_full_mask]
+        width_at_pixel = width_at_pixel + 2.0 * np.square(slope_at_centerline)
+
+        # 7.4 — meander: simplex-noise displacement field, world-coord seamless.
+        # Per WP: noise(x/1000, y/1000) but we use a scale better-tuned for our
+        # 1-pixel-per-block resolution.  Strength scales with slope so flat
+        # rivers wiggle less, steep rivers (which would naturally erode banks)
+        # wiggle more.  Apply to all centerlines INCLUDING connectivity channels.
+        try:
+            import opensimplex as _ox_meander
+            _tx = tile_x if tile_x is not None else 0
+            _tz = tile_z if tile_z is not None else 0
+            _meander_seed = (_tx * 73856093 ^ _tz * 19349663 ^ 0xC1EA5F) & 0x7FFFFFFF
+            _ox_m = _ox_meander.OpenSimplex(seed=_meander_seed)
+            _world_xs = ((np.arange(W) + _tx * W) / 40.0).astype(np.float64)
+            _world_zs = ((np.arange(H) + _tz * H) / 40.0).astype(np.float64)
+            meander_noise = _ox_m.noise2array(_world_xs, _world_zs).astype(np.float32)
+            # meander_noise in [-1, 1]; scale by amplitude × slope_factor
+            MEANDER_AMP = 4.0  # max ±4-block perpendicular displacement
+        except ImportError:
+            meander_noise = np.zeros((H, W), dtype=np.float32)
+            MEANDER_AMP = 0.0
+
+        # 7.5 — distance to nearest centerline + propagate per-pixel width
+        from scipy.ndimage import distance_transform_edt as _edt_g
+        dist_to_center, ind_center = _edt_g(~river_full_mask, return_indices=True)
+        dist_to_center = dist_to_center.astype(np.float32)
+        nearest_width = width_at_pixel[ind_center[0], ind_center[1]]
+        nearest_avg   = avg_terrain[ind_center[0], ind_center[1]]
+        nearest_slope = slope_mag[ind_center[0], ind_center[1]]
+        del ind_center
+
+        # Apply meander displacement to dist_to_center: shifts the deepest cut
+        # ±MEANDER_AMP perpendicularly (in noise-space, not flow-space — close
+        # enough for organic-looking wobble at 50k scale).
+        if MEANDER_AMP > 0:
+            meander_shift = meander_noise * MEANDER_AMP * np.minimum(nearest_slope * 4, 1.0)
+            dist_to_center = np.abs(dist_to_center - meander_shift)
+
+        # 7.6 — guardrails formula (WP-style)
+        RIVER_DEPTH_FRAC = 0.35
+        DYKE_MIN = 0.32
+        GUARDRAIL_MAX_SLOPE = 1.2
+        factor = np.clip(dist_to_center / np.maximum(nearest_width, 1.0), 0.0, 0.99)
+        depth_blocks = nearest_width * RIVER_DEPTH_FRAC + 1.5
+        guard = 4.2 * np.maximum(DYKE_MIN, np.minimum(GUARDRAIL_MAX_SLOPE, nearest_slope))
+        new_y_f = (1.0 - factor) * (nearest_avg - depth_blocks + factor * depth_blocks * guard) \
+                + factor * surface_out.astype(np.float32)
+
+        # Footprint: pixels within `width` of any centerline (factor < 1)
+        footprint = (dist_to_center <= nearest_width) & ~lake_mask & above_sea
+
+        # Only LOWER (never raise) and clamp to bedrock min
+        cur_y_f = surface_out.astype(np.float32)
+        new_y_f = np.minimum(new_y_f, cur_y_f)
+        new_y_f = np.maximum(new_y_f, float(BEDROCK_Y + 3))
+
+        # Apply within footprint
+        if footprint.any():
+            surface_out[footprint] = np.round(new_y_f[footprint]).astype(surface_out.dtype)
+
+        # 7.7 — Water level: avg - 0.5 - slope_correction (lowers on wide+steep)
+        SLOPE_CORR_START_W = 7.0
+        SLOPE_CORR_FALLOFF = 4.0
+        width_excess = np.maximum(nearest_width - SLOPE_CORR_START_W, 0.0)
+        slope_correction = (np.clip(width_excess / SLOPE_CORR_FALLOFF, 0.0, 1.0)
+                            * np.maximum(np.minimum(nearest_slope * 4.0, 1.0), 0.25))
+        water_y = nearest_avg - 0.5 - 1.3 * slope_correction
+        # Water must be at least 1 block above the carved floor and below original
+        water_y = np.maximum(water_y, surface_out.astype(np.float32) + 1.0)
+
+        # 7.8 — populate water_y_field for chunk_writer.
+        # WP edge-water-skip rule: only set water at INTERIOR cells
+        # (factor < 0.45 + 0.1 * (1 - clamp(slope*8, 0, 1))).  Edge cells stay
+        # land — water sits flat in the channel center, banks form naturally.
+        edge_threshold = 0.45 + 0.1 * (1.0 - np.clip(nearest_slope * 8, 0.0, 1.0))
+        water_zone = footprint & (factor < edge_threshold)
+        if water_zone.any():
+            water_y_field[water_zone] = np.round(water_y[water_zone]).astype(np.int16)
+
+        carve_px = footprint & (cur_y_f > new_y_f)
+
+        # Set river_meta for footprint pixels (Strahler-aware)
         not_lake = ~lake_mask
         order_prop_k2 = min(flow_refine_radius * 2 + 1, 31)
         order_propagated = maximum_filter(
             order_u8.astype(np.float32), size=order_prop_k2
         ).astype(np.uint8)
-
-        stream_expanded = (order_propagated <= 2) & carve_px & not_lake
-        river_expanded  = (order_propagated >= 3) & carve_px & not_lake
+        stream_expanded = footprint & (order_propagated <= 2) & not_lake
+        river_expanded  = footprint & (order_propagated >= 3) & not_lake
         river_meta[stream_expanded] = CHAN_STREAM
         river_meta[river_expanded]  = CHAN_RIVER
 
         # Wadi channels: carved terrain but no water fill — sand surface
         if wadi_channel is not None and wadi_channel.any():
-            wadi_carved = wadi_channel & carve_px & not_lake
+            from scipy.ndimage import binary_dilation as _bd_wadi
+            wadi_footprint = _bd_wadi(wadi_channel, iterations=3) & footprint
+            wadi_carved = wadi_footprint & not_lake
             river_meta[wadi_carved] = CHAN_WADI
 
-    # ── 7a. River bank leveling ─────────────────────────────────────────
-    # The 1-2 block border of land along rivers should be at the same Y
-    # as the water surface, not 1 above.  Lower bank pixels to match the
-    # pre-carve surface minus 1 (= water level for terrain-following rivers).
-    river_or_stream_7a = (river_meta == CHAN_RIVER) | (river_meta == CHAN_STREAM)
-    if river_or_stream_7a.any():
-        bank_dist = distance_transform_edt(~river_or_stream_7a).astype(np.float32)
-        # 2-pixel-wide border of land touching the river
-        bank_border = (~river_or_stream_7a & ~lake_mask
-                       & (bank_dist <= 2) & (bank_dist > 0)
-                       & above_sea)
-        if bank_border.any():
-            # Target: water surface = pre_surface - 1 (terrain-following)
-            # Lower bank to match that level
-            # Use the nearest river pixel's pre-carve surface as reference
-            river_surface_ref = maximum_filter(
-                np.where(river_or_stream_7a,
-                         surface_out + np.round(river_depth_map).astype(np.int32),
-                         0).astype(np.float32),
-                size=5)
-            target_y = river_surface_ref[bank_border] - 1
-            current_y = surface_out[bank_border].astype(np.float32)
-            # Only lower, never raise
-            lower = current_y > target_y
-            lowered = bank_border.copy()
-            lowered_rows, lowered_cols = np.where(bank_border)
-            surface_out[lowered_rows[lower], lowered_cols[lower]] = np.round(
-                target_y[lower]).astype(surface_out.dtype)
+        # ── 7a. Three-pass containment + ITERATIVE gravity ──────────────
+        # Pass 1: gravity (centerline only flows down).  WP runs `while not
+        # stable`; we cap at 5 iterations for safety.  Sort centerline pixels
+        # by surface_y ascending and force monotonic descent: each pixel can't
+        # be HIGHER than any downstream pixel (lowest seen so far).
+        if river_full_mask.any():
+            _cl_rows, _cl_cols = np.where(river_full_mask)
+            for _grav_iter in range(5):
+                _cl_sy = surface_out[_cl_rows, _cl_cols].astype(np.int32)
+                _order = np.argsort(_cl_sy)  # ascending: lowest first
+                min_y = np.iinfo(np.int32).max
+                _stable = True
+                for _i in _order:
+                    _r, _c = int(_cl_rows[_i]), int(_cl_cols[_i])
+                    _y = int(surface_out[_r, _c])
+                    if _y > min_y:
+                        surface_out[_r, _c] = min_y
+                        _stable = False
+                    else:
+                        min_y = _y
+                if _stable:
+                    break
+
+        # Pass 2: edge-spillover guard.  Only at edge pixels (factor > 0.55).
+        # If any 4-neighbor's water level >= my surface, raise me to that
+        # neighbor's water level.  Sparse 8-neighbor max for stability.
+        edge_band = footprint & (factor > 0.55) & ~river_channel
+        if edge_band.any():
+            # For each edge pixel, look at 4-neighbors' water_y
+            from scipy.ndimage import maximum_filter as _mf3
+            water_y_3 = np.where(footprint, water_y, np.float32(-1e6))
+            nb_max_water = _mf3(water_y_3, size=3)
+            spill_mask = edge_band & (nb_max_water > surface_out + 0.5)
+            if spill_mask.any():
+                surface_out[spill_mask] = np.round(nb_max_water[spill_mask]).astype(surface_out.dtype)
+
+        # Pass 3: narrow-section fix.  Centerline pixels where surface_y >=
+        # water_y - 1 → drop them to water_y - 1.  Catches per-pixel spikes
+        # that survive the carve.
+        if river_channel.any():
+            narrow_fix = river_channel & (surface_out.astype(np.float32) >= water_y - 1)
+            if narrow_fix.any():
+                surface_out[narrow_fix] = np.round(water_y[narrow_fix] - 1).astype(surface_out.dtype)
+
+        # ── 7b. Fixify spike relaxation (cheap final pass on river footprint) ──
+        # Smooth 1-pixel local maxima/minima within the river footprint.
+        # Average a local extremum with its 4-neighbours (clamped so it
+        # doesn't go below the lowest neighbour or above the highest).
+        if footprint.any():
+            from scipy.ndimage import minimum_filter as _mf_minf
+            from scipy.ndimage import maximum_filter as _mf_maxf
+            sy_f = surface_out.astype(np.float32)
+            # 3x3 cross neighborhood (size=3 = 8-connected; use cross via two
+            # passes for true 4-neighbor — close enough with 3x3 box here).
+            nb_min = _mf_minf(sy_f, size=3)
+            nb_max = _mf_maxf(sy_f, size=3)
+            is_local_max = footprint & (sy_f > nb_max - 0.5) & (sy_f - nb_min > 1.5)
+            is_local_min = footprint & (sy_f < nb_min + 0.5) & (nb_max - sy_f > 1.5)
+            # Average of 4-neighbors (3x3 mean minus self/9 ≈ 3x3 mean)
+            # uniform_filter works fine here
+            from scipy.ndimage import uniform_filter
+            nb_avg = uniform_filter(sy_f, size=3)
+            if is_local_max.any():
+                surface_out[is_local_max] = np.round(
+                    np.maximum(nb_avg[is_local_max], nb_min[is_local_max] + 0.5)
+                ).astype(surface_out.dtype)
+            if is_local_min.any():
+                surface_out[is_local_min] = np.round(
+                    np.minimum(nb_avg[is_local_min], nb_max[is_local_min] - 0.5)
+                ).astype(surface_out.dtype)
 
     # ── 7b. Smooth depth at river-lake junctions ──────────────────────────
     # Where a river channel meets the lake bowl, the independent carving
@@ -1087,4 +1236,77 @@ def carve_rivers(
             ) & ~water_mask & (river_meta == 0) & (surface_out > SEA_LEVEL)
             river_meta[lake_bank] = CHAN_LAKE
 
-    return surface_out.astype(np.int16), river_meta, conn_channel_mask
+    # ── 9. Delta connectivity (WP `pathFindDown` equivalent) ───────────────
+    # For any river segment whose downstream tail is still ABOVE sea level,
+    # walk a steepest-descent path from the tail for ~endWidth*4 blocks,
+    # tapering width 0 → 1.0 along the path.  Apply the guardrails carve to
+    # the extension and set water_y_field on it.  Fixes "river deltas — land
+    # connects but water doesn't" by ensuring each river continues all the
+    # way to the ocean (or runs into a lake).
+    try:
+        from scipy.ndimage import label as _label_delta
+        from scipy.ndimage import binary_dilation as _bd_delta
+        labeled_riv, n_riv = _label_delta(river_channel)
+        for _cid in range(1, n_riv + 1):
+            _comp = labeled_riv == _cid
+            if not _comp.any():
+                continue
+            _comp_sy = surface_out[_comp]
+            _tail_y = int(_comp_sy.min())
+            if _tail_y <= SEA_LEVEL:
+                continue  # Already reaches ocean
+            # Find tail pixel (lowest sy in component)
+            _tail_mask = _comp & (surface_out == _tail_y)
+            _t_rows, _t_cols = np.where(_tail_mask)
+            if len(_t_rows) == 0:
+                continue
+            _tr, _tc = int(_t_rows[0]), int(_t_cols[0])
+            # Walk downhill in 8-connected steepest descent for up to N steps.
+            _max_steps = 80
+            _path = [(_tr, _tc)]
+            _cur_r, _cur_c = _tr, _tc
+            for _step in range(_max_steps):
+                _best_y = surface_out[_cur_r, _cur_c]
+                _best_dr, _best_dc = 0, 0
+                for _dr in (-1, 0, 1):
+                    for _dc in (-1, 0, 1):
+                        if _dr == 0 and _dc == 0: continue
+                        _nr, _nc = _cur_r + _dr, _cur_c + _dc
+                        if not (0 <= _nr < H and 0 <= _nc < W): continue
+                        _ny = surface_out[_nr, _nc]
+                        if _ny < _best_y:
+                            _best_y = _ny
+                            _best_dr, _best_dc = _dr, _dc
+                if _best_dr == 0 and _best_dc == 0:
+                    break  # local min, stop
+                _cur_r += _best_dr; _cur_c += _best_dc
+                _path.append((_cur_r, _cur_c))
+                if surface_out[_cur_r, _cur_c] <= SEA_LEVEL or lake_mask[_cur_r, _cur_c]:
+                    break  # reached ocean / lake
+            if len(_path) < 2:
+                continue
+            # Rasterize a tapered-width extension (width 1 → 4 over the path)
+            _delta_mask = np.zeros((H, W), dtype=bool)
+            for _i, (_r, _c) in enumerate(_path):
+                _w = max(1, int(round(1.0 + 3.0 * (_i / len(_path)))))
+                _r0, _r1 = max(0, _r - _w), min(H, _r + _w + 1)
+                _c0, _c1 = max(0, _c - _w), min(W, _c + _w + 1)
+                _delta_mask[_r0:_r1, _c0:_c1] = True
+            # Carve delta to water_y_field of the original tail
+            _tail_water_y = int(water_y_field[_tr, _tc]) if water_y_field[_tr, _tc] > 0 else _tail_y - 1
+            _delta_carve = _delta_mask & ~lake_mask & (surface_out > _tail_water_y - 2)
+            if _delta_carve.any():
+                surface_out[_delta_carve] = np.minimum(
+                    surface_out[_delta_carve],
+                    np.int16(_tail_water_y - 1))
+                # Set water_y_field across delta to maintain connectivity
+                water_y_field[_delta_carve] = np.where(
+                    water_y_field[_delta_carve] > 0,
+                    water_y_field[_delta_carve],
+                    np.int16(_tail_water_y))
+                # Mark as river_meta CHAN_RIVER
+                river_meta[_delta_carve & (river_meta == 0)] = CHAN_RIVER
+    except Exception as _delta_e:
+        print(f"  [warn] delta connectivity pass failed: {_delta_e}", flush=True)
+
+    return surface_out.astype(np.int16), river_meta, conn_channel_mask, water_y_field

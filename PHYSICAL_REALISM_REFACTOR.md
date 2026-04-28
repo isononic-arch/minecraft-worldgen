@@ -2637,3 +2637,83 @@ Continuing the same S70 session into a 3-day arc.  Plan-mode pass produced `star
 - SAND_DUNE_DESERT (18,66): final render at 17:50 Apr 26 — pending walk verification.
 
 **Carry-forward to next session:** see `memory/S70_handoff.md`.  Final autonomous chain (~22 tiles + 4 ocean-replacement) needed before commit.
+
+
+---
+
+### S71 — 2026-04-27/28: Multi-day arc — biome polish + lithology source-of-truth + FF/AT swap + WP-style river overhaul
+
+**Phase state:** Landed this session — polish + WP river port. Section 11 currently at — polish (no formal phase). Next session — walk-validate the WP-style river upgrade + iterate per feedback. **Outstanding: river slope-water issue NOT YET CONFIRMED FIXED** — user reported pre-S71-final-river that water still tilts on slopes; full WP package only just landed (water_y_field carry-through, delta extension, meander, iterative gravity, edge water-skip), needs in-world walk verification.
+
+#### 1. 22-tile biome roster chain (S71 opening)
+Continuation of S70 chain. Rendered all 22 remaining biome reference tiles + 4 ocean-replacement tiles. All shipped, mostly clean walks. Established the walk-feedback iteration pattern that drove the rest of the session.
+
+#### 2. River-fix iteration loops (multiple attempts)
+- **First (β water-spread):** chunk_writer post-pass that spreads water from carved channel pixels to 4-neighbor air-at-water_y cells. Better than baseline but didn't fix convex-hill rivers — water still tilted.
+- **Second (valley smoothing β):** lower land within 10 px of any river pixel by `max_drop × (1 - dist/10)`. Made rivers look "less natural" per user. Reverted.
+- **Third (connected-component flat water_y):** per-component min water_y with Y-binning. Created step artifacts. Reverted.
+- **Final (WP-style guardrails carve):** see WP river port below.
+
+#### 3. Lithology source-of-truth fix
+Painted `lithology_region.png` was IGNORED at the surface visible-block level. Both `_BIOME_CLIFF_STONE` (chunk_writer:159, dead code per user) and `_zone_to_group` lookup in surface_decorator's gap==5 (rock) + high-elevation fade paths used per-biome hardcoded mappings instead of the painted overlay. Diagnostic `tools/diag_mca_biomes.py` confirmed (37,8) `.mca` had correct `minecraft:savanna_plateau` but (59,44) BT had `minecraft:plains` instead of `minecraft:stony_shore` (BIOME_ALTITUDE_REMAPS bypass). Fix:
+- `core/surface_decorator.py:1898-1938 + :1580-1620` rock-gap (gap==5) + high-elevation fade now iterate over unique lithology IDs in the affected mask, look up palette from `_groups[name].palette`, fall back to biome-based `zone_to_group` only on unpainted (id=0) cells.
+- `core/chunk_writer.py:113` BIOME_ALTITUDE_REMAPS removed BOREAL_TAIGA (was unconditionally remapped to BOREAL_ALPINE → plains MC, bypassing user's stony_shore intent). Trade-off accepted: stony_shore temp=0.2 may freeze rivers in BT regions.
+
+#### 4. FF/AT concept swap (per `wGmzovc.jpeg` "Tundra Valley" reference)
+- **FROZEN_FLATS** = "Tundra Valley" permafrost meadow (lowland). MC biome `minecraft:badlands` (was `swamp`, user changed late). Surface palette: grass_block + podzol + coarse_dirt mix with WHITE-noise scatter (per NOISE_PATTERNS §1) + small simplex_fbm coarse_dirt clusters. GC: scattered `snow[layers=1]` 0.30 (the defining "cold" cue), short_grass 0.45, bush 0.12, fern 0.10, large_fern 0.04, short_dry_grass 0.03, tall_dry_grass 0.02, sweet_berry_bush 0.005, lily_of_the_valley 0.005. NO moss_carpet (user explicit). NO snow on tree leaves (FF removed from `_SNOWY_BIOMES` snow-on-trees post-pass). Smallest pines (SBT size=sm mirror) very-very-sparse via tree multiplier ×0.03. FF removed from `cfg.snow_carpet.biomes` config so explicit GC palette controls (no 95% fallback).
+- **ARCTIC_TUNDRA** = harsh mountain-snowy highlands (kept FF-clone palette + GC + noise_layers per user direction so peaks elsewhere have rich palette, but snowgap APPLIES so high cells get snow caps). Tree mirror SBT size=sm with multiplier ×0.05. Stone-fade exemption RETAINED (coarse_dirt stays at altitude → palette can fire). AT GC `dead_bush` → `tall_dry_grass` per follow-up walk.
+- Both FF + AT added to `_NO_SWAP_BIOMES` set in schematic_placement → ecotone schematic seam swap can't bring neighbor biomes' md/lg trees into FF/AT (only smallest pines via mirror).
+
+#### 5. NOISE_PATTERNS §4 plateau clamp (ecotone dither fix)
+After repeated user feedback "ecotone dither isn't visible enough," tracked down the formula bug. `_compute_ecotone_swap_fields` was ramping `swap_prob` from `swap_cap` down to 0 at the seam edge. Per NOISE_PATTERNS §4: "clip probability to `[0.15, 0.85]` within the seam zone — guarantees visible salt-and-pepper on BOTH sides." Applied `np.clip(prob, 0.15, swap_cap)` in the swap_prob computation. Also bumped `ecotone_width_px` 24→40 + `ecotone_swap_cap` 0.5→0.75 in `config/thresholds.json:eco_ground_cover`.
+
+**Lesson:** I missed this for several iterations. NOISE_PATTERNS.md is the canonical reference — read it before any noise/dither code change.
+
+#### 6. BIRCH_FOREST clumping fix
+User walk: identical trees clustering + gridlike placement. Three changes in `core/schematic_placement.py`:
+- No-repeat history window 30→60.
+- Suppress weight 0.01→0.0001 (re-roll near-zero chance of repeating same path).
+- Species-level dedupe added (different variants `_a_sm`, `_b_sm` of same species also suppressed at 0.10× weight on re-roll).
+- Position jitter ±2 → ±3.
+- `PlacementRecord` got a `species` field for the species-level check.
+
+#### 7. Leaf-column blacklist
+4 schematics globally blacklisted at index load: `dstep_tree_acacia_a_sm`, `dstep_tree_acacia_c_sm`, `dosav_tree_soak_a_sm`, `dosav_tree_soak_b_sm`. These were the worst offenders for the "column of leaves" bug per user's schem_viewer audit.
+
+#### 8. SEMI_ARID_SHRUBLAND spruce-only filter
+`sarid_tree_juniper_a/b/c_sm` (acacia_leaves) blacklisted; remaining 10 entries (juniper d-g + all pinon) keep spruce_leaves. Plus BASE_DENSITY 0.003 → 0.0008 + bush boost 12×→48× per user.
+
+#### 9. WP-style river carver (final-river)
+**The big one.** Replaced the entire river carve section with a port of sijmen_v_b's WorldPainter river script (`river_script1.7.js` in worktree root). Six phases all landed in `core/river_carver_v2.py`:
+- **A. water_y_field carry-through:** `carve_rivers` now returns `(surface_y, river_meta, conn_channel_mask, water_y_field)`. The field is `int16` per-pixel water Y for footprint cells (factor < edge_threshold), -1 elsewhere. `run_pipeline.py` + `tools/validate_test_tile.py` thread it to `chunk_writer.write_tile(river_water_y=...)`. Replaces the legacy `pre_carve_y - 1` per-pixel water Y (which followed terrain → tilted water).
+- **B. Delta connectivity (WP `pathFindDown` equivalent):** for any river segment whose tail is still above sea_level, walk 8-connected steepest descent up to 80 steps with width tapering 1→4. Carves the path, sets water_y_field, marks `river_meta=CHAN_RIVER`. Should fix "delta land connects but water doesn't."
+- **C. Meander (universal, all centerlines):** OpenSimplex world-coord noise at scale=40 blocks. Strength scales with slope (flat rivers stay straight, steep rivers wiggle). Shifts `dist_to_center` perpendicularly via `abs(dist - meander_shift)`. Applied to `river_full_mask = river_channel | conn_channel_mask` so connectivity channels also meander.
+- **D. Iterative gravity loop:** wrapped monotonic-descent in `for _grav_iter in range(5)` with stable-detection break, replaces single-pass gravity.
+- **E. Slope-aware width:** `width_at_pixel += 2 × slope²` (steep rivers get +headroom for guardrails).
+- **F. Edge water-skip (WP rule):** `water_y_field` only set where `factor < 0.45 + 0.1 × (1 − clamp(slope×8, 0, 1))`. Banks stay dry; water sits flat in the channel center only.
+- **G. Fixify final pass:** within river footprint, smooth 1-pixel local maxima/minima toward 4-neighbor average.
+- **Slope-correction water lowering:** `water_y = avg − 0.5 − 1.3 × slope_correction`. Lowers water on wide+steep sections (prevents pond-on-hill).
+- **Guardrails carve formula:** `(1−f) × (avg − depth + f × depth × guard) + f × existing_y` per pixel in width radius. Creates natural valley + raised berms on slopes.
+- **Radius-averaged terrain baseline** via `gaussian_filter(sigma=4)` instead of per-pixel `surface_y`.
+
+**Bug found late:** I used `tile_y` in meander code but the function param is `tile_z`. Caused `NameError` on COASTAL_HEATH render. Fixed.
+
+#### 10. Lithology diagnostic + label image
+- `tools/diag_mca_biomes.py` — sample biome NBT from `.mca` chunks. Confirmed several MC biome wiring bugs (BOREAL_TAIGA stuck on plains, etc.).
+- `tools/diag_mca_surface.py` — sample top-of-column blocks + GC for chunks. Used to debug AT/FF surface composition.
+- `memory/lithology_region_labeled.png` — labeled overview of `lithology_region.png` (group ID → color + name + percentage). Showed `temperate_basaltic` at 75% (mostly fallback), `granitic` at 9.45%, `arid_basaltic` at 6.03%, etc.
+
+**Tile renders this session (final state):**
+- 22-tile main roster (S70 carry-forward, completed early S71)
+- (24,80), (25,80), (32,13), (33,6), (37,8) — multiple iterations with progressive fixes
+- DRY_OAK_SAVANNA (29,76), DESERT_STEPPE_TRANSITION (19,63) — leaf-column filter validation
+- BIRCH_FOREST (60,41) — clumping fix validation
+- COASTAL_HEATH (37,8) FINAL — full WP river upgrade test (last render)
+
+**Carry-forward to next session:**
+- **River slope-water issue NOT YET CONFIRMED FIXED.** Full WP package landed but COASTAL_HEATH (37,8) post-S71-final-river hasn't been walked yet at session-end. User needs to verify: water flat across cross-section + delta connecting to ocean + meander wiggle visible + no banks-as-water spillage.
+- Walk feedback may identify follow-up tuning (meander amplitude, guardrails depth fraction, edge_threshold formula).
+- Schematic-level fixes deferred (DRY-biome small trees still bushy on `_b_sm`/`_f_lg` even after blacklist; MANGROVE roots floating).
+- Full 50k regen pending all walks + final commit.
+
+**Commit:** S71 — multi-day arc, multiple files. See git log + `memory/S71_handoff.md` for the per-session-start cheat sheet.

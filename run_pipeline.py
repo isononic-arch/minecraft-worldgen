@@ -191,7 +191,7 @@ def _process_tile(args: dict) -> dict:
 
     # ---- Step 6a: River carving (v2 — precomputed hydrology masks) ----
     pre_carve_y = surface_y.copy()
-    surface_y, river_meta, conn_channel_mask = core_river.carve_rivers(
+    surface_y, river_meta, conn_channel_mask, water_y_field = core_river.carve_rivers(
         surface_y      = surface_y,
         flow_tile      = masks["flow"],
         river_tile     = masks["river"],
@@ -381,11 +381,19 @@ def _process_tile(args: dict) -> dict:
 
     # ---- Step 9: Chunk write ----
     if not dry_run:
-        # River water level: fill water from carved surface up to water surface.
-        # Rivers: water at pre_carve_y - 1 (follows terrain).
-        # Lakes: flat water at a single Y per lake (spill point = lowest shore).
+        # River water level — S71-3 final-river: per-pixel water_y_field from
+        # the WP-style guardrails carve.  This is FLAT across cross-section
+        # (radius-averaged terrain - 0.5 - slope_correction), unlike the legacy
+        # `pre_carve_y - 1` which followed terrain per-pixel.  Where
+        # water_y_field is -1 (no water at this pixel), fall back to legacy.
         carved = (river_meta > 0) & (surface_y < pre_carve_y)
-        river_water_y = np.where(carved, pre_carve_y - 1, np.int16(-999))
+        if water_y_field is not None:
+            river_water_y = np.where(water_y_field > 0,
+                                     water_y_field,
+                                     np.where(carved, pre_carve_y - 1, np.int16(-999)))
+            river_water_y = river_water_y.astype(np.int16)
+        else:
+            river_water_y = np.where(carved, pre_carve_y - 1, np.int16(-999))
 
         # Flatten lake water to a constant Y per connected lake body.
         # Use ALL lake pixels for labeling (not just carved ones) — shallow

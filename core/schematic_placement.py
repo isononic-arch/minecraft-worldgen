@@ -100,27 +100,27 @@ CANOPY_RADIUS: dict[str, int] = {
 BASE_DENSITY: dict[str, float] = {
     "COASTAL_HEATH":           0.10,   # S70 was 0.05 — double for bush density per user
     "TEMPERATE_RAINFOREST":    0.26,
-    "BOREAL_TAIGA":            0.40,   # S70 was 0.22 — substantial tree-density bump
+    "BOREAL_TAIGA":            0.55,   # S71 was 0.40 — bumped for differentiation from BOREAL_ALPINE
     "SNOWY_BOREAL_TAIGA":      0.22,   # S70 was 0.12 — taiga tree-density bump
     "BOREAL_ALPINE":           0.16,   # S70 new entry — slight bump above SBT mirror baseline
-    "ARCTIC_TUNDRA":           0.005,  # S70 was 0.015 — was "hella trees"; user wants scrubland
-    "FROZEN_FLATS":            0.04,   # S70 was 0.00 — sparse bushes + dead grass per user
+    "ARCTIC_TUNDRA":           0.04,   # S71-3 swap: FF-clone palette retained — visible bushes on plateaus, smallest pines via mirror + ×0.05 tree mult (very sparse)
+    "FROZEN_FLATS":            0.04,   # FF "tundra valley" permafrost meadow — visible bushes + smallest pines
     "TEMPERATE_DECIDUOUS":     0.22,
     "RAINFOREST_COAST":        0.24,
     "RIPARIAN_WOODLAND":       0.18,
     "DRY_OAK_SAVANNA":         0.09,
     "KARST_BARRENS":           0.35,   # S70-f2 was 0.20 — user wants higher bush ratio post-walk; clustering still applies
-    "BIRCH_FOREST":            0.20,
+    "BIRCH_FOREST":            0.30,   # S71 was 0.20 — denser tree cover per user walk
     "EASTERN_TEMPERATE_COAST": 0.06,
     "MIXED_FOREST":            0.22,
-    "CONTINENTAL_STEPPE":      0.005,  # S70 was 0.06 — was reading as alpine boreal; user wants no/sparse trees
+    "CONTINENTAL_STEPPE":      0.0005,  # S71-3 was 0.001 — user wants almost zero trees, intense grassland
     "DRY_PINE_BARRENS":        0.14,
     "SCRUBBY_HEATHLAND":       0.06,
     "LUSH_RAINFOREST_COAST":   0.36,   # S70-f4 was 0.26 — denser tropical canopy per user
     "SAND_DUNE_DESERT":        0.020,   # S70-f5 was 0.008 — bump bush schematic density 2.5x for "rareish bush" look
-    "DESERT_STEPPE_TRANSITION":0.03,
-    "SEMI_ARID_SHRUBLAND":     0.05,
-    "DRY_WOODLAND_MAQUIS":     0.10,
+    "DESERT_STEPPE_TRANSITION":0.015,  # S71 was 0.03 — sparser trees per user walk
+    "SEMI_ARID_SHRUBLAND":     0.0008, # S71-3 was 0.003 — user: way fewer; spruce-leaf trees only via load-time filter
+    "DRY_WOODLAND_MAQUIS":     0.02,   # S71-2 was 0.05 — user: short pines way more rare
     "TIDAL_JUNGLE_FRINGE":     0.15,
     "MANGROVE_COAST":          0.08,
     "FRESHWATER_FEN":          0.12,
@@ -145,6 +145,7 @@ class PlacementRecord:
     schem_type:   str        # "tree" | "bush"
     biome:        str        # biome name (for debug/logging)
     rotation:     int = 0    # 0-3 = 0°/90°/180°/270° CW rotation in XZ plane
+    species:      str = "generic"  # S71-3 species — used for anti-clustering re-roll
 
 
 @dataclass
@@ -280,6 +281,56 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
             )
             for e in grouped["SNOWY_BOREAL_TAIGA"]
         ]
+
+    # S71-3: GLOBAL leaf-column blacklist — schematics that produce the
+    # "column of leaves" bug per user walks (small trees with sparse trunks
+    # that get classified bush-like and sunk underground, leaving canopy
+    # only).  Removed entirely from the index across all biomes.
+    _LEAF_COLUMN_REJECT = (
+        "dstep_tree_acacia_a_sm",
+        "dstep_tree_acacia_c_sm",
+        "dosav_tree_soak_a_sm",
+        "dosav_tree_soak_b_sm",
+    )
+    for _biome_key, _entries in list(grouped.items()):
+        grouped[_biome_key] = [
+            e for e in _entries
+            if not any(rej in e.path for rej in _LEAF_COLUMN_REJECT)
+        ]
+
+    # S71-3: SEMI_ARID_SHRUBLAND tree filter — keep only spruce-leaf species.
+    # Audited 13 sarid_tree_*.schem files: juniper_a/b/c_sm use acacia_leaves,
+    # all other juniper + all pinon use spruce_leaves.  User wants only the
+    # spruce-leaf set.  Filter by path substring.
+    if "SEMI_ARID_SHRUBLAND" in grouped:
+        _SARID_REJECT = ("sarid_tree_juniper_a_sm", "sarid_tree_juniper_b_sm",
+                         "sarid_tree_juniper_c_sm")
+        grouped["SEMI_ARID_SHRUBLAND"] = [
+            e for e in grouped["SEMI_ARID_SHRUBLAND"]
+            if not any(rej in e.path for rej in _SARID_REJECT)
+        ]
+
+    # S71-3 swap: ARCTIC_TUNDRA + FROZEN_FLATS both mirror SBT size=sm trees
+    # (smallest pines).  AT uses these very-very sparsely (×0.05 tree mult);
+    # FF uses them sparsely as the "tundra valley" backdrop.  Bushes come
+    # from the generic-bush merge (separate path) for both biomes.
+    if "SNOWY_BOREAL_TAIGA" in grouped:
+        _smallest_pines_src = [
+            e for e in grouped["SNOWY_BOREAL_TAIGA"]
+            if e.size == "sm" and e.schem_type == "tree"
+        ]
+        for _target in ("ARCTIC_TUNDRA", "FROZEN_FLATS"):
+            _mirrored = [
+                _SchematicEntry(
+                    path=e.path, biome=_target, size=e.size,
+                    schem_type=e.schem_type, anchor_y=e.anchor_y,
+                    inset_depth=e.inset_depth, lowest_leaf_y=e.lowest_leaf_y,
+                    method=e.method, weight=e.weight, anchor_review=False,
+                    species=e.species,
+                )
+                for e in _smallest_pines_src
+            ]
+            grouped.setdefault(_target, []).extend(_mirrored)
 
     # S69: SAND_DUNE_DESERT mirrors KARST_BARRENS bush entries only — gives
     # dunes occasional small-scrub placements (Monahans Sandhills style).
@@ -480,8 +531,17 @@ def place_schematics(
     # Suppress trees in clearing gaps (gap_mask from eco_gradients)
     if eco_grads is not None and hasattr(eco_grads, 'gap_mask'):
         gap = eco_grads.gap_mask
-        # Full suppression: meadow, windthrow, floodplain, bare rock
-        full_suppress = (gap == 1) | (gap == 2) | (gap == 4) | (gap == 5) | (gap == 7) | (gap == 8)
+        # Full suppression: meadow, windthrow, floodplain, bare rock.
+        # S71: gap==8 (sand_dune) lifted within SAND_DUNE_DESERT so the biome's
+        # mirrored-from-KARST bush entries can fire sparsely on dune surface.
+        # S71 walk #3: gap==7 (snow_caps) ALSO lifted within ARCTIC_TUNDRA so
+        # the SBT-mirrored small-pine schematics + KARST-style bushes can fire.
+        # Trees still won't fire on snow surfaces (the _SNOW_SURFACE_BLOCKS
+        # mask in §S58 below catches that); only bushes survive in practice.
+        sand_dune_in_desert = (gap == 8) & (biome_grid == "SAND_DUNE_DESERT")
+        snow_in_arctic = (gap == 7) & (biome_grid == "ARCTIC_TUNDRA")
+        full_suppress = ((gap == 1) | (gap == 2) | (gap == 4) | (gap == 5)
+                        | (gap == 7) | (gap == 8)) & ~sand_dune_in_desert & ~snow_in_arctic
         land_mask = land_mask & ~full_suppress
 
         # Alpine meadow (gap==6): allow sparse scattered krummholz trees
@@ -641,6 +701,13 @@ def place_schematics(
         snow_surface_mask = np.zeros((H, W), dtype=bool)
         for _blk in _SNOW_SURFACE_BLOCKS:
             snow_surface_mask |= (surface_blocks == _blk)
+        # S71-3: snow-surface exception for AT + FF — both biomes have heavy
+        # snow_block surface, but should still allow rare smallest-pine
+        # schematics + sparse bushes.  Without this, ~50%+ snow_block surface
+        # kicks all schematics off these tiles.
+        snow_surface_mask = (snow_surface_mask
+                             & (biome_grid != "ARCTIC_TUNDRA")
+                             & (biome_grid != "FROZEN_FLATS"))
         if snow_surface_mask.any():
             land_mask = land_mask & ~snow_surface_mask
 
@@ -750,9 +817,16 @@ def place_schematics(
             # at rolled pixels so species mix across biome boundaries.
             # S63: guarded by ECOTONE_DENY_PAIRS — don't swap across aesthetic
             # conflicts (e.g. conifers into tropical jungle).
-            if _seam_swap_grid is not None and _seam_swap_grid[row, col]:
+            # S71-3: FROZEN_FLATS opted OUT of ecotone schematic swap — user
+            # wants ONLY smallest pines on FF, but adjacent COASTAL_HEATH (and
+            # other neighbors) can have md/lg trees that leak in via the swap.
+            # Same for ARCTIC_TUNDRA (mountain-snowy, very-very-sparse).
+            _NO_SWAP_BIOMES = frozenset({"FROZEN_FLATS", "ARCTIC_TUNDRA"})
+            if (_seam_swap_grid is not None and _seam_swap_grid[row, col]
+                    and biome_str not in _NO_SWAP_BIOMES):
                 _alt = str(_seam_nb[row, col])
                 if (_alt and _alt in index
+                        and _alt not in _NO_SWAP_BIOMES
                         and frozenset({biome_str, _alt}) not in ECOTONE_DENY_PAIRS):
                     biome_str = _alt
             all_entries = index.get(biome_str)
@@ -764,9 +838,12 @@ def place_schematics(
                 continue
 
             # S70 Item M: palm distance gate for LUSH_RAINFOREST_COAST.
-            # Palms only fire within 32 blocks of water edge.  Far from
-            # water, exclude palm species and fall through to other tropics.
-            if biome_str == "LUSH_RAINFOREST_COAST" and pass_type == "tree":
+            # S71: extended to RAINFOREST_COAST per user walk — palms only
+            # fire within 32 blocks of water edge in both coastal-tropic
+            # biomes.  Far from water, exclude palm species and fall through
+            # to other tropics.
+            if (biome_str in ("LUSH_RAINFOREST_COAST", "RAINFOREST_COAST")
+                    and pass_type == "tree"):
                 if dist_to_water_blocks[row, col] >= 32.0:
                     entries = [e for e in entries
                                if e.species not in ("rfpalm", "mpalm", "cpalm")]
@@ -791,6 +868,28 @@ def place_schematics(
                 # uniform sprinkle.  Multiplier ranges [0.3, 1.7], mean 1.0.
                 if biome_str == "KARST_BARRENS":
                     final_d *= float(karst_density_mult[row, col])
+                # S71: shrubland bush boost.  SEMI_ARID_SHRUBLAND's BASE_DENSITY
+                # was halved this session to thin trees; bushes need a
+                # compensating boost so the shrubland still reads as "lots of
+                # bushes" per user walk feedback.  S71-2: bumped 6x → 12x to
+                # match further tree-thinning (BASE 0.015 → 0.003).
+                if biome_str == "SEMI_ARID_SHRUBLAND":
+                    final_d *= 12.0
+                # S71-2: CONTINENTAL_STEPPE bush boost — user wants ~half the
+                # trees replaced with bushes.  4x bush mult on top of the
+                # halved BASE_DENSITY 0.001 gives ~0.0016 effective bush rate.
+                if biome_str == "CONTINENTAL_STEPPE":
+                    final_d *= 4.0
+            else:  # tree pass
+                # S71-3: ARCTIC_TUNDRA tree thinning — "VERY VERY sparse"
+                # smallest pines.  AT BASE 0.005 × 0.05 = ~0.00025.
+                if biome_str == "ARCTIC_TUNDRA":
+                    final_d *= 0.05
+                # S71-3 swap: FROZEN_FLATS smallest-pine thinning — user wants
+                # "very very very sparse".  FF BASE 0.04 × 0.03 = ~0.0012 per
+                # pixel ≈ ~6-12 small spruces per tile.
+                if biome_str == "FROZEN_FLATS":
+                    final_d *= 0.03
 
             if rng.random() >= final_d:
                 continue
@@ -813,22 +912,43 @@ def place_schematics(
 
             entry = rng.choices(entries, weights=weights, k=1)[0]
 
-            # No-repeat rule: reject if same schematic was placed nearby
+            # No-repeat rule: reject if same schematic was placed nearby.
+            # S71-3: tightened from 30→60 history + 0.01→0.0001 suppress weight
+            # + species-level dedupe in addition to path.  User walk feedback
+            # on BIRCH_FOREST: identical trees clustering in adjacency,
+            # gridlike placement.  Larger history catches more recent neighbors;
+            # near-zero suppress-weight makes re-rolls almost always pick a
+            # different schematic; species-level dedupe catches different
+            # variants of the same species (a/b/c sm) being treated as
+            # "different" by the path check.
             entry_path = entry.path
+            entry_species = entry.species
             radius = CANOPY_RADIUS.get(entry.size, 4)
             reject_radius = radius * 2
             is_dupe = False
-            for prev in placements[max(0, len(placements)-30):]:
-                if prev.schem_path == entry_path:
+            for prev in placements[max(0, len(placements)-60):]:
+                if prev.schem_path == entry_path or (
+                    entry_species != "generic"
+                    and getattr(prev, "species", "generic") == entry_species
+                    and abs(prev.world_z - (py_off + row)) <= reject_radius
+                    and abs(prev.world_x - (px_off + col)) <= reject_radius
+                ):
                     dr = abs(prev.world_z - (py_off + row))
                     dc = abs(prev.world_x - (px_off + col))
                     if dr <= reject_radius and dc <= reject_radius:
                         is_dupe = True
                         break
             if is_dupe:
-                # Try one re-roll with different weights (suppress the dupe)
-                alt_weights = [w if e.path != entry_path else w * 0.01
-                               for e, w in zip(entries, weights)]
+                # Re-roll with strong suppression on the dupe schematic AND
+                # other entries of the same species (stronger anti-clustering).
+                alt_weights = []
+                for e, w in zip(entries, weights):
+                    if e.path == entry_path:
+                        alt_weights.append(w * 0.0001)
+                    elif (entry_species != "generic" and e.species == entry_species):
+                        alt_weights.append(w * 0.10)
+                    else:
+                        alt_weights.append(w)
                 if max(alt_weights) > 0:
                     entry = rng.choices(entries, weights=alt_weights, k=1)[0]
 
@@ -842,9 +962,9 @@ def place_schematics(
                 if not bush_exclusion.is_clear(row, col, bush_r):
                     continue
 
-            # Position jitter: ±2 blocks to break grid regularity
-            jitter_x = rng.randint(-2, 2)
-            jitter_z = rng.randint(-2, 2)
+            # Position jitter: ±3 blocks to break grid regularity (S71-3 was ±2)
+            jitter_x = rng.randint(-3, 3)
+            jitter_z = rng.randint(-3, 3)
             jittered_col = max(0, min(W - 1, col + jitter_x))
             jittered_row = max(0, min(H - 1, row + jitter_z))
 
@@ -896,6 +1016,7 @@ def place_schematics(
                 schem_type  = entry.schem_type,
                 biome       = biome_str,
                 rotation    = rotation,
+                species     = entry.species,
             ))
 
             # Mark exclusion zone

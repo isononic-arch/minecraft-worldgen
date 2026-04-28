@@ -45,24 +45,24 @@ N_SECTIONS = Y_RANGE // SECTION_H  # 32
 # MC 1.20.1 biome name → internal string (subset used in Vandir)
 # Full MC biome IDs assigned by amulet via string name — no numeric IDs needed.
 BIOME_TO_MC: dict[str, str] = {
-    "COASTAL_HEATH":           "minecraft:plains",
+    "COASTAL_HEATH":           "minecraft:savanna_plateau",  # S71: was plains
     "TEMPERATE_RAINFOREST":    "minecraft:dark_forest",
-    "BOREAL_TAIGA":            "minecraft:old_growth_birch_forest",
+    "BOREAL_TAIGA":            "minecraft:stony_shore",  # S71: was old_growth_birch_forest — differentiate from BOREAL_ALPINE
     "BOREAL_ALPINE":           "minecraft:plains",  # S64: wholesale plains — dual-layer approach abandoned, snow never falls
     "SNOWY_BOREAL_TAIGA":      "minecraft:snowy_taiga",
     "ARCTIC_TUNDRA":           "minecraft:snowy_plains",  # S70: was frozen_peaks (jagged ice spikes); user wants flat snow scrubland
-    "FROZEN_FLATS":            "minecraft:snowy_plains",
+    "FROZEN_FLATS":            "minecraft:badlands",  # S71-3 was swamp — user changed to badlands tint
     "TEMPERATE_DECIDUOUS":     "minecraft:forest",
     "RAINFOREST_COAST":        "minecraft:old_growth_birch_forest",
-    "RIPARIAN_WOODLAND":       "minecraft:dark_forest",
+    "RIPARIAN_WOODLAND":       "minecraft:mangrove_swamp",  # S71-3 was dark_forest
     "DRY_OAK_SAVANNA":         "minecraft:savanna",
     "KARST_BARRENS":           "minecraft:savanna_plateau",
     "BIRCH_FOREST":            "minecraft:birch_forest",
     "EASTERN_TEMPERATE_COAST": "minecraft:beach",
     "MIXED_FOREST":            "minecraft:forest",
-    "CONTINENTAL_STEPPE":      "minecraft:plains",
+    "CONTINENTAL_STEPPE":      "minecraft:cherry_grove",  # S71: was plains
     "DRY_PINE_BARRENS":        "minecraft:wooded_badlands",
-    "SCRUBBY_HEATHLAND":       "minecraft:plains",
+    "SCRUBBY_HEATHLAND":       "minecraft:badlands",  # S71: was plains
     "LUSH_RAINFOREST_COAST":   "minecraft:jungle",
     "SAND_DUNE_DESERT":        "minecraft:desert",
     "DESERT_STEPPE_TRANSITION":"minecraft:savanna_plateau",
@@ -111,15 +111,13 @@ BIOME_TO_MC_SKY: dict[str, str] = {
 # the snow, others do not.  Above 250: snowy.  Below 200: no snow unless
 # noise hit.  Creates mountaincap look.
 BIOME_ALTITUDE_REMAPS: list[dict] = [
-    {
-        # BOREAL_TAIGA gets mapped to BOREAL_ALPINE unconditionally — MC tag
-        # becomes minecraft:plains, no weather snow.  Ground palette stays
-        # BOREAL_TAIGA via surface_decorator (since biome_grid passed in
-        # the surface pass is unchanged from assign_biomes).
-        "source":    "BOREAL_TAIGA",
-        "target":    "BOREAL_ALPINE",
-        "threshold": -100,  # effectively always-on
-    },
+    # S71-3: BOREAL_TAIGA remap REMOVED.  The unconditional BT → BOREAL_ALPINE
+    # remap previously forced BT cells to use minecraft:plains MC tag (the
+    # BOREAL_ALPINE mapping) so MC weather wouldn't drop snow on BT.  User
+    # walk-feedback now wants BT to read as minecraft:stony_shore for visual
+    # differentiation from BOREAL_ALPINE.  Trade-off accepted: stony_shore
+    # temp=0.2 may cause occasional snowfall at high Y and rivers may freeze
+    # in BT regions — cosmetic risk vs. the differentiation gain.
     {
         "source":    "BIRCH_FOREST",
         "target":    "BOREAL_ALPINE",
@@ -932,6 +930,7 @@ def stamp_schematic(
     local_z:    int,          # tile-local row    (0..H-1)
     place_y:    int,          # world MC Y of schematic origin
     surface_y:  np.ndarray | None = None,  # (H, W) int16 — terrain surface
+    water_col_mask: np.ndarray | None = None,  # (H, W) bool — S71: water columns (river+ocean)
 ) -> None:
     """
     Stamp a schematic into the volume array.
@@ -1109,7 +1108,14 @@ def stamp_schematic(
                     # S64: footprint water gate — reject any column whose
                     # surface is below sea level so trees never leave leaves
                     # hanging over water from multi-column canopies.
+                    # S71: extended to also reject river-water columns (carved
+                    # rivers above sea level) via water_col_mask.  This catches
+                    # trees with canopy hanging over a river even though the
+                    # placement-time 14px buffer should prevent it — defence
+                    # in depth.  Whole-stamp reject below trips on this too.
                     if col_desink[_sz, _sx] < 63:
+                        col_reject[_sz, _sx] = True
+                    elif water_col_mask is not None and water_col_mask[tz, tx]:
                         col_reject[_sz, _sx] = True
             # S65: WHOLE-SCHEMATIC REJECT if ANY footprint column would
             # stand underwater.  Previous S64 fix only skipped underwater
@@ -1126,11 +1132,23 @@ def stamp_schematic(
                 if _uwater_hit:
                     break
                 for _sx in range(sw):
-                    if (col_reject[_sz, _sx]
-                            and col_desink[_sz, _sx] < 63
-                            and non_air[:, _sz, _sx].any()):
+                    if not col_reject[_sz, _sx]:
+                        continue
+                    if not non_air[:, _sz, _sx].any():
+                        continue
+                    # Below-sea reject (oceans, deep lakes)
+                    if col_desink[_sz, _sx] < 63:
                         _uwater_hit = True
                         break
+                    # S71: river-water reject (carved channels above sea level).
+                    # Need world coords to query water_col_mask.
+                    if water_col_mask is not None:
+                        tz_chk = local_z + _sz
+                        tx_chk = local_x + _sx
+                        if (0 <= tz_chk < tile_H and 0 <= tx_chk < tile_W
+                                and water_col_mask[tz_chk, tx_chk]):
+                            _uwater_hit = True
+                            break
             if _uwater_hit:
                 return
             if has_trunks:
@@ -1951,6 +1969,69 @@ def write_tile(
         cfg            = cfg if _use_geo else None,
     )
 
+    # S71-2 Option β: river water-spread post-pass (purely additive — does
+    # not modify terrain).  For every river pixel, look at 4-neighbours up to
+    # 2 blocks away.  If a neighbour column has air at water_y AND solid
+    # land at (water_y - 1), place water there.  Effect: river water spills
+    # outward into downhill-bank airspace, filling cross-section gaps where
+    # natural terrain is below the water surface.  Container: only fills
+    # cells that have land directly below water_y, so water cannot flow over
+    # cliffs or into deeper terrain — it only completes the river's wet
+    # cross-section where the carve missed it.  Replaces S71's connected-
+    # component carve mod (which made rivers look "less natural").
+    if river_water_y is not None and (river_water_y > 0).any():
+        try:
+            water_idx = pal.idx("water")
+            air_idx   = pal.air
+            src_z, src_x = np.where(river_water_y > 0)
+            src_wy = river_water_y[src_z, src_x].astype(np.int64)
+            # 2-block horizontal spread (radii 1 and 2, all 4 directions per
+            # radius).  Skip neighbours that are themselves river pixels and
+            # neighbours where vol[water_y] isn't air or vol[water_y-1] isn't
+            # solid.
+            for r_step in (1, 2):
+                for dz, dx in ((-r_step, 0), (r_step, 0), (0, -r_step), (0, r_step)):
+                    tz = src_z + dz
+                    tx = src_x + dx
+                    twy = src_wy
+                    inb = (tz >= 0) & (tz < H) & (tx >= 0) & (tx < W)
+                    tz, tx, twy = tz[inb], tx[inb], twy[inb]
+                    if len(tz) == 0:
+                        continue
+                    # Skip neighbours that are themselves river pixels
+                    nb_is_river = river_water_y[tz, tx] > 0
+                    keep = ~nb_is_river
+                    tz, tx, twy = tz[keep], tx[keep], twy[keep]
+                    if len(tz) == 0:
+                        continue
+                    yi = twy - Y_MIN
+                    yi_ok = (yi >= 1) & (yi < Y_RANGE)
+                    tz, tx, yi = tz[yi_ok], tx[yi_ok], yi[yi_ok]
+                    if len(tz) == 0:
+                        continue
+                    # vol indexed (Y, Z, X)
+                    cur = vol[yi, tz, tx]
+                    below = vol[yi - 1, tz, tx]
+                    can_spread = (cur == air_idx) & (below != air_idx) & (below != water_idx)
+                    if can_spread.any():
+                        z_ok  = tz[can_spread]
+                        x_ok  = tx[can_spread]
+                        yi_ok = yi[can_spread]
+                        vol[yi_ok, z_ok, x_ok] = water_idx
+        except Exception as _e:
+            print(f"  [warn] river water-spread post-pass failed: {_e}", flush=True)
+
+    # S71: Build water_col_mask for tree footprint reject — catches carved
+    # river channels above sea level (river_water_y > 0) AND ocean (sy < 63).
+    # The placement-time 14px buffer in schematic_placement should already
+    # exclude these, but per-column reject in stamp_schematic is defence
+    # in depth: any tree whose footprint touches a water column → whole-stamp
+    # reject.
+    if river_water_y is not None:
+        water_col_mask = (river_water_y > 0) | (surface_y < 63)
+    else:
+        water_col_mask = (surface_y < 63)
+
     # Step 2 — stamp schematics
     for p in placements:
         local_x = p.world_x - tile_world_x
@@ -1961,12 +2042,59 @@ def write_tile(
             schem_data = schem_loader.load_schem(Path(p.schem_path))
             schem_data._rotation = getattr(p, 'rotation', 0)
             stamp_schematic(vol, pal, schem_data, local_x, local_z,
-                           p.place_y, surface_y=surface_y)
+                           p.place_y, surface_y=surface_y,
+                           water_col_mask=water_col_mask)
         except Exception as e:
             import traceback
             print(f"  [warn] schematic stamp failed: {p.schem_path}: {e}",
                   flush=True)
             traceback.print_exc()
+
+    # S71 — Snow-on-trees post-pass for snowy biomes per user walk feedback.
+    # In SNOWY_BOREAL_TAIGA, ARCTIC_TUNDRA, and FROZEN_FLATS, drop a snow_layer
+    # block on top of every leaf-block column that doesn't already have one.
+    # NOT applied to BOREAL_ALPINE (user explicit: keep it snow-free) and not
+    # to SAND_DUNE_DESERT or other dry/wet biomes.  Applied AFTER all schematic
+    # stamps so it covers tree canopies, not before (would be overwritten).
+    # S71-3: FF removed — user explicit "no snowcover on pines" for FF.
+    # Snow on FF surface comes from explicit snow_layer GC entries only.
+    _SNOWY_BIOMES = frozenset({"SNOWY_BOREAL_TAIGA", "ARCTIC_TUNDRA"})
+    snowy_mask = np.zeros((H, W), dtype=bool)
+    for _sb in _SNOWY_BIOMES:
+        snowy_mask |= (biome_grid == _sb)
+    if snowy_mask.any():
+        # Build leaf-index set from palette.  Includes vanilla leaf families +
+        # azalea variants — anything that should accumulate snow on top.
+        _LEAF_NAMES = (
+            "oak_leaves", "spruce_leaves", "birch_leaves", "jungle_leaves",
+            "acacia_leaves", "dark_oak_leaves", "mangrove_leaves",
+            "cherry_leaves", "azalea_leaves", "flowering_azalea_leaves",
+            "pale_oak_leaves",
+        )
+        leaf_indices: set[int] = set()
+        for _ln in _LEAF_NAMES:
+            try:
+                leaf_indices.add(pal.idx(_ln))
+            except Exception:
+                continue
+        if leaf_indices:
+            snow_idx = pal.idx("snow")
+            air_idx  = pal.air  # @property, not callable
+            # Find topmost leaf per (z, x).  vol = (Y_RANGE, H, W).
+            # Iterate Y top-down (vol indexing) and place snow at top_leaf+1
+            # if currently air.
+            leaf_mask_vol = np.isin(vol, list(leaf_indices))  # (Y_RANGE, H, W) bool
+            has_leaf = leaf_mask_vol.any(axis=0)  # (H, W)
+            apply = has_leaf & snowy_mask
+            if apply.any():
+                # Topmost leaf Y-index per column (argmax on reversed)
+                top_leaf_yi = (Y_RANGE - 1) - np.argmax(leaf_mask_vol[::-1, :, :], axis=0)
+                rows, cols = np.where(apply)
+                for r, c in zip(rows.tolist(), cols.tolist()):
+                    yi = int(top_leaf_yi[r, c])
+                    above = yi + 1
+                    if 0 <= above < Y_RANGE and vol[above, r, c] == air_idx:
+                        vol[above, r, c] = snow_idx
 
     # Step 3 — write to region files
     return write_tile_to_region(
