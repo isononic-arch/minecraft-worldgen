@@ -224,7 +224,7 @@ def run_tile_prelude(
     # ---- Step 6a: river carving ----
     _log("carve_rivers")
     pre_carve_y = surface_y.copy()
-    surface_y, river_meta, _conn_channel_mask = core_river.carve_rivers(
+    surface_y, river_meta, _conn_channel_mask, _water_y_field = core_river.carve_rivers(
         surface_y        = surface_y,
         flow_tile        = masks["flow"],
         river_tile       = masks.get("river", np.zeros_like(masks["flow"])),

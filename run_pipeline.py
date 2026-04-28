@@ -381,19 +381,21 @@ def _process_tile(args: dict) -> dict:
 
     # ---- Step 9: Chunk write ----
     if not dry_run:
-        # River water level — S71-3 final-river: per-pixel water_y_field from
-        # the WP-style guardrails carve.  This is FLAT across cross-section
-        # (radius-averaged terrain - 0.5 - slope_correction), unlike the legacy
-        # `pre_carve_y - 1` which followed terrain per-pixel.  Where
-        # water_y_field is -1 (no water at this pixel), fall back to legacy.
+        # River water level — S72: per-pixel water_y_field from the WP
+        # guardrails carve, NO legacy fallback.  If a footprint pixel
+        # didn't get water_y_field set (factor > edge_threshold per WP
+        # edge-water-skip rule), it stays dry land — matches JS exactly.
+        # The legacy `pre_carve_y - 1` rule used in S71 created a per-pixel
+        # checkerboard where edges followed terrain per-pixel while interiors
+        # used the radius-average — visible jagged seam.  Lakes still get
+        # their flat water level from the lake_water_levels pass below.
         carved = (river_meta > 0) & (surface_y < pre_carve_y)
         if water_y_field is not None:
             river_water_y = np.where(water_y_field > 0,
                                      water_y_field,
-                                     np.where(carved, pre_carve_y - 1, np.int16(-999)))
-            river_water_y = river_water_y.astype(np.int16)
+                                     np.int16(-999)).astype(np.int16)
         else:
-            river_water_y = np.where(carved, pre_carve_y - 1, np.int16(-999))
+            river_water_y = np.where(carved, pre_carve_y - 1, np.int16(-999)).astype(np.int16)
 
         # Flatten lake water to a constant Y per connected lake body.
         # Use ALL lake pixels for labeling (not just carved ones) — shallow

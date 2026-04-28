@@ -238,14 +238,17 @@ def carve_rivers(
     masks_dir:      "Path | None" = None,
     tile_x:         int | None = None,
     tile_z:         int | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Carve rivers and lakes into surface_y using precomputed hydrology masks.
 
     If hydro masks are not provided (None), falls back to legacy
     threshold-based carving from river_carver.py.
 
-    Returns (surface_y_carved, river_meta) matching the v1 contract.
+    Returns (surface_y_carved, river_meta, conn_channel_mask, water_y_field).
+    Legacy fallback returns empty conn_channel_mask + water_y_field=-1
+    everywhere (no per-pixel water surface; chunk_writer falls back to lake
+    handling + standard river_meta for water emission).
     """
     # If no hydro masks AND no precomputed centerline, fall back to legacy carver
     _has_any_hydro = ((hydro_order is not None and hydro_order.max() > 0)
@@ -253,7 +256,9 @@ def carve_rivers(
     if not _has_any_hydro:
         from core.river_carver import carve_rivers as _legacy
         sy, rm = _legacy(surface_y, flow_tile, river_tile, cfg)
-        return sy, rm, np.zeros(surface_y.shape, dtype=bool)
+        return (sy, rm,
+                np.zeros(surface_y.shape, dtype=bool),
+                np.full(surface_y.shape, -1, dtype=np.int16))
 
     H, W = surface_y.shape
     hcfg = cfg.get("hydrology_engine", {})
@@ -895,64 +900,11 @@ def carve_rivers(
     is_river  = centerline & (order_u8 >= 3)
 
     # ── 5. Channel = NMS centerline directly (no width expansion) ────────
-    # The NMS ridgeline IS the channel.  Carve depth by Strahler order.
+    # The NMS ridgeline IS the channel.  Section 7 (WP guardrails) computes
+    # depth from per-pixel width × slope × elevation; sections 5/6 (legacy
+    # `river_depth_map` + parabolic profile + flow modulation) were removed
+    # in S72 — they were dead code, computed but never read.
     river_channel = centerline & (surface_out > SEA_LEVEL) & ~lake_mask
-
-    min_depths = geo.get("min_depths_by_order", {
-        "1": 3, "2": 3, "3": 4, "4": 5, "5": 6,
-    })
-    max_carve = float(geo.get("max_carve_depth", 7))
-    river_depth_map = np.zeros((H, W), dtype=np.float32)
-
-    if river_channel.any():
-        for order_val in range(1, 6):
-            omask = river_channel & (order_u8 == order_val)
-            if omask.any():
-                d = float(min_depths.get(str(order_val), order_val + 1))
-                river_depth_map[omask] = min(d, max_carve)
-
-        # Pixels with order 0 but on centerline (from propagation)
-        # get depth 2
-        no_order = river_channel & (order_u8 == 0)
-        river_depth_map[no_order] = 2.0
-
-        # Connectivity channels need minimum 3 blocks depth for visible
-        # water fill (water_y = pre_carve - 1, floor = pre_carve - depth;
-        # depth >= 2 needed for at least 1 water block above floor).
-        conn_river = conn_channel_mask & river_channel
-        if conn_river.any():
-            river_depth_map[conn_river] = np.maximum(
-                river_depth_map[conn_river], 3.0)
-
-    # ── 6b. (Removed — stochastic jitter replaced by morphological
-    #         smoothing in Section 4c2) ───────────────────────────────────
-
-    # ── 6c. Concave depth profile ────────────────────────────────────────
-    # Instead of flat carve depth, use distance from channel edge for
-    # parabolic cross-section: deepest at center, shallow at banks.
-    if river_channel.any():
-        chan_dist = distance_transform_edt(river_channel).astype(np.float32)
-        chan_max_dist = max(float(chan_dist.max()), 1.0)
-        # Normalize to [0, 1] — 0 at edge, 1 at center
-        depth_profile = np.clip(chan_dist / min(chan_max_dist, 8.0), 0, 1)
-        # Bowled parabola: steep walls, flat deep center.
-        # profile^0.5 = aggressive bowl (edges shallow, center deep).
-        # 0.25 base keeps at least 25% depth even at edges → visible water.
-        bowl = 0.25 + 0.75 * depth_profile[river_channel] ** 0.5
-
-        # Flow-based depth modulation: higher flow = deeper erosion.
-        # This mimics how lakes get organic depth from terrain — rivers
-        # get it from flow accumulation (more water = more erosion).
-        if flow_tile is not None:
-            flow_in_chan = flow_tile[river_channel]
-            f_max = max(float(flow_in_chan.max()), 0.001)
-            flow_frac = flow_in_chan / f_max
-            # Higher flow: up to 40% more depth; lower flow: 20% less
-            flow_mod = 0.8 + 0.4 * flow_frac
-        else:
-            flow_mod = 1.0
-
-        river_depth_map[river_channel] *= bowl * flow_mod
 
     # ── 7. Carve river channels (S71-3: WP-style guardrails) ──────────────
     # Replaces S70 5x5 minimum_filter + S71 valley smoothing β.  Adapted from
@@ -981,6 +933,7 @@ def carve_rivers(
 
     if river_full_mask.any():
         from scipy.ndimage import gaussian_filter as _gf
+        from scipy.ndimage import label as _label_grav
 
         # 7.1 — per-centerline width (block half-radius), from Strahler order.
         # WP-style: slope-aware width: width = base + 2 * slope^2.
@@ -995,8 +948,50 @@ def carve_rivers(
         if _no_o.any():
             width_at_pixel[_no_o] = 2.5
 
+        # 7.1b — GRAVITY pre-pass (S72 fix).  Walk each centerline component
+        # from source to ocean (descending dist-from-ocean) tracking running
+        # min surface_y; drop any cell exceeding it (= upstream bump that
+        # would block flow).  MUST run BEFORE avg_terrain & water_y are
+        # computed so they reflect the gravity-corrected centerline.
+        # JS reference: river_script1.7.js:455-481 (per-path topological walk).
+        # S71 bug: argsort by surface_y (height order) instead of topological
+        # order flattened the ENTIRE centerline to its global min.
+        _ocean_seed = surface_out <= SEA_LEVEL
+        if not _ocean_seed.any():
+            # No ocean in tile — seed at lowest centerline cell so dist-EDT
+            # still gives a usable topological proxy.
+            _r0, _c0 = np.where(river_full_mask)
+            if len(_r0) > 0:
+                _min_idx = int(np.argmin(surface_out[_r0, _c0]))
+                _ocean_seed = np.zeros((H, W), dtype=bool)
+                _ocean_seed[_r0[_min_idx], _c0[_min_idx]] = True
+        if _ocean_seed.any():
+            _dist_from_ocean = distance_transform_edt(~_ocean_seed).astype(np.float32)
+            _grav_labeled, _grav_n = _label_grav(river_full_mask)
+            for _grav_iter in range(5):
+                _stable = True
+                for _cid in range(1, _grav_n + 1):
+                    _comp = _grav_labeled == _cid
+                    _r, _c = np.where(_comp)
+                    if len(_r) < 2:
+                        continue
+                    _d = _dist_from_ocean[_r, _c]
+                    _ord = np.argsort(-_d)  # source first (descending dist)
+                    _min_y = np.iinfo(np.int32).max
+                    for _i in _ord:
+                        _rr, _cc = int(_r[_i]), int(_c[_i])
+                        _y = int(surface_out[_rr, _cc])
+                        if _y > _min_y:
+                            surface_out[_rr, _cc] = _min_y
+                            _stable = False
+                        else:
+                            _min_y = _y
+                if _stable:
+                    break
+
         # 7.2 — avg_terrain: Gaussian-smoothed surface_y (sigma=4 captures
-        # ~7-9 block circle, matches typical river width).
+        # ~7-9 block circle, matches typical river width).  Computed AFTER
+        # gravity pre-pass so it reflects the monotonic-descent centerline.
         avg_terrain = _gf(surface_out.astype(np.float32), sigma=4.0)
 
         # 7.3 — slope magnitude (smoothed gradient)
@@ -1047,11 +1042,21 @@ def carve_rivers(
             dist_to_center = np.abs(dist_to_center - meander_shift)
 
         # 7.6 — guardrails formula (WP-style)
-        RIVER_DEPTH_FRAC = 0.35
+        # S72 — Bug 4 + Bug 6 trench depth tuning:
+        #   * RIVER_DEPTH_FRAC 0.35 → 0.25 and base bias 1.5 → 1.0 (shallower).
+        #   * slope_atten = clamp(1 - 0.5*slope, 0.4, 1.0) — shallower on steep
+        #     terrain (geomorphically correct: young rivers cut shallow).
+        #   * elev_atten = clamp((avg - SEA_LEVEL) / 30, 0.3, 1.0) — shallower
+        #     near ocean for delta-fan look (matches JS depthMultiplier).
+        RIVER_DEPTH_FRAC = 0.25
+        DEPTH_BASE = 1.0
         DYKE_MIN = 0.32
         GUARDRAIL_MAX_SLOPE = 1.2
         factor = np.clip(dist_to_center / np.maximum(nearest_width, 1.0), 0.0, 0.99)
-        depth_blocks = nearest_width * RIVER_DEPTH_FRAC + 1.5
+        slope_atten = np.clip(1.0 - 0.5 * nearest_slope, 0.4, 1.0).astype(np.float32)
+        elev_above_sea = np.maximum(nearest_avg - float(SEA_LEVEL), 0.0).astype(np.float32)
+        elev_atten = np.clip(elev_above_sea / 30.0, 0.3, 1.0).astype(np.float32)
+        depth_blocks = (nearest_width * RIVER_DEPTH_FRAC + DEPTH_BASE) * slope_atten * elev_atten
         guard = 4.2 * np.maximum(DYKE_MIN, np.minimum(GUARDRAIL_MAX_SLOPE, nearest_slope))
         new_y_f = (1.0 - factor) * (nearest_avg - depth_blocks + factor * depth_blocks * guard) \
                 + factor * surface_out.astype(np.float32)
@@ -1075,8 +1080,12 @@ def carve_rivers(
         slope_correction = (np.clip(width_excess / SLOPE_CORR_FALLOFF, 0.0, 1.0)
                             * np.maximum(np.minimum(nearest_slope * 4.0, 1.0), 0.25))
         water_y = nearest_avg - 0.5 - 1.3 * slope_correction
-        # Water must be at least 1 block above the carved floor and below original
-        water_y = np.maximum(water_y, surface_out.astype(np.float32) + 1.0)
+        # S72 — Bug 1 fix: clamp to SEA_LEVEL (matches JS `Math.max(..., minWaterDepth)`),
+        # NOT `surface_out + 1`.  The old clamp coupled water_y to the
+        # gravity-flattened centerline, dragging the entire water surface flat
+        # along long stretches.  The Pass 3 narrow-section fix (below) handles
+        # "surface poking through water" by lowering surface, not raising water.
+        water_y = np.maximum(water_y, float(SEA_LEVEL))
 
         # 7.8 — populate water_y_field for chunk_writer.
         # WP edge-water-skip rule: only set water at INTERIOR cells
@@ -1107,28 +1116,11 @@ def carve_rivers(
             wadi_carved = wadi_footprint & not_lake
             river_meta[wadi_carved] = CHAN_WADI
 
-        # ── 7a. Three-pass containment + ITERATIVE gravity ──────────────
-        # Pass 1: gravity (centerline only flows down).  WP runs `while not
-        # stable`; we cap at 5 iterations for safety.  Sort centerline pixels
-        # by surface_y ascending and force monotonic descent: each pixel can't
-        # be HIGHER than any downstream pixel (lowest seen so far).
-        if river_full_mask.any():
-            _cl_rows, _cl_cols = np.where(river_full_mask)
-            for _grav_iter in range(5):
-                _cl_sy = surface_out[_cl_rows, _cl_cols].astype(np.int32)
-                _order = np.argsort(_cl_sy)  # ascending: lowest first
-                min_y = np.iinfo(np.int32).max
-                _stable = True
-                for _i in _order:
-                    _r, _c = int(_cl_rows[_i]), int(_cl_cols[_i])
-                    _y = int(surface_out[_r, _c])
-                    if _y > min_y:
-                        surface_out[_r, _c] = min_y
-                        _stable = False
-                    else:
-                        min_y = _y
-                if _stable:
-                    break
+        # ── 7a. Two-pass containment ─────────────────────────────────────
+        # (Gravity Pass 1 was moved to Section 7.1b above — it must run
+        #  BEFORE avg_terrain/water_y are computed so they see the
+        #  monotonic-descent centerline.  S71 had it here AFTER, which left
+        #  water_y based on pre-gravity bumpy terrain.)
 
         # Pass 2: edge-spillover guard.  Only at edge pixels (factor > 0.55).
         # If any 4-neighbor's water level >= my surface, raise me to that
