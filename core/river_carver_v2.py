@@ -965,9 +965,11 @@ def carve_rivers(
                 _min_idx = int(np.argmin(surface_out[_r0, _c0]))
                 _ocean_seed = np.zeros((H, W), dtype=bool)
                 _ocean_seed[_r0[_min_idx], _c0[_min_idx]] = True
+        _gravity_ran = False
         if _ocean_seed.any():
             _dist_from_ocean = distance_transform_edt(~_ocean_seed).astype(np.float32)
             _grav_labeled, _grav_n = _label_grav(river_full_mask)
+            _gravity_ran = True
             for _grav_iter in range(5):
                 _stable = True
                 for _cid in range(1, _grav_n + 1):
@@ -1029,9 +1031,13 @@ def carve_rivers(
         from scipy.ndimage import distance_transform_edt as _edt_g
         dist_to_center, ind_center = _edt_g(~river_full_mask, return_indices=True)
         dist_to_center = dist_to_center.astype(np.float32)
-        nearest_width = width_at_pixel[ind_center[0], ind_center[1]]
-        nearest_avg   = avg_terrain[ind_center[0], ind_center[1]]
-        nearest_slope = slope_mag[ind_center[0], ind_center[1]]
+        # Preserve indices for plateau-water-y propagation in Section 7.7b.
+        # Cost: ~2 MB (H*W*int32*2) — fine for 512x512 tiles.
+        nearest_idx_r = ind_center[0]
+        nearest_idx_c = ind_center[1]
+        nearest_width = width_at_pixel[nearest_idx_r, nearest_idx_c]
+        nearest_avg   = avg_terrain[nearest_idx_r, nearest_idx_c]
+        nearest_slope = slope_mag[nearest_idx_r, nearest_idx_c]
         del ind_center
 
         # Apply meander displacement to dist_to_center: shifts the deepest cut
@@ -1057,6 +1063,9 @@ def carve_rivers(
         elev_above_sea = np.maximum(nearest_avg - float(SEA_LEVEL), 0.0).astype(np.float32)
         elev_atten = np.clip(elev_above_sea / 30.0, 0.3, 1.0).astype(np.float32)
         depth_blocks = (nearest_width * RIVER_DEPTH_FRAC + DEPTH_BASE) * slope_atten * elev_atten
+        # S73-v3 user request: inset entire trench 1 extra block down (river
+        # bed + water both drop 1) so banks gain a +1 visible headroom.
+        depth_blocks += 1.0
         guard = 4.2 * np.maximum(DYKE_MIN, np.minimum(GUARDRAIL_MAX_SLOPE, nearest_slope))
         new_y_f = (1.0 - factor) * (nearest_avg - depth_blocks + factor * depth_blocks * guard) \
                 + factor * surface_out.astype(np.float32)
@@ -1080,12 +1089,66 @@ def carve_rivers(
         slope_correction = (np.clip(width_excess / SLOPE_CORR_FALLOFF, 0.0, 1.0)
                             * np.maximum(np.minimum(nearest_slope * 4.0, 1.0), 0.25))
         water_y = nearest_avg - 0.5 - 1.3 * slope_correction
+        # S73-v3 trench drop: water 1 lower (matches depth_blocks += 1).
+        # Subtract BEFORE the SEA_LEVEL clamp so coast segments still meet
+        # the ocean cleanly (clamp catches anything that drops below 63).
+        water_y = water_y - 1.0
         # S72 — Bug 1 fix: clamp to SEA_LEVEL (matches JS `Math.max(..., minWaterDepth)`),
         # NOT `surface_out + 1`.  The old clamp coupled water_y to the
         # gravity-flattened centerline, dragging the entire water surface flat
         # along long stretches.  The Pass 3 narrow-section fix (below) handles
         # "surface poking through water" by lowering surface, not raising water.
         water_y = np.maximum(water_y, float(SEA_LEVEL))
+
+        # 7.7b — Plateau quantization (S73 leak-fix).  Per-pixel water_y from
+        # nearest_avg gives unique values to adjacent EDT-Voronoi cells, which
+        # creates "fringe bands" of differing water heights inside the channel
+        # cross-section.  Replace per-pixel water_y with PLATEAU water_y:
+        # walk each centerline component source-to-ocean and snap water_y
+        # using STEP_SIZE=1 (every 1-block descent triggers a new plateau)
+        # plus MIN_PLATEAU_LEN=3 (each plateau holds for 3 cells before
+        # allowing a drop — keeps rivers visible on cliffs by ensuring real
+        # plateau-pools instead of all-cells-become-lips cascade).  Then
+        # propagate plateau water_y across the footprint via the existing
+        # EDT (nearest_idx_r/c) so every cross-section has ONE water_y.
+        # Override the per-pixel water_y so Pass 2 + Pass 3 below operate on
+        # plateau values too.
+        if _gravity_ran:
+            _STEP_SIZE = 1
+            _MIN_PLATEAU_LEN = 3
+            plateau_y_centerline = np.full((H, W), np.int16(-32768), dtype=np.int16)
+            for _cid in range(1, _grav_n + 1):
+                _comp = _grav_labeled == _cid
+                _r_arr, _c_arr = np.where(_comp)
+                if len(_r_arr) < 1:
+                    continue
+                _d_arr = _dist_from_ocean[_r_arr, _c_arr]
+                _ord_p = np.argsort(-_d_arr)  # source first
+                _plateau_y = None
+                _plateau_count = 0
+                for _i in _ord_p:
+                    _rr, _cc = int(_r_arr[_i]), int(_c_arr[_i])
+                    _nat_y = int(round(float(water_y[_rr, _cc])))
+                    if _plateau_y is None:
+                        _plateau_y = _nat_y
+                        _plateau_count = 1
+                    elif (_nat_y <= _plateau_y - _STEP_SIZE
+                          and _plateau_count >= _MIN_PLATEAU_LEN):
+                        _plateau_y = _nat_y  # drop to new plateau
+                        _plateau_count = 1
+                    else:
+                        _plateau_count += 1  # stay on current plateau
+                    plateau_y_centerline[_rr, _cc] = np.int16(_plateau_y)
+            # Propagate plateau water_y from each centerline pixel to its
+            # entire EDT-Voronoi cell (every footprint pixel takes its
+            # nearest centerline pixel's plateau value).
+            plateau_water_y = plateau_y_centerline[nearest_idx_r, nearest_idx_c]
+            # Override per-pixel water_y with plateau values where centerline
+            # has a plateau assigned (sentinel -32768 elsewhere stays as old).
+            _has_plateau = plateau_water_y > -32768
+            water_y = np.where(_has_plateau, plateau_water_y.astype(np.float32), water_y)
+            # Re-clamp to SEA_LEVEL after override (defensive)
+            water_y = np.maximum(water_y, float(SEA_LEVEL))
 
         # 7.8 — populate water_y_field for chunk_writer.
         # WP edge-water-skip rule: only set water at INTERIOR cells
@@ -1169,6 +1232,43 @@ def carve_rivers(
                 surface_out[is_local_min] = np.round(
                     np.minimum(nb_avg[is_local_min], nb_max[is_local_min] - 0.5)
                 ).astype(surface_out.dtype)
+
+        # ── 7c. Fill interior holes + lateral bank-lift (S73-v4) ────────
+        # (1) Interior holes — non-water cells INSIDE the water-mask hull
+        #     (result of factor>edge_threshold gating creating non-water
+        #     cells in the channel interior) get water_y_field set instead
+        #     of being lifted as terrain.  This kills the "leftover weir"
+        #     dam-bands that the size=15 kernel was otherwise creating
+        #     across the channel.
+        # (2) Bank-lift — non-water cells OUTSIDE the water hull within
+        #     MC's 7-cell water-spread radius get surface_y lifted to the
+        #     max nearby water_y.  Prevents lateral spillover.
+        # Lake cells excluded — lakes have their own bank handling.
+        from scipy.ndimage import maximum_filter as _mf_lip
+        from scipy.ndimage import binary_fill_holes as _bfh_lip
+        _wf = water_y_field
+        _has_water_l = (_wf > 0) & ~lake_mask
+        if _has_water_l.any():
+            _wf_in = np.where(_has_water_l, _wf, np.int16(-32768))
+            _wf_nb_max = _mf_lip(_wf_in, size=15)
+            # (1) Fill interior holes with water instead of lifting them.
+            _water_hull = _bfh_lip(_has_water_l)
+            _interior_holes = (_water_hull & (~_has_water_l)
+                               & (_wf_nb_max > np.int16(-32768)))
+            if _interior_holes.any():
+                water_y_field[_interior_holes] = _wf_nb_max[_interior_holes]
+                # Refresh water mask + max field after fill.
+                _has_water_l = (water_y_field > 0) & ~lake_mask
+                _wf_in = np.where(_has_water_l, water_y_field, np.int16(-32768))
+                _wf_nb_max = _mf_lip(_wf_in, size=15)
+            # (2) Bank-lift on cells OUTSIDE the water hull only.
+            _needs_lift = (~_water_hull
+                           & (_wf_nb_max > np.int16(-32768))
+                           & (surface_out < _wf_nb_max))
+            if _needs_lift.any():
+                surface_out[_needs_lift] = _wf_nb_max[_needs_lift].astype(
+                    surface_out.dtype
+                )
 
     # ── 7b. Smooth depth at river-lake junctions ──────────────────────────
     # Where a river channel meets the lake bowl, the independent carving
