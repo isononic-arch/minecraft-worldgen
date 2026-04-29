@@ -1198,6 +1198,26 @@ def stamp_schematic(
                 if max_gap > 1:
                     place_y -= (max_gap - 1)
                 primary_log_idx = None
+                # S74 (#7): bushes-only floating-canopy reject.  After the
+                # bush sink (`place_y -= (max_gap - 1)`), check EVERY
+                # non-air column for surface-to-canopy gap.  If any column
+                # would float >1 block above its surface, reject the
+                # entire stamp.  This is strict (no >1-block overhang
+                # allowed for bushes) — trees keep their existing
+                # MAX_TRUNK_EXT=6 budget on Strategy A above.
+                MAX_BUSH_CANOPY_FLOAT = 1
+                bush_canopy_max = 0
+                for _sz in range(sl):
+                    for _sx in range(sw):
+                        if col_reject[_sz, _sx] or not any_col[_sz, _sx]:
+                            continue
+                        ls = int(col_desink[_sz, _sx])
+                        canopy_wy = place_y + int(lowest_sy_col[_sz, _sx])
+                        cgap = canopy_wy - ls
+                        if cgap > bush_canopy_max:
+                            bush_canopy_max = cgap
+                if bush_canopy_max > MAX_BUSH_CANOPY_FLOAT:
+                    return  # bush canopy >1 block above ground — reject
         else:
             col_reject = None
             col_desink = None

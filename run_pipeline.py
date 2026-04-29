@@ -567,8 +567,28 @@ def main() -> int:
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Ensure /core is importable by workers
+    # Auto-install vandir_height.zip datapack into output/datapacks/
+    # so when MCAs are deployed to a world, the height datapack travels
+    # with them.  Required because chunk_writer emits 32 sections (Y=-64
+    # to Y=448) but vanilla MC 1.21.10 supports only 24 sections without
+    # this datapack — chunks crash with ArrayIndexOutOfBoundsException
+    # on load.
     project_root = Path(__file__).resolve().parent
+    _datapack_src = project_root / "assets" / "vandir_height.zip"
+    if _datapack_src.is_file():
+        _datapack_dest_dir = output_dir / "datapacks"
+        _datapack_dest_dir.mkdir(parents=True, exist_ok=True)
+        _datapack_dest = _datapack_dest_dir / "vandir_height.zip"
+        try:
+            import shutil as _sh
+            _sh.copy2(_datapack_src, _datapack_dest)
+            _log(f"  datapack:    auto-installed {_datapack_dest.name} → {_datapack_dest_dir}")
+        except Exception as _e:
+            _log(f"  datapack:    WARN failed to copy ({_e})")
+    else:
+        _log(f"  datapack:    WARN assets/vandir_height.zip not found — chunks may OOB on load")
+
+    # Ensure /core is importable by workers (project_root defined above)
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
