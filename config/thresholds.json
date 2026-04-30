@@ -1699,10 +1699,10 @@
     ],
     "SEMI_ARID_SHRUBLAND": [
       {
-        "name": "coarse_dirt",
+        "name": "grass_block (base)",
         "noise": "simplex_fbm",
         "enabled": true,
-        "block": "coarse_dirt",
+        "block": "grass_block",
         "sub": "dirt",
         "coverage": 1.0,
         "scale": 60,
@@ -1715,18 +1715,18 @@
         "enabled": true,
         "block": "sand",
         "sub": "sandstone",
-        "coverage": 0.38,
+        "coverage": 0.28,
         "scale": 12,
         "seed": 43,
         "is_base": false
       },
       {
-        "name": "coarse_dirt (noise3)",
+        "name": "grass_block (noise3)",
         "noise": "simplex_fbm",
         "enabled": true,
-        "block": "podzol",
-        "sub": "gravel",
-        "coverage": 0.33,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 0.45,
         "scale": 60,
         "seed": 1041,
         "is_base": false
@@ -1737,7 +1737,7 @@
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
-        "coverage": 0.45,
+        "coverage": 0.55,
         "scale": 134,
         "seed": 44,
         "is_base": false

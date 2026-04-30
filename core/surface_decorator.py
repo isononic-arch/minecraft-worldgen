@@ -277,21 +277,20 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
         ("dirt_path",         "coarse_dirt",  "noise3"),
     ],
     "SEMI_ARID_SHRUBLAND": [
-        # S75 user request: many more grass blocks.  Base is now grass_block
-        # (was coarse_dirt) and we add grass_block on additional noise/eco
-        # channels so grassy patches dominate, with sandy/rocky pockets still
-        # punching through via the dry/erosion channels.
-        ("grass_block",       "dirt",         "base"),            # NEW base
-        ("grass_block",       "dirt",         "eco_moist"),       # moisture corridors
-        ("sand",              "sandstone",    "eco_dry"),         # bare sand patches
-        ("coarse_dirt",       "dirt",         "eco_shallow_soil"),# old podzol→dirt
+        # S76: ALL coarse_dirt/packed_mud swapped to grass_block per user.
+        # Sand + gravel kept on dry/erosion channels for desert pockets.
+        # Net: 8 grass_block channels out of 10 → grassy meadow look.
+        ("grass_block",       "dirt",         "base"),
+        ("grass_block",       "dirt",         "eco_moist"),
+        ("sand",              "sandstone",    "eco_dry"),         # sand pockets
+        ("grass_block",       "dirt",         "eco_shallow_soil"),
         ("grass_block",       "dirt",         "moisture"),
-        ("grass_block",       "dirt",         "moisture2"),       # NEW grass
+        ("grass_block",       "dirt",         "moisture2"),
         ("sand",              "sandstone",    "erosion"),
         ("gravel",            "stone",        "erosion2"),
-        ("grass_block",       "dirt",         "noise"),           # was dirt_path
-        ("grass_block",       "dirt",         "noise2"),          # was andesite
-        ("coarse_dirt",       "dirt",         "noise3"),          # was podzol/gravel
+        ("grass_block",       "dirt",         "noise"),
+        ("grass_block",       "dirt",         "noise2"),
+        ("grass_block",       "dirt",         "noise3"),
     ],
     "DRY_WOODLAND_MAQUIS": [
         ("coarse_dirt",       "terracotta",   "base"),

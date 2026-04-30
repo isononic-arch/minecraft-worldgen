@@ -172,9 +172,40 @@ def _smooth_path(path_r, path_c, H, W, subsample=8):
         return path_r, path_c
 
 
+def _extend_into_lake(path_r, path_c, lake_mask, H, W, n_steps=2):
+    """
+    Append *n_steps* cells extending the path INTO the lake interior so
+    the connectivity channel merges with lake water (no end-gap).
+    Direction is the path's last-segment heading; steps clamped to grid.
+    Stops if a step lands outside the lake mask (i.e., past the lake's
+    far shore in a thin lake).
+    """
+    if len(path_r) < 2:
+        return path_r, path_c
+    # Last-segment direction
+    dr = int(np.sign(path_r[-1] - path_r[-2]))
+    dc = int(np.sign(path_c[-1] - path_c[-2]))
+    if dr == 0 and dc == 0:
+        return path_r, path_c
+    out_r = list(path_r)
+    out_c = list(path_c)
+    cr, cc = int(path_r[-1]), int(path_c[-1])
+    for _ in range(n_steps):
+        cr += dr
+        cc += dc
+        if not (0 <= cr < H and 0 <= cc < W):
+            break
+        if not lake_mask[cr, cc]:
+            break  # stepped past the lake — stop
+        out_r.append(cr)
+        out_c.append(cc)
+    return np.array(out_r, dtype=np.intp), np.array(out_c, dtype=np.intp)
+
+
 def _draw_tapered_channel(centerline, order_u8, path_r, path_c,
                           H, W, taper_frac=0.22, taper_max_w=4,
-                          channel_order=1, base_width=2):
+                          channel_order=1, base_width=2,
+                          meander_amp=0.0, meander_period=24.0):
     """
     Stamp a least-cost path onto *centerline* with proper channel width.
     The raw Dijkstra path is spline-smoothed first.
@@ -183,12 +214,60 @@ def _draw_tapered_channel(centerline, order_u8, path_r, path_c,
     taper_max_w* at both mouths (first/last *taper_frac* of path).
     Perpendicular direction is recomputed per-pixel from local tangent
     so the channel bends correctly.
+
+    *meander_amp* applies a perpendicular sinusoidal+noise offset to
+    the smoothed path BEFORE channel drawing.  Visible wiggle for
+    connectivity channels.  Tapers to 0 at both endpoints so mouths
+    stay aligned with the river/lake target.
     """
     if len(path_r) == 0:
         return
 
     # Smooth the grid-walk into organic curves
     path_r, path_c = _smooth_path(path_r, path_c, H, W)
+    n = len(path_r)
+    if n < 4:
+        return
+
+    # ── S76: post-smoothing meander offset (perpendicular to tangent).
+    # Combined sinusoid + simplex-noise wiggle.  Tapers to 0 at endpoints
+    # so the path still hits the river/lake exactly.
+    if meander_amp > 0.0:
+        # Per-pixel tangent (4-step lookahead)
+        tan_r = np.zeros(n, dtype=np.float64)
+        tan_c = np.zeros(n, dtype=np.float64)
+        for i in range(n):
+            i0 = max(i - 4, 0); i1 = min(i + 4, n - 1)
+            tr = float(path_r[i1] - path_r[i0])
+            tc = float(path_c[i1] - path_c[i0])
+            mag = max(np.hypot(tr, tc), 1.0)
+            tan_r[i] = tr / mag
+            tan_c[i] = tc / mag
+        perp_r = -tan_c
+        perp_c =  tan_r
+        # Endpoint taper (ramp 0 → 1 → 0 over path length)
+        idx_arr = np.arange(n, dtype=np.float64)
+        taper = np.minimum(idx_arr / max(n * 0.20, 1.0),
+                           (n - 1 - idx_arr) / max(n * 0.20, 1.0))
+        taper = np.clip(taper, 0.0, 1.0)
+        # Sinusoidal phase along path
+        phase = 2.0 * np.pi * idx_arr / max(meander_period, 4.0)
+        # Optional simplex noise modulation for organic shape
+        try:
+            from opensimplex import OpenSimplex as _OS_m
+            _osm = _OS_m(seed=0xBEAD)
+            noise_mod = np.array([
+                _osm.noise2(float(path_r[i]) / 35.0,
+                            float(path_c[i]) / 35.0)
+                for i in range(n)
+            ], dtype=np.float64)
+        except Exception:
+            noise_mod = np.zeros(n, dtype=np.float64)
+        offset = (np.sin(phase) * 0.7 + noise_mod * 0.6) * meander_amp * taper
+        new_r = path_r.astype(np.float64) + perp_r * offset
+        new_c = path_c.astype(np.float64) + perp_c * offset
+        path_r = np.clip(np.round(new_r).astype(np.intp), 0, H - 1)
+        path_c = np.clip(np.round(new_c).astype(np.intp), 0, W - 1)
     n = len(path_r)
     taper_n = max(int(n * taper_frac), 6)
 
@@ -749,15 +828,34 @@ def carve_rivers(
         # JS uses 150 * height; we normalize height to 0..1 so the
         # multiplier is tile-invariant.  Concavity (0.. ~0.05) is
         # subtracted as a valley-bias bonus.  Flow_tile is normalized
-        # 0..1 and subtracted as river-affinity bonus (max 0.5).
+        # 0..1 and subtracted as river-affinity bonus.  S76 adds JS-style
+        # MEANDER: simplex noise field is added to path_cost so the
+        # Dijkstra explores wiggly routes biased by per-cell noise
+        # (matches JS findPath line 1121: weight += repeatableRandom*randomness).
         flow_norm = flow_tile / max(float(flow_tile.max()), 1.0)
         HEIGHT_PENALTY = 150.0     # JS uses 150
         VALLEY_BONUS = 30.0        # concavity bonus (positive concavity → cheaper)
         FLOW_BONUS = 50.0          # high-flow cells → cheaper
+        MEANDER_AMP = 35.0         # meander noise amplitude (~1/4 of HEIGHT_PENALTY)
+        # Build simplex meander field — wavelength ~25 cells gives natural
+        # river-bend curvature.  Two octaves blended for organic feel.
+        try:
+            from opensimplex import OpenSimplex as _OS_meander
+            _os1 = _OS_meander(seed=0xC0FFEE)
+            _os2 = _OS_meander(seed=0x7EA5ED)
+            _x = np.arange(W, dtype=np.float64)
+            _y = np.arange(H, dtype=np.float64)
+            meander_a = _os1.noise2array(_x / 25.0, _y / 25.0).astype(np.float32)
+            meander_b = _os2.noise2array(_x / 12.0, _y / 12.0).astype(np.float32)
+            meander = 0.7 * meander_a + 0.3 * meander_b
+            meander = (meander - meander.min()) / max(meander.max() - meander.min(), 1e-6)
+        except Exception:
+            meander = np.zeros((H, W), dtype=np.float32)
         path_cost = (1.0
                      + HEIGHT_PENALTY * h_for_cost
                      - VALLEY_BONUS * concavity
-                     - FLOW_BONUS * flow_norm)
+                     - FLOW_BONUS * flow_norm
+                     + MEANDER_AMP * meander)
         # Floor at small positive (Dijkstra needs non-negative)
         path_cost = np.maximum(path_cost, 0.5).astype(np.float32)
         # Penalise crossing existing lake water (paths should go around,
@@ -817,9 +915,14 @@ def carve_rivers(
                 result = _least_cost_path(path_cost, sr, sc, main_river)
                 if result is not None:
                     pr, pc = result
+                    # S76: prepend 2 cells INTO the lake before the spill
+                    # point, so the channel actually CONNECTS to lake water
+                    # (was: ended on perimeter → 1-cell visible gap to lake).
+                    pr, pc = _extend_into_lake(pr, pc, lcomp, H, W, n_steps=3)
                     _draw_tapered_channel(
                         centerline, order_u8, pr, pc, H, W,
-                        taper_frac=0.16, taper_max_w=3, channel_order=1)
+                        taper_frac=0.16, taper_max_w=6, channel_order=3,
+                        base_width=4, meander_amp=4.5, meander_period=22.0)
                     outflow_end_r = int(pr[-1])
                     outflow_end_c = int(pc[-1])
 
@@ -909,11 +1012,16 @@ def carve_rivers(
                         path_cost, ir, ic, inflow_boundary_filtered)
                     if result is not None:
                         ipr, ipc = result
-                        inlet_order = max(int(order_u8[ir, ic]), 1)
+                        # S76: extend into lake interior so the inflow
+                        # actually merges with lake water (no end-gap).
+                        ipr, ipc = _extend_into_lake(ipr, ipc, lcomp, H, W, n_steps=3)
+                        inlet_order = max(int(order_u8[ir, ic]), 3)
                         _draw_tapered_channel(
                             centerline, order_u8, ipr, ipc, H, W,
-                            taper_frac=0.20, taper_max_w=2,
-                            channel_order=inlet_order)
+                            taper_frac=0.20, taper_max_w=5,
+                            channel_order=inlet_order,
+                            base_width=4,
+                            meander_amp=4.5, meander_period=22.0)
 
     # Connectivity channel mask: everything added by Section 4d
     conn_channel_mask = centerline & ~_cl_before_conn
