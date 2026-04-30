@@ -727,19 +727,42 @@ def carve_rivers(
     if lake_water.any() and centerline.any():
         from scipy.ndimage import label as _label_outlet
 
-        # ── Build cost surface ───────────────────────────────────────
-        # Concavity = local mean height − actual height.  Positive in
-        # valleys (concave up), zero on ridges.  Guides paths through
-        # valleys even where flow accumulation is negligible.
+        # ── Build cost surface (S75: JS pathFindDown port).
+        # Old cost (1/(flow + concavity*5)) failed in dry biomes where
+        # flow_tile is uniformly ~0 — cost flatlined and the Dijkstra
+        # picked geometric shortest paths through ridges.  Replace with
+        # JS-style HEIGHT-based cost: each step accumulates `1 + HP*height`
+        # so the algorithm minimizes total elevation along the path.
+        # Always works regardless of flow data quality.  Concavity bonus
+        # kept as a small valley-bias on top.  Existing river/flow cells
+        # get a discount so connectivity prefers known-water paths when
+        # available.
         if height_norm is not None:
             h_local_mean = gaussian_filter(height_norm, sigma=3.0)
             concavity = np.maximum(h_local_mean - height_norm, 0.0)
+            h_for_cost = height_norm.astype(np.float32)
         else:
             concavity = np.zeros((H, W), dtype=np.float32)
-        path_cost = 1.0 / (flow_tile + concavity * 5.0 + 0.001)
+            # Fallback: use surface_out normalized vs SEA_LEVEL
+            surf_above = np.maximum(surface_out.astype(np.float32) - float(SEA_LEVEL), 0.0)
+            h_for_cost = surf_above / max(float(surf_above.max()), 1.0)
+        # JS uses 150 * height; we normalize height to 0..1 so the
+        # multiplier is tile-invariant.  Concavity (0.. ~0.05) is
+        # subtracted as a valley-bias bonus.  Flow_tile is normalized
+        # 0..1 and subtracted as river-affinity bonus (max 0.5).
+        flow_norm = flow_tile / max(float(flow_tile.max()), 1.0)
+        HEIGHT_PENALTY = 150.0     # JS uses 150
+        VALLEY_BONUS = 30.0        # concavity bonus (positive concavity → cheaper)
+        FLOW_BONUS = 50.0          # high-flow cells → cheaper
+        path_cost = (1.0
+                     + HEIGHT_PENALTY * h_for_cost
+                     - VALLEY_BONUS * concavity
+                     - FLOW_BONUS * flow_norm)
+        # Floor at small positive (Dijkstra needs non-negative)
+        path_cost = np.maximum(path_cost, 0.5).astype(np.float32)
         # Penalise crossing existing lake water (paths should go around,
         # not through the lake interior)
-        path_cost[lake_water] *= 50.0
+        path_cost[lake_water] *= 200.0
 
         dist_to_river_cl = distance_transform_edt(
             ~centerline).astype(np.float32)

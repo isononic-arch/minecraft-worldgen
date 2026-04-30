@@ -277,16 +277,21 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
         ("dirt_path",         "coarse_dirt",  "noise3"),
     ],
     "SEMI_ARID_SHRUBLAND": [
-        ("coarse_dirt",       "dirt",         "base"),
+        # S75 user request: many more grass blocks.  Base is now grass_block
+        # (was coarse_dirt) and we add grass_block on additional noise/eco
+        # channels so grassy patches dominate, with sandy/rocky pockets still
+        # punching through via the dry/erosion channels.
+        ("grass_block",       "dirt",         "base"),            # NEW base
         ("grass_block",       "dirt",         "eco_moist"),       # moisture corridors
         ("sand",              "sandstone",    "eco_dry"),         # bare sand patches
-        ("podzol",            "stone",        "eco_shallow_soil"),# rocky outcrops
+        ("coarse_dirt",       "dirt",         "eco_shallow_soil"),# old podzol→dirt
         ("grass_block",       "dirt",         "moisture"),
+        ("grass_block",       "dirt",         "moisture2"),       # NEW grass
         ("sand",              "sandstone",    "erosion"),
         ("gravel",            "stone",        "erosion2"),
-        ("dirt_path",         "coarse_dirt",  "noise"),
-        ("andesite",          "stone",        "noise2"),
-        ("podzol",            "gravel",       "noise3"),
+        ("grass_block",       "dirt",         "noise"),           # was dirt_path
+        ("grass_block",       "dirt",         "noise2"),          # was andesite
+        ("coarse_dirt",       "dirt",         "noise3"),          # was podzol/gravel
     ],
     "DRY_WOODLAND_MAQUIS": [
         ("coarse_dirt",       "terracotta",   "base"),
