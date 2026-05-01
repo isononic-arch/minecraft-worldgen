@@ -480,14 +480,16 @@ def main() -> int:
     lake_mask = lake_id > 0
     sink_mask = ocean_mask | lake_mask
     sand_dune_mask = override == SAND_DUNE_DESERT_ZONE
-    # avoid_mask ONLY blocks sand-dune-desert.  Ocean and lakes are sinks
-    # (target cells where the path STOPS) — they must NOT also be in avoid,
-    # because avoid is checked BEFORE adding to the heap.  If ocean were
-    # in avoid, ocean cells would never be enqueued, so the path could
-    # never reach them, and Dijkstra would route to whichever lake-sink
-    # was reachable instead.  This was the bug producing 0 ocean / N lake
-    # terminations on the first pass.
-    avoid_mask = sand_dune_mask
+    # No avoid-blocked cells by default.
+    #   - Ocean is a SINK (target), not a wall — putting it in avoid
+    #     prevents Dijkstra from ever reaching it.
+    #   - SAND_DUNE_DESERT used to block traversal, but that produces
+    #     unrealistic "rivers tracing around the dune sea" artefacts
+    #     (visible in S80 v1 world view).  Real rivers cross deserts
+    #     (Nile through Sahara, Colorado through US deserts).
+    #     Sources are still excluded from dunes via river_mask
+    #     (flow_norm ≈ 0 in arid zones) — paths can still pass through.
+    avoid_mask = np.zeros_like(sand_dune_mask, dtype=bool)
     _log(f"  ocean: {ocean_mask.sum():,} cells | lakes: {lake_mask.sum():,} cells | "
          f"sand-dune: {sand_dune_mask.sum():,} cells")
 
