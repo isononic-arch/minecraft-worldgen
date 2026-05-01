@@ -1323,9 +1323,10 @@ _RIM_5X5_OFFSETS = np.array([
 # `footprint = dist <= nearest_width` test, producing the "blobby
 # circles" the user flagged.  S80 v3 fixes this — values below are
 # RADII in MC blocks; total carved widths = 2 × these.
-WP_START_WIDTH_BLOCKS = 3.0    # river HALF-width at source (radius, MC blocks)
-WP_END_WIDTH_BLOCKS   = 12.0   # river HALF-width at mouth (radius, MC blocks)
-                                # → trench widths 6 blocks → 24 blocks
+WP_START_WIDTH_BLOCKS = 2.0    # river HALF-width at source (radius, MC blocks)
+WP_END_WIDTH_BLOCKS   = 5.0    # river HALF-width at mouth (radius, MC blocks)
+                                # S80 v7: dropped 12→5 to fix "giant streams"
+                                # complaint.  Trench widths now 4→10 blocks.
 WP_RIVER_DEPTH        = 0.35   # depth = width × this + 1.5
 WP_MIN_APPARENT_LEN   = 25     # min path length used in width formula (1:8 cells)
 WP_MOUTH_EXTENSION_CELLS = 8   # ~60 MC blocks at 1:8 scale

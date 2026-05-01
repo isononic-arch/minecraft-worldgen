@@ -317,7 +317,14 @@ def carve_rivers(
         # test region extends past the 8x8 NEAREST staircase of the hydro
         # mask; terrain intersection clips it naturally.
         PAD = 48  # enough for basin expansion dilation
-        basin_expand_px = int(geo.get("lake_basin_expand_px", 32))
+        # S80 v9: basin_expand_px was 32, propagating lake water up to
+        # 32 blocks beyond the precompute basin via maximum_filter +
+        # terrain-intersection.  This added ~45k mystery water cells
+        # per tile and was the dominant cause of "giant streams" (some
+        # lake-water bleeding far from any lake into stream
+        # neighbourhoods).  Cut to 2 — just enough to bridge the 8x8
+        # NEAREST staircase edge from the 1:8 mask, no further.
+        basin_expand_px = int(geo.get("lake_basin_expand_px", 2))
 
         _use_terrain = (masks_dir is not None and tile_x is not None
                         and tile_z is not None)
@@ -521,18 +528,17 @@ def carve_rivers(
             thin_corridor = (precomp_cl > 0) & (precomp_cl < 128)
             thin_corridor |= (precomp_cl > 128) & (precomp_cl < 255)
 
-            # Load spline data (saved by meander_rivers in precompute)
-            import pickle
+            # S80 v11: spline loading DISABLED.  river_splines.pkl was
+            # written by the OLD meander_rivers (Strahler/NMS pipeline)
+            # and contained 660 spline branches with widths up to 4 at
+            # 1:8 scale (= 32-block radii at 50k = 64-block-wide
+            # trenches).  The carver rasterized these legacy splines
+            # over MY WP centerlines, completely overriding wp_river_network
+            # output.  WP findPath now produces the centerline + width
+            # masks directly; no splines needed.
             from scipy.interpolate import splev
-            _spline_path = (masks_dir / "river_splines.pkl"
-                            if masks_dir is not None else None)
-            _splines_loaded = []
+            _splines_loaded: list = []
             _SCALE = 8  # 1:8 → 50k
-            if _spline_path is not None and _spline_path.exists():
-                with open(_spline_path, "rb") as _sf:
-                    _spline_bundle = pickle.load(_sf)
-                _SCALE = _spline_bundle.get("scale", 8)
-                _splines_loaded = _spline_bundle.get("branches", [])
 
             # Tile bounding box in 1:8 coordinates
             _tx = tile_x if tile_x is not None else 0
@@ -1079,44 +1085,17 @@ def carve_rivers(
                     np.minimum(nb_avg[is_local_min], nb_max[is_local_min] - 0.5)
                 ).astype(surface_out.dtype)
 
-        # ── 7c. Fill interior holes + lateral bank-lift (S73-v4) ────────
-        # (1) Interior holes — non-water cells INSIDE the water-mask hull
-        #     (result of factor>edge_threshold gating creating non-water
-        #     cells in the channel interior) get water_y_field set instead
-        #     of being lifted as terrain.  This kills the "leftover weir"
-        #     dam-bands that the size=15 kernel was otherwise creating
-        #     across the channel.
-        # (2) Bank-lift — non-water cells OUTSIDE the water hull within
-        #     MC's 7-cell water-spread radius get surface_y lifted to the
-        #     max nearby water_y.  Prevents lateral spillover.
-        # Lake cells excluded — lakes have their own bank handling.
-        from scipy.ndimage import maximum_filter as _mf_lip
-        from scipy.ndimage import binary_fill_holes as _bfh_lip
-        _wf = water_y_field
-        _has_water_l = (_wf > 0) & ~lake_mask
-        if _has_water_l.any():
-            _wf_in = np.where(_has_water_l, _wf, np.int16(-32768))
-            # S73-v6 (A): kernel size 17 (was 15) — radius 8 covers MC's
-            # 7-block water-flow distance + 1 cell off-by-one safety.
-            _wf_nb_max = _mf_lip(_wf_in, size=17)
-            # (1) Fill interior holes with water instead of lifting them.
-            _water_hull = _bfh_lip(_has_water_l)
-            _interior_holes = (_water_hull & (~_has_water_l)
-                               & (_wf_nb_max > np.int16(-32768)))
-            if _interior_holes.any():
-                water_y_field[_interior_holes] = _wf_nb_max[_interior_holes]
-                # Refresh water mask + max field after fill.
-                _has_water_l = (water_y_field > 0) & ~lake_mask
-                _wf_in = np.where(_has_water_l, water_y_field, np.int16(-32768))
-                _wf_nb_max = _mf_lip(_wf_in, size=17)
-            # (2) Bank-lift on cells OUTSIDE the water hull only.
-            _needs_lift = (~_water_hull
-                           & (_wf_nb_max > np.int16(-32768))
-                           & (surface_out < _wf_nb_max))
-            if _needs_lift.any():
-                surface_out[_needs_lift] = _wf_nb_max[_needs_lift].astype(
-                    surface_out.dtype
-                )
+        # ── 7c. DISABLED in S80 v8 ──────────────────────────────────────
+        # The interior-hole-fill + bank-lift was producing ~67k extra
+        # water cells per tile (footprint computation gives 14k
+        # cells but MCA had 82k water cells).  binary_fill_holes
+        # closes any U-shaped meander into a solid water mass; the
+        # max-filter then propagates water_y outward.  For narrow
+        # WP streams this turns isolated meanders into giant water
+        # blobs.  Disabled entirely — narrow streams contain water
+        # vertically (1-2 block deep) without needing bank-lift.
+        # Re-enable only if water-escape regressions appear on
+        # steep terrain.
 
     # ── 7b. Smooth depth at river-lake junctions ──────────────────────────
     # Where a river channel meets the lake bowl, the independent carving
@@ -1177,76 +1156,16 @@ def carve_rivers(
             river_meta[lake_bank] = CHAN_LAKE
 
     # ── 9. Delta connectivity (WP `pathFindDown` equivalent) ───────────────
-    # For any river segment whose downstream tail is still ABOVE sea level,
-    # walk a steepest-descent path from the tail for ~endWidth*4 blocks,
-    # tapering width 0 → 1.0 along the path.  Apply the guardrails carve to
-    # the extension and set water_y_field on it.  Fixes "river deltas — land
-    # connects but water doesn't" by ensuring each river continues all the
-    # way to the ocean (or runs into a lake).
-    try:
-        from scipy.ndimage import label as _label_delta
-        from scipy.ndimage import binary_dilation as _bd_delta
-        labeled_riv, n_riv = _label_delta(river_channel)
-        for _cid in range(1, n_riv + 1):
-            _comp = labeled_riv == _cid
-            if not _comp.any():
-                continue
-            _comp_sy = surface_out[_comp]
-            _tail_y = int(_comp_sy.min())
-            if _tail_y <= SEA_LEVEL:
-                continue  # Already reaches ocean
-            # Find tail pixel (lowest sy in component)
-            _tail_mask = _comp & (surface_out == _tail_y)
-            _t_rows, _t_cols = np.where(_tail_mask)
-            if len(_t_rows) == 0:
-                continue
-            _tr, _tc = int(_t_rows[0]), int(_t_cols[0])
-            # Walk downhill in 8-connected steepest descent for up to N steps.
-            _max_steps = 80
-            _path = [(_tr, _tc)]
-            _cur_r, _cur_c = _tr, _tc
-            for _step in range(_max_steps):
-                _best_y = surface_out[_cur_r, _cur_c]
-                _best_dr, _best_dc = 0, 0
-                for _dr in (-1, 0, 1):
-                    for _dc in (-1, 0, 1):
-                        if _dr == 0 and _dc == 0: continue
-                        _nr, _nc = _cur_r + _dr, _cur_c + _dc
-                        if not (0 <= _nr < H and 0 <= _nc < W): continue
-                        _ny = surface_out[_nr, _nc]
-                        if _ny < _best_y:
-                            _best_y = _ny
-                            _best_dr, _best_dc = _dr, _dc
-                if _best_dr == 0 and _best_dc == 0:
-                    break  # local min, stop
-                _cur_r += _best_dr; _cur_c += _best_dc
-                _path.append((_cur_r, _cur_c))
-                if surface_out[_cur_r, _cur_c] <= SEA_LEVEL or lake_mask[_cur_r, _cur_c]:
-                    break  # reached ocean / lake
-            if len(_path) < 2:
-                continue
-            # Rasterize a tapered-width extension (width 1 → 4 over the path)
-            _delta_mask = np.zeros((H, W), dtype=bool)
-            for _i, (_r, _c) in enumerate(_path):
-                _w = max(1, int(round(1.0 + 3.0 * (_i / len(_path)))))
-                _r0, _r1 = max(0, _r - _w), min(H, _r + _w + 1)
-                _c0, _c1 = max(0, _c - _w), min(W, _c + _w + 1)
-                _delta_mask[_r0:_r1, _c0:_c1] = True
-            # Carve delta to water_y_field of the original tail
-            _tail_water_y = int(water_y_field[_tr, _tc]) if water_y_field[_tr, _tc] > 0 else _tail_y - 1
-            _delta_carve = _delta_mask & ~lake_mask & (surface_out > _tail_water_y - 2)
-            if _delta_carve.any():
-                surface_out[_delta_carve] = np.minimum(
-                    surface_out[_delta_carve],
-                    np.int16(_tail_water_y - 1))
-                # Set water_y_field across delta to maintain connectivity
-                water_y_field[_delta_carve] = np.where(
-                    water_y_field[_delta_carve] > 0,
-                    water_y_field[_delta_carve],
-                    np.int16(_tail_water_y))
-                # Mark as river_meta CHAN_RIVER
-                river_meta[_delta_carve & (river_meta == 0)] = CHAN_RIVER
-    except Exception as _delta_e:
-        print(f"  [warn] delta connectivity pass failed: {_delta_e}", flush=True)
+    # S80 v9: DELTA CONNECTIVITY pass DISABLED.  This pre-S80 hack walked
+    # downhill 80 steps from any above-sea river component tail and
+    # stamped a tapered-width 1→4 footprint with carve + water_y_field.
+    # It was the dominant source of "mystery water cells" (45k+ extra
+    # water cells per tile not in any centerline footprint or lake).
+    # WP findPath already produces source-to-sink connected paths via
+    # _wp_find_path + _add_mouth_extensions, so this hack is redundant.
+    # If a river component still doesn't reach a sink, the right fix is
+    # to improve findPath's success rate, not bandaid with a downhill
+    # walk that ignores the precompute spec.
+    pass
 
     return surface_out.astype(np.int16), river_meta, conn_channel_mask, water_y_field
