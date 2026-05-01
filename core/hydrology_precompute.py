@@ -1314,11 +1314,25 @@ _RIM_5X5_OFFSETS = np.array([
     (1, -2), (0, -2), (-1, -2),
 ], dtype=np.int32)
 
-WP_START_WIDTH_BLOCKS = 8.0    # river width at source (MC blocks)
-WP_END_WIDTH_BLOCKS   = 40.0   # river width at mouth (MC blocks)
+#
+# IMPORTANT: WP widths are RADII (the carver and the original WP script
+# both treat "width" as half-width / distance from centerline).  WP
+# defaults are 3 and 15 — these are radii.  When wp_river_network was
+# first written I treated these as diameters and doubled them, which
+# inflated all carved rivers ~2× through the carver's
+# `footprint = dist <= nearest_width` test, producing the "blobby
+# circles" the user flagged.  S80 v3 fixes this — values below are
+# RADII in MC blocks; total carved widths = 2 × these.
+WP_START_WIDTH_BLOCKS = 3.0    # river HALF-width at source (radius, MC blocks)
+WP_END_WIDTH_BLOCKS   = 12.0   # river HALF-width at mouth (radius, MC blocks)
+                                # → trench widths 6 blocks → 24 blocks
 WP_RIVER_DEPTH        = 0.35   # depth = width × this + 1.5
 WP_MIN_APPARENT_LEN   = 25     # min path length used in width formula (1:8 cells)
 WP_MOUTH_EXTENSION_CELLS = 8   # ~60 MC blocks at 1:8 scale
+WP_LAKE_EXTENSION_CELLS = 4    # cells to push lake-terminating paths INTO the
+                                # lake interior so the carve crosses the lake
+                                # boundary cleanly (no river→lake connection gap).
+WP_MOUTH_WIDEN_FACTOR = 1.2    # mouth flare = end_radius × this
 WP_HEIGHT_PENALTY     = 150.0  # cost of detouring vs going up 1 MC block
 WP_RANDOMNESS         = 1000.0 # meander noise amplitude
 WP_MAX_VISITS         = 250_000
@@ -1450,6 +1464,42 @@ def _wp_find_path(
     return None
 
 
+def _densify_path_4conn(
+    path: list[tuple[int, int]],
+) -> list[tuple[int, int]]:
+    """
+    Ensure every adjacent pair of cells in the path is 4-connected.
+    WP findPath uses rim-of-5x5 moves which include diagonal jumps
+    (delta=(2,1) etc.); the in-loop intermediate fill bridges 1 cell
+    but leaves the path 8-connected at best.  At 50k after NEAREST
+    upsample, diagonally-adjacent 1:8 cells produce 8x8 blocks that
+    touch only at a corner — EDT treats them as separate regions and
+    the trench renders as disjoint blobs.
+    """
+    if len(path) < 2:
+        return path
+    out = [path[0]]
+    for i in range(1, len(path)):
+        r0, c0 = out[-1]
+        r1, c1 = path[i]
+        dr = r1 - r0
+        dc = c1 - c0
+        # Walk in 4-connected steps from (r0,c0) to (r1,c1)
+        while (r0, c0) != (r1, c1):
+            step_r = 1 if dr > 0 else (-1 if dr < 0 else 0)
+            step_c = 1 if dc > 0 else (-1 if dc < 0 else 0)
+            # Prefer the larger-magnitude axis first to keep the path
+            # near a straight line.
+            if abs(dr) >= abs(dc):
+                r0 += step_r
+                dr -= step_r
+            else:
+                c0 += step_c
+                dc -= step_c
+            out.append((r0, c0))
+    return out
+
+
 def _widths_along_path(
     path: list[tuple[int, int]],
     height_blocks: np.ndarray,
@@ -1486,11 +1536,16 @@ def _add_mouth_extensions(
     lake_mask: np.ndarray,
     H: int, W: int,
     extension_cells: int = WP_MOUTH_EXTENSION_CELLS,
+    lake_extension_cells: int = WP_LAKE_EXTENSION_CELLS,
+    mouth_widen: float = WP_MOUTH_WIDEN_FACTOR,
 ) -> tuple[list[list[tuple[int, int]]], list[np.ndarray]]:
     """
-    For each ocean-terminating path, append a tapered widening extension
-    in the local downhill direction.  Lake-terminating paths get no delta
-    (rivers feed lakes, not deltas).
+    Append a tapered extension at every path terminus:
+      • OCEAN-terminating: extend `extension_cells` cells with widening up
+        to end_w × mouth_widen (delta).
+      • LAKE-terminating: extend `lake_extension_cells` cells INTO the lake
+        interior (constant width), so the carved trench crosses the lake
+        boundary cleanly and the river-to-lake water transition has no gap.
     """
     new_paths, new_widths = [], []
     for path, widths in zip(paths, widths_per_path):
@@ -1501,26 +1556,42 @@ def _add_mouth_extensions(
         r_last, c_last = path[-1]
         if not (0 <= r_last < H and 0 <= c_last < W):
             continue
-        if lake_mask[r_last, c_last]:
-            continue  # lake terminus — no delta
+        # Direction from last 4 cells (averaged trajectory)
         r_pre, c_pre = path[-4]
         dr = r_last - r_pre
         dc = c_last - c_pre
         n = max(abs(dr), abs(dc), 1)
         dr_unit = dr / n
         dc_unit = dc / n
+        end_w = float(widths[-1]) if len(widths) else WP_END_WIDTH_BLOCKS
+
         ext_path = []
         ext_w = []
-        end_w = float(widths[-1]) if len(widths) else WP_END_WIDTH_BLOCKS
-        for k in range(1, extension_cells + 1):
-            er = int(round(r_last + dr_unit * k))
-            ec = int(round(c_last + dc_unit * k))
-            if not (0 <= er < H and 0 <= ec < W):
-                break
-            t = k / extension_cells
-            w = end_w * (1.0 + 0.5 * t)
-            ext_path.append((er, ec))
-            ext_w.append(w)
+
+        if lake_mask[r_last, c_last]:
+            # LAKE terminus — push into the lake interior with constant width
+            for k in range(1, lake_extension_cells + 1):
+                er = int(round(r_last + dr_unit * k))
+                ec = int(round(c_last + dc_unit * k))
+                if not (0 <= er < H and 0 <= ec < W):
+                    break
+                # Stop if we've left the lake (don't extend into far shore)
+                if not lake_mask[er, ec]:
+                    break
+                ext_path.append((er, ec))
+                ext_w.append(end_w)
+        else:
+            # OCEAN terminus — taper-widen into the water
+            for k in range(1, extension_cells + 1):
+                er = int(round(r_last + dr_unit * k))
+                ec = int(round(c_last + dc_unit * k))
+                if not (0 <= er < H and 0 <= ec < W):
+                    break
+                t = k / extension_cells
+                w = end_w * (1.0 + (mouth_widen - 1.0) * t)
+                ext_path.append((er, ec))
+                ext_w.append(w)
+
         if ext_path:
             new_paths.append(ext_path)
             new_widths.append(np.array(ext_w, dtype=np.float32))
@@ -1678,6 +1749,13 @@ def wp_river_network(
     _log(f"  WP findPath: {len(paths_ok)}/{len(sources)} reached water "
          f"({n_ocean} ocean, {n_lake} lake)")
 
+    # Densify paths to 4-connectivity so the NEAREST upsample to 50k
+    # produces a continuous centerline (without this, diagonal rim-5x5
+    # moves leave gaps that the carver's EDT renders as disjoint blobs).
+    paths_ok = [_densify_path_4conn(p) for p in paths_ok]
+    n_cells_after = sum(len(p) for p in paths_ok)
+    _log(f"  WP densify: {n_cells_after:,} total path cells (4-connected)")
+
     # Compute WP-linear widths per path
     widths_per_path = [_widths_along_path(p, height_blocks) for p in paths_ok]
 
@@ -1720,12 +1798,15 @@ def wp_river_network(
         nearest_w_full = np.zeros((H, W), dtype=np.float32)
         footprint = np.zeros((H, W), dtype=bool)
 
-    # Build output arrays
+    # Build output arrays.
+    # S80 v2: ONLY mark thin centerline cells in the order field.  The
+    # earlier version stamped 255 ("braid fill") at footprint cells, which
+    # caused the carver to treat the entire footprint as centerline, then
+    # re-EDT from those cells, producing "puffy circle" artifacts in wide
+    # river sections.  The width array (already per-cell across the
+    # footprint via EDT propagation) carries enough information for the
+    # carver to compute the right trench geometry from the thin centerline.
     centerline_order = np.where(centerline_mask, order_at_cell, np.uint8(0))
-    # Mark footprint cells (non-centerline) as order=255 (matches existing
-    # "braid fill / solid water body" convention, see CLAUDE.md S70 note).
-    centerline_order = np.where(footprint & ~centerline_mask,
-                                np.uint8(255), centerline_order)
 
     # uint8 width clamped to [0, 255] blocks
     width_out = np.clip(nearest_w_full, 0, 255).astype(np.uint8)

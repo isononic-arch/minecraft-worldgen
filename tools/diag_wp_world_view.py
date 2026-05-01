@@ -153,7 +153,8 @@ def stamp_footprints(
     dist_map, (iy, ix) = distance_transform_edt(~centerline_mask, return_indices=True)
     nearest_w = width_at_cell[iy, ix]  # in MC blocks
     # Footprint: dist (map cells) <= width(blocks)/2 / blocks_per_cell
-    footprint = dist_map <= (nearest_w / 2.0 / blocks_per_cell)
+    # WP widths are RADII (matches carver's `dist <= nearest_width` test).
+    footprint = dist_map <= (nearest_w / blocks_per_cell)
     return footprint
 
 
@@ -253,7 +254,8 @@ def existing_river_footprint(masks_dir: Path) -> np.ndarray:
 
     dist_map, (iy, ix) = distance_transform_edt(~river_mask, return_indices=True)
     nearest_w = hw_6250[iy, ix]
-    footprint = dist_map <= (nearest_w / 2.0 / SCALE)
+    # hydro_width.tif stores RADII (matches carver semantics).
+    footprint = dist_map <= (nearest_w / SCALE)
     return footprint
 
 

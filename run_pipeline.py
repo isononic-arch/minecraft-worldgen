@@ -437,8 +437,15 @@ def _process_tile(args: dict) -> dict:
             # Blend river water level toward lake level at river-lake interfaces.
             # River pixels near a lake adopt the lake's flat water Y, tapering
             # back to per-pixel terrain-following over BLEND_DIST blocks.
+            #
+            # S80: include CHAN_STREAM in the blend zone.  Previously this
+            # was gated on CHAN_RIVER (Strahler order >= 3), which never
+            # matched WP findPath output (all paths emit as order=1 →
+            # CHAN_STREAM).  Result before fix: river→lake water Y had a
+            # visible step (river-water-Y vs lake_wl), creating the
+            # connection gap the user observed at (51,53).
             BLEND_DIST = 8
-            river_carved = (river_meta == CHAN_RIVER) & carved
+            river_carved = ((river_meta == CHAN_RIVER) | (river_meta == CHAN_STREAM)) & carved
             if river_carved.any():
                 dist_from_lake = _edt_lakes(~lake_mask)
                 blend_zone = river_carved & (dist_from_lake <= BLEND_DIST)
