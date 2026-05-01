@@ -652,14 +652,15 @@ def carve_rivers(
                 centerline = spline_channel | braid_water | wadi_channel
                 order_u8 = spline_order.copy()
             else:
-                # Fallback: use precomputed centerline (blocky but works)
-                nms_corridor = binary_dilation(thin_corridor, iterations=2)
-                flow_corr = np.where(nms_corridor, flow_tile, 0.0)
-                flow_peak = maximum_filter(flow_corr, size=flow_nms_size)
-                nms_centerline = (nms_corridor
-                                  & (flow_tile >= flow_peak * flow_nms_frac)
-                                  & (flow_tile > 0.001))
-                centerline = nms_centerline | braid_water | wadi_channel
+                # S80 v12: use precomputed centerline DIRECTLY (no flow-NMS filter).
+                # The NMS-flow filter (flow >= 0.85 * peak & flow > 0.001) was
+                # dropping ~55% of WP centerline cells in dry biomes (where
+                # Gaea flow accumulation is ~0).  Result: 11,648 path cells →
+                # carved water at only ~5,200 → 35 fragmented water blobs
+                # instead of 3 connected systems.  WP findPath already
+                # curates the paths through findPath's cost surface; no
+                # need for flow-based re-thinning.
+                centerline = thin_corridor | braid_water | wadi_channel
                 order_u8 = precomp_cl.copy()
 
             # Order: braid fill gets max local order
