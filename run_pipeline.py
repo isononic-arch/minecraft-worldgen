@@ -411,8 +411,12 @@ def _process_tile(args: dict) -> dict:
             lake_water_levels = np.full(n_lakes + 1, -999, dtype=np.int16)
             for lid in range(1, n_lakes + 1):
                 lk = lake_labeled == lid
-                # Lake water level = lowest shore point (min pre_carve_y in lake) - 1.
-                lake_water = int(pre_carve_y[lk].min()) - 1
+                # S77: removed `- 1` offset.  pre_carve_y at lake cells is
+                # the column_generator's surface_y, set to water_level - 1
+                # for underwater cells.  Dropping the extra -1 raises the
+                # lake water source to match the actual hydro_lake_wl
+                # spill elevation (was rendering 1 block low).
+                lake_water = int(pre_carve_y[lk].min())
                 lake_water_levels[lid] = np.int16(lake_water)
                 # Set water Y for all lake pixels (carved or not)
                 river_water_y[lk] = np.int16(lake_water)
@@ -473,12 +477,19 @@ def _process_tile(args: dict) -> dict:
                     # Water level = shallowest (highest Y) endpoint
                     channel_wl = np.int16(max(lake_wl, river_wl))
 
+                    # S78b: lake water level OVERRIDES connector water vertically.
+                    # When a connectivity channel overlaps lake cells, those
+                    # cells already have lake_water_levels set on line 422.
+                    # Don't overwrite — lake wins.  Channel water/carve only
+                    # applies to the OUTSIDE-LAKE portion of the channel.
+                    ch_outside_lake = ch & ~lake_mask
+
                     # Carve floor below water level so water fills end-to-end
-                    too_high = ch & (surface_y >= channel_wl)
+                    too_high = ch_outside_lake & (surface_y >= channel_wl)
                     surface_y[too_high] = np.int16(channel_wl - 1)
 
-                    # Set water level for the whole channel
-                    river_water_y[ch] = channel_wl
+                    # Set water level for the OUTSIDE-LAKE portion of channel
+                    river_water_y[ch_outside_lake] = channel_wl
 
             # Blend river water level toward lake level at river-lake interfaces.
             # River pixels near a lake adopt the lake's flat water Y, tapering
@@ -497,6 +508,30 @@ def _process_tile(args: dict) -> dict:
                     river_y = river_water_y[blend_zone].astype(np.float32)
                     blended = np.round(lake_y * (1.0 - t) + river_y * t).astype(np.int16)
                     river_water_y[blend_zone] = blended
+
+        # ── S78: connectivity-channel "wall-to-wall" post-process ──
+        # Connectivity channels (river-end → lake) are artificial
+        # corridors.  In their footprint, water should be visible
+        # WALL-TO-WALL (no terrain pokes through, no air gaps) so the
+        # channel reads as a proper river.  Find conn-channel footprint
+        # cells where surface_y >= river_water_y (terrain blocks the
+        # water source) and lower surface to water_y - 1 so MC renders
+        # water above terrain.  Doesn't touch main-river cells (which
+        # already work) or lake cells (which have their own pass).
+        if conn_channel_mask is not None and conn_channel_mask.any():
+            from scipy.ndimage import binary_dilation as _bd_conn
+            # Expand conn channel by a typical half-width to cover its
+            # full cross-section footprint (mainstem rivers use 4-5 px
+            # half-width, conn channels narrower — 4 iterations covers
+            # everything reasonable).
+            conn_footprint = _bd_conn(conn_channel_mask, iterations=4)
+            # Don't touch lake cells (their water level is fixed)
+            conn_footprint &= ~lake_mask
+            has_wy = river_water_y > 0
+            # Cells where water source is buried under terrain
+            buried = conn_footprint & has_wy & (surface_y >= river_water_y)
+            if buried.any():
+                surface_y[buried] = (river_water_y[buried] - 1).astype(surface_y.dtype)
 
         core_chunk.write_tile(
             surface_y    = surface_y,
