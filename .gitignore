@@ -20,3 +20,6 @@ __pycache__/
 *.pyc
 .venv/
 logs_*.log
+
+# S80 diagnostic cache (large, regeneratable)
+memory/wp_pathfind_cache.pkl
