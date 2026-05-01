@@ -426,70 +426,13 @@ def _process_tile(args: dict) -> dict:
             # via a lake).  Water level = shallowest endpoint so water
             # flows naturally downhill through the channel.
             CHAN_STREAM = np.uint8(1)
-            if conn_channel_mask.any():
-                from scipy.ndimage import label as _label_conn
-                from scipy.ndimage import maximum_filter as _maxf_ch
-                from scipy.ndimage import distance_transform_edt as _edt_conn
-
-                # Label each separate connectivity channel
-                conn_labeled, n_conn = _label_conn(conn_channel_mask)
-
-                # For each channel, find the lake and river it touches
-                # and set water level to the shallowest endpoint.
-                dist_to_lake = _edt_conn(~lake_mask).astype(np.float32)
-                river_or_stream = (river_meta == CHAN_RIVER) | (river_meta == CHAN_STREAM)
-                # "Original" river = river pixels that aren't connectivity channels
-                orig_river = river_or_stream & ~conn_channel_mask
-                dist_to_river = _edt_conn(~orig_river).astype(np.float32) if orig_river.any() else np.full_like(dist_to_lake, 9999)
-
-                # Expand lake labels so we can find which lake each channel touches
-                expanded_lake_labels = _maxf_ch(lake_labeled, size=7)
-
-                for cid in range(1, n_conn + 1):
-                    ch = conn_labeled == cid
-                    if ch.sum() < 2:
-                        continue
-
-                    # Find the lake this channel connects to
-                    ch_lake_ids = expanded_lake_labels[ch]
-                    ch_lake_ids = ch_lake_ids[ch_lake_ids > 0]
-                    if ch_lake_ids.size > 0:
-                        lake_id = int(np.bincount(ch_lake_ids).argmax())
-                        lake_wl = int(lake_water_levels[lake_id])
-                    else:
-                        # No lake found — use the lowest point on the channel
-                        lake_wl = int(pre_carve_y[ch].min()) - 1
-
-                    # Find the river water level at the river-side endpoint
-                    ch_river_wy = river_water_y[ch & orig_river]
-                    if ch_river_wy.size > 0:
-                        river_wl = int(ch_river_wy[ch_river_wy > -999].max()) if (ch_river_wy > -999).any() else lake_wl
-                    else:
-                        # Channel doesn't overlap original river — check
-                        # the nearest river pixel's water level
-                        ch_rows, ch_cols = np.where(ch)
-                        ch_rdist = dist_to_river[ch_rows, ch_cols]
-                        nearest_idx = np.argmin(ch_rdist)
-                        nr, nc = int(ch_rows[nearest_idx]), int(ch_cols[nearest_idx])
-                        # Walk toward nearest river pixel
-                        river_wl = int(pre_carve_y[nr, nc]) - 1
-
-                    # Water level = shallowest (highest Y) endpoint
-                    channel_wl = np.int16(max(lake_wl, river_wl))
-
-                    # S78b: lake water level OVERRIDES connector water vertically.
-                    # When a connectivity channel overlaps lake cells, those
-                    # cells already have lake_water_levels set on line 422.
-                    # Don't overwrite — lake wins.  Channel water/carve only
-                    # applies to the OUTSIDE-LAKE portion of the channel.
-                    ch_outside_lake = ch & ~lake_mask
-
-                    # Carve floor below water level so water fills end-to-end
-                    too_high = ch_outside_lake & (surface_y >= channel_wl)
-                    surface_y[too_high] = np.int16(channel_wl - 1)
-
-                    # Set water level for the OUTSIDE-LAKE portion of channel
-                    river_water_y[ch_outside_lake] = channel_wl
+            # S80: connectivity-channel post-process REMOVED.  WP findPath
+            # in hydrology_precompute produces guaranteed-connected paths
+            # (mountain → lake / ocean, spillpoint → next sink), so the
+            # carver's connectivity layer is empty by construction
+            # (conn_channel_mask is always empty).  All the lake/river
+            # endpoint-finding + water-level blending here was a no-op
+            # whenever connectivity was off and is now permanently dead.
 
             # Blend river water level toward lake level at river-lake interfaces.
             # River pixels near a lake adopt the lake's flat water Y, tapering
@@ -509,29 +452,9 @@ def _process_tile(args: dict) -> dict:
                     blended = np.round(lake_y * (1.0 - t) + river_y * t).astype(np.int16)
                     river_water_y[blend_zone] = blended
 
-        # ── S78: connectivity-channel "wall-to-wall" post-process ──
-        # Connectivity channels (river-end → lake) are artificial
-        # corridors.  In their footprint, water should be visible
-        # WALL-TO-WALL (no terrain pokes through, no air gaps) so the
-        # channel reads as a proper river.  Find conn-channel footprint
-        # cells where surface_y >= river_water_y (terrain blocks the
-        # water source) and lower surface to water_y - 1 so MC renders
-        # water above terrain.  Doesn't touch main-river cells (which
-        # already work) or lake cells (which have their own pass).
-        if conn_channel_mask is not None and conn_channel_mask.any():
-            from scipy.ndimage import binary_dilation as _bd_conn
-            # Expand conn channel by a typical half-width to cover its
-            # full cross-section footprint (mainstem rivers use 4-5 px
-            # half-width, conn channels narrower — 4 iterations covers
-            # everything reasonable).
-            conn_footprint = _bd_conn(conn_channel_mask, iterations=4)
-            # Don't touch lake cells (their water level is fixed)
-            conn_footprint &= ~lake_mask
-            has_wy = river_water_y > 0
-            # Cells where water source is buried under terrain
-            buried = conn_footprint & has_wy & (surface_y >= river_water_y)
-            if buried.any():
-                surface_y[buried] = (river_water_y[buried] - 1).astype(surface_y.dtype)
+        # S80: S78 wall-to-wall post-process REMOVED.  Was a no-op once
+        # connectivity was disabled (S77+) and stays a no-op now that the
+        # connectivity layer has been deleted entirely.
 
         core_chunk.write_tile(
             surface_y    = surface_y,

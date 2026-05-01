@@ -1607,7 +1607,14 @@ def wp_river_network(
     SAND_DUNE_DESERT_ZONE = 170
     ocean_mask = height <= SEA_NORM
     lake_mask = lake_id > 0
-    sand_dune_mask = override == SAND_DUNE_DESERT_ZONE
+    # override may be raw uint8 (zone codes) or normalized float32 (zone/255).
+    # read_downscaled normalises uint8 to [0, 1], so the precompute path
+    # passes a float here.  Detect and normalise the comparison value.
+    if override.dtype.kind == "f":
+        override_u8 = np.round(override * 255.0).astype(np.uint8)
+    else:
+        override_u8 = override.astype(np.uint8)
+    sand_dune_mask = override_u8 == SAND_DUNE_DESERT_ZONE
     sink_mask = ocean_mask | lake_mask
     # No avoid-blocked cells by default.
     #   - Ocean is a SINK (target), not a wall — putting it in avoid
@@ -1621,8 +1628,10 @@ def wp_river_network(
     _log(f"  WP: ocean {ocean_mask.sum():,} cells | lakes {lake_mask.sum():,} | "
          f"dunes {sand_dune_mask.sum():,}")
 
-    # Sources
-    sources = _pick_sources_grid(river_mask, in_count, avoid_mask, flow,
+    # Sources — exclude dunes from source selection only (paths can still
+    # cross them at carve time per the avoid_mask above).
+    source_avoid = sand_dune_mask
+    sources = _pick_sources_grid(river_mask, in_count, source_avoid, flow,
                                  grid_cells=grid_cells,
                                  max_sources=max_stream_sources)
     _log(f"  WP: {len(sources)} stream-head sources")
@@ -2154,6 +2163,7 @@ def run(
                 ("hydro_lkdep", lake_depth, "uint8"),
                 ("hydro_lake_wl", lake_wl, "float32"),
                 ("hydro_lake_spill", lake_spill, "uint16"),
+                ("hydro_centerline", order, "uint8"),
             ]:
                 import rasterio
                 out_path = masks_dir / f"{name}.tif"
