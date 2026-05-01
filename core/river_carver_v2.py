@@ -288,19 +288,27 @@ def carve_rivers(
         from scipy.ndimage import label
 
         # ── 3a. Absorb small river fragments near lakes ──────────────────
-        river_px_raw  = order_u8 > 0
-        absorb_dist   = float(geo.get("lake_absorb_dist", 25.0))
-        min_creek_px  = int(geo.get("min_creek_pixels", 80))
-
-        if river_px_raw.any():
-            dist_riv_to_lake = distance_transform_edt(~lake_raw).astype(np.float32)
-            riv_labeled, n_riv = label(river_px_raw)
-            for rid in range(1, n_riv + 1):
-                comp = riv_labeled == rid
-                comp_size = comp.sum()
-                comp_near_lake = (dist_riv_to_lake[comp] <= absorb_dist).any()
-                if comp_size < min_creek_px and comp_near_lake:
-                    lake_raw = lake_raw | comp  # absorb into lake
+        # S80: DISABLED.  This pass was tuned for the old D8/Strahler
+        # network where small NMS fragments near lakes were noise.  WP
+        # findPath in S80 produces guaranteed-connected source-to-sink
+        # paths; per-tile fragments of those paths can legitimately be
+        # short (a few cells crossing the tile near a lake junction).
+        # Absorbing them removes visible streams the user expects to see
+        # ("streams not streaming" — user observation, S80 v4 walk).
+        # Kept the code commented for reference / re-enable.
+        #
+        # river_px_raw  = order_u8 > 0
+        # absorb_dist   = float(geo.get("lake_absorb_dist", 25.0))
+        # min_creek_px  = int(geo.get("min_creek_pixels", 80))
+        # if river_px_raw.any():
+        #     dist_riv_to_lake = distance_transform_edt(~lake_raw).astype(np.float32)
+        #     riv_labeled, n_riv = label(river_px_raw)
+        #     for rid in range(1, n_riv + 1):
+        #         comp = riv_labeled == rid
+        #         comp_size = comp.sum()
+        #         comp_near_lake = (dist_riv_to_lake[comp] <= absorb_dist).any()
+        #         if comp_size < min_creek_px and comp_near_lake:
+        #             lake_raw = lake_raw | comp  # absorb into lake
 
         # ── 3b. Terrain-intersection lake fill ───────────────────────────
         # The lake boundary is defined by where Gaea terrain < spill

@@ -45,6 +45,7 @@ def render_precompute_view(
     centerline = _read("hydro_centerline")  # uint8 (0/1+)
     width_blocks = _read("hydro_width").astype(np.float32)  # uint8 -> float
     lake = _read("hydro_lake").astype(np.uint16)
+    lake_wl_norm = _read("hydro_lake_wl").astype(np.float32)  # normalised [0,1]
     override = _read("override", dtype=np.uint8) if (masks_dir / "override.tif").exists() else None
 
     # Convert raw height -> MC Y for shading
@@ -81,7 +82,17 @@ def render_precompute_view(
         footprint = np.zeros_like(cl_mask)
 
     bg[footprint & ~ocean & (lake == 0)] = RIVER
-    bg[lake > 0] = LAKE
+    # IMPORTANT: lakes render via terrain-intersection (carver's behaviour),
+    # not by painting the full lake_id mask.  hydro_lake.tif marks BASIN
+    # extents (which can be larger than the actual water surface when
+    # terrain rises above the spill elevation in parts of the basin).
+    # Compare CLAUDE.md hard rule: "Shoreline = terrain intersection
+    # (height < spill_elevation). NEVER morph/blur/spline/gaussian on
+    # hydro_lake mask."
+    lake_wl_raw = (lake_wl_norm * 65535.0).astype(np.float64)
+    lake_wl_mc = np.interp(lake_wl_raw.ravel(), gaea_in, mc_y_out).reshape(lake_wl_raw.shape).astype(np.float32)
+    underwater = (lake > 0) & (height_blocks < lake_wl_mc) & ~ocean
+    bg[underwater] = LAKE
 
     rgb = (bg * 255).astype(np.uint8)
     return rgb
