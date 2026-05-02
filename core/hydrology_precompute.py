@@ -1650,6 +1650,8 @@ def wp_river_network(
     cfg: dict,
     grid_cells: int = 24,
     max_stream_sources: int = 1000,
+    lake_wl: np.ndarray | None = None,  # (H, W) float32 [0,1] — per-cell water level
+    masks_dir: Path | None = None,      # for writing river_splines.pkl
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Run WP findPath from all sources (stream heads + lake spillpoints) and
@@ -1687,7 +1689,19 @@ def wp_river_network(
     else:
         override_u8 = override.astype(np.uint8)
     sand_dune_mask = override_u8 == SAND_DUNE_DESERT_ZONE
-    sink_mask = ocean_mask | lake_mask
+    # S80 v13: sink_mask uses TERRAIN-INTERSECTION lake (height < wl), NOT
+    # full basin extent.  The carver paints lake water only where
+    # `terrain < spill_elevation` (CLAUDE.md hard rule).  Cells in the
+    # basin where terrain rises ABOVE WL are dry land in-game.  If
+    # findPath terminates paths at basin-edge cells that are dry, streams
+    # visibly stop short of the actual lake water surface.  Using
+    # terrain-intersection sink ensures paths reach where water actually
+    # is.  Falls back to full basin if lake_wl wasn't provided.
+    if lake_wl is not None:
+        underwater_lake = lake_mask & (height < lake_wl)
+    else:
+        underwater_lake = lake_mask
+    sink_mask = ocean_mask | underwater_lake
     # No avoid-blocked cells by default.
     #   - Ocean is a SINK (target), not a wall — putting it in avoid
     #     prevents Dijkstra from ever reaching it.
@@ -1719,21 +1733,35 @@ def wp_river_network(
     # Meander field
     meander = _build_meander_field(H, W, seed=0xC0DEC0D)
 
-    # Run findPath for each source (longer paths first so tributaries can
-    # later be wired to their mainstem.  For now no tributary logic — paths
-    # only stop at ocean/lake.)
+    # S80 v14: TRIBUTARY MERGING.
+    # Process sources in priority order (highest source elevation first =
+    # longest mainstem rivers first).  After each path is computed, add its
+    # cells to a running sink set.  Subsequent paths terminate at:
+    #   ocean | underwater_lake | EXISTING DRAWN PATHS
+    # This is what makes tributaries merge into mainstem rivers visibly,
+    # instead of every source producing an independent disconnected channel.
+    sources_sorted = sorted(
+        sources,
+        key=lambda rc: float(height_blocks[rc[0], rc[1]]),
+        reverse=True,  # highest elevation first
+    )
     paths_ok: list[list[tuple[int, int]]] = []
     paths_failed: list[tuple[int, int]] = []
-    spillpoint_lids: list[int] = []  # source lake of each path (0 = stream head)
+    spillpoint_lids: list[int] = []
+    existing_path_mask = np.zeros((H, W), dtype=bool)
     n_lake = 0
     n_ocean = 0
-    for i, (sr, sc) in enumerate(sources):
+    n_tributary = 0
+    for i, (sr, sc) in enumerate(sources_sorted):
         if i % 50 == 0 and i > 0:
-            _log(f"    WP findPath: {i}/{len(sources)} sources processed, "
-                 f"{len(paths_ok)} ok ({n_ocean} ocean / {n_lake} lake)")
+            _log(f"    WP findPath: {i}/{len(sources_sorted)} sources processed, "
+                 f"{len(paths_ok)} ok ({n_ocean} ocean / {n_lake} lake / "
+                 f"{n_tributary} tributary)")
         forbid_lid = spill_source_lid.get((sr, sc), 0)
+        # Sink set for this path = static sinks ∪ existing drawn paths
+        per_path_sink = sink_mask | existing_path_mask
         path = _wp_find_path(
-            sr, sc, height_blocks, sink_mask, avoid_mask, meander,
+            sr, sc, height_blocks, per_path_sink, avoid_mask, meander,
             forbid_lake_id=forbid_lid,
             lake_id_arr=lake_id if forbid_lid else None,
         )
@@ -1742,13 +1770,22 @@ def wp_river_network(
             continue
         paths_ok.append(path)
         spillpoint_lids.append(forbid_lid)
-        if lake_mask[path[-1]]:
+        # Classify terminus
+        end_r, end_c = path[-1]
+        if existing_path_mask[end_r, end_c]:
+            n_tributary += 1
+        elif lake_mask[end_r, end_c]:
             n_lake += 1
-        elif ocean_mask[path[-1]]:
+        elif ocean_mask[end_r, end_c]:
             n_ocean += 1
+        # Add this path's cells to the existing sink set so subsequent
+        # paths can merge into it as tributaries.
+        for r, c in path:
+            if 0 <= r < H and 0 <= c < W:
+                existing_path_mask[r, c] = True
 
-    _log(f"  WP findPath: {len(paths_ok)}/{len(sources)} reached water "
-         f"({n_ocean} ocean, {n_lake} lake)")
+    _log(f"  WP findPath: {len(paths_ok)}/{len(sources_sorted)} reached water "
+         f"({n_ocean} ocean, {n_lake} lake, {n_tributary} tributary)")
 
     # Densify paths to 4-connectivity so the NEAREST upsample to 50k
     # produces a continuous centerline (without this, diagonal rim-5x5
@@ -1766,6 +1803,55 @@ def wp_river_network(
     )
     n_ext = len(paths_ext) - len(paths_ok)
     _log(f"  WP mouth extensions: {n_ext} added")
+
+    # ─────────────────────────────────────────────────────────────────────
+    # S80 v13 — fit B-splines through each WP path, save to
+    # masks/river_splines.pkl.  The carver re-rasterizes these splines at
+    # 50k resolution producing smooth curves (not 8-block stairsteps from
+    # NEAREST upsample).  Per-spline `widths_18` holds the WP-linear
+    # widths, so the carver gets correct geometry.
+    # ─────────────────────────────────────────────────────────────────────
+    spline_branches: list[dict] = []
+    try:
+        from scipy.interpolate import splprep
+        for path, widths in zip(paths_ext, widths_ext):
+            if len(path) < 4:
+                continue  # too short for B-spline (need k+1 = 4 points min)
+            # Coords in 1:8 space.  Spline parametrised over [0, 1].
+            ys = np.asarray([p[0] for p in path], dtype=np.float64)
+            xs = np.asarray([p[1] for p in path], dtype=np.float64)
+            # Drop consecutive duplicates (splprep doesn't accept them)
+            keep = np.ones(len(xs), dtype=bool)
+            keep[1:] = (np.diff(xs) != 0) | (np.diff(ys) != 0)
+            xs, ys, ws = xs[keep], ys[keep], widths[keep]
+            if len(xs) < 4:
+                continue
+            try:
+                tck, _u = splprep([xs, ys], s=len(xs) * 0.5, k=3)
+            except Exception:
+                continue
+            # widths_18 is in 1:8-SCALE radii (carver does radii_50k = radii_18 * SCALE).
+            # ws here is in MC blocks (50k radii).  Divide by SCALE=8 so the
+            # carver's multiplication restores the correct 50k radii.
+            ws_18 = ws.astype(np.float32) / 8.0
+            spline_branches.append({
+                "tck": tck,
+                "order": 1,            # WP paths emit as Strahler-1
+                "branch_idx": len(spline_branches),
+                "widths_18": list(ws_18),
+            })
+    except ImportError:
+        _log("  WARNING: scipy.interpolate.splprep unavailable; skipping splines")
+
+    # Write splines to masks/river_splines.pkl for the carver.
+    if masks_dir is not None:
+        import pickle
+        spline_path = masks_dir / "river_splines.pkl"
+        with open(spline_path, "wb") as f:
+            pickle.dump({"scale": 8, "branches": spline_branches}, f, protocol=4)
+        _log(f"  WP splines: {len(spline_branches)} branches saved to {spline_path}")
+    else:
+        _log(f"  WP splines: {len(spline_branches)} branches computed (no masks_dir, not saved)")
 
     # Stamp into width array (per-cell max if multiple paths cross)
     centerline_mask = np.zeros((H, W), dtype=bool)
@@ -2221,6 +2307,7 @@ def run(
     centerline_order, width, depth = wp_river_network(
         height, lake_id, lake_spill, override,
         flow, d8, river_mask, in_count, cfg,
+        lake_wl=lake_wl, masks_dir=masks_dir,
     )
     _log(f"  WP network done in {time.perf_counter()-t0:.1f}s")
     # `order` (Strahler) has been replaced by WP-tagged centerline_order.

@@ -528,17 +528,24 @@ def carve_rivers(
             thin_corridor = (precomp_cl > 0) & (precomp_cl < 128)
             thin_corridor |= (precomp_cl > 128) & (precomp_cl < 255)
 
-            # S80 v11: spline loading DISABLED.  river_splines.pkl was
-            # written by the OLD meander_rivers (Strahler/NMS pipeline)
-            # and contained 660 spline branches with widths up to 4 at
-            # 1:8 scale (= 32-block radii at 50k = 64-block-wide
-            # trenches).  The carver rasterized these legacy splines
-            # over MY WP centerlines, completely overriding wp_river_network
-            # output.  WP findPath now produces the centerline + width
-            # masks directly; no splines needed.
+            # S80 v13: spline loading RE-ENABLED.  We removed it in v11
+            # because the on-disk pkl was a stale legacy from the old
+            # Strahler/NMS pipeline (Apr 6) with wide widths.  v13's
+            # wp_river_network now writes FRESH splines from the WP
+            # findPath output with correct WP widths.  Loading is safe
+            # again and gives smooth B-spline curves at 50k instead of
+            # 8-block stairsteps from NEAREST upsample.
+            import pickle
             from scipy.interpolate import splev
+            _spline_path = (masks_dir / "river_splines.pkl"
+                            if masks_dir is not None else None)
             _splines_loaded: list = []
             _SCALE = 8  # 1:8 → 50k
+            if _spline_path is not None and _spline_path.exists():
+                with open(_spline_path, "rb") as _sf:
+                    _spline_bundle = pickle.load(_sf)
+                _SCALE = _spline_bundle.get("scale", 8)
+                _splines_loaded = _spline_bundle.get("branches", [])
 
             # Tile bounding box in 1:8 coordinates
             _tx = tile_x if tile_x is not None else 0
