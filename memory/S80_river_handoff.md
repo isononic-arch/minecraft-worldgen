@@ -1,6 +1,21 @@
 # S80 River Pipeline — Painted-Source Handoff
 *Session 80 (2026-05-03). Multi-day arc, exhaustive iteration on river generation.*
 
+**Commit on master:** `5077c37` — *S80 v25-v34j: Painted rivers as sole source + carver fixes*
+([github.com/isononic-arch/minecraft-worldgen](https://github.com/isononic-arch/minecraft-worldgen))
+
+**S80 arc on master** (10 commits, oldest first):
+- `b5361f1` — WP findPath diagnostic + lake spillpoint computation
+- `5538337` — WP river network function + remove dune-mask traversal block
+- `8bb60ca` — Delete connectivity layer + post-process passes
+- `ba32f06` — gitignore wp_pathfind diagnostic cache
+- `afb4900` — v4: radius fix + 4-conn path densification + width tuning
+- `3ba9aa5` — v5: disable lake-absorb pass + fix comparison tool
+- `cb6321d` — v6-v11: actually fix wide-streams + connect to precompute spec
+- `9bac516` — v12: bypass NMS-flow filter for WP centerlines
+- `c397db0` — v13+v14: smooth B-spline curves + tributary merging
+- **`5077c37`** — **v25-v34j: PAINTED RIVERS AS SOLE SOURCE + carver fixes** ← THIS DOC
+
 ## TL;DR
 
 **`masks/hydro_region.png` is now the SOLE source of rivers.** The user paints rivers in `tools/override_studio.py` (Hydrology tab); the per-tile overlay zeroes the precompute WP-findPath rivers and applies the paint as the carve geometry. Carver fixes 5a (lake water_y) + 5b (river water_y) handle the in-game appearance.
