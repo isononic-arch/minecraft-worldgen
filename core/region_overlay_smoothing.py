@@ -143,26 +143,21 @@ def smooth_region_paint(arr: np.ndarray, *,
 
 
 def clean_painted_river_mask(painted_mask: np.ndarray, *,
-                             opening_radius: int = 2,
-                             prune_max_branch_len: int = 8) -> np.ndarray:
-    """Return a cleaned 1-pixel skeleton of a user-painted river mask.
+                             opening_radius: int = 2) -> np.ndarray:
+    """Return a 1-pixel skeleton of a user-painted river mask.
 
-    Two-stage cleanup for brush-painted river paths where a fat brush
-    can produce clover / asterisk artifacts after skeletonization:
+    S80 v31: endpoint-peel pruning REMOVED. Previous versions ran an
+    iterative endpoint peel (``prune_max_branch_len`` default 8) to
+    eliminate four-leaf-clover artifacts from wide brush dabs. With
+    the v29 painter (1px true-pixel brush + line-interpolation), users
+    no longer produce clover artifacts, but the peel was chopping ~49
+    MC blocks off every legitimate river TIP — including the cells
+    that connect a river into a lake. Net effect: rivers visibly
+    stopped short of every basin shore.
 
-    1. **Morphological opening** — removes isolated small specks and
-       thin necks between overlapping brush dabs. Strokes wider than
-       ~ ``2*opening_radius + 1`` pixels survive intact.
-    2. **Skeletonize + iterative endpoint peel** — runs
-       ``prune_max_branch_len`` passes where each pass removes every
-       pixel with exactly one skeleton neighbour. Branches whose full
-       length is ≤ ``prune_max_branch_len`` vanish entirely. Longer
-       branches lose that many pixels from each tip; the main body
-       survives.
-
-    Trade-off: set ``prune_max_branch_len`` above the shortest real
-    painted segment length, but low enough that long rivers don't lose
-    a critical tip. Default 8 at 8192 source ≈ 49 blocks of tip trim.
+    Single-stage now:
+      1. **Morphological opening** (still useful for stray specks)
+      2. **Skeletonize** — straight skimage skeletonization, no pruning
 
     Parameters
     ----------
@@ -171,12 +166,10 @@ def clean_painted_river_mask(painted_mask: np.ndarray, *,
     opening_radius : int
         Iterations of erosion-then-dilation 3×3 structuring element.
         0 skips opening. Default 2 removes 2-px-radius specks.
-    prune_max_branch_len : int
-        Endpoint-peel iterations. 0 skips pruning. Default 8.
 
     Returns
     -------
-    bool (H, W) — 1-pixel skeleton, organic and clover-free.
+    bool (H, W) — 1-pixel skeleton.
     """
     from skimage.morphology import skeletonize
 
@@ -189,16 +182,4 @@ def clean_painted_river_mask(painted_mask: np.ndarray, *,
         if not mask.any():
             return mask
 
-    skel = skeletonize(mask)
-    if prune_max_branch_len <= 0 or not skel.any():
-        return skel
-
-    k = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]], dtype=np.uint8)
-    s = skel.astype(np.uint8)
-    for _ in range(prune_max_branch_len):
-        nbrs = convolve(s, k, mode="constant", cval=0)
-        endpoints = (s == 1) & (nbrs == 1)
-        if not endpoints.any():
-            break
-        s[endpoints] = 0
-    return s.astype(bool)
+    return skeletonize(mask)

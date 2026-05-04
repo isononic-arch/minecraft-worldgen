@@ -1225,58 +1225,74 @@ def detect_lakes(
 def compute_lake_spillpoints(
     lake_id: np.ndarray,    # uint16 (H, W) — labelled lakes from detect_lakes
     height:  np.ndarray,    # float32 (H, W) — terrain (lower value = lower terrain)
+    lake_wl: np.ndarray | None = None,  # float32 (H, W) — per-cell water level
 ) -> np.ndarray:
     """
-    For each labelled lake, find the SPILLPOINT — the lowest non-lake cell
-    that's adjacent to the lake.  This is where water would naturally spill
-    out if the lake overflowed, and serves as a source for the lake's
-    outflow river.
+    For each labelled lake, find the SPILLPOINT — the lowest non-basin cell
+    adjacent to the actual UNDERWATER lake surface (terrain<wl).  This is
+    where water would naturally spill out if the lake overflowed, AND
+    where the spillpoint outflow river will start carved-water cells that
+    are immediately adjacent to actual lake water.
 
-    Returns:
-        spill_id: uint16 (H, W) — lake_id at the spillpoint cell of each
-                  lake, 0 elsewhere.  At most one spillpoint per lake.
+    S80 v16: critical fix — earlier this function used "adjacent to basin"
+    which is the lake_id mask extent.  But the carver paints water only
+    where `terrain < wl` (terrain-intersection), so the actual visible
+    lake water is a subset of the basin.  The basin can extend 5-20+
+    cells beyond actual underwater area when terrain rises above wl in
+    the basin.  Using basin-adjacency as spillpoint left a visible 18+
+    cell dry-terrain gap between the spillpoint outflow river and the
+    actual lake water — they showed as separate water components.
 
-    Algorithm:
-      1. Dilate the lake_id label image by 1 cell (3×3 max-filter), giving
-         each non-lake cell adjacent to a lake the lake's id.
-      2. Mask to "just-outside-lake" cells: dilated_id > 0 & lake_id == 0.
-      3. Per lake, argmin(height) over its just-outside cells.
-
-    O(N + n_lakes) — single dilation pass + one np.where + per-lake argmin
-    via vectorized scatter.  ~1s for 6250×6250 with ~30 lakes.
+    Falls back to old behaviour (basin-adjacency) if lake_wl is None.
     """
-    from scipy.ndimage import grey_dilation
+    from scipy.ndimage import distance_transform_edt
 
     H, W = lake_id.shape
     if lake_id.max() == 0:
         return np.zeros((H, W), dtype=np.uint16)
 
-    # 1. Dilate label image: each non-lake cell adjacent to a lake takes
-    #    the highest lake_id of its 8-neighbours.  (Grey dilation picks
-    #    max value in the footprint, so non-lake cells become labelled.)
-    dilated = grey_dilation(lake_id, footprint=np.ones((3, 3), dtype=bool))
+    if lake_wl is not None:
+        underwater_mask = (lake_id > 0) & (height < lake_wl)
+    else:
+        underwater_mask = lake_id > 0
 
-    # 2. just-outside-lake mask: cells the dilation wrapped around but
-    #    that aren't lake cells themselves
-    just_outside = (dilated > 0) & (lake_id == 0)
+    # For each non-basin cell, find the nearest underwater cell (any lake).
+    # idx[0] / idx[1] give the (row, col) of that nearest underwater cell.
+    if not underwater_mask.any():
+        return np.zeros((H, W), dtype=np.uint16)
+    _, idx = distance_transform_edt(~underwater_mask, return_indices=True)
+    nearest_underwater_lake = lake_id[idx[0], idx[1]]
 
-    # 3. For each lake, find lowest just-outside cell (argmin height)
-    #    Vectorise: bucket the just-outside cells by their assigned
-    #    lake_id, then per-bucket argmin.
+    # Spillpoint candidates: cells NOT in any basin (lake_id == 0).
+    # These are the only cells where findPath can start a spillpoint path
+    # (cells inside a basin would be blocked by forbid_lake_id).
+    candidates = lake_id == 0
+    out_r, out_c = np.where(candidates)
+    if len(out_r) == 0:
+        return np.zeros((H, W), dtype=np.uint16)
+
+    # For each candidate cell: which underwater lake does it map to?
+    # (the candidate's nearest underwater cell's lake_id)
+    out_lid = nearest_underwater_lake[out_r, out_c]
+    out_h = height[out_r, out_c]
+    # Distance to underwater per candidate (Euclidean from EDT)
+    dist_to_uw = distance_transform_edt(~underwater_mask)
+    out_dist = dist_to_uw[out_r, out_c]
+
+    # For each lake, find the spillpoint = lowest-height cell that:
+    # - is non-basin (already filtered)
+    # - has THIS lake as its nearest underwater
+    # - tie-break by closer-to-underwater
+    # Composite score: height + small alpha × distance (favours close + low).
+    alpha = 0.001  # tiny — height dominates; distance only breaks ties / penalises far
+    out_score = out_h + alpha * out_dist
     spill_id = np.zeros((H, W), dtype=np.uint16)
     n_lakes = int(lake_id.max())
-    out_r, out_c = np.where(just_outside)
-    if len(out_r) == 0:
-        return spill_id
-    out_h = height[out_r, out_c]
-    out_lid = dilated[out_r, out_c]
-
-    # For each lake id present, find argmin(height) among its candidates
     for lid in range(1, n_lakes + 1):
         mask = out_lid == lid
         if not mask.any():
             continue
-        local = np.argmin(out_h[mask])
+        local = np.argmin(out_score[mask])
         global_idx = np.where(mask)[0][local]
         spill_id[out_r[global_idx], out_c[global_idx]] = np.uint16(lid)
 
@@ -1335,7 +1351,7 @@ WP_LAKE_EXTENSION_CELLS = 4    # cells to push lake-terminating paths INTO the
                                 # boundary cleanly (no river→lake connection gap).
 WP_MOUTH_WIDEN_FACTOR = 1.2    # mouth flare = end_radius × this
 WP_HEIGHT_PENALTY     = 150.0  # cost of detouring vs going up 1 MC block
-WP_RANDOMNESS         = 1000.0 # meander noise amplitude
+WP_RANDOMNESS         = 1000.0 # meander noise amplitude (baseline)
 WP_MAX_VISITS         = 250_000
 
 
@@ -1722,12 +1738,57 @@ def wp_river_network(
                                  max_sources=max_stream_sources)
     _log(f"  WP: {len(sources)} stream-head sources")
 
-    # Spillpoint sources + their forbid_lake_id mapping
+    # Spillpoint sources + their forbid_lake_id mapping + per-spillpoint
+    # PREPEND CELLS that walk a Bresenham line from spillpoint INTO the
+    # closest underwater cell of the source lake.  This bridges the
+    # basin's dry shore (the gap between actual lake water and the
+    # spillpoint cell that's outside the basin), so when the spline is
+    # rasterized the river touches lake water.
     spill_source_lid: dict[tuple[int, int], int] = {}
+    spill_prepend: dict[tuple[int, int], list[tuple[int, int]]] = {}
     spill_r, spill_c = np.where(lake_spill > 0)
-    for r, c in zip(spill_r, spill_c):
-        spill_source_lid[(int(r), int(c))] = int(lake_spill[r, c])
-    _log(f"  WP: {len(spill_source_lid)} spillpoint sources")
+    if len(spill_r) > 0 and lake_wl is not None:
+        # Build per-lake nearest-underwater EDT for prepend computation
+        underwater_global = lake_mask & (height < lake_wl)
+        for r, c in zip(spill_r, spill_c):
+            r, c = int(r), int(c)
+            spill_source_lid[(r, c)] = int(lake_spill[r, c])
+            # Find closest underwater cell of THIS lake
+            this_uw = underwater_global & (lake_id == lake_spill[r, c])
+            if not this_uw.any():
+                continue
+            uw_r, uw_c = np.where(this_uw)
+            # Closest underwater cell to spillpoint by L1
+            d = np.abs(uw_r - r) + np.abs(uw_c - c)
+            ki = int(np.argmin(d))
+            tr, tc = int(uw_r[ki]), int(uw_c[ki])
+            # Bresenham line from underwater target → spillpoint (inclusive both ends)
+            dr = tr - r
+            dc = tc - c
+            steps = max(abs(dr), abs(dc), 1)
+            line: list[tuple[int, int]] = []
+            for s in range(steps + 1):
+                lr = r + int(round(dr * s / steps))
+                lc = c + int(round(dc * s / steps))
+                line.append((lr, lc))
+            # Prepend list = walk from the underwater target back toward
+            # spillpoint, stopping JUST BEFORE the spillpoint (which becomes
+            # the path's first cell from findPath).  We keep the underwater
+            # target IN the prepend so the path's first cell is in actual
+            # lake water — making the carved water 4-connect to the lake's
+            # painted water.
+            if len(line) > 1:
+                # line = [spillpoint, ..., target].  Reversed = [target, ..., spillpoint]
+                # We want prepend = [target, ..., cell-just-before-spillpoint]
+                # which is line reversed minus its first (which would be the spillpoint).
+                spill_prepend[(r, c)] = list(reversed(line))[:-1]
+            else:
+                spill_prepend[(r, c)] = []
+    else:
+        for r, c in zip(spill_r, spill_c):
+            spill_source_lid[(int(r), int(c))] = int(lake_spill[r, c])
+    _log(f"  WP: {len(spill_source_lid)} spillpoint sources, "
+         f"{sum(len(p) for p in spill_prepend.values())} prepend cells")
     sources.extend(spill_source_lid.keys())
 
     # Meander field
@@ -1768,6 +1829,13 @@ def wp_river_network(
         if path is None:
             paths_failed.append((sr, sc))
             continue
+        # PREPEND the spillover bridge cells (underwater → spillpoint) for
+        # spillpoint paths.  These cells are inside the source lake's
+        # basin (dry-shore portion) and connect actual lake water to the
+        # spillpoint, ensuring the spline rasterizes through them.
+        prepend = spill_prepend.get((sr, sc), [])
+        if prepend:
+            path = prepend + path
         paths_ok.append(path)
         spillpoint_lids.append(forbid_lid)
         # Classify terminus
@@ -2290,7 +2358,7 @@ def run(
     # ── 5b. Lake spillpoints (S80) ────────────────────────────────────────
     _log("Phase 5b: Computing lake spillpoints...")
     t0 = time.perf_counter()
-    lake_spill = compute_lake_spillpoints(lake_id, height)
+    lake_spill = compute_lake_spillpoints(lake_id, height, lake_wl=lake_wl)
     _log(f"  Spillpoints done in {time.perf_counter()-t0:.1f}s")
 
     # ── 5c. Build upstream count for WP source picking ────────────────────

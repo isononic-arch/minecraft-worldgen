@@ -250,9 +250,14 @@ def carve_rivers(
     everywhere (no per-pixel water surface; chunk_writer falls back to lake
     handling + standard river_meta for water emission).
     """
-    # If no hydro masks AND no precomputed centerline, fall back to legacy carver
+    # If no hydro masks AND no precomputed centerline, fall back to legacy carver.
+    # NOTE: hydro_lake counts — tiles with lakes but no rivers (e.g. inland
+    # closed basins) MUST run the new carver to get terrain-intersection lake
+    # painting; the legacy carver knows nothing about hydro_lake. Without
+    # this, lake-only tiles like (30,49) silently dry up. (S80 v24 fix.)
     _has_any_hydro = ((hydro_order is not None and hydro_order.max() > 0)
-                      or (hydro_centerline is not None and hydro_centerline.max() > 0))
+                      or (hydro_centerline is not None and hydro_centerline.max() > 0)
+                      or (hydro_lake is not None and hydro_lake.max() > 0))
     if not _has_any_hydro:
         from core.river_carver import carve_rivers as _legacy
         sy, rm = _legacy(surface_y, flow_tile, river_tile, cfg)
@@ -528,20 +533,33 @@ def carve_rivers(
             thin_corridor = (precomp_cl > 0) & (precomp_cl < 128)
             thin_corridor |= (precomp_cl > 128) & (precomp_cl < 255)
 
-            # S80 v13: spline loading RE-ENABLED.  We removed it in v11
-            # because the on-disk pkl was a stale legacy from the old
-            # Strahler/NMS pipeline (Apr 6) with wide widths.  v13's
-            # wp_river_network now writes FRESH splines from the WP
-            # findPath output with correct WP widths.  Loading is safe
-            # again and gives smooth B-spline curves at 50k instead of
-            # 8-block stairsteps from NEAREST upsample.
+            # S80 v32: spline loading is GATED on hydro_region.png absence.
+            # When the user has painted rivers (hydro_region.png exists
+            # AND contains id=2 paint), the spline pickle from a prior
+            # WP-findPath run would inject those WP rivers on top of
+            # the user's paint — defeating the "paint is the sole
+            # source" invariant. We skip spline loading entirely in
+            # that case. When there's no paint, splines load as before.
             import pickle
             from scipy.interpolate import splev
             _spline_path = (masks_dir / "river_splines.pkl"
                             if masks_dir is not None else None)
             _splines_loaded: list = []
             _SCALE = 8  # 1:8 → 50k
-            if _spline_path is not None and _spline_path.exists():
+
+            _paint_active = False
+            if masks_dir is not None:
+                _hr = masks_dir / "hydro_region.png"
+                if _hr.exists():
+                    try:
+                        from PIL import Image as _PIL
+                        _hr_arr = np.asarray(_PIL.open(_hr).convert("L"))
+                        _paint_active = bool(np.any(_hr_arr == 2))
+                    except Exception:
+                        _paint_active = False
+
+            if (_spline_path is not None and _spline_path.exists()
+                    and not _paint_active):
                 with open(_spline_path, "rb") as _sf:
                     _spline_bundle = pickle.load(_sf)
                 _SCALE = _spline_bundle.get("scale", 8)
@@ -943,17 +961,26 @@ def carve_rivers(
         if footprint.any():
             surface_out[footprint] = np.round(new_y_f[footprint]).astype(surface_out.dtype)
 
-        # 7.7 — Water level: avg - 0.5 - slope_correction (lowers on wide+steep)
-        SLOPE_CORR_START_W = 7.0
-        SLOPE_CORR_FALLOFF = 4.0
-        width_excess = np.maximum(nearest_width - SLOPE_CORR_START_W, 0.0)
-        slope_correction = (np.clip(width_excess / SLOPE_CORR_FALLOFF, 0.0, 1.0)
-                            * np.maximum(np.minimum(nearest_slope * 4.0, 1.0), 0.25))
-        water_y = nearest_avg - 0.5 - 1.3 * slope_correction
-        # S73-v9: trench drop = 1 (matches depth_blocks += 1 above).
-        # Subtract BEFORE the SEA_LEVEL clamp so coast segments still meet
-        # the ocean cleanly (clamp catches anything below 63).
-        water_y = water_y - 1.0
+        # 7.7 — Water level: BANK-RELATIVE (S80 v26).
+        #
+        # FAIL HISTORY: Previous formulas referenced `nearest_avg` (smoothed
+        # centerline elevation). For V-shaped or sloped valleys, banks rise
+        # ABOVE centerline → water_y based on centerline sat 2-5+ blocks
+        # below visible bank top → multi-block air gap at the bank.
+        # User said "river sits 2 blocks of air down. need 1 row of air."
+        #
+        # Fix: estimate bank elevation as `nearest_avg + slope * width`
+        # (elevation gain from centerline to bank, using local gradient
+        # over half-width distance). Then water_y = bank_estimate - 1.0.
+        # For flat terrain, slope≈0 → water = avg - 1 → 1 below bank
+        # (since bank ≈ center on flat). For sloped terrain, slope*width
+        # captures the bank rise → water tracks bank → consistent 1 air
+        # gap regardless of slope.
+        #
+        # Capped at nearest_avg + 4.0 to prevent runaway on extreme cliffs
+        # (would overflow trench).
+        bank_lift = np.minimum(nearest_slope * nearest_width, 4.0).astype(np.float32)
+        water_y = nearest_avg + bank_lift - 1.0
         # S73-v7: 1D smoothing along each centerline component's flow path.
         # 2D gaussian (v6) blurred across cross-sections at curves and
         # produced TILTED water surfaces (one side of channel higher than
@@ -1017,7 +1044,23 @@ def carve_rivers(
         # that left visible cross-section non-uniformity at curves.
         water_zone = footprint & ~lake_mask
         if water_zone.any():
-            water_y_field[water_zone] = np.round(water_y[water_zone]).astype(np.int16)
+            water_y_int = np.round(water_y).astype(np.int16)
+            water_y_field[water_zone] = water_y_int[water_zone]
+            # S80 v15: ensure surface_y is at LEAST 1 below water_y at every
+            # footprint cell.  Without this, the guardrail formula keeps
+            # edge cells (factor > 0.1) at original surface, while water_y
+            # is set lower — the chunk_writer's
+            # `river_water_mask = (abs_y > surface) & (abs_y <= water_y)`
+            # comes back EMPTY for those cells, so they show as dry land.
+            # Result before fix: visible water = ~2-3-cell centerline, NOT
+            # the full footprint width.  Visible streams disconnect from
+            # lake water by 1-2 dry cells at the junction.
+            # After fix: visible water = full footprint width = spec width.
+            too_high = water_zone & (surface_out >= water_y_int)
+            if too_high.any():
+                surface_out[too_high] = (water_y_int[too_high] - 1).astype(
+                    surface_out.dtype
+                )
 
         carve_px = footprint & (cur_y_f > new_y_f)
 
@@ -1106,10 +1149,20 @@ def carve_rivers(
         # steep terrain.
 
     # ── 7b. Smooth depth at river-lake junctions ──────────────────────────
-    # Where a river channel meets the lake bowl, the independent carving
-    # can produce a vertical wall (river at depth 4, adjacent lake at depth
-    # 0-1 near its edge).  Blend surface_out in a narrow zone around each
-    # junction so the floor ramps smoothly between them.
+    # S80 v20: DISABLED.  This gaussian-blur of surface_out at
+    # river-lake junctions was UNDOING the v15 fix.  v15 lowers surface
+    # at every water_zone cell to ensure visible water; this pass blurred
+    # surface upward toward the lake's higher terrain (basin-shore was
+    # at terrain==wl, blur pulls river surface from Y69 up to Y70+),
+    # which made `surface >= water_y` again so chunk_writer skipped
+    # placing water blocks at the river-lake junction.  Result: visible
+    # 18-cell dry gap between river and lake water.
+    # Re-enable only if vertical-wall artifacts return at junctions.
+    # S80 v20 vs v21: re-enable section 7b but PROTECT v15 surface lowering.
+    # Section 7b's gaussian blur was raising surface above water_y at junctions,
+    # undoing my v15 carve.  Disabling caused (30,49) lake painting to fail.
+    # The fix: run the blur but only update cells where the new surface is
+    # STRICTLY LOWER than the existing surface, so v15-fixed cells stay deep.
     river_or_stream = (river_meta == CHAN_RIVER) | (river_meta == CHAN_STREAM)
     lake_water_meta = river_meta == CHAN_LAKE
     if river_or_stream.any() and lake_water_meta.any():
@@ -1132,7 +1185,16 @@ def carve_rivers(
             contact_dist = np.minimum(dist_lake_to_river, dist_river_to_lake)
             blend_t = np.clip(1.0 - contact_dist / JUNCTION_R, 0, 1)
             blended = (blend_t * blurred + (1.0 - blend_t) * surface_out.astype(np.float32))
-            surface_out[junction] = np.round(blended[junction]).astype(surface_out.dtype)
+            # S80 v21: only LOWER surface, never raise.  Without this, the
+            # gaussian blur was raising surface above water_y at the river
+            # side of junctions, undoing the v15 carve fix and leaving
+            # river cells dry.  np.minimum keeps each cell at the lower of
+            # blurred-or-current → smooth at junctions without breaking
+            # v15's water visibility guarantee.
+            new_sy = np.round(blended).astype(surface_out.dtype)
+            keep = (new_sy < surface_out) & junction
+            if keep.any():
+                surface_out[keep] = new_sy[keep]
 
     # ── 8. Bank zones (wider, for surface_decorator) ──────────────────────
     water_mask = (river_meta > 0)

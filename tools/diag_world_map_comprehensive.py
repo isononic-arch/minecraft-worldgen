@@ -424,14 +424,9 @@ def main():
         # lake, river, river-bank-moist, dry-channel).
         painted_8k = (hr_8k == 2)
         if painted_8k.any():
-            # S70: clean_painted_river_mask runs morphological opening
-            # + iterative endpoint pruning to eliminate four-leaf-clover
-            # artifacts from wide brush strokes. Identical defaults as
-            # core/hydro_region_overlay.py so the map and in-world
-            # rendering stay in sync.
-            skel_8k = clean_painted_river_mask(painted_8k,
-                                                 opening_radius=2,
-                                                 prune_max_branch_len=8)
+            # S80 v31: endpoint pruning removed from clean_painted_river_mask.
+            # See core/region_overlay_smoothing.py docstring.
+            skel_8k = clean_painted_river_mask(painted_8k, opening_radius=2)
             skel_8k_count = int(skel_8k.sum())
             # Dilate to 2px at 8192, then NEAREST to 6250, so thin
             # features survive the downscale.

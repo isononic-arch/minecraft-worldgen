@@ -23,3 +23,9 @@ logs_*.log
 
 # S80 diagnostic cache (large, regeneratable)
 memory/wp_pathfind_cache.pkl
+
+# S80 v33+ Priority-Flood DEM cache (~156MB, regeneratable)
+memory/_cache_filled_dem*.npy
+
+# Scheduled task runtime lock
+.claude/scheduled_tasks.lock

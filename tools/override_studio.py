@@ -74,14 +74,14 @@ from PyQt6.QtCore import (  # noqa: E402
 )
 from PyQt6.QtGui import (  # noqa: E402
     QPixmap, QImage, QPainter, QPen, QColor, QBrush,
-    QCursor, QIcon, QAction, QKeySequence, QPalette,
+    QCursor, QIcon, QAction, QKeySequence, QPalette, QShortcut,
 )
 
 # =============================================================================
 # Constants
 # =============================================================================
 
-DISPLAY_SIZE = 1024           # working canvas resolution (edit at this, save at orig)
+DISPLAY_SIZE = 2048           # working canvas resolution (edit at this, save at orig)
 UNDO_LEVELS  = 20
 SEA_LEVEL_RAW = 17050         # Gaea height → MC Y=63 threshold (CLAUDE.md)
 
@@ -490,6 +490,12 @@ def _make_brush_mask(
     """Build a boolean brush mask at (cx, cy) for the given shape.
     Returns (mask, x0, y0, x1, y1) where mask is shape (y1-y0, x1-x0)."""
     import math
+    # r==1 = TRUE single pixel. The disc formula at r=1 covers 5 cells
+    # (center + N/S/E/W); special-case it for precision painting.
+    if r == 1:
+        if 0 <= cx < W and 0 <= cy < H:
+            return np.ones((1, 1), dtype=bool), cx, cy, cx + 1, cy + 1
+        return np.zeros((0, 0), dtype=bool), 0, 0, 0, 0
     ext = max(1, int(round(r * _SHAPE_EXTENT.get(shape, 1.0))))
     y0 = max(0, cy - ext); y1 = min(H, cy + ext + 1)
     x0 = max(0, cx - ext); x1 = min(W, cx + ext + 1)
@@ -529,6 +535,47 @@ def _load_uint_tif(path: Path, display_size: int, dtype=np.uint8) -> np.ndarray:
             resampling=Resampling.nearest,
         )
     return a.astype(dtype)
+
+
+def _load_float_tif(path: Path, display_size: int) -> np.ndarray:
+    """Load a TIFF as float32 in original units (no normalisation). Bilinear
+    downscale. Used for height + hydro_lake_wl so we can compute the
+    terrain-intersection lake (height < wl)."""
+    with rasterio.open(path) as src:
+        a = src.read(
+            1,
+            out_shape=(display_size, display_size),
+            resampling=Resampling.bilinear,
+        )
+    return a.astype(np.float32)
+
+
+def _load_binary_mask_tif(path: Path, display_size: int) -> np.ndarray:
+    """Load a 1-channel TIFF as uint8, downscaled with a "sum-then-threshold"
+    trick that keeps 1-pixel-wide centerlines CONNECTED at display
+    resolution.
+
+    rasterio's Resampling.max isn't valid for read() (warp-only), so we
+    do this in two passes:
+        1. Read with bilinear at 4x display_size — averages source
+           pixels but a 1-px line still leaves residual signal at the
+           sub-pixel level.
+        2. Threshold > 0 → binary mask, then numpy max-pool down to
+           display_size. Any residual non-zero cell in a 4x4 source
+           block becomes 1 in output. This is mathematically
+           equivalent to the unsupported Resampling.max.
+    """
+    intermediate = display_size * 4
+    with rasterio.open(path) as src:
+        a = src.read(
+            1,
+            out_shape=(intermediate, intermediate),
+            resampling=Resampling.bilinear,
+        )
+    binary = (a > 0).astype(np.uint8)
+    # numpy max-pool 4x4 → display_size
+    binary = binary.reshape(display_size, 4, display_size, 4).max(axis=(1, 3))
+    return binary.astype(np.uint8)
 
 
 # Hydrology-paint categories — values written to masks/hydro_region.png.
@@ -979,7 +1026,9 @@ class BiomePainterTab(QWidget):
         hop = hydro_order_path or DEFAULT_HYDRO_ORDER_PATH
         hlp = hydro_lake_path or DEFAULT_HYDRO_LAKE_PATH
         try:
-            self.hydro_centerline = _load_uint_tif(hcp, DISPLAY_SIZE, np.uint8) if hcp.exists() else None
+            # Use max-resampling so 1px centerlines stay connected after
+            # the 50k→DISPLAY_SIZE downsample (NEAREST gave dotted lines).
+            self.hydro_centerline = _load_binary_mask_tif(hcp, DISPLAY_SIZE) if hcp.exists() else None
         except Exception as e:
             self.hydro_centerline = None; print(f"[biome tab] hydro_centerline load failed: {e}")
         try:
@@ -990,6 +1039,30 @@ class BiomePainterTab(QWidget):
             self.hydro_lake = _load_uint_tif(hlp, DISPLAY_SIZE, np.uint16) if hlp.exists() else None
         except Exception as e:
             self.hydro_lake = None; print(f"[biome tab] hydro_lake load failed: {e}")
+
+        # S80 v28: also load lake_wl + height (already loaded as height_raw)
+        # + river.tif (legacy original-precompute river mask) so the
+        # Hydrology tab can compute terrain-intersection lakes and offer
+        # a toggle between original (river.tif) and WP-script-1.7
+        # (hydro_centerline.tif) river overlays.
+        wlp = MAIN_REPO_ROOT / "masks" / "hydro_lake_wl.tif"
+        rvp = MAIN_REPO_ROOT / "masks" / "river.tif"
+        try:
+            self.hydro_lake_wl = _load_float_tif(wlp, DISPLAY_SIZE) if wlp.exists() else None
+        except Exception as e:
+            self.hydro_lake_wl = None; print(f"[biome tab] hydro_lake_wl load failed: {e}")
+        try:
+            self.river_legacy = _load_binary_mask_tif(rvp, DISPLAY_SIZE) if rvp.exists() else None
+        except Exception as e:
+            self.river_legacy = None; print(f"[biome tab] river.tif load failed: {e}")
+
+        # S80 v30: also load flow.tif (raw Gaea flow accumulation) for the
+        # tracing overlay in the Hydrology tab.
+        flp = MAIN_REPO_ROOT / "masks" / "flow.tif"
+        try:
+            self.flow_tif = _load_float_tif(flp, DISPLAY_SIZE) if flp.exists() else None
+        except Exception as e:
+            self.flow_tif = None; print(f"[biome tab] flow.tif load failed: {e}")
 
         self.undo.clear(); self.redo.clear()
         self._update_undo_buttons()
@@ -1139,6 +1212,24 @@ class BiomePainterTab(QWidget):
         if not self._stroke_dirty:
             self._push_undo(); self._stroke_dirty = True
         r = self._brush_size
+        # Special case: r==1 = TRUE single pixel.
+        if r == 1:
+            if not (0 <= cx < DISPLAY_SIZE and 0 <= cy < DISPLAY_SIZE):
+                return
+            allow = True
+            if self.height_norm is not None:
+                allow = allow and bool(
+                    self.height_norm[cy, cx] > (self._land_threshold / 100.0)
+                )
+            if self._paint_over_enabled:
+                allow = allow and (int(self.override[cy, cx]) == self._paint_over_value)
+            clamp = self._elev_clamp_mask(cy, cy + 1, cx, cx + 1)
+            if clamp is not None:
+                allow = allow and bool(clamp[0, 0])
+            if allow:
+                self.override[cy, cx] = self._current_value
+            self._refresh()
+            return
         y0 = max(0, cy - r); y1 = min(DISPLAY_SIZE, cy + r + 1)
         x0 = max(0, cx - r); x1 = min(DISPLAY_SIZE, cx + r + 1)
         yy, xx = np.ogrid[y0:y1, x0:x1]
@@ -2118,16 +2209,35 @@ class HydrologyPainterTab(QWidget):
         super().__init__(parent)
         self.hyd: np.ndarray | None = None
         self.biome_backdrop: np.ndarray | None = None
-        self.hydro_backdrop: np.ndarray | None = None  # existing centerlines+lakes display
+        # Raw inputs needed to recompute the backdrop on toggle changes
+        self.hydro_centerline_wp: np.ndarray | None = None  # from WP findPath / "river script 1.7"
+        self.river_legacy: np.ndarray | None = None         # from river.tif (original precompute)
+        self.hydro_lake: np.ndarray | None = None           # raw basin extent (uint16 lake ID)
+        self.hydro_lake_wl: np.ndarray | None = None        # float water level
+        self.height_raw: np.ndarray | None = None           # uint16 terrain height
+        self.flow_tif: np.ndarray | None = None             # float Gaea flow accumulation
         self.orig_size: tuple[int, int] = (DISPLAY_SIZE, DISPLAY_SIZE)
         self.hyd_path: Path = DEFAULT_HYDRO_REGION_PATH
         self.undo: deque = deque(maxlen=UNDO_LEVELS)
         self.redo: deque = deque(maxlen=UNDO_LEVELS)
         self._stroke_dirty = False
-        self._current_id = 1
+        self._last_paint_pt: tuple[int, int] | None = None
+        # Cached pre-baked pixmaps (set by _rebuild_backdrop) so paint
+        # events don't rebuild the static backdrops every frame.
+        self._cached_bg_pixmap = None
+        self._cached_biome_pixmap = None
+        # Hardcoded: paint always emits id=2 (river). All other categories
+        # (lake/bank/wadi) were legacy and removed from the UI per
+        # S80 v29 — Hydrology painter is RIVER-ONLY now.
+        self._current_id = 2
         self._brush_size = 8
         self._show_biome_backdrop = True
-        self._show_hydro_backdrop = True
+        # Independent overlay toggles, each rendered in its own colour
+        self._show_ocean = True       # height <= raw sea-level → deep blue
+        self._show_precompute = False
+        self._show_wp_script = True
+        self._show_real_lakes = True
+        self._show_flow = False        # Gaea flow.tif accumulation, log-scaled
         self._backdrop_opacity = 0.35
         self._build_ui()
         self._connect_signals()
@@ -2159,27 +2269,21 @@ class HydrologyPainterTab(QWidget):
 
         tg = QGroupBox("Tool"); tg.setStyleSheet(BiomePainterTab._group_style())
         tgl = QHBoxLayout(tg)
-        self.btn_brush = QPushButton("🖌 Brush"); self.btn_brush.setCheckable(True); self.btn_brush.setChecked(True)
-        self.btn_fill  = QPushButton("🪣 Fill"); self.btn_fill.setCheckable(True)
-        self.btn_pick  = QPushButton("💧 Pick"); self.btn_pick.setCheckable(True)
-        for b in (self.btn_brush, self.btn_fill, self.btn_pick):
+        self.btn_brush  = QPushButton("🖌 Brush");  self.btn_brush.setCheckable(True); self.btn_brush.setChecked(True)
+        self.btn_eraser = QPushButton("🧽 Eraser"); self.btn_eraser.setCheckable(True)
+        self.btn_fill   = QPushButton("🪣 Fill");   self.btn_fill.setCheckable(True)
+        for b in (self.btn_brush, self.btn_eraser, self.btn_fill):
             b.setStyleSheet(BiomePainterTab._tool_btn_style()); tgl.addWidget(b)
+        # Pick (eyedropper) removed in v29 — paint mode is fixed id=2,
+        # nothing meaningful to pick.
         lay.addWidget(tg)
 
-        # Category selector
-        cg = QGroupBox("Active Category"); cg.setStyleSheet(BiomePainterTab._group_style())
-        cgl = QVBoxLayout(cg)
-        self.cat_combo = QComboBox(); self.cat_combo.setStyleSheet(BiomePainterTab._combo_style())
-        for id_, (name, _) in HYDRO_REGIONS.items():
-            self.cat_combo.addItem(f"{id_}  {name}", userData=id_)
-        try:
-            self.cat_combo.setCurrentIndex(list(HYDRO_REGIONS.keys()).index(self._current_id))
-        except ValueError:
-            pass
-        self.cat_swatch = QLabel(); self.cat_swatch.setFixedHeight(18)
-        self._update_cat_swatch()
-        cgl.addWidget(self.cat_combo); cgl.addWidget(self.cat_swatch)
-        lay.addWidget(cg)
+        # Single paint mode — RIVER ONLY (id=2). No category combo;
+        # other ids (lake/bank/wadi) were legacy noise.
+        info_lbl = QLabel("🖌  Painting: <b style='color:#FFB400;'>RIVER</b>")
+        info_lbl.setStyleSheet("color:#d0d0e0;font-size:12px;padding:6px;"
+                                "background:#0a0a12;border-radius:4px;")
+        lay.addWidget(info_lbl)
 
         # Brush size
         sg = QGroupBox("Brush Size"); sg.setStyleSheet(BiomePainterTab._group_style())
@@ -2190,32 +2294,50 @@ class HydrologyPainterTab(QWidget):
         sgl.addWidget(self.brush_slider); sgl.addWidget(self.brush_label)
         lay.addWidget(sg)
 
-        # Backdrop
-        bg_ = QGroupBox("Backdrop"); bg_.setStyleSheet(BiomePainterTab._group_style())
+        # Backdrop — three independent overlay layers, each its own colour
+        bg_ = QGroupBox("Overlays"); bg_.setStyleSheet(BiomePainterTab._group_style())
         bgl = QVBoxLayout(bg_)
-        self.chk_biome_bg = QCheckBox("Show biome zones (dimmed)")
-        self.chk_biome_bg.setChecked(True); self.chk_biome_bg.setStyleSheet("color:#d0d0e0;font-size:11px;")
-        self.chk_hydro_bg = QCheckBox("Show existing rivers + lakes")
-        self.chk_hydro_bg.setChecked(True); self.chk_hydro_bg.setStyleSheet("color:#d0d0e0;font-size:11px;")
-        bgl.addWidget(self.chk_biome_bg); bgl.addWidget(self.chk_hydro_bg)
-        op_row = QHBoxLayout(); op_row.addWidget(QLabel("Opacity:"))
+        self.chk_biome_bg = QCheckBox("Biome zones (dimmed)")
+        self.chk_biome_bg.setChecked(True)
+        self.chk_biome_bg.setStyleSheet("color:#d0d0e0;font-size:11px;")
+        bgl.addWidget(self.chk_biome_bg)
+
+        # Independent toggles, each in their own distinct color.
+        self.chk_ocean = QCheckBox("True ocean (height ≤ Y 63)")
+        self.chk_ocean.setChecked(True)
+        self.chk_ocean.setStyleSheet(
+            "color:#3070C0;font-size:11px;font-weight:bold;")
+        bgl.addWidget(self.chk_ocean)
+
+        self.chk_precompute = QCheckBox("Precompute rivers (river.tif)")
+        self.chk_precompute.setChecked(False)
+        self.chk_precompute.setStyleSheet(
+            "color:#FF8060;font-size:11px;font-weight:bold;")
+        bgl.addWidget(self.chk_precompute)
+
+        self.chk_wp_script = QCheckBox("WP script 1.7 (hydro_centerline.tif)")
+        self.chk_wp_script.setChecked(True)
+        self.chk_wp_script.setStyleSheet(
+            "color:#60A0FF;font-size:11px;font-weight:bold;")
+        bgl.addWidget(self.chk_wp_script)
+
+        self.chk_real_lakes = QCheckBox("Real lakes (terrain-intersection)")
+        self.chk_real_lakes.setChecked(True)
+        self.chk_real_lakes.setStyleSheet(
+            "color:#40D8E0;font-size:11px;font-weight:bold;")
+        bgl.addWidget(self.chk_real_lakes)
+
+        self.chk_flow = QCheckBox("Gaea flow accumulation (flow.tif)")
+        self.chk_flow.setChecked(False)
+        self.chk_flow.setStyleSheet(
+            "color:#80E060;font-size:11px;font-weight:bold;")
+        bgl.addWidget(self.chk_flow)
+
+        op_row = QHBoxLayout(); op_row.addWidget(QLabel("Backdrop opacity:"))
         self.op_slider = QSlider(Qt.Orientation.Horizontal)
         self.op_slider.setRange(0, 100); self.op_slider.setValue(int(self._backdrop_opacity * 100))
         op_row.addWidget(self.op_slider); bgl.addLayout(op_row)
         lay.addWidget(bg_)
-
-        # Legend
-        lg = QGroupBox("Legend"); lg.setStyleSheet(BiomePainterTab._group_style())
-        lg_lay = QVBoxLayout(lg)
-        for id_, (name, (r, g, b)) in HYDRO_REGIONS.items():
-            row = QWidget(); rl = QHBoxLayout(row)
-            rl.setContentsMargins(0, 0, 0, 0); rl.setSpacing(4)
-            sw = QLabel(); sw.setFixedSize(14, 14)
-            sw.setStyleSheet(f"background:rgb({r},{g},{b});border-radius:2px;")
-            lbl = QLabel(f"{id_}  {name}"); lbl.setStyleSheet("color:#b0b0c8;font-size:10px;")
-            rl.addWidget(sw); rl.addWidget(lbl); rl.addStretch()
-            lg_lay.addWidget(row)
-        lay.addWidget(lg)
 
         lay.addStretch()
 
@@ -2223,6 +2345,13 @@ class HydrologyPainterTab(QWidget):
         self.btn_undo = QPushButton("↩ Undo"); self.btn_redo = QPushButton("↪ Redo")
         bt_row.addWidget(self.btn_undo); bt_row.addWidget(self.btn_redo)
         lay.addLayout(bt_row)
+
+        self.btn_clear = QPushButton("🗑 Clear all painting")
+        self.btn_clear.setStyleSheet("""
+            QPushButton {background:#7a2a2a;color:white;padding:6px;border-radius:4px;}
+            QPushButton:hover {background:#9a3a3a;}
+        """)
+        lay.addWidget(self.btn_clear)
 
         self.btn_preflight = QPushButton("✓ Preflight Check")
         self.btn_preflight.setStyleSheet("""
@@ -2241,9 +2370,8 @@ class HydrologyPainterTab(QWidget):
 
         return ctrl
 
-    def _update_cat_swatch(self):
-        _, (r, g, b) = HYDRO_REGIONS[self._current_id]
-        self.cat_swatch.setStyleSheet(f"background:rgb({r},{g},{b});border-radius:3px;")
+    # _update_cat_swatch / _on_cat_changed removed — paint mode is fixed
+    # to id=2 (river); no category selector in v29.
 
     def _connect_signals(self):
         self.canvas.paint_applied.connect(self._on_paint)
@@ -2252,35 +2380,60 @@ class HydrologyPainterTab(QWidget):
         self.canvas.cursor_moved.connect(self._on_cursor)
         self.canvas.stroke_ended.connect(self._on_stroke_ended)
         self.btn_brush.clicked.connect(lambda: self._set_tool("brush"))
+        self.btn_eraser.clicked.connect(lambda: self._set_tool("eraser"))
         self.btn_fill.clicked.connect(lambda: self._set_tool("fill"))
-        self.btn_pick.clicked.connect(lambda: self._set_tool("eyedropper"))
         self.brush_slider.valueChanged.connect(
             lambda v: (setattr(self, "_brush_size", v), self.brush_label.setText(f"{v}px")))
-        self.cat_combo.currentIndexChanged.connect(self._on_cat_changed)
-        self.chk_biome_bg.toggled.connect(lambda v: (setattr(self, "_show_biome_backdrop", v), self._refresh()))
-        self.chk_hydro_bg.toggled.connect(lambda v: (setattr(self, "_show_hydro_backdrop", v), self._refresh()))
-        self.op_slider.valueChanged.connect(lambda v: (setattr(self, "_backdrop_opacity", v / 100.0), self._refresh()))
+        self.chk_biome_bg.toggled.connect(
+            lambda v: (setattr(self, "_show_biome_backdrop", v), self._refresh()))
+        self.chk_ocean.toggled.connect(
+            lambda v: (setattr(self, "_show_ocean", v),
+                       self._rebuild_backdrop(), self._refresh()))
+        self.chk_precompute.toggled.connect(
+            lambda v: (setattr(self, "_show_precompute", v),
+                       self._rebuild_backdrop(), self._refresh()))
+        self.chk_wp_script.toggled.connect(
+            lambda v: (setattr(self, "_show_wp_script", v),
+                       self._rebuild_backdrop(), self._refresh()))
+        self.chk_real_lakes.toggled.connect(
+            lambda v: (setattr(self, "_show_real_lakes", v),
+                       self._rebuild_backdrop(), self._refresh()))
+        self.chk_flow.toggled.connect(
+            lambda v: (setattr(self, "_show_flow", v),
+                       self._rebuild_backdrop(), self._refresh()))
+        self.op_slider.valueChanged.connect(
+            lambda v: (setattr(self, "_backdrop_opacity", v / 100.0), self._refresh()))
         self.btn_undo.clicked.connect(self._do_undo)
         self.btn_redo.clicked.connect(self._do_redo)
+        self.btn_clear.clicked.connect(self._do_clear_all)
         self.btn_preflight.clicked.connect(self.run_preflight)
         self.btn_save.clicked.connect(self.save)
 
+        # Hotkeys: B = brush, E = eraser. WindowShortcut so they fire
+        # whenever the studio window is focused, including when canvas
+        # has focus.
+        self._sc_brush = QShortcut(QKeySequence("B"), self)
+        self._sc_brush.activated.connect(lambda: self._set_tool("brush"))
+        self._sc_eraser = QShortcut(QKeySequence("E"), self)
+        self._sc_eraser.activated.connect(lambda: self._set_tool("eraser"))
+
     def load_data(self, biome_backdrop: np.ndarray, orig_size: tuple[int, int],
                   hydro_centerline: np.ndarray | None = None,
-                  hydro_lake: np.ndarray | None = None):
+                  hydro_lake: np.ndarray | None = None,
+                  hydro_lake_wl: np.ndarray | None = None,
+                  height_raw: np.ndarray | None = None,
+                  river_legacy: np.ndarray | None = None,
+                  flow_tif: np.ndarray | None = None):
         self.biome_backdrop = biome_backdrop.copy()
         self.orig_size = orig_size
-        # Build combined hydro backdrop for reference display
-        if hydro_centerline is not None or hydro_lake is not None:
-            h = DISPLAY_SIZE
-            backdrop = np.zeros((h, h, 4), dtype=np.uint8)
-            if hydro_lake is not None:
-                backdrop[hydro_lake > 0] = [70, 160, 210, 180]
-            if hydro_centerline is not None:
-                backdrop[hydro_centerline > 0] = [40, 130, 230, 220]
-            self.hydro_backdrop = backdrop
-        else:
-            self.hydro_backdrop = None
+        # Stash raw inputs so we can rebuild the backdrop on toggle changes
+        self.hydro_centerline_wp = hydro_centerline
+        self.river_legacy = river_legacy
+        self.hydro_lake = hydro_lake
+        self.hydro_lake_wl = hydro_lake_wl
+        self.height_raw = height_raw
+        self.flow_tif = flow_tif
+        self._rebuild_backdrop()
         # Load or create paint buffer
         if self.hyd_path.exists():
             try:
@@ -2304,87 +2457,235 @@ class HydrologyPainterTab(QWidget):
         self.canvas.fit_canvas(DISPLAY_SIZE, DISPLAY_SIZE)
         self._refresh()
 
-    def _refresh(self):
-        if self.hyd is None: return
-        h = w = DISPLAY_SIZE
-        # Biome backdrop (dimmed)
-        if self._show_biome_backdrop and self.biome_backdrop is not None:
+    def _rebuild_backdrop(self):
+        """Build the overlays backdrop from the independent toggles.
+        Each layer renders in its own distinct colour. Caches the result
+        as a QPixmap so paint events don't rebuild."""
+        h = DISPLAY_SIZE
+        backdrop = np.zeros((h, h, 4), dtype=np.uint8)
+
+        # ── 0. True ocean (base layer) — DEEP BLUE.
+        # height <= raw 17050 (= MC Y 63) is "below sea level".
+        # Painted first so other overlays render on top of it. Brush
+        # has no land/ocean clamp in this tab, so rivers paint straight
+        # across into ocean (no seam at the coast).
+        if self._show_ocean and self.height_raw is not None:
+            ocean = self.height_raw <= 17050
+            backdrop[ocean] = [ 18,  56, 128, 220]
+
+        # ── 0.5. Gaea flow accumulation (flow.tif) — GREEN, log-tiered.
+        # Continuous-gradient field: log-scale and threshold into three
+        # tiers so main trunks pop and tributaries fade naturally.
+        if self._show_flow and self.flow_tif is not None:
+            f = self.flow_tif
+            fmax = float(f.max())
+            if fmax > 0:
+                with np.errstate(invalid="ignore"):
+                    intensity = np.log1p(f) / np.log1p(fmax)
+                t1 = intensity >= 0.45  # tributaries
+                t2 = intensity >= 0.65  # rivers
+                t3 = intensity >= 0.85  # main trunks
+                backdrop[t1] = [128, 224,  96, 130]
+                backdrop[t2] = [128, 224,  96, 190]
+                backdrop[t3] = [160, 255, 120, 240]
+
+        # ── 1. Precompute rivers (river.tif) — ORANGE-RED ──
+        if self._show_precompute and self.river_legacy is not None:
+            mask = self.river_legacy > 0
+            backdrop[mask] = [255, 128,  64, 235]
+
+        # ── 2. WP script 1.7 (hydro_centerline.tif) — VIVID BLUE ──
+        if self._show_wp_script and self.hydro_centerline_wp is not None:
+            mask = self.hydro_centerline_wp > 0
+            backdrop[mask] = [ 80, 160, 255, 235]
+
+        # ── 3. Real lakes (terrain-intersection) — CYAN ──
+        if (self._show_real_lakes
+                and self.hydro_lake is not None
+                and self.hydro_lake_wl is not None
+                and self.height_raw is not None):
+            basin = self.hydro_lake > 0
+            wl = self.hydro_lake_wl.astype(np.float32)
+            ht = self.height_raw.astype(np.float32)
+            if wl.max() <= 1.5:
+                wl = wl * 65535.0
+            underwater = basin & (ht < wl)
+            backdrop[underwater] = [ 64, 216, 224, 215]
+
+        self.hydro_backdrop = backdrop
+        # Pre-bake QPixmap so paint events don't rebuild (perf).
+        self._cached_bg_pixmap = _ndarray_to_pixmap_rgba(backdrop)
+        # Pre-bake the dimmed biome backdrop too — also static between
+        # paint events.
+        if self.biome_backdrop is not None:
             biome_rgb = _zone_to_rgb(self.biome_backdrop)
             op = self._backdrop_opacity
             biome_rgb = (biome_rgb.astype(np.float32) * op).astype(np.uint8)
-            self._bg_item.setPixmap(_ndarray_to_pixmap_rgb(biome_rgb))
+            self._cached_biome_pixmap = _ndarray_to_pixmap_rgb(biome_rgb)
+        else:
+            self._cached_biome_pixmap = None
+
+    def _refresh(self):
+        """Full refresh: rebuilds biome + overlays + paint pixmaps.
+        Use _refresh_paint_only() during active painting for speed."""
+        if self.hyd is None: return
+        h = w = DISPLAY_SIZE
+        # Biome backdrop (cached pixmap from _rebuild_backdrop)
+        if self._show_biome_backdrop and self._cached_biome_pixmap is not None:
+            self._bg_item.setPixmap(self._cached_biome_pixmap)
         else:
             blank = np.zeros((h, w, 3), dtype=np.uint8)
             self._bg_item.setPixmap(_ndarray_to_pixmap_rgb(blank))
-        # Existing hydro backdrop
-        if self._show_hydro_backdrop and self.hydro_backdrop is not None:
-            self._hydbg_item.setPixmap(_ndarray_to_pixmap_rgba(self.hydro_backdrop))
+        # Overlays backdrop (cached)
+        if self._cached_bg_pixmap is not None:
+            self._hydbg_item.setPixmap(self._cached_bg_pixmap)
             self._hydbg_item.setVisible(True)
         else:
             self._hydbg_item.setVisible(False)
-        # Paint layer (hydro_region)
+        # Paint layer
+        self._refresh_paint_only()
+
+    def _refresh_paint_only(self):
+        """Fast-path: rebuild ONLY the paint layer pixmap. Used during
+        active brush dragging so we don't redo the biome/overlays
+        backdrops (which haven't changed)."""
+        if self.hyd is None: return
+        h = w = DISPLAY_SIZE
         rgba = np.zeros((h, w, 4), dtype=np.uint8)
-        for id_, (_, (r, g, b)) in HYDRO_REGIONS.items():
-            if id_ == 0: continue
-            m = self.hyd == id_
-            if m.any():
-                rgba[m] = [r, g, b, 230]
+        m = self.hyd == 2
+        if m.any():
+            rgba[m] = [255, 220,  40, 250]
         self._paint_item.setPixmap(_ndarray_to_pixmap_rgba(rgba))
 
     def _set_tool(self, tool):
-        self.canvas.set_tool(tool)
+        # "eraser" is a virtual tool: canvas still uses brush/fill, but
+        # paint id is 0 (pass-through) instead of 2 (river).
+        if tool == "eraser":
+            self.canvas.set_tool("brush")
+            self._current_id = 0
+        elif tool == "brush":
+            self.canvas.set_tool("brush")
+            self._current_id = 2
+        elif tool == "fill":
+            # Fill keeps the LAST chosen paint id — if eraser was active
+            # before, fill erases; if brush, fill fills with river.
+            self.canvas.set_tool("fill")
+        else:
+            self.canvas.set_tool(tool)
         self.btn_brush.setChecked(tool == "brush")
+        self.btn_eraser.setChecked(tool == "eraser")
         self.btn_fill.setChecked(tool == "fill")
-        self.btn_pick.setChecked(tool == "eyedropper")
+
+    def _stamp_disc(self, cx: int, cy: int, r: int):
+        """Stamp a disc of radius r at (cx, cy). r==1 = single pixel."""
+        if r == 1:
+            if 0 <= cx < DISPLAY_SIZE and 0 <= cy < DISPLAY_SIZE:
+                self.hyd[cy, cx] = self._current_id
+            return
+        y0 = max(0, cy - r); y1 = min(DISPLAY_SIZE, cy + r + 1)
+        x0 = max(0, cx - r); x1 = min(DISPLAY_SIZE, cx + r + 1)
+        if y1 <= y0 or x1 <= x0:
+            return
+        yy, xx = np.ogrid[y0:y1, x0:x1]
+        mask = (yy - cy) ** 2 + (xx - cx) ** 2 <= r * r
+        self.hyd[y0:y1, x0:x1][mask] = self._current_id
 
     def _on_paint(self, cx: int, cy: int):
         if self.hyd is None: return
         if not self._stroke_dirty:
             self._push_undo(); self._stroke_dirty = True
         r = self._brush_size
-        y0 = max(0, cy - r); y1 = min(DISPLAY_SIZE, cy + r + 1)
-        x0 = max(0, cx - r); x1 = min(DISPLAY_SIZE, cx + r + 1)
-        yy, xx = np.ogrid[y0:y1, x0:x1]
-        mask = (yy - cy) ** 2 + (xx - cx) ** 2 <= r * r
-        self.hyd[y0:y1, x0:x1][mask] = self._current_id
-        self._refresh()
+
+        # Line interpolation: if there's a previous paint point, stamp
+        # discs at every cell along the Bresenham line so a fast drag
+        # produces a continuous stroke rather than discrete dots.
+        last = getattr(self, "_last_paint_pt", None)
+        if last is not None:
+            x0, y0 = last
+            dx = abs(cx - x0); dy = abs(cy - y0)
+            steps = max(dx, dy)
+            if steps > 0:
+                # Sample stamps at most every (r) pixels for big brushes
+                # — for r==1 we sample every pixel for crispness.
+                stride = 1 if r <= 2 else max(1, r // 2)
+                for s in range(stride, steps, stride):
+                    px = int(x0 + (cx - x0) * s / steps)
+                    py = int(y0 + (cy - y0) * s / steps)
+                    self._stamp_disc(px, py, r)
+        # Always stamp the current point as the final disc
+        self._stamp_disc(cx, cy, r)
+        self._last_paint_pt = (cx, cy)
+        # Fast paint-only refresh — backdrops are cached pixmaps.
+        self._refresh_paint_only()
 
     def _on_fill(self, cx: int, cy: int):
+        """Channel-aware bucket fill. Click on a visible WP script (blue)
+        or precompute (orange) river cell — the entire CONNECTED CHANNEL
+        of that overlay gets painted with the current paint id (yellow
+        when brush, 0 when eraser).
+
+        If the click is NOT on either visible river overlay, the fill
+        is a no-op (status message). This avoids the old behaviour of
+        flood-filling the entire empty world."""
         if self.hyd is None: return
+        if not (0 <= cx < DISPLAY_SIZE and 0 <= cy < DISPLAY_SIZE):
+            return
+
+        # Identify which backdrop layer the click landed on.
+        # Priority: WP script > Precompute (top-rendered first under
+        # _rebuild_backdrop). If both are visible AND a cell has both,
+        # the WP-script channel wins.
+        target_mask = None
+        src_name = None
+        if (self._show_wp_script and self.hydro_centerline_wp is not None
+                and self.hydro_centerline_wp[cy, cx] > 0):
+            target_mask = self.hydro_centerline_wp > 0
+            src_name = "WP script 1.7"
+        elif (self._show_precompute and self.river_legacy is not None
+                and self.river_legacy[cy, cx] > 0):
+            target_mask = self.river_legacy > 0
+            src_name = "precompute"
+
+        if target_mask is None:
+            mw = self.window()
+            if mw and hasattr(mw, "status"):
+                mw.status.showMessage(
+                    "Bucket fill: click directly on a visible "
+                    "WP-script (blue) or precompute (orange) river cell"
+                )
+            return
+
+        # Find the connected component under the cursor and paint it.
+        from scipy.ndimage import label as _label
+        lbl, _n = _label(target_mask)
+        cid = int(lbl[cy, cx])
+        if cid == 0:
+            return
+        component = lbl == cid
+        cell_count = int(component.sum())
+
         self._push_undo(); self._stroke_dirty = False
-        target = int(self.hyd[cy, cx]); fill = self._current_id
-        if target == fill: return
-        data = self.hyd; h, w = data.shape
-        visited = np.zeros((h, w), dtype=bool)
-        stack = [(cx, cy)]
-        while stack:
-            x, y = stack.pop()
-            if x < 0 or x >= w or y < 0 or y >= h: continue
-            if visited[y, x] or data[y, x] != target: continue
-            lx = x
-            while lx >= 0 and data[y, lx] == target and not visited[y, lx]: lx -= 1
-            lx += 1
-            rx = x
-            while rx < w and data[y, rx] == target and not visited[y, rx]: rx += 1
-            rx -= 1
-            data[y, lx:rx+1] = fill; visited[y, lx:rx+1] = True
-            for nx in range(lx, rx + 1):
-                if y - 1 >= 0 and not visited[y-1, nx] and data[y-1, nx] == target:
-                    stack.append((nx, y - 1))
-                if y + 1 < h and not visited[y+1, nx] and data[y+1, nx] == target:
-                    stack.append((nx, y + 1))
+        self.hyd[component] = self._current_id
+
+        mw = self.window()
+        if mw and hasattr(mw, "status"):
+            verb = "erased" if self._current_id == 0 else "painted"
+            mw.status.showMessage(
+                f"Bucket fill: {verb} {cell_count:,} cells of {src_name} channel"
+            )
         self._refresh()
 
     def _on_pick(self, cx, cy):
-        if self.hyd is None: return
-        val = int(self.hyd[cy, cx])
-        if val in HYDRO_REGIONS:
-            self._current_id = val
-            idx = list(HYDRO_REGIONS.keys()).index(val)
-            self.cat_combo.setCurrentIndex(idx)
+        # Eyedropper is a no-op in v29 — paint mode is fixed to id=2
+        # (river). Kept method to satisfy canvas signal connection.
+        return
 
     def _on_stroke_ended(self):
         self._stroke_dirty = False
+        self._last_paint_pt = None
+        # Run a full refresh on stroke end (in case backdrops drifted
+        # — cheap because backdrops are cached, paint layer rebuilt).
+        self._refresh()
 
     def _on_cursor(self, cx, cy):
         if self.hyd is None: return
@@ -2403,10 +2704,6 @@ class HydrologyPainterTab(QWidget):
                 f"hydro={val}({name})  biome={biome_name}"
             )
 
-    def _on_cat_changed(self, idx):
-        self._current_id = self.cat_combo.itemData(idx)
-        self._update_cat_swatch()
-
     def _push_undo(self):
         if self.hyd is not None:
             self.undo.append(self.hyd.copy()); self.redo.clear(); self._update_undo_buttons()
@@ -2424,6 +2721,39 @@ class HydrologyPainterTab(QWidget):
     def _update_undo_buttons(self):
         self.btn_undo.setEnabled(bool(self.undo))
         self.btn_redo.setEnabled(bool(self.redo))
+
+    def _do_clear_all(self):
+        """Wipe all painting (in-buffer + the on-disk hydro_region.png)."""
+        if self.hyd is None:
+            return
+        from PyQt6.QtWidgets import QMessageBox
+        ans = QMessageBox.warning(
+            self, "Clear all painting?",
+            "This wipes ALL painted hydrology and overwrites "
+            f"{self.hyd_path.name} with an empty mask. Cannot be undone.\n\n"
+            "Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        self._push_undo()
+        self.hyd[:] = 0
+        self._stroke_dirty = False
+        # Wipe on-disk file too so a future Load gives a clean start.
+        try:
+            from PIL import Image as _PIL
+            ow, oh = self.orig_size
+            zero = np.zeros((oh, ow), dtype=np.uint8)
+            _PIL.fromarray(zero, mode="L").save(self.hyd_path)
+            mw = self.window()
+            if mw and hasattr(mw, "status"):
+                mw.status.showMessage(
+                    f"Cleared {self.hyd_path.name} ({ow}x{oh}) — paint buffer reset"
+                )
+        except Exception as e:
+            print(f"[hydro tab] clear failed to wipe disk: {e}")
+        self._refresh()
 
     def run_preflight(self):
         if self.hyd is None: return
@@ -2667,12 +2997,11 @@ class OverrideStudioWindow(QMainWindow):
             if idx >= 0:
                 w.gid_combo.setCurrentIndex(idx)
                 return
-        # Hydrology tab uses cat_combo + _current_id
-        if hasattr(w, "cat_combo"):
-            idx = w.cat_combo.findData(0)
-            if idx >= 0:
-                w.cat_combo.setCurrentIndex(idx)
-                return
+        # Hydrology tab in v29 has no category combo (river-only paint).
+        # Eraser shortcut is a no-op there — the user can use Undo or
+        # paint a 0 explicitly, but we don't auto-switch ids.
+        if isinstance(w, HydrologyPainterTab):
+            return
 
     def _load_initial(self, ov: Path | None, ht: Path | None, fl: Path | None):
         # Auto-load defaults.  Silent fallthrough to dialog only when the
@@ -2723,6 +3052,10 @@ class OverrideStudioWindow(QMainWindow):
             self.tab_hydro.load_data(
                 self.tab_biome.override, self.tab_biome.orig_size,
                 self.tab_biome.hydro_centerline, self.tab_biome.hydro_lake,
+                hydro_lake_wl=getattr(self.tab_biome, "hydro_lake_wl", None),
+                height_raw=self.tab_biome.height_raw,
+                river_legacy=getattr(self.tab_biome, "river_legacy", None),
+                flow_tif=getattr(self.tab_biome, "flow_tif", None),
             )
         self.status.showMessage(f"Loaded: {ov.name}")
 

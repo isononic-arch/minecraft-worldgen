@@ -2,7 +2,41 @@
 
 *Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`. For the physical-realism refactor plan + implementation log, see `PHYSICAL_REALISM_REFACTOR.md` (§18 is the running log).*
 
-**Current state:** Session 72-79 (2026-04-28/30) — long arc, **6 commits** on master.  Cumulative: (a) S72 six-bug river fix `91519cc` — water surface clamp to SEA_LEVEL not surface_out+1, gravity per-component topological sort source-to-ocean (was argsort by surface_y → flatten bug), drop legacy `pre_carve_y - 1` fallback for footprint edge pixels, depth tuning RIVER_DEPTH_FRAC 0.35→0.25 + slope_atten + elev_atten delta-fan ramp, kill dead `river_depth_map`; (b) S73-v9 `43e04dd` — 1D centerline σ=8 path smoothing for cross-section uniformity at curves, fill-entire-trench (drop edge_threshold gate), bank-lift kernel size=17 (MC's 7-block water spread + safety), interior hole fill via `binary_fill_holes`, trench drop +1; (c) S74 `5ce28a3` — `assets/vandir_height.zip` checked in + run_pipeline auto-copies to `output/datapacks/`; (d) **26-biome reference render batch** — all 26 biomes rendered with `--threads 2` parallel, copied to Vandirtest10, packaged as `Vandir_BiomeRoster.zip` (127MB) via gofile.io with README + heightmap+slope+lithology+snow+rivers+lakes overlay map; (e) S75 `d31bce6` — connectivity height-cost JS port (rejected: cost surface bugs); (f) S76 `c8e6e08` — SEMI_ARID grass swap (kept) + connectivity meander/widen/extend (rejected); (g) S77+S78+S79 final `b5635c2` — **REVERTED connectivity to S73-v9 baseline** + ARCHIVED behind `_CONNECTIVITY_ENABLED=False` flag (line 727 in `core/river_carver_v2.py`) + lake water `-1` offset removed in `run_pipeline.py:419` + S78 conn-channel wall-to-wall water post-process + S78b lake-water-overrides-connector vertically.  **CRITICAL CARRY-FORWARD:** connectivity layer ARCHIVED, needs ground-up rebuild — code preserved at `core/river_carver_v2.py:727-895` for re-enable.  Full session log in [memory/S72-79_handoff.md](memory/S72-79_handoff.md).
+**Current state:** Session 80 (2026-05-03) — **PAINTED-RIVER-AS-SOLE-SOURCE pipeline shipped** (v25 → v34j cumulative).  Hand-painted `masks/hydro_region.png` is now the canonical river network; the precompute WP-findPath output is wiped per-tile when paint exists.  Full handoff: [memory/S80_river_handoff.md](memory/S80_river_handoff.md).
+
+**S80 CARVER FIXES (still in code):**
+- **5a `run_pipeline.py:411-460`** — lake `water_y` is `MIN(ceil(wl_float))` per terrain-intersection connected component.  No force-down of `surface_y`; relies on chunk_writer's natural shoreline when `terrain_int >= water_int`.  Replaced v23's median-ceil + force-down which caused visible spillover and per-pixel ceil's stepped water surface.
+- **5b `core/river_carver_v2.py:957-967`** — river `water_y = nearest_avg + min(slope×width, 4) - 1` (bank-relative).  Slope×width estimates bank rise above centerline → consistent ~1-block air gap regardless of bank slope.  Replaced `nearest_avg - 1.5` formula which gave 2-block air gap on tilted banks.
+- **Carver gate `core/river_carver_v2.py:254`** — `_has_any_hydro` now includes `hydro_lake.max() > 0`.  Lake-only tiles (no rivers) used to fall to legacy carver which couldn't paint terrain-intersection lakes.
+
+**S80 PAINTED RIVER PIPELINE (v32 → v34j):**
+- **`hydro_region.png` IS THE SOLE SOURCE** when paint exists (v32).  In `core/hydro_region_overlay.py`, the precompute centerline/order/width/depth are zeroed in-memory before paint is applied; on-disk TIFs untouched.  Empty paint → falls back to WP findPath.
+- **Spline pickle SKIP** — `core/river_carver_v2.py:545-572` skips `river_splines.pkl` loading when `hydro_region.png` contains paint.  Belt-and-suspenders: pickle also renamed to `river_splines.pkl.disabled_v32_paint_only`.
+- **Endpoint pruning REMOVED** — `core/region_overlay_smoothing.py:clean_painted_river_mask` no longer prunes endpoints (was chopping ~49 MC blocks off every river tip, causing all painted rivers to dead-end short of any lake/coast).
+- **All shape post-process at 8k GLOBALLY (v34i)** — eliminates tile-boundary breaks where per-tile erosion saw "outside-tile = no paint".  In `_ensure_caches`: 8k smooth (gaussian σ=4 → threshold 0.30 → gaussian σ=1 → threshold 0.45) → erosion 2 cells (≈12 MC blocks).  Per-tile rasterize bilinear-samples both `_paint_eroded_8k_cache` (default carve) and `_paint_smooth_8k_cache` (full mask, used by mouth-restore).
+- **Mouth restore + shore bridge** — `apply_hydro_region_overlay` post-process: within 80 blocks of any sink (lake / ocean / underwater), restore the un-eroded smooth mask → wide deltas.  `near_river ∩ near_water ∩ basin` adds bridge cells between painted river and visible water within a basin shore.
+- **EDT-derived per-cell width** — `_river_width_8k_cache = distance_transform_edt(painted_mask)` × 8k→50k scale.  Wide brush stroke → wide carve; thin stroke → thin carve.  No floor / no cap (per user invariant "no floor for narrow/wide").  Slope modifier: 1.0× flat → 0.6× steep.
+
+**S80 PAINTOVER STATE:**
+- `masks/hydro_region.png` — user's painted rivers (id=2 at 8192 resolution, 370k cells across world).
+- `masks/river_splines.pkl.disabled_v32_paint_only` — old WP findPath splines (renamed off, do NOT restore while paint exists).
+- `masks/river_splines.pkl.s80_legacy.bak` — pre-S80 legacy backup (don't touch).
+
+**S80 OVERRIDE STUDIO (`tools/override_studio.py` Hydrology tab) — v29 → v34:**
+- True 1px brush (slider value 1 paints exactly one cell, special-cased to bypass disc math)
+- Eraser tool (🧽), Brush (🖌), Fill (🪣) — eyedropper removed (no purpose with single paint id)
+- Hotkeys: B=brush, E=eraser
+- Three independent overlay toggles (each its own colour): Precompute rivers (river.tif, orange-red) / WP script 1.7 (hydro_centerline.tif, vivid blue) / Real lakes (terrain-intersection, cyan)
+- True ocean toggle (height ≤ raw 17050 → deep navy base)
+- Gaea flow accumulation overlay (flow.tif, green tiers: tributaries / rivers / trunks)
+- Channel-aware bucket fill: click on visible WP/precompute river → fills entire connected channel
+- Vivid yellow paint colour (id=2 only) — pops over blue/cyan backdrops
+- Clear-all-painting button — wipes buffer + on-disk hydro_region.png
+- Performance: backdrop pixmaps cached (skipping rebuild on paint events), line interpolation between mouse events for continuous strokes
+- DISPLAY_SIZE bumped 1024 → 2048 for finer paint precision
+- Binary mask loader uses `Resampling.bilinear` then 4x max-pool (replaces invalid `Resampling.max` for .read())
+
+**S80 PRIOR RECAP (S72-79):** earlier carver work — gravity flatten, path-smoothing, depth tuning, connectivity layer experiments (REJECTED, archived behind `_CONNECTIVITY_ENABLED=False` at `core/river_carver_v2.py:727-895`).  See [memory/S72-79_handoff.md](memory/S72-79_handoff.md) for details.
 
 **Session 69 (2026-04-22/24) — prior state:** Override Studio tool + overlay-layer pipeline integration + P0 fixes, all merged to master as `f81eb13`.  Three-tab PyQt6 paint studio at `tools/override_studio.py` (Biome / Lithology / Hydrology), with natural brush shapes, elevation-band + ocean/land + rock-gap clamps, scatter brush, 7-band elevation overlay, ocean@Y63 overlay, and write-time validation (zone codes, shape, dtype, NEAREST round-trip, biome-vs-height alignment).  `masks/lithology_region.png` wired through `tools/build_lithology.py`.  `masks/hydro_region.png` wired through new `core/hydro_region_overlay.py` (skeletonize + Bresenham line draw per tile — avoids NEAREST staircase).  User's painted rivers + lithology verified in-world on (60,69) + (89,52) + (51,53).
 
@@ -69,7 +103,11 @@
 
 **Current working backlog** (Claude picks order, user vetoes):
 
-- **🔴 TOP PRIORITY: Rebuild connectivity layer ground-up** (S79 carry-forward).  Three rewrites in S75-S77 each made it worse; user said "delete the connectivity layer... rebuild it from ground up in a bit."  Currently archived behind `_CONNECTIVITY_ENABLED = False` flag at `core/river_carver_v2.py:727`.  Original code (`1/(flow + concavity*5)` cost surface) preserved at lines 727-895 for reference.  When rebuilding: do it WITH diagnostics (top-down render of cost surface, sample paths, validate-before-merge), NOT blind iteration.  Issues to solve: (a) Dry-biome connectivity climbs ridges because flow_tile is uniformly ~0 → cost flatlines → Dijkstra picks geometric shortest path; (b) Path-end gap between river end and lake interior; (c) Cross-section air gaps where carve doesn't go deep enough at conn-channel banks; (d) No meander on conn channels.  The S78 wall-to-wall post-process + S78b lake-water-overrides-connector-vertically passes are KEPT (no-op when flag is off, ready when re-enabled).
+- **🟢 RESOLVED via S80 PIVOT: Connectivity layer no longer needed.** User pivoted to PAINTED RIVERS (`masks/hydro_region.png`) as canonical source. Connectivity is now a function of how the user paints, not algorithm. WP findPath + connectivity layer remain ARCHIVED behind `_CONNECTIVITY_ENABLED=False` (`core/river_carver_v2.py:727-895`) for emergency rollback. Spline pickle renamed to `river_splines.pkl.disabled_v32_paint_only`.
+
+- **🟡 IN PROGRESS: Validate painted-river output in-world (S80 carry-forward).**  Last preview was 3×3 v34i_global around (51,53) — clean tile-boundary connectivity, narrow middle / wide mouth profile. v34j shore-bridge added but not visibly closing the (51,52) outlet gap (user said "little annoying, not a big deal").  Need: render (51,53) MCA + walk in-world. THEN scale to full 50k.
+
+- **🟡 NEXT WIDTH ITERATION: Tributary-aware widening.**  User stated next concern: rivers should widen based on flow accumulation along the painted skeleton (small headwaters, wide mouths). Implementation sketch in `memory/S80_river_handoff.md` — skeletonize → endpoint detection → DFS flow accumulation → per-cell width = base + sqrt(flow_count) × scale.  Apply as POST-process after the existing smoothing.
 - ~~**`vandir_height.zip` datapack — MANDATORY install per new world**~~ — RESOLVED S74.  `assets/vandir_height.zip` checked in + `run_pipeline.py:577-595` auto-copies to `output/datapacks/vandir_height.zip` on every run.  When user copies output → world, datapack travels with the MCAs.  Logs "datapack: auto-installed" or warns if assets/ missing.
 
 - ~~**Floating schematics WORSE after S60-f19/f20**~~ — RESOLVED S61. Two-strategy `stamp_schematic` rewrite (tree = per-column trunk extension with MAX_TRUNK_EXT=6; bush = placement-level sink if max_gap ≤ 3). Revert of S60-f9 center-sy re-align. User validated in-world. Commit `3e4cc92` on master.

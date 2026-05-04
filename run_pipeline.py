@@ -409,16 +409,57 @@ def _process_tile(args: dict) -> dict:
             from scipy.ndimage import distance_transform_edt as _edt_lakes
             lake_labeled, n_lakes = _label_lakes(lake_mask)
             lake_water_levels = np.full(n_lakes + 1, -999, dtype=np.int16)
+            # S80 v26 — per-component MIN ceil lake water level:
+            #
+            # CLAUDE.md hard rule: "Shoreline = terrain intersection
+            # (height < spill_elevation). NEVER morph/blur/spline/gaussian
+            # on hydro_lake mask."
+            #
+            # FAIL HISTORY:
+            #   v23: median + ceil + force surface_y down at every lake cell
+            #         → carved basin walls, looked like spillover.
+            #   v25: per-pixel ceil(water_y_float) per cell, no force-down
+            #         → hydro_lake_wl varies 1-2 blocks within one connected
+            #           component → STEPPED water surface → spillover at
+            #           the step boundary.
+            #
+            # v26 fix: ONE flat Y per terrain-intersection connected
+            # component, computed as MIN(ceil(water_y_float)) across the
+            # component. This is the LOWEST spill point in the basin
+            # cluster — guarantees water never sits above any cell whose
+            # terrain rises above that Y. No force-down. Cells where
+            # terrain int >= component_water_y naturally show no water
+            # (chunk_writer's `abs_y > surface_y & abs_y <= rw` is empty
+            # there) — which gives the correct natural shoreline.
+            _hydro_lake_wl = masks.get("hydro_lake_wl")
+            if _hydro_lake_wl is not None:
+                _gaea_in = np.array([0, 17050, 45000, 65496], dtype=np.float64)
+                _mc_y_out = np.array([-64, 63, 200, 448], dtype=np.float64)
+                _wl_mc_float = np.interp(
+                    (_hydro_lake_wl * 65535.0).ravel(),
+                    _gaea_in, _mc_y_out
+                ).reshape(_hydro_lake_wl.shape).astype(np.float32)
+            else:
+                _wl_mc_float = None
+
             for lid in range(1, n_lakes + 1):
                 lk = lake_labeled == lid
-                # S77: removed `- 1` offset.  pre_carve_y at lake cells is
-                # the column_generator's surface_y, set to water_level - 1
-                # for underwater cells.  Dropping the extra -1 raises the
-                # lake water source to match the actual hydro_lake_wl
-                # spill elevation (was rendering 1 block low).
-                lake_water = int(pre_carve_y[lk].min())
+                if not lk.any():
+                    continue
+                if _wl_mc_float is not None:
+                    _wl_vals = _wl_mc_float[lk]
+                    _wl_vals = _wl_vals[_wl_vals > -64]
+                    if len(_wl_vals):
+                        # MIN of ceil'd water_y across the entire
+                        # terrain-intersection component. This is the
+                        # lowest spill elevation in the cluster.
+                        # ceil avoids quantization collision.
+                        lake_water = int(np.ceil(float(_wl_vals.min())))
+                    else:
+                        lake_water = int(pre_carve_y[lk].min()) + 1
+                else:
+                    lake_water = int(pre_carve_y[lk].min()) + 1
                 lake_water_levels[lid] = np.int16(lake_water)
-                # Set water Y for all lake pixels (carved or not)
                 river_water_y[lk] = np.int16(lake_water)
 
             # Connectivity channels: ensure continuous water end-to-end.
