@@ -2,7 +2,52 @@
 
 *Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`. For the physical-realism refactor plan + implementation log, see `PHYSICAL_REALISM_REFACTOR.md` (§18 is the running log).*
 
-**Current state:** Session 80 (2026-05-03) — **PAINTED-RIVER-AS-SOLE-SOURCE pipeline shipped** (v25 → v34j cumulative).  Hand-painted `masks/hydro_region.png` is now the canonical river network; the precompute WP-findPath output is wiped per-tile when paint exists.  Full handoff: [memory/S80_river_handoff.md](memory/S80_river_handoff.md).
+**Current state:** Session 81 (2026-05-04) — **VANDIR HYDROLOGY MILESTONE.**  Pipeline produces beautiful naturalistic painted rivers + lakes with: (a) spline-fit boundary (no 8k-pixel staircase fingerprint), (b) sigmoid carve depth via terrain intersection (no binary threshold contour), (c) inward-bias choke (rivers narrower than painted footprint), (d) WP-style periodic meander (sin wave along arclength + simplex phase distortion → natural lazy bends without grid quantisation).  **CRITICAL FIX earlier S81:** `run_pipeline.py` now actually applies the painted hydrology overlay (S80 had this only in `tools/_pipeline_runner.py`, so every production render silently fell back to legacy WP-findPath staircased rivers).  Plus **8192-native Pixel Editor** in `tools/override_studio.py` for precise lake-river connection painting.  S80 (painted source) handoff: [memory/S80_river_handoff.md](memory/S80_river_handoff.md).
+
+**S81 KEY DIFFS (read before any river-related work):**
+- `run_pipeline.py:152-160` — adds `apply_hydro_region_overlay(masks, masks_dir, col_off, row_off, w)` immediately after `read_tile`. **Without this call the painted overlay is invisible to the carver and you carve the on-disk WP-findPath rivers.** This is the single load-bearing line of S81.
+- `core/river_carver_v2.py:816-832` — width comes from `hydro_width` only; legacy `_ORDER_TO_WIDTH` table deleted.
+- `core/river_carver_v2.py:931-949` — flat-bottom carve `new_y_f = nearest_avg - 4`; WP-guardrails tapered formula deleted; edge-spillover guard at line ~1090 also removed (was raising carved edges back up to water_y).
+- `core/river_carver_v2.py:957` — `footprint = river_full_mask & ~lake_mask & above_sea` (no EDT halo extension).
+- `core/hydro_region_overlay.py:_ensure_caches` — global smoothing tightened to σ=1.5 + threshold 0.20 + binary closing radius 1 (preserves thin pixel-editor strokes); erosion removed (`_paint_eroded_8k_cache = _paint_smooth_8k_cache`).
+- `core/hydro_region_overlay.py:apply_hydro_region_overlay` — values written to `hydro_centerline/order/width/depth` are tile_streamer-normalised (divided by 255 / 65535) so `_denorm_u8` round-trips cleanly. Without this normalisation, hydro_centerline=1 round-tripped to 255 = the carver's `braid_fill` sentinel and every painted cell got reinterpreted as wide solid braid water.
+- `run_pipeline.py:457` — lake `water_y` uses `np.floor` instead of `np.ceil` so wl=63.4 lands at Y=63 (flush with basin rim), not Y=64 (1 above basin).
+
+**S81 STAIRCASE SAGA (RESOLVED at v8.1):** Multiple iterations attempting to remove visible staircase at MC-scale river banks:
+- v1 float-passthrough cache (gaussian σ=1.5 → keep float, threshold at 50k): boundary still snapped to 8k pixel grid
+- v2 σ=2.5 50k post-bilinear gaussian: small improvement, staircase still visible
+- v3 SDF cache (signed distance from paint, σ=0.7 8k smooth, threshold -0.5): integer-step lattice artifacts, wider rivers
+- v4 SDF σ=8 + threshold 0: thin rivers ERASED entirely (1px paint has SDF max=0.5, σ=8 washes below 0)
+- v5 lake-mechanism: subtract carve depth from cell's OWN surface_y (not nearest_avg), preserving Gaea ±1-2 block terrain noise. Helped wiggle the boundary
+- v6 heavy bank smooth (σ=16, zone=24, 3 passes, includes footprint with water_y-1 cap): slightly smoother but threshold contour still visible
+- v7: SDF→sigmoid CONTINUOUS carve depth field. Carve applied EVERYWHERE depth>0.05, cell's OWN surface_y as base, water_y_field set on broad zone (~22 blocks past paint). Strict river_meta gate at depth≥1 to prevent over-tagging banks. Boundary is terrain intersection like lakes, NOT a binary threshold contour. Still had minor 8k-lattice fingerprint in carve depth.
+- v8: **spline-fit river outline.** `skimage.measure.find_contours(paint_mask, 0.5)` → sub-pixel boundary at 8k. `scipy.interpolate.splprep(s=1.0×len, per=closed)` fits a periodic B-spline. Sampled at ~10× contour length → dense 50k point cloud → `scipy.spatial.cKDTree`. Per-tile: distance via cKDTree.query (analytical curve distance, no 8k lattice); inside/outside via `matplotlib.path.Path.contains_points` union; sigmoid → continuous carve depth. Validated at `memory/s81_v7_vs_v8_compare_51_53.png`. Render time 30 min/tile.
+- **v8.1 (LANDED): smoothness=3.0 + inward bias + sharper sigmoid + WP-style periodic meander.**
+  - **Smoothness 1.0 → 3.0** in `_build_spline_outline_50k` call — corners noticeably rounder, contour micro-jaggies washed out. (Range: 5+ over-rounds meander bends; 1 = original.)
+  - **`_CARVE_INWARD_BIAS = 5.0`** (new constant in `_rasterize_river_edges_tile`) shifts sigmoid centre 5 blocks inward — chokes carved water zone below painted footprint. Pairs with **`_CARVE_SOFTNESS = 4.0 → 2.5`** (sharper sigmoid → less soft tail eats the bias).
+  - **Periodic meander** (WP river_script1.7-inspired) added inside `_build_spline_outline_50k`. Defaults: `periodic=True`, `periodic_amp_blocks=6`, `periodic_wavelength_blocks=140`, `phase_distortion_amp_blocks=350`, `phase_distortion_wavelength_blocks=800`, `micro_amp_blocks=1`, `micro_wavelength_blocks=30`. Mechanism: `disp = sin((arclen + simplex_macro × phase_amp) × 2π/λ) × periodic_amp + simplex_micro × micro_amp`. Both banks see correlated displacement → channel meanders rather than fattening/thinning. Phase distortion makes sin non-uniform across world — no tin-spaghetti look. Falls back to two-octave raw noise via `periodic=False`. Validated at `memory/s81_v8_meander_compare_51_53.png` — visible bank undulation + small irregular protrusions on top-right peninsula. **User says: "newest render looks great. Beautiful."**
+  - **Tunables for next iteration** (all in `core/hydro_region_overlay.py`):
+    - Width: `_CARVE_INWARD_BIAS` (current 5.0). Higher = thinner; goes too thin past ~7-8.
+    - Bank softness: `_CARVE_SOFTNESS` (current 2.5). Lower = harder edge / more visible choke; don't drop below 1.5 or staircase returns.
+    - Corner roundness: `smoothness_factor` in call site (current 3.0). Higher = rounder; ~5+ erases meander bends.
+    - Meander amplitude: `periodic_amp_blocks` (current 6.0). Bigger = taller bends.
+    - Meander wavelength: `periodic_wavelength_blocks` (current 140). Smaller = tighter cycle spacing.
+    - Phase wobble: `phase_distortion_amp_blocks` (current 350). Smaller = more uniform sinusoid; bigger = more random.
+    - Bank irregularity: `micro_amp_blocks` (current 1.0). Bigger = noisier banks.
+
+**S81 LAKE GEN: also walked through everything in the lake-related path. Lake floor fix (np.ceil → np.floor for water_y in run_pipeline.py:457) preserved. Lakes render correctly: terrain-intersection at flat water plane gives natural smooth shoreline.**
+
+**S81 STEPPABLE BANKS + U-SHAPE FLOOR (still in code):**
+- `core/river_carver_v2.py:7.6b` bank smooth-brush (σ=16, zone=24, 3 passes, includes footprint with water_y-1 cap) — heavy WorldEdit-style smoothing
+- `core/river_carver_v2.py:7.6c` steppable shore lip (1-cell ring at water_y+1) — wadeable hop-out from water
+- WP river_script1.7 audited for U-shape; we diverged (kept water in full footprint, dropped factor*original blend) — see memory/S81_river_handoff.md for line-by-line diffs
+
+**S81 HydrologyPixelEditor (`tools/override_studio.py`):** new `QDialog` opened from a button on the Hydrology tab. Loads `masks/hydro_region.png` at native 8192×8192 — 1 brush pixel = 1 source cell ≈ 6 MC blocks. Backdrop shows ocean (deep blue) + REAL underwater lake cells `(hydro_lake>0) & (height<wl)` (cyan). Brush+eraser tools, B/E hotkeys, undo/redo, save writes 8192 PNG directly with NO upscale step. Use this for lake-tile river connection precision; the main 2048 tab is still better for broad painting.
+
+**S81 SUPERSEDES — these S80 entries are no longer accurate:**
+- ~~"All shape post-process at 8k GLOBALLY (v34i)"~~ smoothing parameters changed (σ=4→σ=1.5, threshold 0.30→0.20, erosion REMOVED).
+- ~~"EDT-derived per-cell width"~~ — width is no longer EDT-derived in apply_overlay; the carver uses `hydro_width` (which apply_overlay sets to 0 in current code) and falls back to a 2.5-block default. The flow-accumulation widening pass is computed but currently `per_cell_radius` is forced to zero per the user "no width modification" directive.
+- ~~"Mouth restore + shore bridge"~~ — mouth restore still present; shore bridge logic removed earlier in S81 then orphan-endpoint extension was also removed.
 
 **S80 CARVER FIXES (still in code):**
 - **5a `run_pipeline.py:411-460`** — lake `water_y` is `MIN(ceil(wl_float))` per terrain-intersection connected component.  No force-down of `surface_y`; relies on chunk_writer's natural shoreline when `terrain_int >= water_int`.  Replaced v23's median-ceil + force-down which caused visible spillover and per-pixel ceil's stepped water surface.

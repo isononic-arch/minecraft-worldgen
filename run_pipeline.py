@@ -150,6 +150,16 @@ def _process_tile(args: dict) -> dict:
     )
     # masks dict keys: height, slope, erosion, flow, deposits, override, shore, river
 
+    # ---- Step 4a-bis: apply painted hydro_region.png overlay ----
+    # When masks/hydro_region.png exists with paint, this mutates the
+    # hydro_* mask arrays in `masks` so the carver sees the painted
+    # rivers instead of the on-disk WP-findPath centerline. Critical
+    # for paint-as-sole-source mode — without this call, the legacy
+    # staircased hydro_centerline.tif is what gets carved into the
+    # world. Mirrors the same call in tools/_pipeline_runner.py:168.
+    from core.hydro_region_overlay import apply_hydro_region_overlay
+    apply_hydro_region_overlay(masks, masks_dir, col_off, row_off, w)
+
     # ---- Step 4a: Read discrete lithology mask (Phase 1.75) ----
     # lithology.tif is 6250×6250 (1:8 scale) — read at 1:8 coords, not full-res.
     # _fill_geology_layers() handles upscale 64→512 via NEAREST zoom.
@@ -450,11 +460,17 @@ def _process_tile(args: dict) -> dict:
                     _wl_vals = _wl_mc_float[lk]
                     _wl_vals = _wl_vals[_wl_vals > -64]
                     if len(_wl_vals):
-                        # MIN of ceil'd water_y across the entire
+                        # MIN of floor'd water_y across the entire
                         # terrain-intersection component. This is the
                         # lowest spill elevation in the cluster.
-                        # ceil avoids quantization collision.
-                        lake_water = int(np.ceil(float(_wl_vals.min())))
+                        # floor (not ceil): wl_mc=63.4 means the water
+                        # surface sits between Y63 and Y64. Filling water
+                        # blocks up to Y64 (ceil) puts a water block at
+                        # Y64 which is ONE BLOCK ABOVE any rim cell with
+                        # terrain at Y63 → user sees water spilling onto
+                        # the bank. floor(63.4)=63 keeps water flush with
+                        # the basin rim.
+                        lake_water = int(np.floor(float(_wl_vals.min())))
                     else:
                         lake_water = int(pre_carve_y[lk].min()) + 1
                 else:

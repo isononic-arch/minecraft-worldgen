@@ -813,18 +813,21 @@ def carve_rivers(
         from scipy.ndimage import gaussian_filter as _gf
         from scipy.ndimage import label as _label_grav
 
-        # 7.1 — per-centerline width (block half-radius), from Strahler order.
-        # WP-style: slope-aware width: width = base + 2 * slope^2.
-        _ORDER_TO_WIDTH = {1: 2.5, 2: 3.0, 3: 4.0, 4: 5.5, 5: 7.0}
+        # 7.1 — per-centerline width (block half-radius) from ``hydro_width``.
+        # Per user directive (S81): paint is the sole source. The legacy
+        # Strahler-ORDER_TO_WIDTH lookup table is gone — every painted
+        # cell carries an explicit EDT-derived + slope-modified + Hack's-
+        # law width set by apply_hydro_region_overlay. Painted cells with
+        # no explicit width (rare edge case) fall to a 2.5-block default.
+        # WP-style slope augmentation (+ 2·slope²) is applied below.
         width_at_pixel = np.zeros((H, W), dtype=np.float32)
-        for _o in range(1, 6):
-            _m = river_full_mask & (order_u8 == _o)
-            if _m.any():
-                width_at_pixel[_m] = _ORDER_TO_WIDTH.get(_o, 4.0)
-        # Pixels with order 0 but on centerline (incl. conn_channel): small default
-        _no_o = river_full_mask & (order_u8 == 0)
-        if _no_o.any():
-            width_at_pixel[_no_o] = 2.5
+        _w_painted = river_full_mask & (width_u8 > 0) if width_u8 is not None \
+            else np.zeros_like(river_full_mask)
+        if _w_painted.any():
+            width_at_pixel[_w_painted] = width_u8[_w_painted].astype(np.float32)
+        _w_default = river_full_mask & ~_w_painted
+        if _w_default.any():
+            width_at_pixel[_w_default] = 2.5
 
         # 7.1b — GRAVITY pre-pass (S72 fix).  Walk each centerline component
         # from source to ocean (descending dist-from-ocean) tracking running
@@ -925,32 +928,31 @@ def carve_rivers(
             meander_shift = meander_noise * MEANDER_AMP * np.minimum(nearest_slope * 4, 1.0)
             dist_to_center = np.abs(dist_to_center - meander_shift)
 
-        # 7.6 — guardrails formula (WP-style)
-        # S72 — Bug 4 + Bug 6 trench depth tuning:
-        #   * RIVER_DEPTH_FRAC 0.35 → 0.25 and base bias 1.5 → 1.0 (shallower).
-        #   * slope_atten = clamp(1 - 0.5*slope, 0.4, 1.0) — shallower on steep
-        #     terrain (geomorphically correct: young rivers cut shallow).
-        #   * elev_atten = clamp((avg - SEA_LEVEL) / 30, 0.3, 1.0) — shallower
-        #     near ocean for delta-fan look (matches JS depthMultiplier).
-        RIVER_DEPTH_FRAC = 0.25
-        DEPTH_BASE = 1.0
-        DYKE_MIN = 0.32
-        GUARDRAIL_MAX_SLOPE = 1.2
-        factor = np.clip(dist_to_center / np.maximum(nearest_width, 1.0), 0.0, 0.99)
-        slope_atten = np.clip(1.0 - 0.5 * nearest_slope, 0.4, 1.0).astype(np.float32)
-        elev_above_sea = np.maximum(nearest_avg - float(SEA_LEVEL), 0.0).astype(np.float32)
-        elev_atten = np.clip(elev_above_sea / 30.0, 0.3, 1.0).astype(np.float32)
-        depth_blocks = (nearest_width * RIVER_DEPTH_FRAC + DEPTH_BASE) * slope_atten * elev_atten
-        # S73-v9: trench drop = 1 (user-requested middle ground between v7's
-        # +2 and v8's +0).  River bed sits 1 block deeper than S72 base,
-        # water_y drops 1 to match (see 7.7 below).
-        depth_blocks += 1.0
-        guard = 4.2 * np.maximum(DYKE_MIN, np.minimum(GUARDRAIL_MAX_SLOPE, nearest_slope))
-        new_y_f = (1.0 - factor) * (nearest_avg - depth_blocks + factor * depth_blocks * guard) \
-                + factor * surface_out.astype(np.float32)
-
-        # Footprint: pixels within `width` of any centerline (factor < 1)
-        footprint = (dist_to_center <= nearest_width) & ~lake_mask & above_sea
+        # 7.6 — terrain-intersection carve from precomputed depth field.
+        #
+        # S81 v8: TRUE continuous carve.
+        #   1. Read depth as FLOAT (sub-block precision via hydro_depth
+        #      × 255) — uint8 round() was throwing away the smooth taper.
+        #   2. Apply carve EVERYWHERE depth > 0 (no narrow footprint
+        #      gate). Cells far from paint have depth ≈ 0 → no effect.
+        #      Cells near paint have continuous carve depth → smooth
+        #      surface transition.
+        #   3. Subtract from cell's OWN original surface_y, preserving
+        #      Gaea's ±1-2 block natural terrain variation. Together
+        #      with continuous carve, this is the same mechanism as
+        #      lakes: surface = terrain_natural - smooth_offset; the
+        #      `surface < water_y` contour follows TERRAIN VARIATION,
+        #      not a binary mask boundary = no staircase.
+        depth_at_cell = (hydro_depth.astype(np.float32) * 255.0
+                         if hydro_depth is not None
+                         else np.zeros_like(surface_out, dtype=np.float32))
+        original_sy_f = surface_out.astype(np.float32)
+        new_y_f = (original_sy_f - depth_at_cell).astype(np.float32)
+        # Footprint covers the BROAD carve buffer (any non-trivial
+        # depth) so water_y_field is set across the full area where
+        # terrain intersection determines visibility. The actual
+        # river_meta tagging uses a stricter threshold below.
+        footprint = (depth_at_cell > 0.05) & ~lake_mask & above_sea
 
         # Only LOWER (never raise) and clamp to bedrock min
         cur_y_f = surface_out.astype(np.float32)
@@ -1064,14 +1066,99 @@ def carve_rivers(
 
         carve_px = footprint & (cur_y_f > new_y_f)
 
+        # 7.6b — Bank+carve smooth-brush pass (S81 v6: includes footprint).
+        # Heavy multi-pass gaussian blur over a wide zone that NOW INCLUDES
+        # THE CARVE FOOTPRINT itself, not just outside cells. Smooths
+        # both:
+        #   - Bank cells (outside footprint): pulled DOWN toward river
+        #     elevation, eliminating step-then-cliff transitions
+        #   - Carve-edge cells (inside footprint): pulled UP slightly
+        #     toward neighbour levels, smoothing out the discrete
+        #     pixel-aligned step pattern at carve-depth taper boundaries
+        # Per-cell constraints prevent water loss:
+        #   - Footprint cells: surface ≤ water_y - 1 (always 1 block water)
+        #     and ≥ original carved surface (never lower further than
+        #     the carve already did)
+        #   - Bank cells: surface ≤ original (never raise above terrain)
+        from scipy.ndimage import binary_dilation as _bd_shore
+        from scipy.ndimage import distance_transform_edt as _edt_bank
+        from scipy.ndimage import gaussian_filter as _gf_bank
+        BANK_ZONE = 24       # blocks of smoothing zone (incl. footprint)
+        BANK_SIGMA = 16.0    # gaussian sigma — WorldEdit-style
+        BANK_PASSES = 3      # iterate the blur 3× for cumulative effect
+        if footprint.any():
+            sy_f_bank = surface_out.astype(np.float32)
+            dist_from_fp = _edt_bank(~footprint).astype(np.float32)
+            # Zone now INCLUDES the footprint (dist >= 0, no >0 gate)
+            in_zone = (
+                (dist_from_fp <= BANK_ZONE)
+                & above_sea
+                & ~lake_mask
+            )
+            if in_zone.any():
+                # Weight: 1 at the footprint boundary and inside; fades
+                # to 0 at BANK_ZONE blocks outside. Linear taper.
+                w_bank = np.clip(
+                    1.0 - dist_from_fp / float(BANK_ZONE), 0.0, 1.0
+                ).astype(np.float32)
+                w_bank[~in_zone] = 0.0
+                cur = sy_f_bank.copy()
+                for _bp in range(BANK_PASSES):
+                    blurred_bank = _gf_bank(cur, sigma=BANK_SIGMA)
+                    cur = (w_bank * blurred_bank
+                           + (1.0 - w_bank) * cur)
+                # Apply per-cell constraints to preserve water visibility:
+                # 1. Footprint cells: cap at water_y - 1 (water visible),
+                #    floor at original (don't carve deeper than the
+                #    sigmoid carve already did).
+                # 2. Bank cells: cap at original (never raise terrain).
+                final = cur.copy()
+                fp_cells = footprint & in_zone
+                bank_cells = ~footprint & in_zone
+                if fp_cells.any():
+                    cap = (water_y - 1.0).astype(np.float32)
+                    final[fp_cells] = np.minimum(
+                        final[fp_cells], cap[fp_cells])
+                    final[fp_cells] = np.maximum(
+                        final[fp_cells], sy_f_bank[fp_cells])
+                if bank_cells.any():
+                    final[bank_cells] = np.minimum(
+                        final[bank_cells], sy_f_bank[bank_cells])
+                # Apply where the result actually changes the cell.
+                changed = in_zone & (np.abs(final - sy_f_bank) > 0.5)
+                if changed.any():
+                    surface_out[changed] = np.round(
+                        final[changed]
+                    ).astype(surface_out.dtype)
+
+        # 7.6c — Steppable shore lip (S81). Final pass: just outside the
+        # carve footprint, if the bank still rises more than 1 block
+        # above the water surface (after bank-smooth pass above), drop
+        # it down to water_y + 1 so the player can hop out of the river
+        # without jumping. 1-cell-wide ring at footprint boundary.
+        shore_ring = (_bd_shore(footprint, iterations=1)
+                      & ~footprint & ~lake_mask & above_sea)
+        if shore_ring.any():
+            water_y_int_pre = np.round(water_y).astype(np.int16)
+            target_y = water_y_int_pre + np.int16(1)
+            need_step = shore_ring & (surface_out > target_y)
+            if need_step.any():
+                surface_out[need_step] = target_y[need_step]
+
         # Set river_meta for footprint pixels (Strahler-aware)
         not_lake = ~lake_mask
         order_prop_k2 = min(flow_refine_radius * 2 + 1, 31)
         order_propagated = maximum_filter(
             order_u8.astype(np.float32), size=order_prop_k2
         ).astype(np.uint8)
-        stream_expanded = footprint & (order_propagated <= 2) & not_lake
-        river_expanded  = footprint & (order_propagated >= 3) & not_lake
+        # river_meta uses STRICTER mask than the broad water_y_field
+        # footprint — the broad footprint extends ~22 blocks past the
+        # visible river, which would mark unrelated terrain as river
+        # bank (suppressing schematics and biome decorations there).
+        # Strict: depth ≥ 1 block of carve (the "real" river area).
+        river_strict = (depth_at_cell >= 1.0) & ~lake_mask & above_sea
+        stream_expanded = river_strict & (order_propagated <= 2) & not_lake
+        river_expanded  = river_strict & (order_propagated >= 3) & not_lake
         river_meta[stream_expanded] = CHAN_STREAM
         river_meta[river_expanded]  = CHAN_RIVER
 
@@ -1088,18 +1175,15 @@ def carve_rivers(
         #  monotonic-descent centerline.  S71 had it here AFTER, which left
         #  water_y based on pre-gravity bumpy terrain.)
 
-        # Pass 2: edge-spillover guard.  Only at edge pixels (factor > 0.55).
-        # If any 4-neighbor's water level >= my surface, raise me to that
-        # neighbor's water level.  Sparse 8-neighbor max for stability.
-        edge_band = footprint & (factor > 0.55) & ~river_channel
-        if edge_band.any():
-            # For each edge pixel, look at 4-neighbors' water_y
-            from scipy.ndimage import maximum_filter as _mf3
-            water_y_3 = np.where(footprint, water_y, np.float32(-1e6))
-            nb_max_water = _mf3(water_y_3, size=3)
-            spill_mask = edge_band & (nb_max_water > surface_out + 0.5)
-            if spill_mask.any():
-                surface_out[spill_mask] = np.round(nb_max_water[spill_mask]).astype(surface_out.dtype)
+        # Pass 2 (edge-spillover guard) REMOVED. It was designed for the
+        # legacy tapered carve where edge cells were barely lowered and
+        # could let water spill over banks. With the flat-bottom paint
+        # carve every footprint cell is uniformly lowered to avg-depth,
+        # banks (cells OUTSIDE footprint) keep their original elevation,
+        # so water containment is automatic — no spillover possible.
+        # When this pass DID fire on flat-bottom carve, it raised carved
+        # edges back to water_y level, eating ~half the carve width and
+        # producing the "rivers narrower than painted" symptom.
 
         # Pass 3: narrow-section fix.  Centerline pixels where surface_y >=
         # water_y - 1 → drop them to water_y - 1.  Catches per-pixel spikes

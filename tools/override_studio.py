@@ -276,7 +276,10 @@ class BaseCanvas(QGraphicsView):
     """Shared QGraphicsView for both tabs.
 
     Tools: brush, fill, eyedropper, region_replace.
-    Signals emit canvas-pixel coords (in DISPLAY_SIZE space).
+    Signals emit canvas-pixel coords (in canvas_size space). Defaults to
+    ``DISPLAY_SIZE`` (2048) but the pixel-perfect 8192 editor passes
+    ``canvas_size=8192`` so source-resolution paint works without an
+    upscale step at save time.
     """
     paint_applied    = pyqtSignal(int, int)       # cx, cy  (brush stroke point)
     fill_applied     = pyqtSignal(int, int)       # cx, cy  (flood-fill seed)
@@ -288,8 +291,9 @@ class BaseCanvas(QGraphicsView):
     # stroke in a session was ever pushed.
     stroke_ended     = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, canvas_size: int = DISPLAY_SIZE):
         super().__init__(parent)
+        self.canvas_size = canvas_size
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
@@ -374,7 +378,7 @@ class BaseCanvas(QGraphicsView):
                 if pt is not None and pt != self._region_start:
                     r = QRect(self._region_start, pt).normalized()
                     # Clamp to canvas bounds.
-                    r = r.intersected(QRect(0, 0, DISPLAY_SIZE, DISPLAY_SIZE))
+                    r = r.intersected(QRect(0, 0, self.canvas_size, self.canvas_size))
                     if r.width() > 0 and r.height() > 0:
                         self.region_completed.emit(r)
                 self._region_start = None
@@ -383,7 +387,7 @@ class BaseCanvas(QGraphicsView):
     def _scene_pt(self, event) -> QPoint | None:
         scene_pos = self.mapToScene(event.position().toPoint())
         x = int(scene_pos.x()); y = int(scene_pos.y())
-        if 0 <= x < DISPLAY_SIZE and 0 <= y < DISPLAY_SIZE:
+        if 0 <= x < self.canvas_size and 0 <= y < self.canvas_size:
             return QPoint(x, y)
         return None
 
@@ -2187,6 +2191,321 @@ class LithologyPainterTab(QWidget):
 # Hydrology Paint tab — oases, dune lakes, custom riparian, fertile valleys
 # =============================================================================
 
+class HydrologyPixelEditor(QDialog):
+    """8192-native paint editor for precise lake-river connection work.
+
+    The main Hydrology tab paints into a 2048×2048 buffer that gets
+    NEAREST-upscaled 4× to the 8192-resolution ``hydro_region.png`` on
+    save. That makes single-source-cell painting impossible — every
+    display pixel becomes a 4×4 source block. For lake outlets / inlets
+    where the painted river needs to land in a specific 8192 cell to
+    connect to the visible lake water, that's not enough precision.
+
+    This dialog opens a parallel editor that loads the source PNG at
+    its native 8192 resolution. 1 paint cell = 1 source cell = ~6 MC
+    blocks. Save writes back at 8192 directly with no upscale step.
+
+    Keep brush radius small (1-3) and zoom in heavily (mouse wheel,
+    capped at 32×). Backdrop shows ocean (deep blue) + real lake
+    basins (cyan), enough to find the lake and align the painted
+    river endpoint into it.
+    """
+    EDITOR_SIZE = 8192
+
+    def __init__(self, parent_tab, parent=None):
+        super().__init__(parent)
+        self.parent_tab = parent_tab
+        self.setWindowTitle("Lake Tile Editor — 8192 native paint")
+        self.resize(1280, 1024)
+        self.setStyleSheet("background:#13131f;color:#d0d0e0;")
+        # Load existing hydro_region paint at native 8192
+        try:
+            img = Image.open(parent_tab.hyd_path).convert("L")
+            arr = np.asarray(img, dtype=np.uint8)
+            if arr.shape != (self.EDITOR_SIZE, self.EDITOR_SIZE):
+                arr = np.asarray(
+                    img.resize((self.EDITOR_SIZE, self.EDITOR_SIZE),
+                                Image.NEAREST), dtype=np.uint8)
+            self.hyd = arr.copy()
+        except Exception as e:
+            QMessageBox.critical(self, "Load failed",
+                f"Couldn't load {parent_tab.hyd_path}: {e}")
+            self.hyd = np.zeros(
+                (self.EDITOR_SIZE, self.EDITOR_SIZE), dtype=np.uint8)
+        self._current_id = 2
+        self._brush_size = 1
+        self._stroke_dirty = False
+        self._last_paint_pt: tuple[int, int] | None = None
+        self.undo: deque = deque(maxlen=UNDO_LEVELS)
+        self.redo: deque = deque(maxlen=UNDO_LEVELS)
+        self._build_backdrop_8k()
+        self._build_ui()
+        self._refresh()
+        # Center the view on the world centre on open so the user
+        # can pan/zoom from a known position.
+        self.canvas.fit_canvas(self.EDITOR_SIZE, self.EDITOR_SIZE)
+
+    def _build_backdrop_8k(self):
+        """Load ocean + REAL-LAKE-INTERSECTION overlays at 8192.
+
+        Real lakes = ``(hydro_lake > 0) & (height < hydro_lake_wl)`` —
+        the actual underwater cells. Mirrors the Hydrology tab's
+        "Real lakes (terrain-intersection)" overlay. Showing the basin
+        alone is wrong: most basins are huge dry catchment polygons
+        and the visible water is only the deepest sliver.
+        """
+        masks_dir = self.parent_tab.hyd_path.parent
+        ocean = None
+        underwater = None
+        h_raw = None
+        try:
+            with rasterio.open(masks_dir / "height.tif") as src:
+                h_raw = src.read(
+                    1, out_shape=(self.EDITOR_SIZE, self.EDITOR_SIZE),
+                    resampling=Resampling.nearest)
+            ocean = h_raw <= 17050
+        except Exception as e:
+            print(f"[pixel editor] height load failed: {e}")
+        try:
+            with rasterio.open(masks_dir / "hydro_lake.tif") as src:
+                lk = src.read(
+                    1, out_shape=(self.EDITOR_SIZE, self.EDITOR_SIZE),
+                    resampling=Resampling.nearest)
+            with rasterio.open(masks_dir / "hydro_lake_wl.tif") as src:
+                wl = src.read(
+                    1, out_shape=(self.EDITOR_SIZE, self.EDITOR_SIZE),
+                    resampling=Resampling.nearest).astype(np.float32)
+            # wl_tif may be stored as either raw uint16 (matching height
+            # scale) or normalised float [0,1] — match the main tab's
+            # detection.
+            if wl.max() <= 1.5:
+                wl = wl * 65535.0
+            if h_raw is not None:
+                underwater = (lk > 0) & (h_raw.astype(np.float32) < wl)
+        except Exception as e:
+            print(f"[pixel editor] lake/wl load failed: {e}")
+        backdrop = np.zeros(
+            (self.EDITOR_SIZE, self.EDITOR_SIZE, 4), dtype=np.uint8)
+        if ocean is not None:
+            backdrop[ocean] = [18, 56, 128, 230]
+        if underwater is not None:
+            backdrop[underwater] = [64, 216, 224, 230]
+        self._backdrop_pixmap = _ndarray_to_pixmap_rgba(backdrop)
+
+    def _build_ui(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+        # Canvas — same wheel/middle-pan machinery as the main tabs
+        self.canvas = BaseCanvas(canvas_size=self.EDITOR_SIZE)
+        self._bg_item = QGraphicsPixmapItem()
+        self._bg_item.setZValue(0)
+        self._paint_item = QGraphicsPixmapItem()
+        self._paint_item.setZValue(1)
+        self.canvas.scene.addItem(self._bg_item)
+        self.canvas.scene.addItem(self._paint_item)
+        # Controls panel
+        controls = QWidget()
+        controls.setFixedWidth(280)
+        controls.setStyleSheet("background:#13131f;color:#d0d0e0;")
+        c_lay = QVBoxLayout(controls)
+        c_lay.setContentsMargins(8, 8, 8, 8)
+        c_lay.setSpacing(6)
+        tg = QGroupBox("Tool")
+        tg.setStyleSheet(BiomePainterTab._group_style())
+        tg_l = QHBoxLayout(tg)
+        self.btn_brush = QPushButton("🖌 Brush")
+        self.btn_brush.setCheckable(True)
+        self.btn_brush.setChecked(True)
+        self.btn_eraser = QPushButton("🧽 Eraser")
+        self.btn_eraser.setCheckable(True)
+        for b in (self.btn_brush, self.btn_eraser):
+            b.setStyleSheet(BiomePainterTab._tool_btn_style())
+            tg_l.addWidget(b)
+        c_lay.addWidget(tg)
+        bg = QGroupBox("Brush size  (1 cell ≈ 6 MC blocks)")
+        bg.setStyleSheet(BiomePainterTab._group_style())
+        bg_l = QHBoxLayout(bg)
+        self.brush_slider = QSlider(Qt.Orientation.Horizontal)
+        self.brush_slider.setRange(1, 20)
+        self.brush_slider.setValue(self._brush_size)
+        self.brush_label = QLabel(f"{self._brush_size}px")
+        self.brush_label.setFixedWidth(40)
+        bg_l.addWidget(self.brush_slider)
+        bg_l.addWidget(self.brush_label)
+        c_lay.addWidget(bg)
+        info = QLabel(
+            "Native 8192 source resolution.\n"
+            "1 cell = 1 source pixel ≈ 6 MC blocks.\n\n"
+            "Mouse wheel: zoom (cap 32×)\n"
+            "Middle-drag: pan\n"
+            "B / E: brush / eraser\n\n"
+            "Save writes hydro_region.png\n"
+            "directly at 8192 — NO upscale."
+        )
+        info.setWordWrap(True)
+        info.setStyleSheet(
+            "color:#a0a0c0;font-size:10px;background:#0a0a12;"
+            "padding:6px;border-radius:3px;"
+        )
+        c_lay.addWidget(info)
+        c_lay.addStretch()
+        bt_row = QHBoxLayout()
+        self.btn_undo = QPushButton("↩ Undo")
+        self.btn_redo = QPushButton("↪ Redo")
+        bt_row.addWidget(self.btn_undo)
+        bt_row.addWidget(self.btn_redo)
+        c_lay.addLayout(bt_row)
+        self.btn_save = QPushButton("💾 Save 8192 → hydro_region.png")
+        self.btn_save.setStyleSheet(
+            "QPushButton {background:#1a6b3a;color:white;font-weight:bold;"
+            "padding:8px;border-radius:4px;}"
+            "QPushButton:hover {background:#2a9b5a;}"
+        )
+        c_lay.addWidget(self.btn_save)
+        self.btn_close = QPushButton("Close")
+        self.btn_close.setStyleSheet(
+            "QPushButton {background:#3a3a5a;color:#d0d0e0;padding:6px;}"
+        )
+        c_lay.addWidget(self.btn_close)
+        layout.addWidget(self.canvas, stretch=1)
+        layout.addWidget(controls)
+        # Signals
+        self.canvas.paint_applied.connect(self._on_paint)
+        self.canvas.cursor_moved.connect(self._on_cursor)
+        self.canvas.stroke_ended.connect(self._on_stroke_ended)
+        self.btn_brush.clicked.connect(lambda: self._set_tool("brush"))
+        self.btn_eraser.clicked.connect(lambda: self._set_tool("eraser"))
+        self.brush_slider.valueChanged.connect(
+            lambda v: (setattr(self, "_brush_size", v),
+                       self.brush_label.setText(f"{v}px")))
+        self.btn_undo.clicked.connect(self._do_undo)
+        self.btn_redo.clicked.connect(self._do_redo)
+        self.btn_save.clicked.connect(self._save)
+        self.btn_close.clicked.connect(self.accept)
+        QShortcut(QKeySequence("B"), self).activated.connect(
+            lambda: self._set_tool("brush"))
+        QShortcut(QKeySequence("E"), self).activated.connect(
+            lambda: self._set_tool("eraser"))
+
+    def _refresh(self):
+        self._bg_item.setPixmap(self._backdrop_pixmap)
+        self._refresh_paint()
+
+    def _refresh_paint(self):
+        rgba = np.zeros(
+            (self.EDITOR_SIZE, self.EDITOR_SIZE, 4), dtype=np.uint8)
+        m = self.hyd == 2
+        if m.any():
+            rgba[m] = [255, 220, 40, 250]
+        self._paint_item.setPixmap(_ndarray_to_pixmap_rgba(rgba))
+
+    def _on_paint(self, cx: int, cy: int):
+        if not self._stroke_dirty:
+            self._push_undo()
+            self._stroke_dirty = True
+        r = self._brush_size
+        last = self._last_paint_pt
+        if last is not None:
+            x0, y0 = last
+            dx = abs(cx - x0)
+            dy = abs(cy - y0)
+            steps = max(dx, dy)
+            if steps > 0:
+                stride = 1 if r <= 2 else max(1, r // 2)
+                for s in range(stride, steps, stride):
+                    px = int(x0 + (cx - x0) * s / steps)
+                    py = int(y0 + (cy - y0) * s / steps)
+                    self._stamp(px, py, r)
+        self._stamp(cx, cy, r)
+        self._last_paint_pt = (cx, cy)
+        self._refresh_paint()
+
+    def _stamp(self, cx: int, cy: int, r: int):
+        n = self.EDITOR_SIZE
+        if not (0 <= cx < n and 0 <= cy < n):
+            return
+        if r == 1:
+            self.hyd[cy, cx] = self._current_id
+            return
+        y0 = max(0, cy - r); y1 = min(n, cy + r + 1)
+        x0 = max(0, cx - r); x1 = min(n, cx + r + 1)
+        ys, xs = np.ogrid[y0:y1, x0:x1]
+        mask = (ys - cy) ** 2 + (xs - cx) ** 2 <= r * r
+        self.hyd[y0:y1, x0:x1][mask] = self._current_id
+
+    def _set_tool(self, tool: str):
+        if tool == "brush":
+            self._current_id = 2
+            self.btn_brush.setChecked(True)
+            self.btn_eraser.setChecked(False)
+        elif tool == "eraser":
+            self._current_id = 0
+            self.btn_brush.setChecked(False)
+            self.btn_eraser.setChecked(True)
+        self.canvas.set_tool("brush")
+
+    def _on_cursor(self, cx: int, cy: int):
+        if not (0 <= cx < self.EDITOR_SIZE and 0 <= cy < self.EDITOR_SIZE):
+            return
+        val = int(self.hyd[cy, cx])
+        mc_x = int(cx * 50000 / self.EDITOR_SIZE)
+        mc_z = int(cy * 50000 / self.EDITOR_SIZE)
+        self.setWindowTitle(
+            f"Lake Tile Editor — cell ({cx},{cy}) hydro={val}  |  "
+            f"MC (X={mc_x}, Z={mc_z})  |  brush={self._brush_size}"
+        )
+
+    def _on_stroke_ended(self):
+        self._stroke_dirty = False
+        self._last_paint_pt = None
+
+    def _push_undo(self):
+        self.undo.append(self.hyd.copy())
+        self.redo.clear()
+
+    def _do_undo(self):
+        if not self.undo:
+            return
+        self.redo.append(self.hyd.copy())
+        self.hyd = self.undo.pop()
+        self._refresh_paint()
+
+    def _do_redo(self):
+        if not self.redo:
+            return
+        self.undo.append(self.hyd.copy())
+        self.hyd = self.redo.pop()
+        self._refresh_paint()
+
+    def _save(self):
+        try:
+            target = self.parent_tab.hyd_path
+            if target.exists():
+                try:
+                    shutil.copy2(target, target.with_suffix(".png.bak"))
+                except Exception as e:
+                    print(f"[pixel editor] backup failed: {e}")
+            Image.fromarray(self.hyd, mode="L").save(target)
+        except Exception as e:
+            QMessageBox.critical(self, "Save failed", str(e))
+            return
+        # Reload main tab's 2048 buffer so it reflects the new state.
+        try:
+            img = Image.open(target).convert("L")
+            img_small = img.resize(
+                (DISPLAY_SIZE, DISPLAY_SIZE), Image.NEAREST)
+            self.parent_tab.hyd = np.array(img_small, dtype=np.uint8)
+            self.parent_tab._refresh_paint_only()
+        except Exception as e:
+            print(f"[pixel editor] parent reload failed: {e}")
+        QMessageBox.information(
+            self, "Saved",
+            f"{target}\n\nSize: 8192x8192 (no upscale)\n"
+            f"Painted cells: {int((self.hyd > 0).sum()):,}"
+        )
+
+
 class HydrologyPainterTab(QWidget):
     """Paints WATER FEATURES onto masks/hydro_region.png.  This layer
     influences the hydrology pipeline ONLY — it never repaints biomes.
@@ -2353,6 +2672,18 @@ class HydrologyPainterTab(QWidget):
         """)
         lay.addWidget(self.btn_clear)
 
+        self.btn_pixel_editor = QPushButton("🔍 Open Lake Tile Editor (8192 native)")
+        self.btn_pixel_editor.setToolTip(
+            "Opens a parallel editor at native 8192 source resolution.\n"
+            "Use this for precise lake-river connection painting where\n"
+            "the 4× upscale of this tab's 2048 buffer is too coarse."
+        )
+        self.btn_pixel_editor.setStyleSheet("""
+            QPushButton {background:#3a4a7a;color:white;padding:6px;border-radius:4px;}
+            QPushButton:hover {background:#4a5a9a;}
+        """)
+        lay.addWidget(self.btn_pixel_editor)
+
         self.btn_preflight = QPushButton("✓ Preflight Check")
         self.btn_preflight.setStyleSheet("""
             QPushButton {background:#4a4a6e;color:white;padding:6px;border-radius:4px;}
@@ -2406,6 +2737,7 @@ class HydrologyPainterTab(QWidget):
         self.btn_undo.clicked.connect(self._do_undo)
         self.btn_redo.clicked.connect(self._do_redo)
         self.btn_clear.clicked.connect(self._do_clear_all)
+        self.btn_pixel_editor.clicked.connect(self._open_pixel_editor)
         self.btn_preflight.clicked.connect(self.run_preflight)
         self.btn_save.clicked.connect(self.save)
 
@@ -2754,6 +3086,18 @@ class HydrologyPainterTab(QWidget):
         except Exception as e:
             print(f"[hydro tab] clear failed to wipe disk: {e}")
         self._refresh()
+
+    def _open_pixel_editor(self):
+        """Open the 8192-native paint editor for precision lake-tile work."""
+        if not self.hyd_path.exists():
+            QMessageBox.warning(
+                self, "No paint file",
+                f"{self.hyd_path} doesn't exist yet. Save once from this tab "
+                "first to seed the file, then re-open the editor."
+            )
+            return
+        dlg = HydrologyPixelEditor(self, parent=self.window())
+        dlg.exec()
 
     def run_preflight(self):
         if self.hyd is None: return

@@ -57,7 +57,10 @@ def render_tile(masks_dir: Path, tx: int, tz: int) -> np.ndarray:
     apply_hydro_region_overlay(masks, masks_dir, col_off, row_off, TILE)
 
     cl = masks["hydro_centerline"] > 0
-    w = masks["hydro_width"]
+    # apply_hydro_region_overlay writes width in tile_streamer-normalised
+    # space (raw_blocks / 255) so _denorm_u8 in the carver round-trips
+    # cleanly. Multiply by 255 here to recover MC blocks for the diag halo.
+    w = masks["hydro_width"].astype(np.float32) * 255.0
     if cl.any():
         dist, idx = distance_transform_edt(~cl, return_indices=True)
         carve = dist <= w[idx[0], idx[1]]
