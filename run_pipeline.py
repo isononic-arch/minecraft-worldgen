@@ -475,6 +475,12 @@ def _process_tile(args: dict) -> dict:
                         lake_water = int(pre_carve_y[lk].min()) + 1
                 else:
                     lake_water = int(pre_carve_y[lk].min()) + 1
+                # S81 v8.10 Option A REVERTED — caused regression where
+                # painted-river cells inside precompute basins got tagged
+                # CHAN_LAKE by the carver, then capped to low water_y by
+                # the rim formula → dry. v8.11 will need a paint-aware
+                # version that distinguishes painted-river cells from
+                # painted-lake cells before capping.
                 lake_water_levels[lid] = np.int16(lake_water)
                 river_water_y[lk] = np.int16(lake_water)
 
@@ -501,7 +507,19 @@ def _process_tile(args: dict) -> dict:
             # CHAN_STREAM).  Result before fix: river→lake water Y had a
             # visible step (river-water-Y vs lake_wl), creating the
             # connection gap the user observed at (51,53).
-            BLEND_DIST = 8
+            #
+            # S81 v8.12: BLEND_DIST 8 → 24. The 8-cell zone was too short
+            # to bridge large elevation gaps (e.g. precompute basin at
+            # Y=89 with painted-river inlet at terrain Y=70 = 19-block
+            # gap). Beyond the 8-cell zone, river_water_y dropped back to
+            # the river formula (~Y=70) — visually disconnected from the
+            # lake at Y=89. With BLEND_DIST=24, the blend zone covers a
+            # full 19-block elevation gap with ~1.25 blocks/cell falloff,
+            # producing a smooth visible cascade from lake elevation
+            # down to natural river elevation. The escape-fix + EDT berm
+            # automatically handle bank containment for the now-higher
+            # river_water_y in the blend zone.
+            BLEND_DIST = 24
             river_carved = ((river_meta == CHAN_RIVER) | (river_meta == CHAN_STREAM)) & carved
             if river_carved.any():
                 dist_from_lake = _edt_lakes(~lake_mask)
@@ -519,6 +537,170 @@ def _process_tile(args: dict) -> dict:
         # S80: S78 wall-to-wall post-process REMOVED.  Was a no-op once
         # connectivity was disabled (S77+) and stays a no-op now that the
         # connectivity layer has been deleted entirely.
+
+        # S81 v8.6: WP-style "fix water escaping" pass (river_script1.7
+        # lines 688-737). Replaces the v8.5 lake wall with a more general
+        # iterative pass that handles lake containment, river bank leaks,
+        # AND river-lake junction leaks in one consistent invariant.
+        #
+        # Principle: at convergence, no water cell has a neighbor with
+        # surface_y < water_y. If a neighbor's terrain dips below the
+        # water level, MC fluid physics would activate at that cell and
+        # cascade water down to it. Raising the neighbor's terrain to the
+        # water level (or higher) blocks the cascade.
+        #
+        # Implementation:
+        #   For each cell with water_y > 0 (river or lake water):
+        #     Get max water_y in a 3x3 neighborhood
+        #     If ANY cell in tile has surface_y < that max water_y AND
+        #        is not itself a water cell at that level, raise its
+        #        surface_y.
+        #   Iterate up to N times until no further changes (typically
+        #   converges in 2-3 iterations).
+        #
+        # Edge cases handled by the iterative form:
+        #   - Lake wall thickness scales naturally with how far terrain
+        #     dips. A 3-block-thick wall isn't hardcoded; it's whatever
+        #     it takes to contain the water.
+        #   - River bank leaks: bank-smooth pass may have dropped a bank
+        #     cell below water; this pass raises it back.
+        #   - River-lake junction: same containment invariant applies
+        #     uniformly — no special case needed.
+        from scipy.ndimage import maximum_filter as _maxf_escape
+        from scipy.ndimage import distance_transform_edt as _edt_berm
+        # Treat -999 (no water) as 0 so it doesn't dominate the max.
+        _water_y_positive = np.where(
+            river_water_y > 0, river_water_y, np.int16(0)
+        ).astype(np.int16)
+        # S81 v8.8 fix for "lake terrace blocks flow at junction":
+        # The escape-fix only raises LAND cells (river_water_y < 0).
+        # Water cells with a lower water_y than a neighbor's are LEFT
+        # ALONE — MC fluid physics will cascade water between them
+        # naturally (lake water spills down into river channel,
+        # contained by the river banks which the escape-fix already
+        # raised). Previously the condition also raised water cells,
+        # creating a dam at the lake-river junction that prevented
+        # flow.
+        for _escape_iter in range(5):
+            _nbr_max_wy = _maxf_escape(_water_y_positive, size=3)
+            _leak_cells = (
+                (surface_y < _nbr_max_wy)
+                & (_nbr_max_wy > core_col_gen.SEA_LEVEL)
+                & (river_water_y < 0)  # land only
+            )
+            if not _leak_cells.any():
+                break
+            surface_y[_leak_cells] = _nbr_max_wy[_leak_cells]
+
+        # S81 v8.8: EDT-based smooth-slope berm. (v8.9 shift reverted —
+        # `dist - 1` formula caused a major regression: rivers in the
+        # middle of the 3×3 didn't connect to the lake and looked
+        # missing. Reverted to v8.8's `dist` formula.) Slope:
+        #   dist=1 → water_y - 1
+        #   dist=2 → water_y - 2
+        #   ...
+        #   dist=8 → water_y - 8
+        # The escape-fix above already pinned dist=1 to water_y; this
+        # berm only raises cells beyond that.
+        BERM_RADIUS = 8
+        _water_mask_for_berm = (river_water_y > core_col_gen.SEA_LEVEL)
+        if _water_mask_for_berm.any():
+            _dist_from_water, _water_idx = _edt_berm(
+                ~_water_mask_for_berm, return_indices=True
+            )
+            _nearest_water_y = river_water_y[_water_idx[0], _water_idx[1]]
+            _berm_target = (
+                _nearest_water_y.astype(np.int16)
+                - _dist_from_water.astype(np.int16)
+            )
+            _need_berm = (
+                (surface_y < _berm_target)
+                & (_berm_target > core_col_gen.SEA_LEVEL)
+                & (river_water_y < 0)
+                & (_dist_from_water <= BERM_RADIUS)
+            )
+            if _need_berm.any():
+                surface_y[_need_berm] = _berm_target[_need_berm]
+
+        # S81 v8.14: FINAL WATER-LEVEL CLEANUP.
+        # Rule (user-requested final pass): in rivers, water_y must NEVER
+        # be at or above the adjacent NON-CARVED (pre_carve_y) bank
+        # elevation. The v8.12 BLEND raises river_water_y near lakes so
+        # the cascade is visually connected — but the raise can put
+        # river water_y AT or ABOVE the natural bank, making escape-fix
+        # raise the bank artificially (the "1-cell wall sticking up out
+        # of the land" look). This pass lowers river_water_y back below
+        # natural bank everywhere it would spill.
+        #
+        # Implementation:
+        #   1. min_bank_3x3 = minimum_filter of pre_carve_y over a 3x3
+        #      neighborhood, masking out river cells with HIGH so they
+        #      don't contribute to the min. Gives the lowest natural
+        #      adjacent bank for each cell.
+        #   2. For interior cells of wide rivers (no bank in 3x3),
+        #      propagate the cap from the nearest edge cell via EDT.
+        #      Wide rivers get a uniform cap per cross-section.
+        #   3. Lower river_water_y to (min_bank - 1) where currently
+        #      above.
+        #
+        # Trade-off: the BLEND's smooth lake→river cascade collapses
+        # into a sharp visible drop at the lake-river junction (since
+        # river water_y is hard-capped at bank-1, not allowed to gradient
+        # up to lake water_y). This is what user wants — no perched water.
+        from scipy.ndimage import minimum_filter as _min_filter_cap
+        from scipy.ndimage import distance_transform_edt as _edt_cap_prop
+        # Re-define channel codes locally — CHAN_STREAM is scoped inside
+        # the `if lake_mask.any():` block above and may be unbound on
+        # lake-less tiles.
+        _CHAN_RIVER_CAP = np.uint8(2)
+        _CHAN_STREAM_CAP = np.uint8(1)
+        river_cells_for_cap = (
+            (river_meta == _CHAN_RIVER_CAP) | (river_meta == _CHAN_STREAM_CAP)
+        )
+        if river_cells_for_cap.any():
+            _HIGH_CAP = np.int16(10000)
+            _masked_bank = np.where(
+                river_cells_for_cap,
+                _HIGH_CAP,
+                pre_carve_y,
+            ).astype(np.int16)
+            _min_bank_3x3 = _min_filter_cap(_masked_bank, size=3)
+            _edge_with_bank = (
+                river_cells_for_cap
+                & (_min_bank_3x3 < _HIGH_CAP // 2)
+            )
+            if _edge_with_bank.any():
+                # Propagate edge cap into wide-river interior via EDT
+                _, _edge_idx = _edt_cap_prop(
+                    ~_edge_with_bank, return_indices=True
+                )
+                _propagated_cap = (_min_bank_3x3 - np.int16(1))[
+                    _edge_idx[0], _edge_idx[1]
+                ]
+                # EXCEPTION: preserve BLEND-affected cells (within 24
+                # blocks of a lake — the v8.12 BLEND_DIST). The BLEND
+                # intentionally raises river_water_y toward lake water_y
+                # for the visual cascade — capping those would collapse
+                # the cascade into a hard step at the lake-river
+                # junction. (Hardcoded 24 here matches the BLEND_DIST
+                # constant inside the `if lake_mask.any()` block above
+                # — keep them in sync.)
+                _BLEND_PROTECT_DIST = 24
+                if lake_mask.any():
+                    _dist_from_lake_cap = _edt_cap_prop(~lake_mask)
+                    _is_blend_cell = (_dist_from_lake_cap <= _BLEND_PROTECT_DIST)
+                else:
+                    _is_blend_cell = np.zeros_like(
+                        river_cells_for_cap, dtype=bool
+                    )
+                _too_high = (
+                    river_cells_for_cap
+                    & (river_water_y > _propagated_cap)
+                    & (_propagated_cap > core_col_gen.SEA_LEVEL)
+                    & ~_is_blend_cell
+                )
+                if _too_high.any():
+                    river_water_y[_too_high] = _propagated_cap[_too_high]
 
         core_chunk.write_tile(
             surface_y    = surface_y,

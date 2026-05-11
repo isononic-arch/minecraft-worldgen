@@ -110,7 +110,7 @@ BASE_DENSITY: dict[str, float] = {
     "RIPARIAN_WOODLAND":       0.18,
     "DRY_OAK_SAVANNA":         0.09,
     "KARST_BARRENS":           0.35,   # S70-f2 was 0.20 — user wants higher bush ratio post-walk; clustering still applies
-    "BIRCH_FOREST":            0.30,   # S71 was 0.20 — denser tree cover per user walk
+    "BIRCH_FOREST":            0.36,   # S81 v8.9: 0.30 → 0.36 — slightly denser per user walk
     "EASTERN_TEMPERATE_COAST": 0.06,
     "MIXED_FOREST":            0.22,
     "CONTINENTAL_STEPPE":      0.0005,  # S71-3 was 0.001 — user wants almost zero trees, intense grassland

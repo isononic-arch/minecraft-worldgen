@@ -409,8 +409,16 @@ def _ensure_caches(hr_path: Path) -> None:
     else:
         masks_dir = hr_path.parent
         # ── 1. Skeleton + edges + EDT width from the painted mask ──
+        # S81 v8.4 Issue 3 fix: where painted river overlaps painted lake,
+        # the RIVER carve wins. Painted lakes drawn around / underneath a
+        # painted river were previously preserved at lake water level,
+        # exposing a 1-block higher water surface adjacent to the river
+        # at the junction. Subtracting paint_mask from lake_paint here
+        # means river-painted cells are NOT lake cells — the carver
+        # carves through them and applies river water_y, leaving lake
+        # water only where the user painted lake-only.
         paint_mask = hr_arr == 2
-        lake_paint = hr_arr == 1
+        lake_paint = (hr_arr == 1) & ~paint_mask
         edges, width_8k, skel_8k = _build_river_edges(paint_mask)
         _river_edges_cache = edges
         _river_width_8k_cache = width_8k
@@ -558,14 +566,17 @@ def _rasterize_river_edges_tile(
     #
     # Falls back to the old EDT-cache SDF if no spline (paint missing
     # or splprep failed).
-    _CARVE_MAX_DEPTH = 4.0       # blocks below water at paint center
-    _CARVE_SOFTNESS = 2.5        # blocks of soft transition each side of paint edge (sharper than v8 orig 4.0)
+    _CARVE_MAX_DEPTH = 6.0       # blocks below water at paint center (flat plateau)
+    _CARVE_SOFTNESS = 3.0        # blocks-wide smoothstep transition zone (S81 v8.6: 4 → 3)
     _SDF_SMOOTH_SIGMA_50K = 4.0  # 50k gaussian sigma for SDF smoothing (fallback path)
-    # Positive bias shifts the sigmoid centre INWARD (toward paint interior),
-    # which chokes the carved river below the painted footprint. 0 = water
-    # zone matches paint extent, 2-3 = subtle (gets eaten by soft sigmoid tail),
-    # 5+ = visibly skinnier when paired with sharper SOFTNESS.
-    _CARVE_INWARD_BIAS = 5.0
+    # Smoothstep model: cells with sdf >= INWARD_BIAS get FULL MAX_DEPTH
+    # (flat plateau). Cells with sdf < (INWARD_BIAS - SOFTNESS) get zero.
+    # Smoothstep transition between. S81 v8.6: bias=4, softness=3 — middle
+    # ground between v8.1 (bias=5, soft=2.5, sigmoid) and v8.5 (bias=3,
+    # soft=4, smoothstep). Plateau still wider than v8.4 sigmoid; carved
+    # water boundary closer to paint extent (avoids v8.5's water-over-
+    # banks regression).
+    _CARVE_INWARD_BIAS = 4.0
     paint_smooth_full_50k = None
     flow_50k = np.zeros((tile_size, tile_size), dtype=np.float32)
     carve_depth_50k = None
@@ -599,14 +610,20 @@ def _rasterize_river_edges_tile(
         sdf_blocks = np.where(
             inside_mask_flat, dist_50k_flat, -dist_50k_flat
         ).reshape(tile_size, tile_size).astype(np.float32)
-        # Sigmoid carve depth — smooth transition, no threshold edge,
-        # no 8k-lattice fingerprint. _CARVE_INWARD_BIAS shifts the half-
-        # depth contour inward by N blocks → chokes the visible water by
-        # N on every side without changing paint geometry.
+        # S81 v8.5 Issue 1: SMOOTHSTEP with explicit plateau (replaces
+        # asymptotic sigmoid). Cells with sdf >= INWARD_BIAS get the FULL
+        # MAX_DEPTH carve (flat-bottom trough). Cells with sdf <
+        # (INWARD_BIAS - SOFTNESS) get zero carve. In between is a
+        # smoothstep cubic: 3t² - 2t³. Result: most of the river width
+        # is at full depth instead of asymptotic-tapered.
+        # Sigmoid never reached MAX (only ~88% at sdf = bias + 2σ).
+        # Smoothstep with clip plateaus at MAX exactly when sdf >= bias.
+        _t_norm = np.clip(
+            (sdf_blocks - (_CARVE_INWARD_BIAS - _CARVE_SOFTNESS)) / _CARVE_SOFTNESS,
+            0.0, 1.0,
+        )
         carve_depth_50k = (
-            _CARVE_MAX_DEPTH
-            / (1.0 + np.exp(
-                -(sdf_blocks - _CARVE_INWARD_BIAS) / _CARVE_SOFTNESS))
+            _CARVE_MAX_DEPTH * _t_norm * _t_norm * (3.0 - 2.0 * _t_norm)
         )
         paint_eroded_50k = carve_depth_50k > 0.5
         paint_smooth_full_50k = paint_eroded_50k.copy()
@@ -634,10 +651,13 @@ def _rasterize_river_edges_tile(
                       mode="constant", cval=-1e6)
         sdf_50k = _gf_50k(sdf_50k, sigma=_SDF_SMOOTH_SIGMA_50K)
         sdf_blocks = sdf_50k * scale  # 8k pixels → MC blocks
+        # S81 v8.5: smoothstep with explicit plateau (matches spline branch).
+        _t_norm_fb = np.clip(
+            (sdf_blocks - (_CARVE_INWARD_BIAS - _CARVE_SOFTNESS)) / _CARVE_SOFTNESS,
+            0.0, 1.0,
+        )
         carve_depth_50k = (
-            _CARVE_MAX_DEPTH
-            / (1.0 + np.exp(
-                -(sdf_blocks - _CARVE_INWARD_BIAS) / _CARVE_SOFTNESS))
+            _CARVE_MAX_DEPTH * _t_norm_fb * _t_norm_fb * (3.0 - 2.0 * _t_norm_fb)
         )
         paint_eroded_50k = carve_depth_50k > 0.5
         paint_smooth_full_50k = paint_eroded_50k.copy()

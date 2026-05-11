@@ -695,6 +695,22 @@ def build_column_array(
     c_idx = np.tile  (np.arange(W, dtype=np.int32), H)   # (H*W,)
     sy_flat   = surface_y.ravel().astype(np.int32)        # (H*W,)
 
+    # S81 v8.5 Issue 4: swap grass_block / podzol / mycelium to dirt for
+    # underwater cells. When the carver drops surface_y below river_water_y,
+    # surface_decorator may have already painted vegetated surface blocks
+    # per biome. They look wrong underwater (e.g. green grass at bottom of
+    # a river). Swap to dirt for natural riverbed appearance.
+    if river_water_y is not None:
+        _underwater_grass_like = (
+            np.isin(surface_blk, ("grass_block", "podzol", "mycelium",
+                                    "moss_block", "rooted_dirt", "coarse_dirt"))
+            & (river_water_y > surface_y)
+            & (river_water_y > SEA_Y)
+        )
+        if _underwater_grass_like.any():
+            surface_blk = surface_blk.copy()
+            surface_blk[_underwater_grass_like] = "dirt"
+
     # Convert string arrays to palette indices
     surf_idx_flat = pal.indices(surface_blk).ravel()
     sub_idx_flat  = pal.indices(sub_blk).ravel()
@@ -745,6 +761,25 @@ def build_column_array(
     )
     if _kill_terrestrial.any():
         ground_cover[_kill_terrestrial] = ""
+    # S81 v8.4 Issue 2: kill ALL ground cover on water-zone cells PLUS a
+    # 1-cell shore buffer. Without this, river-edge cells where water_y
+    # was set in the broad sigmoid footprint but surface didn't drop
+    # below water_y leave grass at sy+1 visually adjacent to the river
+    # surface — looks like grass floating on water from any low angle.
+    # Buffer covers cells just outside the painted footprint that would
+    # otherwise grow vegetation at the visible water surface elevation.
+    if river_water_y is not None:
+        from scipy.ndimage import binary_dilation as _bd_water_buf
+        _water_zone = river_water_y > 0
+        _kill_at_water = _bd_water_buf(_water_zone, iterations=1)
+        if _kill_at_water.any():
+            _kill_terrestrial_water = (
+                (ground_cover != "")
+                & ~np.isin(ground_cover, _water_plants)
+                & _kill_at_water
+            )
+            if _kill_terrestrial_water.any():
+                ground_cover[_kill_terrestrial_water] = ""
     cov_flat = ground_cover.ravel()
 
     # ground cover sy+1 (only where non-empty)

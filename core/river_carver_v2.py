@@ -813,6 +813,19 @@ def carve_rivers(
         from scipy.ndimage import gaussian_filter as _gf
         from scipy.ndimage import label as _label_grav
 
+        # S81 v8.5 Step B: compute skeleton ONCE at the top of section 7
+        # so both the gravity pre-pass (7.1b) AND the EDT propagation (7.5)
+        # operate on the same 1-cell-wide medial axis. Pre-S81 only the EDT
+        # used skeleton (Step A); the gravity pre-pass + 1D path-smoothing
+        # iterated wide-footprint cells which produced the v8.4 "giant
+        # chunks of rising water at curves" — at confluences the wide
+        # gravity sort mixed cells from multiple flow paths.
+        from skimage.morphology import skeletonize as _skel_for_grav
+        _skeleton_mask = _skel_for_grav(river_full_mask)
+        if not _skeleton_mask.any():
+            # Degenerate: small fragments where skeletonize returns empty
+            _skeleton_mask = river_full_mask
+
         # 7.1 — per-centerline width (block half-radius) from ``hydro_width``.
         # Per user directive (S81): paint is the sole source. The legacy
         # Strahler-ORDER_TO_WIDTH lookup table is gone — every painted
@@ -849,6 +862,14 @@ def carve_rivers(
         _gravity_ran = False
         if _ocean_seed.any():
             _dist_from_ocean = distance_transform_edt(~_ocean_seed).astype(np.float32)
+            # S81 v8.6: REVERTED Step B — back to labeling the wide footprint.
+            # Step B (label skeleton) caused triangle-shaped water columns at
+            # confluences: degree-3 skeleton junctions sit in a single
+            # connected component, the 1D path-smoothing argsorts dist_from_ocean
+            # which interleaves cells from converging branches, and gaussian
+            # smoothing then mixes their independent water_y values. Reverting
+            # to wide-mask labeling restores v8.3 behavior at confluences while
+            # Step A's skeleton-EDT (below) still keeps cross-sections uniform.
             _grav_labeled, _grav_n = _label_grav(river_full_mask)
             _gravity_ran = True
             for _grav_iter in range(5):
@@ -909,8 +930,22 @@ def carve_rivers(
             MEANDER_AMP = 0.0
 
         # 7.5 — distance to nearest centerline + propagate per-pixel width
+        # S81 v8.3 Step A: EDT source = SKELETONIZED centerline (1-cell-wide
+        # medial axis), not the wide painted footprint. Pre-S80 WP-findPath
+        # rivers were naturally 1-3 cells wide so EDT-from-full-mask gave
+        # near-uniform per-Voronoi propagation. Painted rivers (S80+) are
+        # 6-12 cells wide → inside-footprint cells got dist=0 and
+        # nearest_idx pointing to themselves, so they inherited per-cell
+        # nearest_avg / slope / width values → broke cross-section water_y
+        # uniformity (~14k uneven cells on (51,53) per memory/diag_water_y).
+        # The S73-v7 comment block at 7.7 documented intent ("centerline
+        # path only"). Implementation now matches the documented intent.
         from scipy.ndimage import distance_transform_edt as _edt_g
-        dist_to_center, ind_center = _edt_g(~river_full_mask, return_indices=True)
+        # S81 v8.5: reuse the skeleton computed at the top of section 7
+        # (Step B). _skeleton_mask is already validated (fallback to
+        # river_full_mask if degenerate).
+        _skel_for_edt = _skeleton_mask
+        dist_to_center, ind_center = _edt_g(~_skel_for_edt, return_indices=True)
         dist_to_center = dist_to_center.astype(np.float32)
         # Preserve indices for plateau-water-y propagation in Section 7.7b.
         # Cost: ~2 MB (H*W*int32*2) — fine for 512x512 tiles.
@@ -1066,64 +1101,47 @@ def carve_rivers(
 
         carve_px = footprint & (cur_y_f > new_y_f)
 
-        # 7.6b — Bank+carve smooth-brush pass (S81 v6: includes footprint).
-        # Heavy multi-pass gaussian blur over a wide zone that NOW INCLUDES
-        # THE CARVE FOOTPRINT itself, not just outside cells. Smooths
-        # both:
-        #   - Bank cells (outside footprint): pulled DOWN toward river
-        #     elevation, eliminating step-then-cliff transitions
-        #   - Carve-edge cells (inside footprint): pulled UP slightly
-        #     toward neighbour levels, smoothing out the discrete
-        #     pixel-aligned step pattern at carve-depth taper boundaries
-        # Per-cell constraints prevent water loss:
-        #   - Footprint cells: surface ≤ water_y - 1 (always 1 block water)
-        #     and ≥ original carved surface (never lower further than
-        #     the carve already did)
-        #   - Bank cells: surface ≤ original (never raise above terrain)
+        # 7.6b — Carve-floor smooth-brush pass (S81 v8.13: FOOTPRINT-ONLY).
+        # PRIOR (v8.5-v8.12): smoothing zone was BANK_ZONE=24 blocks wide,
+        # including bank cells outside the footprint. The gaussian's
+        # kernel reached into the carved (low) river floor and pulled
+        # bank cells DOWN, creating an artificial valley dip that the
+        # later run_pipeline.py escape-fix + EDT berm couldn't fully
+        # restore (berm only reaches BERM_RADIUS=8 with 1/cell falloff,
+        # but the smooth-brush valley extended out to 24 cells).
+        # Visible result: a 1-cell wall at water sticking up out of a
+        # smoothed-down valley — user feedback "trench wall higher than
+        # the soft valley around it".
+        # NEW: smoothing applies ONLY to footprint cells (inside the
+        # trench, where water is). Bank cells stay at natural Y.
+        # Footprint cells still get constrained to [original_carved,
+        # water_y - 1] so the smoothing only affects the carve-floor
+        # taper pattern, not the depth itself. Bank shaping is now
+        # entirely the responsibility of run_pipeline's escape-fix
+        # (1-cell wall at water_y) + EDT berm (1/cell slope to 8 cells
+        # out, then natural terrain).
         from scipy.ndimage import binary_dilation as _bd_shore
-        from scipy.ndimage import distance_transform_edt as _edt_bank
         from scipy.ndimage import gaussian_filter as _gf_bank
-        BANK_ZONE = 24       # blocks of smoothing zone (incl. footprint)
         BANK_SIGMA = 16.0    # gaussian sigma — WorldEdit-style
         BANK_PASSES = 3      # iterate the blur 3× for cumulative effect
         if footprint.any():
             sy_f_bank = surface_out.astype(np.float32)
-            dist_from_fp = _edt_bank(~footprint).astype(np.float32)
-            # Zone now INCLUDES the footprint (dist >= 0, no >0 gate)
-            in_zone = (
-                (dist_from_fp <= BANK_ZONE)
-                & above_sea
-                & ~lake_mask
-            )
+            in_zone = footprint & above_sea & ~lake_mask
             if in_zone.any():
-                # Weight: 1 at the footprint boundary and inside; fades
-                # to 0 at BANK_ZONE blocks outside. Linear taper.
-                w_bank = np.clip(
-                    1.0 - dist_from_fp / float(BANK_ZONE), 0.0, 1.0
-                ).astype(np.float32)
-                w_bank[~in_zone] = 0.0
+                # Weight: 1 inside footprint, 0 outside. Hard mask.
+                w_bank = in_zone.astype(np.float32)
                 cur = sy_f_bank.copy()
                 for _bp in range(BANK_PASSES):
                     blurred_bank = _gf_bank(cur, sigma=BANK_SIGMA)
                     cur = (w_bank * blurred_bank
                            + (1.0 - w_bank) * cur)
-                # Apply per-cell constraints to preserve water visibility:
-                # 1. Footprint cells: cap at water_y - 1 (water visible),
-                #    floor at original (don't carve deeper than the
-                #    sigmoid carve already did).
-                # 2. Bank cells: cap at original (never raise terrain).
+                # Constraint: footprint cells capped at water_y - 1
+                # (water visible) and floored at original carved surface
+                # (smoothing can pull up but never carve deeper).
                 final = cur.copy()
-                fp_cells = footprint & in_zone
-                bank_cells = ~footprint & in_zone
-                if fp_cells.any():
-                    cap = (water_y - 1.0).astype(np.float32)
-                    final[fp_cells] = np.minimum(
-                        final[fp_cells], cap[fp_cells])
-                    final[fp_cells] = np.maximum(
-                        final[fp_cells], sy_f_bank[fp_cells])
-                if bank_cells.any():
-                    final[bank_cells] = np.minimum(
-                        final[bank_cells], sy_f_bank[bank_cells])
+                cap = (water_y - 1.0).astype(np.float32)
+                final[in_zone] = np.minimum(final[in_zone], cap[in_zone])
+                final[in_zone] = np.maximum(final[in_zone], sy_f_bank[in_zone])
                 # Apply where the result actually changes the cell.
                 changed = in_zone & (np.abs(final - sy_f_bank) > 0.5)
                 if changed.any():
