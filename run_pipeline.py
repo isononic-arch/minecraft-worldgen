@@ -214,6 +214,8 @@ def _process_tile(args: dict) -> dict:
         hydro_lake_wl  = masks.get("hydro_lake_wl"),
         hydro_centerline = masks.get("hydro_centerline"),
         height_norm    = masks["height"],
+        hydro_river_bed = masks.get("hydro_river_bed"),  # S83 v8 global bed
+        hydro_river_water_y = masks.get("hydro_river_water_y"),  # S83 v9 global water_y
         masks_dir      = masks_dir,
         tile_x         = tile_x,
         tile_z         = tile_y,
@@ -549,28 +551,299 @@ def _process_tile(args: dict) -> dict:
         # cascade water down to it. Raising the neighbor's terrain to the
         # water level (or higher) blocks the cascade.
         #
-        # Implementation:
-        #   For each cell with water_y > 0 (river or lake water):
-        #     Get max water_y in a 3x3 neighborhood
-        #     If ANY cell in tile has surface_y < that max water_y AND
-        #        is not itself a water cell at that level, raise its
-        #        surface_y.
-        #   Iterate up to N times until no further changes (typically
-        #   converges in 2-3 iterations).
+        # === S82 ITEM #1: TILE-BOUNDARY PADDING ===
+        # Run the escape-fix + EDT berm + v8.14 cap passes on PADDED
+        # arrays (inner h×w + _PAD pixels of neighbor data on each side).
+        # Without padding, scipy's gaussian / maximum / minimum filters
+        # reflect or zero-fill past the tile boundary, and EDT computes
+        # distance only within the tile — so a water cell 1 cell across
+        # a tile boundary looks "infinitely far" to the inner edge cell,
+        # producing a harsh single-X seam at every tile boundary.
         #
-        # Edge cases handled by the iterative form:
-        #   - Lake wall thickness scales naturally with how far terrain
-        #     dips. A 3-block-thick wall isn't hardcoded; it's whatever
-        #     it takes to contain the water.
-        #   - River bank leaks: bank-smooth pass may have dropped a bank
-        #     cell below water; this pass raises it back.
-        #   - River-lake junction: same containment invariant applies
-        #     uniformly — no special case needed.
+        # Pad inputs (inner = computed in-memory, outer = approximation):
+        #   pre_carve_y_pad: from height.tif at padded coords → LUT → MC Y
+        #   surface_y_pad:   copy of pre_carve_y_pad (no carve in pad
+        #                    is acceptable since we discard pad output)
+        #   river_water_y_pad: -999 default. Painted-lake (hydro_region.png
+        #                    id=1) → precompute lake_wl in MC Y. Painted-
+        #                    river (id=2) → pre_carve_y - 1 (rough).
+        #   river_meta-like (river_cells_pad / lake_mask_pad): from
+        #                    painted ids 1/2 in pad region.
+        # Inner h×w of every pad array is then overwritten with the
+        # authoritative computed values before the passes run.
+        #
+        # After all 3 passes, crop pad arrays back to the inner h×w and
+        # write surface_y / river_water_y in place. The escape-fix /
+        # berm modifications inside the pad region itself are discarded
+        # (they only existed to inform inner-edge behaviour).
+        _PAD = 48
+        _H, _W = surface_y.shape
+        _PH = _H + 2 * _PAD
+        _PW = _W + 2 * _PAD
+
+        # Read height + hydro_lake_wl at padded coords (rasterio Window).
+        _padded_masks_io = core_tile_stream.read_tile(
+            masks_dir   = masks_dir,
+            col_off     = col_off,
+            row_off     = row_off,
+            width       = w,
+            height      = h,
+            pad_px      = _PAD,
+            mask_subset = ("height", "hydro_lake_wl"),
+        )
+        _height_pad_norm = _padded_masks_io["height"]
+        _lake_wl_pad_norm = _padded_masks_io.get("hydro_lake_wl")
+        if _lake_wl_pad_norm is None:
+            _lake_wl_pad_norm = np.zeros((_PH, _PW), dtype=np.float32)
+
+        # LUT from raw uint16 height → MC Y (matches column_generator).
+        _LUT_GAEA_IN  = np.array([0, 17050, 45000, 65496], dtype=np.float64)
+        _LUT_MC_Y_OUT = np.array([-64, 63, 200, 448], dtype=np.float64)
+        _height_raw_pad = (_height_pad_norm * 65535.0).astype(np.float64)
+        _pre_carve_pad = np.clip(
+            np.interp(_height_raw_pad, _LUT_GAEA_IN, _LUT_MC_Y_OUT),
+            core_col_gen.MC_Y_MIN + 4, core_col_gen.MC_Y_MAX - 1,
+        ).astype(np.int16)
+        # Overwrite inner with the authoritative pre_carve_y (which
+        # includes ocean-depth correction + dune offset from
+        # generate_columns — those don't matter for the river/lake
+        # cells the cap touches, but be exact where we can).
+        _pre_carve_pad[_PAD:_PAD + _H, _PAD:_PAD + _W] = pre_carve_y
+
+        # Lake water_y in MC Y space for the pad region (same spline
+        # used at line ~447 above for inner lake_water_levels). Cells
+        # with no lake (lake_wl_norm == 0) produce wl_mc < SEA_LEVEL
+        # after interpolation, which we treat as "no water" below.
+        _lake_wl_mc_pad = np.interp(
+            (_lake_wl_pad_norm * 65535.0).ravel(),
+            _LUT_GAEA_IN, _LUT_MC_Y_OUT
+        ).reshape(_lake_wl_pad_norm.shape).astype(np.float32)
+
+        # Read hydro_region.png at 8k, nearest-sample onto padded 50k coords
+        # so we know which pad cells are painted-river / painted-lake.
+        _hr_path = masks_dir / "hydro_region.png"
+        _paint_river_pad = np.zeros((_PH, _PW), dtype=bool)
+        _paint_lake_pad = np.zeros((_PH, _PW), dtype=bool)
+        if _hr_path.exists():
+            try:
+                from PIL import Image as _PILImg
+                _hr_arr8k = np.asarray(
+                    _PILImg.open(_hr_path).convert("L"), dtype=np.uint8
+                )
+                if _hr_arr8k.shape == (8192, 8192):
+                    _S_50K_TO_8K = 8192.0 / 50000.0
+                    _ys_pad = np.arange(_PH) + (row_off - _PAD)
+                    _xs_pad = np.arange(_PW) + (col_off - _PAD)
+                    _ys8 = np.clip(
+                        (_ys_pad * _S_50K_TO_8K).astype(np.int32), 0, 8191
+                    )
+                    _xs8 = np.clip(
+                        (_xs_pad * _S_50K_TO_8K).astype(np.int32), 0, 8191
+                    )
+                    _yy_pad, _xx_pad = np.meshgrid(_ys8, _xs8, indexing="ij")
+                    _hr_sampled_pad = _hr_arr8k[_yy_pad, _xx_pad]
+                    _paint_river_pad = (_hr_sampled_pad == 2)
+                    _paint_lake_pad = (_hr_sampled_pad == 1) & ~_paint_river_pad
+            except Exception as _hr_exc:  # noqa: BLE001
+                print(f"[s82_pad] WARN paint sample failed tile=({tile_x},"
+                      f"{tile_y}): {type(_hr_exc).__name__}: {_hr_exc}",
+                      file=sys.stderr, flush=True)
+
+        # surface_y_pad: start from pre_carve, then overwrite inner.
+        _surface_y_pad = _pre_carve_pad.copy()
+        _surface_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W] = surface_y
+
+        # river_water_y_pad: -999 default, painted-lake → lake_wl,
+        # painted-river → pre_carve - 1. Then overwrite inner.
+        _river_water_y_pad = np.full((_PH, _PW), np.int16(-999), dtype=np.int16)
+        _has_lake_wl = _paint_lake_pad & (_lake_wl_mc_pad > core_col_gen.SEA_LEVEL)
+        _river_water_y_pad[_has_lake_wl] = _lake_wl_mc_pad[_has_lake_wl].astype(np.int16)
+        _river_water_y_pad[_paint_river_pad] = (
+            _pre_carve_pad[_paint_river_pad] - np.int16(1)
+        )
+        _river_water_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W] = river_water_y
+
+        # lake_mask_pad: painted-lake in pad, authoritative lake_mask in inner.
+        _lake_mask_pad = _paint_lake_pad.copy()
+        _lake_mask_pad[_PAD:_PAD + _H, _PAD:_PAD + _W] = lake_mask
+
+        # river_cells_pad: painted-river in pad, river_meta in inner.
+        _CHAN_RIVER_CAP = np.uint8(2)
+        _CHAN_STREAM_CAP = np.uint8(1)
+        _river_cells_pad = _paint_river_pad.copy()
+        _river_cells_pad[_PAD:_PAD + _H, _PAD:_PAD + _W] = (
+            (river_meta == _CHAN_RIVER_CAP) | (river_meta == _CHAN_STREAM_CAP)
+        )
+
+        # === S83 v13 PASS 0: CARVE COMPLETION (painted rivers only) ===
+        # User v12 feedback: "the escape prevention surface trough wall
+        # is not moving outwards to adjust to the changed riverbank, so
+        # now there's a 'wall' with water on both sides in the riverbank."
+        #
+        # Root cause: v12's bed-override footprint was widened from
+        # carve_depth > 0.5 to > 0.1 (in core/hydro_region_overlay.py),
+        # extending the carved trough further laterally. The carver
+        # writes water_y_field at all of those cells, BUT some boundary
+        # cells end up with surface_y >= water_y after smoothing pulls
+        # the bed up toward natural terrain. Those cells:
+        #   - have river_water_y > SEA  (so escape-fix treats them as
+        #     "water cells" and never raises surrounding land for them)
+        #   - have surface >= water_y   (so MC shows no water at them)
+        # Result: a dry strip down the middle of where water should be.
+        #
+        # Fix: BEFORE escape-fix runs, scan for cells with water_y > SEA
+        # but surface >= water_y. Lower surface to (water_y - 1) so MC
+        # shows water there. The subsequent escape-fix loop sees a clean
+        # wide water mask and builds its wall at the true outer boundary.
+        #
+        # Gated on _paint_river_pad.any() — only fires for painted-river
+        # tiles. Non-painted (WP-findPath) baseline rivers keep their
+        # v8.14 behavior exactly (zero regression risk).
+        if _paint_river_pad.any():
+            _dry_water_pad = (
+                (_river_water_y_pad > core_col_gen.SEA_LEVEL)
+                & (_surface_y_pad >= _river_water_y_pad)
+                & ~_lake_mask_pad
+            )
+            _n_dry = int(_dry_water_pad.sum())
+            if _n_dry > 0:
+                _surface_y_pad[_dry_water_pad] = (
+                    _river_water_y_pad[_dry_water_pad] - np.int16(1)
+                )
+                print(f"[s83v13] tile=({tile_x},{tile_y}) carve_completion: "
+                      f"lowered {_n_dry} dry-bed-in-water cells",
+                      file=sys.stderr, flush=True)
+
+        # === S83 v16 PASS 0.25: BED MELT AT 50K (painted rivers only) ===
+        # User v15 feedback: "still flat bottoms at small channels" + "harsh
+        # U-shape walls". Diagnosis: the 8k melt gaussian in
+        # core/hydro_region_overlay.py operates on a sub-50k bed cache where
+        # narrow channels (3-5 blocks wide at 50k = sub-pixel at 8k) aren't
+        # represented — so the 8k bed cache has natural-terrain values for
+        # those locations, the carver's np.minimum clamp picks the gravity-
+        # carved floor (sharp smoothstep + flat plateau), and the 8k melt
+        # achieves nothing useful for narrow features.
+        #
+        # Fix: run a 50k weighted gaussian on surface_y at water cells inside
+        # this padded escape-fix block (PAD=48 already handles tile
+        # boundaries). Weighted (water-only) so wide channels mostly average
+        # with their own deep cells (preserves depth); narrow channels get
+        # significant bank contribution through the weighted mean (shallowens
+        # toward the bank, fixing the "bottom out" feel).
+        #
+        # Clamp: bed must stay <= water_y - 1 so water still shows above bed.
+        # Gated on _paint_river_pad.any() — only fires for painted rivers,
+        # zero risk of regression on WP-findPath baseline.
+        if _paint_river_pad.any():
+            from scipy.ndimage import gaussian_filter as _gf_bed_v16
+            _BED_MELT_SIGMA_50K = 2.0  # S83 v17: 4 -> 2; smaller sigma preserves narrow-channel bowl variation
+            _water_mask_bed_v16 = (
+                (_river_water_y_pad > core_col_gen.SEA_LEVEL)
+                & ~_lake_mask_pad
+            )
+            if _water_mask_bed_v16.any():
+                _surface_f_v16 = _surface_y_pad.astype(np.float32)
+                _w_v16 = _water_mask_bed_v16.astype(np.float32)
+                # Weighted gaussian: water cells contribute to water cells
+                # only (numerator) but normalize by gaussian-of-weights
+                # (denominator) so cells near a narrow channel still get
+                # a valid average (just from fewer water neighbors).
+                _num_v16 = _gf_bed_v16(
+                    _surface_f_v16 * _w_v16, sigma=_BED_MELT_SIGMA_50K)
+                _den_v16 = _gf_bed_v16(_w_v16, sigma=_BED_MELT_SIGMA_50K)
+                _eps_v16 = np.float32(1e-6)
+                _bed_smooth_v16 = _num_v16 / (_den_v16 + _eps_v16)
+                # Clamp: bed must stay strictly below water_y at water cells
+                _water_y_f = _river_water_y_pad.astype(np.float32)
+                _bed_smooth_v16 = np.minimum(
+                    _bed_smooth_v16, _water_y_f - 1.0)
+                # Apply only at water cells; everything else unchanged
+                _new_surface_v16 = np.where(
+                    _water_mask_bed_v16,
+                    _bed_smooth_v16,
+                    _surface_f_v16,
+                ).astype(np.float32)
+                # Count cells that meaningfully changed
+                _n_bed_changed = int((
+                    _water_mask_bed_v16
+                    & (np.abs(_new_surface_v16 - _surface_f_v16) > 0.5)
+                ).sum())
+                _surface_y_pad = np.round(_new_surface_v16).astype(np.int16)
+                if _n_bed_changed > 0:
+                    print(f"[s83v16] tile=({tile_x},{tile_y}) "
+                          f"bed_melt_50k: smoothed {_n_bed_changed} water "
+                          f"cells (sigma={_BED_MELT_SIGMA_50K})",
+                          file=sys.stderr, flush=True)
+
+        # === S83 v15 PASS 0.5: BANK SMOOTHING (painted rivers only) ===
+        # User direction: "smooth banks above water". Runs AFTER the
+        # carve-completion pass (so dry-bed-in-water cells are already
+        # corrected) and BEFORE the iterative escape-fix loop (so the
+        # wall builder sees the smoothed bank silhouette).
+        #
+        # Approach: weighted gaussian on surface_y, weighted on cells that
+        # are LAND (river_water_y < 0) AND within N blocks of river water.
+        # Gaussian averages with bed cells (lower) and other bank cells
+        # (similar), pulling the bank near water DOWN toward water level.
+        # Clamps:
+        #   - Never below SEA_LEVEL (don't carve into ocean territory)
+        #   - Never below nearest water_y (don't sink land below water,
+        #     which would just trigger escape-fix to raise it back)
+        #   - Never above natural pre_carve_y (preserves natural bank
+        #     silhouette where smoothing's averaging would otherwise raise)
+        if _paint_river_pad.any():
+            from scipy.ndimage import gaussian_filter as _gf_bank_v15
+            from scipy.ndimage import distance_transform_edt as _edt_bank_v15
+            _BANK_SMOOTH_RADIUS_BLOCKS = 12  # smooth bank cells within 12 of water
+            _BANK_SMOOTH_SIGMA = 4.0          # decently sizeable, not massive
+            _water_mask_bank = (
+                _river_water_y_pad > core_col_gen.SEA_LEVEL)
+            if _water_mask_bank.any():
+                _dist_water_bank, _water_idx_bank = _edt_bank_v15(
+                    ~_water_mask_bank, return_indices=True)
+                _is_land_bank = _river_water_y_pad < 0
+                _bank_zone = (
+                    _is_land_bank
+                    & (_dist_water_bank <= _BANK_SMOOTH_RADIUS_BLOCKS)
+                )
+                if _bank_zone.any():
+                    _surface_f = _surface_y_pad.astype(np.float32)
+                    _surface_smoothed = _gf_bank_v15(
+                        _surface_f, sigma=_BANK_SMOOTH_SIGMA)
+                    # Nearest water_y for clamp lower bound
+                    _nearest_wy_bank = _river_water_y_pad[
+                        _water_idx_bank[0], _water_idx_bank[1]
+                    ].astype(np.float32)
+                    # Build target: only LOWER (gaussian-smoothed) at bank cells
+                    _bank_target = np.minimum(_surface_smoothed, _surface_f)
+                    # Clamp: never below nearest water level
+                    _bank_target = np.maximum(_bank_target, _nearest_wy_bank)
+                    # Clamp: never below SEA_LEVEL
+                    _bank_target = np.maximum(
+                        _bank_target,
+                        np.float32(core_col_gen.SEA_LEVEL))
+                    # Apply only at bank zone cells
+                    _new_surface_bank = np.where(
+                        _bank_zone, _bank_target, _surface_f
+                    ).astype(np.float32)
+                    _n_bank_changed = int((
+                        _bank_zone & (_new_surface_bank < _surface_f - 0.5)
+                    ).sum())
+                    _surface_y_pad = np.round(
+                        _new_surface_bank).astype(np.int16)
+                    if _n_bank_changed > 0:
+                        print(f"[s83v15] tile=({tile_x},{tile_y}) "
+                              f"bank_smooth: lowered {_n_bank_changed} "
+                              f"bank cells (sigma={_BANK_SMOOTH_SIGMA}, "
+                              f"radius={_BANK_SMOOTH_RADIUS_BLOCKS}b)",
+                              file=sys.stderr, flush=True)
+
+        # ── Pass 1: escape-fix on padded ──
         from scipy.ndimage import maximum_filter as _maxf_escape
         from scipy.ndimage import distance_transform_edt as _edt_berm
         # Treat -999 (no water) as 0 so it doesn't dominate the max.
-        _water_y_positive = np.where(
-            river_water_y > 0, river_water_y, np.int16(0)
+        _water_y_positive_pad = np.where(
+            _river_water_y_pad > 0, _river_water_y_pad, np.int16(0)
         ).astype(np.int16)
         # S81 v8.8 fix for "lake terrace blocks flow at junction":
         # The escape-fix only raises LAND cells (river_water_y < 0).
@@ -582,125 +855,96 @@ def _process_tile(args: dict) -> dict:
         # creating a dam at the lake-river junction that prevented
         # flow.
         for _escape_iter in range(5):
-            _nbr_max_wy = _maxf_escape(_water_y_positive, size=3)
-            _leak_cells = (
-                (surface_y < _nbr_max_wy)
-                & (_nbr_max_wy > core_col_gen.SEA_LEVEL)
-                & (river_water_y < 0)  # land only
+            _nbr_max_wy_pad = _maxf_escape(_water_y_positive_pad, size=3)
+            _leak_cells_pad = (
+                (_surface_y_pad < _nbr_max_wy_pad)
+                & (_nbr_max_wy_pad > core_col_gen.SEA_LEVEL)
+                & (_river_water_y_pad < 0)  # land only
             )
-            if not _leak_cells.any():
+            if not _leak_cells_pad.any():
                 break
-            surface_y[_leak_cells] = _nbr_max_wy[_leak_cells]
+            _surface_y_pad[_leak_cells_pad] = _nbr_max_wy_pad[_leak_cells_pad]
 
-        # S81 v8.8: EDT-based smooth-slope berm. (v8.9 shift reverted —
-        # `dist - 1` formula caused a major regression: rivers in the
-        # middle of the 3×3 didn't connect to the lake and looked
-        # missing. Reverted to v8.8's `dist` formula.) Slope:
-        #   dist=1 → water_y - 1
-        #   dist=2 → water_y - 2
-        #   ...
-        #   dist=8 → water_y - 8
+        # ── Pass 2: EDT berm on padded ──
+        # S81 v8.8: EDT-based smooth-slope berm. Slope:
+        #   dist=1 → water_y - 1, dist=2 → water_y - 2, … dist=8 → water_y - 8
         # The escape-fix above already pinned dist=1 to water_y; this
         # berm only raises cells beyond that.
         BERM_RADIUS = 8
-        _water_mask_for_berm = (river_water_y > core_col_gen.SEA_LEVEL)
-        if _water_mask_for_berm.any():
-            _dist_from_water, _water_idx = _edt_berm(
-                ~_water_mask_for_berm, return_indices=True
+        _water_mask_for_berm_pad = (_river_water_y_pad > core_col_gen.SEA_LEVEL)
+        if _water_mask_for_berm_pad.any():
+            _dist_from_water_pad, _water_idx_pad = _edt_berm(
+                ~_water_mask_for_berm_pad, return_indices=True
             )
-            _nearest_water_y = river_water_y[_water_idx[0], _water_idx[1]]
-            _berm_target = (
-                _nearest_water_y.astype(np.int16)
-                - _dist_from_water.astype(np.int16)
+            _nearest_water_y_pad = _river_water_y_pad[
+                _water_idx_pad[0], _water_idx_pad[1]
+            ]
+            _berm_target_pad = (
+                _nearest_water_y_pad.astype(np.int16)
+                - _dist_from_water_pad.astype(np.int16)
             )
-            _need_berm = (
-                (surface_y < _berm_target)
-                & (_berm_target > core_col_gen.SEA_LEVEL)
-                & (river_water_y < 0)
-                & (_dist_from_water <= BERM_RADIUS)
+            _need_berm_pad = (
+                (_surface_y_pad < _berm_target_pad)
+                & (_berm_target_pad > core_col_gen.SEA_LEVEL)
+                & (_river_water_y_pad < 0)
+                & (_dist_from_water_pad <= BERM_RADIUS)
             )
-            if _need_berm.any():
-                surface_y[_need_berm] = _berm_target[_need_berm]
+            if _need_berm_pad.any():
+                _surface_y_pad[_need_berm_pad] = _berm_target_pad[_need_berm_pad]
 
-        # S81 v8.14: FINAL WATER-LEVEL CLEANUP.
-        # Rule (user-requested final pass): in rivers, water_y must NEVER
-        # be at or above the adjacent NON-CARVED (pre_carve_y) bank
-        # elevation. The v8.12 BLEND raises river_water_y near lakes so
-        # the cascade is visually connected — but the raise can put
-        # river water_y AT or ABOVE the natural bank, making escape-fix
-        # raise the bank artificially (the "1-cell wall sticking up out
-        # of the land" look). This pass lowers river_water_y back below
-        # natural bank everywhere it would spill.
-        #
-        # Implementation:
-        #   1. min_bank_3x3 = minimum_filter of pre_carve_y over a 3x3
-        #      neighborhood, masking out river cells with HIGH so they
-        #      don't contribute to the min. Gives the lowest natural
-        #      adjacent bank for each cell.
-        #   2. For interior cells of wide rivers (no bank in 3x3),
-        #      propagate the cap from the nearest edge cell via EDT.
-        #      Wide rivers get a uniform cap per cross-section.
-        #   3. Lower river_water_y to (min_bank - 1) where currently
-        #      above.
-        #
-        # Trade-off: the BLEND's smooth lake→river cascade collapses
-        # into a sharp visible drop at the lake-river junction (since
-        # river water_y is hard-capped at bank-1, not allowed to gradient
-        # up to lake water_y). This is what user wants — no perched water.
+        # ── Pass 3: v8.14 final water-level cleanup on padded ──
+        # S81 v8.14: in rivers, water_y must NEVER be at or above the
+        # adjacent NON-CARVED (pre_carve_y) bank elevation. The v8.12
+        # BLEND raises river_water_y near lakes for the visual cascade
+        # — but the raise can put river water_y AT or ABOVE the natural
+        # bank, making escape-fix raise the bank artificially (the
+        # "1-cell wall sticking up out of the land" look). This pass
+        # lowers river_water_y back below natural bank everywhere it
+        # would spill, EXCEPT inside the v8.12 BLEND zone (<= 24 blocks
+        # of a lake) where the cascade visual is intentional.
         from scipy.ndimage import minimum_filter as _min_filter_cap
         from scipy.ndimage import distance_transform_edt as _edt_cap_prop
-        # Re-define channel codes locally — CHAN_STREAM is scoped inside
-        # the `if lake_mask.any():` block above and may be unbound on
-        # lake-less tiles.
-        _CHAN_RIVER_CAP = np.uint8(2)
-        _CHAN_STREAM_CAP = np.uint8(1)
-        river_cells_for_cap = (
-            (river_meta == _CHAN_RIVER_CAP) | (river_meta == _CHAN_STREAM_CAP)
-        )
-        if river_cells_for_cap.any():
+        if _river_cells_pad.any():
             _HIGH_CAP = np.int16(10000)
-            _masked_bank = np.where(
-                river_cells_for_cap,
+            _masked_bank_pad = np.where(
+                _river_cells_pad,
                 _HIGH_CAP,
-                pre_carve_y,
+                _pre_carve_pad,
             ).astype(np.int16)
-            _min_bank_3x3 = _min_filter_cap(_masked_bank, size=3)
-            _edge_with_bank = (
-                river_cells_for_cap
-                & (_min_bank_3x3 < _HIGH_CAP // 2)
+            _min_bank_3x3_pad = _min_filter_cap(_masked_bank_pad, size=3)
+            _edge_with_bank_pad = (
+                _river_cells_pad
+                & (_min_bank_3x3_pad < _HIGH_CAP // 2)
             )
-            if _edge_with_bank.any():
-                # Propagate edge cap into wide-river interior via EDT
-                _, _edge_idx = _edt_cap_prop(
-                    ~_edge_with_bank, return_indices=True
+            if _edge_with_bank_pad.any():
+                _, _edge_idx_pad = _edt_cap_prop(
+                    ~_edge_with_bank_pad, return_indices=True
                 )
-                _propagated_cap = (_min_bank_3x3 - np.int16(1))[
-                    _edge_idx[0], _edge_idx[1]
+                _propagated_cap_pad = (_min_bank_3x3_pad - np.int16(1))[
+                    _edge_idx_pad[0], _edge_idx_pad[1]
                 ]
-                # EXCEPTION: preserve BLEND-affected cells (within 24
-                # blocks of a lake — the v8.12 BLEND_DIST). The BLEND
-                # intentionally raises river_water_y toward lake water_y
-                # for the visual cascade — capping those would collapse
-                # the cascade into a hard step at the lake-river
-                # junction. (Hardcoded 24 here matches the BLEND_DIST
-                # constant inside the `if lake_mask.any()` block above
-                # — keep them in sync.)
                 _BLEND_PROTECT_DIST = 24
-                if lake_mask.any():
-                    _dist_from_lake_cap = _edt_cap_prop(~lake_mask)
-                    _is_blend_cell = (_dist_from_lake_cap <= _BLEND_PROTECT_DIST)
-                else:
-                    _is_blend_cell = np.zeros_like(
-                        river_cells_for_cap, dtype=bool
+                if _lake_mask_pad.any():
+                    _dist_from_lake_cap_pad = _edt_cap_prop(~_lake_mask_pad)
+                    _is_blend_cell_pad = (
+                        _dist_from_lake_cap_pad <= _BLEND_PROTECT_DIST
                     )
-                _too_high = (
-                    river_cells_for_cap
-                    & (river_water_y > _propagated_cap)
-                    & (_propagated_cap > core_col_gen.SEA_LEVEL)
-                    & ~_is_blend_cell
+                else:
+                    _is_blend_cell_pad = np.zeros_like(
+                        _river_cells_pad, dtype=bool
+                    )
+                _too_high_pad = (
+                    _river_cells_pad
+                    & (_river_water_y_pad > _propagated_cap_pad)
+                    & (_propagated_cap_pad > core_col_gen.SEA_LEVEL)
+                    & ~_is_blend_cell_pad
                 )
-                if _too_high.any():
-                    river_water_y[_too_high] = _propagated_cap[_too_high]
+                if _too_high_pad.any():
+                    _river_water_y_pad[_too_high_pad] = _propagated_cap_pad[_too_high_pad]
+
+        # ── Crop padded results back to inner tile ──
+        surface_y[:, :] = _surface_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W]
+        river_water_y[:, :] = _river_water_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W]
 
         core_chunk.write_tile(
             surface_y    = surface_y,

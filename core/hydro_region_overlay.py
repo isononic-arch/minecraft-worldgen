@@ -71,6 +71,122 @@ _lake_mask_cache: np.ndarray | None = None
 # add Hack's-law width on top of the EDT-derived paint width. Direction is
 # inferred from terrain elevation along the skeleton.
 _flow_accum_8k_cache: np.ndarray | None = None
+
+# S83 v8: carve tunables (module-level so _ensure_caches can use them in
+# global bed precompute and _rasterize_river_edges_tile uses same values).
+_CARVE_MAX_DEPTH = 6.0        # S83 v17: now only used as compatibility constant
+                              # (legacy print stat); the actual carve uses
+                              # _DEPTH_POWER_SCALE * sdf^_DEPTH_POWER_EXPONENT
+                              # (no plateau, no cap, lake-bowl-style profile)
+_CARVE_SOFTNESS = 3.0         # S83 v17: kept for legacy code paths but unused by new power-curve carve
+_CARVE_INWARD_BIAS = 4.0      # S83 v17: kept for legacy code paths but unused by new power-curve carve
+
+# S83 v17: POWER-CURVE CARVE — lake-bowl-style depth profile.
+# User feedback on v16: "Now it's a trench and it should be a bowl. Let's
+# redo what's under water and make it match much more closely to how depth
+# works in the lake."
+# Replaces smoothstep + plateau + linear with a single soft monotonic curve.
+# depth = SCALE * sdf^POWER. No plateau, no hard cap.
+# Examples with SCALE=2.0, POWER=0.7:
+#   SDF=0.5 (5-block channel edge):   depth = 1.2
+#   SDF=2.5 (5-block channel center): depth = 4.0
+#   SDF=10 (medium river center):     depth = 10.0
+#   SDF=30 (wide river center):       depth = 20.6
+# POWER < 1 is sublinear (soft start, doesn't blow up at wide rivers).
+# Geomorphically: real rivers follow D ~ W^0.6-0.8 (Hack's law-ish).
+_DEPTH_POWER_SCALE = 2.0
+_DEPTH_POWER_EXPONENT = 0.7
+_RIVER_BED_GAUSS_SIGMA_8K = 4.0  # gaussian sigma for global bed smooth at 8k
+                                  # (≈ σ=24 at 50k, matches per-tile σ=16×3-pass)
+# S83 v11: WorldEdit //brush smooth ×5 equivalent applied to the trough
+# surface AFTER the initial σ=4 bed smooth. User feedback on v8c3:
+# "weird, big chunks, as if there were rectangular prisms stuck into the
+# walls of the river trough". Five additional weighted gaussian passes at
+# σ=2 (≈12 blocks at 50k) inside the footprint round those anomalies into
+# a continuous trough surface. Same architecture as the carver's per-tile
+# bank smooth-brush (BANK_SIGMA=16 × BANK_PASSES=3) but global at 8k.
+_RIVER_TROUGH_SMOOTH_PASSES = 5
+_RIVER_TROUGH_SMOOTH_SIGMA_8K = 2.0
+# S83 v11: gentle bank gaussian on a 2-cell ring OUTSIDE the footprint.
+# Smooths terrain just outside the trough wall so banks flow more
+# gradually into the river — eliminates 1-2 block bank anomalies without
+# pulling banks toward bed elevation. Operates on the LUT(height) values
+# of bank cells only; footprint cells already contain smoothed bed and
+# are protected by the weighted gaussian's mask.
+_BANK_RING_RADIUS_8K = 2
+_BANK_RING_GAUSS_SIGMA_8K = 0.7
+# S83 v11: invariant guard — widen the bed override slightly so the
+# trough wall sits FURTHER from the centerline than the widest water cell.
+# The water_y_field gate uses water_zone (footprint & ~lake). If footprint
+# extends past the visible water boundary, every water cell has a clean
+# bed below it AND its lateral neighbor is in the trough as well. This is
+# a small extra-cell bias (1.0 of SDF SOFTNESS); raise if visible bank
+# poking-through returns.
+_TROUGH_EXPAND_BIAS_8K = 1.0  # in 8k pixels (~6 50k blocks)
+
+# S83 v15: LINEAR PAST PLATEAU (replaces v14 bowl bonus).
+# User direction: "get rid of the max depth so it can be any depth".
+# After the smoothstep ramps depth from 0 to MAX over SDF [0, INWARD_BIAS],
+# depth continues to grow LINEARLY with SDF past the plateau — UNCAPPED.
+# Final depth at center scales with channel width:
+#   30-block river (half-width=15): depth = 6 + (15-4)*0.5 = 11.5
+#   60-block river (half-width=30): depth = 6 + (30-4)*0.5 = 19
+#   100-block river (half-width=50): depth = 6 + (50-4)*0.5 = 29
+# The MELT GAUSSIAN downstream tames these into a smooth "melted" profile.
+_DEPTH_LINEAR_RATE = 0.5      # blocks of extra depth per block of SDF past plateau
+
+# S83 v15: MELT GAUSSIAN — VoxelSniper /b e smooth style.
+# After all bed processing (smoothing + geomorph + bowl-linear-past-plateau
+# + bank-asym), apply a moderate gaussian to the full bed cache to give
+# the river a "melted" look. Bbox-optimized to avoid OOM.
+_MELT_GAUSSIAN_SIGMA_8K = 4.0  # ~24 blocks at 50k; "decently sizeable, not massive"
+
+# ─── S83 v12: REAL-RIVER GEOMORPHOLOGY ────────────────────────────────
+# User direction (after v11): make the bed asymmetric like a real
+# meandering river. At each meander bend the OUTSIDE (cut bank) is
+# deeper and the INSIDE (point bar) is shallower. Also overlay
+# bedform texture + riffle-pool sequence along the flow direction.
+#
+# Implementation uses the spline-polygon vector representation (already
+# computed at 50k subpixel precision in `_build_spline_outline_50k`):
+#   - tangent t̂ at each polygon point via finite difference along the
+#     polygon (smoothed with σ=4 1D gaussian)
+#   - signed curvature κ via dθ/ds (smoothed σ=8)
+#   - cumulative arclength s
+# For each 8k cell in the footprint: nearest polygon point via cKDTree
+# gives κ, s, and a signed perpendicular distance to the outline.
+# Thalweg bias = -κ × perp_dist × scale → outside-of-bend deeper.
+# Bedform + riffle-pool biases = A·sin(2π s / λ).
+#
+# All amplitudes in MC BLOCKS, wavelengths in MC BLOCKS at 50k.
+# Tunables (per user "1=Yes, 2=Yes, 4=Yes; 3=No substrate"):
+_THALWEG_AMP_BLOCKS = 2.5         # max +/- depth offset at typical perp dist (S83 v13 keep)
+_THALWEG_SCALE = 25.0             # kappa x perp_dist multiplier (8k units)
+# Sign of -κ×perp×SCALE depends on: (a) find_contours CCW traversal
+# convention (interior on left), (b) image y-flip, (c) np.unwrap
+# direction. Derivation suggests +1 produces correct cut-bank-deeper
+# behavior; if v12 render shows INVERTED asymmetry (shallow on outside
+# of bend), flip to -1 and re-render — no other code changes needed.
+_THALWEG_SIGN = +1.0
+# Same potential sign issue for bank asymmetry. Tracks _THALWEG_SIGN —
+# if asymmetric banks come out backwards (steep ramp on inside of bend,
+# flat cliff on outside), flip together with _THALWEG_SIGN.
+_BANK_ASYM_SIGN = +1.0
+_BEDFORM_AMP_BLOCKS = 1.2         # texture-scale ripple amplitude (S83 v13: 0.8 -> 1.2)
+_BEDFORM_WAVELEN_BLOCKS = 30.0    # ~bedform scale (sand dunes / ripples)
+_RIFFLE_AMP_BLOCKS = 2.5          # pool-riffle alternation amplitude (S83 v13: 1.5 -> 2.5)
+_RIFFLE_WAVELEN_BLOCKS = 250.0    # ~5-7× channel width = riffle-pool
+# Asymmetric bank ring smoothing: cut bank stays steep (σ small),
+# point bar smooths gently into a ramp (σ larger).
+_BANK_ASYM_SIGMA_POINTBAR_8K = 2.5  # S83 v13: 1.6 -> 2.5; dramatic point-bar ramp
+_BANK_ASYM_SIGMA_CUTBANK_8K = 0.0   # S83 v13: 0.3 -> 0.0; no smoothing = max cliff sharpness
+_BANK_ASYM_RING_RADIUS_8K = 6        # S83 v13: 3 -> 6; ramp extends further inland
+# S83 v12 memory note: bank asymmetry runs two full-8192² gaussian_filter
+# calls + two mask arrays = ~1GB of additional peak memory on top of
+# _ensure_caches's existing ~2GB of 8k float32 intermediates. Gated off
+# by default so v12 can ship the (smaller) geomorph pass without OOM.
+# Set True only when running with one worker AND verifying memory.
+_S83_V12_BANK_ASYM_ENABLED = True   # S83 v13: enabled (bbox-optimized, OOM-safe)
 # S81 v8: spline-fit river outline. Vector representation of the painted
 # river boundary at 50k subpixel precision. Per-tile SDF computation uses
 # these points directly (via cKDTree distance) instead of computing SDF
@@ -78,6 +194,19 @@ _flow_accum_8k_cache: np.ndarray | None = None
 _river_spline_pts_50k_cache: np.ndarray | None = None  # (N, 2) float, [x, y] in 50k coords
 _river_spline_kdtree_cache = None  # scipy.spatial.cKDTree on _river_spline_pts_50k_cache
 _river_spline_polygons_50k_cache: list | None = None  # list of (Mi, 2) arrays for inside-test
+# S83 v8: GLOBAL river bed elevation at 8k (analogous to rebuild_sand_dunes.py's
+# 1:8 global precompute). Per-tile sampling via bilinear → no per-tile gaussian
+# boundary artifacts. Replaces the per-tile bank smooth-brush gaussian which was
+# the visible bed-elevation seam source.
+_river_bed_8k_cache: np.ndarray | None = None  # float32 (8192, 8192) MC Y values
+# S83 v9: GLOBAL river water_y at 8k via skeleton-graph monotonic-descent walk.
+# Same architecture as bed cache but for water-surface elevation. Walks the
+# painted skeleton source→sink (Kahn's topo sort), running-min of LUT(height),
+# then EDT-propagates per-skel water_y to all painted cells. Carver reads this
+# and overrides water_y_field at painted-river cells. Eliminates the 2-block
+# water_y step at tile boundaries (caused by per-tile gravity-walk asymmetry
+# with the lake) without touching lakes or BLEND cascade in run_pipeline.
+_river_water_y_8k_cache: np.ndarray | None = None  # float32 (8192, 8192) MC Y values
 _cache_path: Path | None = None
 
 
@@ -382,12 +511,353 @@ def _build_spline_outline_50k(paint_mask_8k: np.ndarray,
     return (np.concatenate(all_points, axis=0), polygons_50k)
 
 
+def _compute_polygon_geometry(polygons_50k: list):
+    """Compute per-point tangent, signed curvature, cumulative arclength
+    for every spline-polygon point at 8k resolution.
+
+    Returns (pts_yx_8k, tangent_xy_8k, kappa, arclen_8k):
+      - pts_yx_8k: (N, 2) float32 array of [y, x] in 8k pixel coords
+        (suitable for cKDTree)
+      - tangent_xy_8k: (N, 2) float32 array of unit tangents [tx, ty]
+        in 8k pixel coords; smoothed σ=4
+      - kappa: (N,) float32 signed curvature in 1/(8k px); smoothed σ=8
+      - arclen_8k: (N,) float32 cumulative arclength in 8k px,
+        RESETS to 0 at start of each polygon component
+
+    Returns (None, None, None, None) if polygons_50k is empty.
+    """
+    from scipy.ndimage import gaussian_filter1d as _gf1d
+    if not polygons_50k:
+        return None, None, None, None
+    scale_50k_to_8k = _REGION_PX / _WORLD_PX  # ~0.164
+    all_pts_yx = []
+    all_tangent = []
+    all_kappa = []
+    all_arclen = []
+    for poly_50k in polygons_50k:
+        if poly_50k is None or len(poly_50k) < 4:
+            continue
+        # poly_50k is (M, 2) of [x, y] at 50k. Convert to 8k.
+        poly_8k = np.asarray(poly_50k, dtype=np.float64) * scale_50k_to_8k
+        # Spline polygons are CLOSED (start ≈ end). Use 'wrap' mode for
+        # all 1D smoothing so the curve stays continuous around the loop.
+        dx = np.gradient(poly_8k[:, 0])
+        dy = np.gradient(poly_8k[:, 1])
+        ds = np.hypot(dx, dy)
+        ds_safe = np.where(ds < 1e-6, 1e-6, ds)
+        tx = dx / ds_safe
+        ty = dy / ds_safe
+        # Smooth tangents along the curve
+        tx = _gf1d(tx, sigma=4.0, mode='wrap')
+        ty = _gf1d(ty, sigma=4.0, mode='wrap')
+        tm = np.hypot(tx, ty)
+        tm = np.where(tm < 1e-9, 1e-9, tm)
+        tx /= tm
+        ty /= tm
+        # Cumulative arclength (RESET per polygon component)
+        arclen = np.cumsum(ds)
+        # Signed curvature κ = dθ/ds where θ = atan2(ty, tx).
+        theta = np.arctan2(ty, tx)
+        # Unwrap for finite-diff; wrap-mode unwrap not built-in so we
+        # use scipy's standard unwrap which is fine for our scales.
+        theta_uw = np.unwrap(theta)
+        dth = np.gradient(theta_uw)
+        kappa = dth / ds_safe
+        kappa = _gf1d(kappa, sigma=8.0, mode='wrap')
+        # Polygon stored as [x, y]; cKDTree expects [y, x] for consistency
+        # with image array conventions used elsewhere.
+        pts_yx = np.column_stack([poly_8k[:, 1], poly_8k[:, 0]])
+        all_pts_yx.append(pts_yx.astype(np.float32))
+        all_tangent.append(np.column_stack([tx, ty]).astype(np.float32))
+        all_kappa.append(kappa.astype(np.float32))
+        all_arclen.append(arclen.astype(np.float32))
+    if not all_pts_yx:
+        return None, None, None, None
+    return (
+        np.concatenate(all_pts_yx, axis=0),
+        np.concatenate(all_tangent, axis=0),
+        np.concatenate(all_kappa, axis=0),
+        np.concatenate(all_arclen, axis=0),
+    )
+
+
+def _compute_skeleton_arclength_8k(
+    skel_8k: np.ndarray,
+    edges_cache: list,
+):
+    """Walk the painted-river skeleton in arc-order via BFS from each
+    component's degree-1 endpoint. Return (pts_yx, arclen).
+
+    - pts_yx: (N, 2) float32, skeleton cell coords [row, col] for cKDTree
+    - arclen: (N,) float32, cumulative arclength in 8k px from start of
+      component (RESETS to 0 per disconnected component)
+
+    Why this exists (vs polygon-derived arclength): the polygon traces
+    BOTH banks of the river, so two footprint cells at the SAME
+    cross-section but on opposite banks would map to polygon arclengths
+    thousands of blocks apart — producing a cross-channel chessboard
+    pattern in the bedform/riffle-pool sin waves. Walking the
+    SKELETON (1-pixel medial axis) gives a consistent arclength that
+    is identical for both halves of the cross-section.
+
+    Returns (None, None) if skeleton or edges are empty.
+    """
+    from collections import deque
+    if not skel_8k.any() or not edges_cache:
+        return None, None
+    sk_y, sk_x = np.where(skel_8k)
+    n = len(sk_y)
+    if n == 0:
+        return None, None
+    pts_yx = np.column_stack([sk_y, sk_x]).astype(np.float32)
+    # Map cell → linear index for adjacency lookup. Use a DICT not a
+    # full-size 8192² int32 array — that was 256MB and triggered OOM
+    # when stacked on the existing ~2GB of 8k float32 intermediates
+    # in _ensure_caches. Dict with ~100k entries is ~6MB.
+    cell_to_idx = {}
+    for i in range(n):
+        cell_to_idx[(int(sk_y[i]), int(sk_x[i]))] = i
+    adj: list[list[int]] = [[] for _ in range(n)]
+    for y1, x1, y2, x2 in edges_cache:
+        i1 = cell_to_idx.get((int(y1), int(x1)), -1)
+        i2 = cell_to_idx.get((int(y2), int(x2)), -1)
+        if i1 >= 0 and i2 >= 0 and i1 != i2:
+            adj[i1].append(i2)
+            adj[i2].append(i1)
+    arclen = np.full(n, -1.0, dtype=np.float32)
+    # Phase 1: BFS from every degree-1 endpoint (covers most river
+    # components — rivers usually have at least two endpoints).
+    for start in range(n):
+        if arclen[start] >= 0:
+            continue
+        if len(adj[start]) != 1:
+            continue
+        arclen[start] = 0.0
+        q = deque([start])
+        while q:
+            cur = q.popleft()
+            for nxt in adj[cur]:
+                if arclen[nxt] < 0:
+                    dy = pts_yx[nxt, 0] - pts_yx[cur, 0]
+                    dx = pts_yx[nxt, 1] - pts_yx[cur, 1]
+                    d = float(np.hypot(dx, dy))
+                    arclen[nxt] = arclen[cur] + d
+                    q.append(nxt)
+    # Phase 2: any remaining cells (cycles, isolated dots): BFS from
+    # arbitrary unvisited seed. Rare for river skeletons but safe.
+    for start in range(n):
+        if arclen[start] >= 0:
+            continue
+        arclen[start] = 0.0
+        q = deque([start])
+        while q:
+            cur = q.popleft()
+            for nxt in adj[cur]:
+                if arclen[nxt] < 0:
+                    dy = pts_yx[nxt, 0] - pts_yx[cur, 0]
+                    dx = pts_yx[nxt, 1] - pts_yx[cur, 1]
+                    d = float(np.hypot(dx, dy))
+                    arclen[nxt] = arclen[cur] + d
+                    q.append(nxt)
+    return pts_yx, arclen
+
+
+def _apply_river_geomorph_8k(
+    bed_smooth_8k: np.ndarray,
+    footprint_8k: np.ndarray,
+    polygons_50k: list,
+    skel_8k: np.ndarray,
+    edges_cache: list,
+    blocks_per_8k_px: float,
+) -> np.ndarray:
+    """Apply thalweg asymmetry + bedform + riffle-pool biases to the bed
+    cache in-place. Returns the mutated array for chaining.
+
+    Two parameterizations:
+      - POLYGON-based (κ, perp_dist): thalweg asymmetry. The polygon's
+        per-side κ flips sign between banks, but perp_dist is signed
+        consistently (always positive or negative for interior cells),
+        so the PRODUCT -κ×perp gives a CONSISTENT sign across the
+        cross-section. Cut bank gets one sign, point bar gets the
+        other → asymmetric depth offset that's geometrically correct
+        despite polygon walking both banks.
+
+      - SKELETON-based (arclen): bedform + riffle-pool. The skeleton is
+        the medial axis — single point per cross-section — so two cells
+        on opposite banks of the same cross-section map to the SAME
+        arclen. The sin waves are coherent ALONG the channel direction
+        instead of producing a cross-channel chessboard pattern (which
+        is what polygon-arclen would do).
+    """
+    pts_yx_poly, tangent_poly, kappa_poly, _arclen_poly_unused = (
+        _compute_polygon_geometry(polygons_50k))
+    if pts_yx_poly is None or not footprint_8k.any():
+        return bed_smooth_8k
+    try:
+        from scipy.spatial import cKDTree
+    except Exception:
+        return bed_smooth_8k
+    kd_poly = cKDTree(pts_yx_poly)
+    fp_ys, fp_xs = np.where(footprint_8k)
+    query = np.column_stack([fp_ys, fp_xs]).astype(np.float32)
+    _, idx_poly = kd_poly.query(query, k=1)
+
+    # ── Polygon path: thalweg asymmetry ─────────────────────────────
+    rel_y = fp_ys.astype(np.float32) - pts_yx_poly[idx_poly, 0]
+    rel_x = fp_xs.astype(np.float32) - pts_yx_poly[idx_poly, 1]
+    t_x = tangent_poly[idx_poly, 0]
+    t_y = tangent_poly[idx_poly, 1]
+    # Normal: rotation of tangent. Sign convention empirically picked
+    # via _THALWEG_SIGN — flip if thalweg comes out on wrong side.
+    n_y = t_x
+    n_x = -t_y
+    perp_dist_8k = rel_y * n_y + rel_x * n_x  # signed, in 8k px
+    kappa_at = kappa_poly[idx_poly]
+    thalweg_raw = _THALWEG_SIGN * (-kappa_at) * perp_dist_8k
+    thalweg_bias = np.clip(
+        thalweg_raw * np.float32(_THALWEG_SCALE),
+        -_THALWEG_AMP_BLOCKS, _THALWEG_AMP_BLOCKS,
+    )
+
+    # ── Skeleton path: arclength-driven bedform + riffle-pool ───────
+    pts_yx_skel, arclen_skel = _compute_skeleton_arclength_8k(
+        skel_8k, edges_cache)
+    if pts_yx_skel is not None and arclen_skel is not None:
+        kd_skel = cKDTree(pts_yx_skel)
+        _, idx_skel = kd_skel.query(query, k=1)
+        arclen_at = arclen_skel[idx_skel]
+    else:
+        # Fall back to polygon arclength (broken cross-channel pattern,
+        # but harmless for empty/missing skeleton)
+        arclen_at = np.zeros(len(fp_ys), dtype=np.float32)
+
+    # Bedform: short-wavelength ripple along flow
+    lam_bed_8k = _BEDFORM_WAVELEN_BLOCKS / blocks_per_8k_px
+    bedform_bias = _BEDFORM_AMP_BLOCKS * np.sin(
+        2.0 * np.pi * arclen_at / lam_bed_8k)
+
+    # Riffle-pool: long-wavelength alternation (5-7× channel width)
+    lam_rp_8k = _RIFFLE_WAVELEN_BLOCKS / blocks_per_8k_px
+    riffle_bias = _RIFFLE_AMP_BLOCKS * np.sin(
+        2.0 * np.pi * arclen_at / lam_rp_8k)
+
+    total = (thalweg_bias + bedform_bias + riffle_bias).astype(np.float32)
+    # Subtract: positive bias = deeper = lower Y
+    bed_smooth_8k[fp_ys, fp_xs] = (
+        bed_smooth_8k[fp_ys, fp_xs] - total
+    )
+    print(f"[hydro_region_overlay] geomorph applied: "
+          f"thalweg +/-{float(np.abs(thalweg_bias).max()):.2f}b, "
+          f"bedform +/-{_BEDFORM_AMP_BLOCKS}b/lambda={_BEDFORM_WAVELEN_BLOCKS:.0f}, "
+          f"riffle +/-{_RIFFLE_AMP_BLOCKS}b/lambda={_RIFFLE_WAVELEN_BLOCKS:.0f}")
+    return bed_smooth_8k
+
+
+def _apply_asymmetric_bank_smoothing_8k(
+    bed_smooth_8k: np.ndarray,
+    footprint_8k: np.ndarray,
+    polygons_50k: list,
+) -> np.ndarray:
+    """Apply asymmetric bank smoothing: point-bar side (inside of bend)
+    gets a wider sigma for a gentler ramp into the water; cut-bank side
+    (outside of bend) gets a tight sigma so the wall stays steep.
+
+    Operates on an N-cell ring outside the footprint at 8k. Modifies
+    bed_smooth_8k in place at ring cells; returns it for chaining.
+
+    S83 v13: BBox-optimized. Runs the gaussian only on the axis-aligned
+    bounding box of bank-ring cells (with padding for kernel reach),
+    instead of the full 8192x8192. Output is numerically identical to
+    the full-image version because:
+      - gaussian kernel has finite influence (3*sigma cells)
+      - mask is 0 outside ring, so weighted blend is a no-op there
+      - bbox + 3*sigma padding captures all cells that could be
+        influenced
+    Memory: ~10 MB peak instead of ~512 MB-1 GB.
+    """
+    from scipy.ndimage import (
+        binary_dilation as _bd,
+        gaussian_filter as _gf,
+    )
+    pts_yx, tangent, kappa, _arclen = _compute_polygon_geometry(polygons_50k)
+    if pts_yx is None:
+        return bed_smooth_8k
+    try:
+        from scipy.spatial import cKDTree
+    except Exception:
+        return bed_smooth_8k
+    ring = _bd(footprint_8k,
+               iterations=_BANK_ASYM_RING_RADIUS_8K) & ~footprint_8k
+    if not ring.any():
+        return bed_smooth_8k
+    kd = cKDTree(pts_yx)
+    ry, rx = np.where(ring)
+    q = np.column_stack([ry, rx]).astype(np.float32)
+    _, idx = kd.query(q, k=1)
+    rel_y = ry.astype(np.float32) - pts_yx[idx, 0]
+    rel_x = rx.astype(np.float32) - pts_yx[idx, 1]
+    t_x = tangent[idx, 0]
+    t_y = tangent[idx, 1]
+    n_y = t_x
+    n_x = -t_y
+    perp_8k = rel_y * n_y + rel_x * n_x
+    bend = _BANK_ASYM_SIGN * kappa[idx] * perp_8k  # >0 = cut bank, <0 = point bar
+
+    H, W = bed_smooth_8k.shape
+    # Compute bbox of ring cells with padding for kernel reach
+    max_sigma = max(
+        _BANK_ASYM_SIGMA_POINTBAR_8K, _BANK_ASYM_SIGMA_CUTBANK_8K)
+    pad = int(np.ceil(3.0 * max(max_sigma, 0.5))) + 2
+    y_min = max(0, int(ry.min()) - pad)
+    y_max = min(H, int(ry.max()) + 1 + pad)
+    x_min = max(0, int(rx.min()) - pad)
+    x_max = min(W, int(rx.max()) + 1 + pad)
+    # Crop bed and build cropped masks
+    bed_crop = bed_smooth_8k[y_min:y_max, x_min:x_max].copy()
+    ry_crop = ry - y_min
+    rx_crop = rx - x_min
+    pointbar_mask_crop = np.zeros(bed_crop.shape, dtype=np.float32)
+    pointbar_mask_crop[ry_crop, rx_crop] = (bend < 0).astype(np.float32)
+    cutbank_mask_crop = np.zeros(bed_crop.shape, dtype=np.float32)
+    cutbank_mask_crop[ry_crop, rx_crop] = (bend >= 0).astype(np.float32)
+
+    n_pb = int((bend < 0).sum())
+    n_cb = int((bend >= 0).sum())
+
+    # Point bar pass: gaussian smooth, blend at point-bar ring cells.
+    # S83 v13: ring spans 6 cells, sigma=2.5 -> kernel reach ~8 cells.
+    if pointbar_mask_crop.any() and _BANK_ASYM_SIGMA_POINTBAR_8K > 0:
+        bl_crop = _gf(bed_crop, sigma=_BANK_ASYM_SIGMA_POINTBAR_8K)
+        bed_crop = (pointbar_mask_crop * bl_crop
+                    + (1.0 - pointbar_mask_crop) * bed_crop).astype(np.float32)
+
+    # Cut bank pass: with sigma=0 the gaussian is identity, so the
+    # blend equals bed_crop unchanged at all cells. Skip the call.
+    # If a future config sets sigma > 0, restore the same crop blend.
+    if cutbank_mask_crop.any() and _BANK_ASYM_SIGMA_CUTBANK_8K > 0:
+        bl_crop = _gf(bed_crop, sigma=_BANK_ASYM_SIGMA_CUTBANK_8K)
+        bed_crop = (cutbank_mask_crop * bl_crop
+                    + (1.0 - cutbank_mask_crop) * bed_crop).astype(np.float32)
+
+    # Stamp the crop back into the full array
+    bed_smooth_8k[y_min:y_max, x_min:x_max] = bed_crop
+
+    bbox_h = y_max - y_min
+    bbox_w = x_max - x_min
+    print(f"[hydro_region_overlay] bank asymmetry (bbox): "
+          f"point_bar={n_pb} (sigma={_BANK_ASYM_SIGMA_POINTBAR_8K}), "
+          f"cut_bank={n_cb} (sigma={_BANK_ASYM_SIGMA_CUTBANK_8K}), "
+          f"bbox={bbox_h}x{bbox_w} (pad={pad})")
+    return bed_smooth_8k
+
+
 def _ensure_caches(hr_path: Path) -> None:
     global _river_edges_cache, _river_width_8k_cache
     global _paint_smooth_8k_cache, _paint_eroded_8k_cache
     global _lake_mask_cache, _flow_accum_8k_cache, _cache_path
     global _river_spline_pts_50k_cache, _river_spline_kdtree_cache
     global _river_spline_polygons_50k_cache
+    global _river_bed_8k_cache, _river_water_y_8k_cache
     if _cache_path == hr_path:
         return
     from PIL import Image as _PILImage
@@ -467,26 +937,136 @@ def _ensure_caches(hr_path: Path) -> None:
             # build a cKDTree of densely-sampled points for per-tile
             # SDF queries. Eliminates the 8k pixel-quantisation
             # fingerprint that the EDT-based SDF inherited.
+            #
+            # S82 ITEM #2: disk-persisted spline cache.
+            #   The cKDTree + spline points + polygons cost ~10-15 min
+            #   to rebuild per Python process for our paint complexity.
+            #   For a full-world 9409-tile render with 2-4 workers and
+            #   ProcessPoolExecutor (= fresh process per worker, never
+            #   re-used), that's hundreds of redundant rebuilds.
+            #
+            #   Cache the three derived structures to
+            #   ``masks/_spline_cache.pkl`` and reload on subsequent
+            #   process boots when the paint mask, the algorithm
+            #   source, and the meander params all match.
+            #
+            #   Cache key = md5(hydro_region.png bytes)
+            #             + md5(_build_spline_outline_50k source)
+            #             + md5(repr(explicit params dict)).
+            #   Any change to any input invalidates the cache.
+            #
+            #   Atomic write via .tmp + os.replace so a partial pickle
+            #   from a killed process cannot corrupt the cache file
+            #   for other workers reading it.
+            #
+            #   Set env var ``VANDIR_NO_SPLINE_CACHE=1`` to force a
+            #   rebuild + skip-save (debug runs / param-tuning).
+            import hashlib as _hashlib
+            import inspect as _inspect
+            import os as _os
+            import pickle as _pickle
+            _SPLINE_PARAMS = {
+                'smoothness_factor': 3.0,
+                'periodic': True,
+                'periodic_amp_blocks': 6.0,
+                'periodic_wavelength_blocks': 140.0,
+                'phase_distortion_amp_blocks': 350.0,
+                'phase_distortion_wavelength_blocks': 800.0,
+                'micro_amp_blocks': 1.0,
+                'micro_wavelength_blocks': 30.0,
+                'meander_seed': 0xDEADBEEF,
+            }
             try:
-                # smoothness_factor: 1.0 = WorldEdit-smooth-brush feel, 3.0 =
-                # noticeably rounder corners (washes out small contour jaggies),
-                # 5.0+ = aggressive (may over-round sharp meander bends).
-                pts_50k, polygons = _build_spline_outline_50k(
-                    paint_mask, smoothness_factor=3.0)
-                _river_spline_pts_50k_cache = pts_50k
-                _river_spline_polygons_50k_cache = polygons
-                if pts_50k.shape[0] > 0:
-                    from scipy.spatial import cKDTree
-                    _river_spline_kdtree_cache = cKDTree(pts_50k)
-                else:
+                _paint_hash = _hashlib.md5(hr_path.read_bytes()).hexdigest()
+                _code_hash = _hashlib.md5(
+                    _inspect.getsource(_build_spline_outline_50k).encode()
+                ).hexdigest()
+                _params_hash = _hashlib.md5(
+                    repr(sorted(_SPLINE_PARAMS.items())).encode()
+                ).hexdigest()
+                _spline_cache_key = f"{_paint_hash}_{_code_hash}_{_params_hash}"
+            except Exception as _key_exc:
+                _spline_cache_key = None
+                print(f"[hydro_region_overlay] spline cache key build failed: "
+                      f"{type(_key_exc).__name__}: {_key_exc}")
+
+            _spline_cache_disabled = bool(
+                _os.environ.get("VANDIR_NO_SPLINE_CACHE", "")
+            )
+            _spline_cache_path = masks_dir / "_spline_cache.pkl"
+            _loaded_from_disk = False
+            if (
+                not _spline_cache_disabled
+                and _spline_cache_key is not None
+                and _spline_cache_path.exists()
+            ):
+                try:
+                    with open(_spline_cache_path, 'rb') as _f:
+                        _data = _pickle.load(_f)
+                    if _data.get('key') == _spline_cache_key:
+                        _river_spline_pts_50k_cache = _data['pts']
+                        _river_spline_kdtree_cache = _data['kdtree']
+                        _river_spline_polygons_50k_cache = _data['polygons']
+                        _loaded_from_disk = True
+                        print(f"[hydro_region_overlay] spline cache HIT "
+                              f"({_spline_cache_path.name}, "
+                              f"{_river_spline_pts_50k_cache.shape[0]} pts)")
+                except Exception as _load_exc:
+                    print(f"[hydro_region_overlay] spline cache load failed "
+                          f"(rebuilding): {type(_load_exc).__name__}: "
+                          f"{_load_exc}")
+
+            if not _loaded_from_disk:
+                try:
+                    # smoothness_factor: 1.0 = WorldEdit-smooth-brush feel,
+                    # 3.0 = noticeably rounder corners (washes out small
+                    # contour jaggies), 5.0+ = aggressive (may over-round
+                    # sharp meander bends). Other meander kwargs use the
+                    # _build_spline_outline_50k defaults — keep
+                    # _SPLINE_PARAMS above in sync if those change.
+                    pts_50k, polygons = _build_spline_outline_50k(
+                        paint_mask, smoothness_factor=3.0)
+                    _river_spline_pts_50k_cache = pts_50k
+                    _river_spline_polygons_50k_cache = polygons
+                    if pts_50k.shape[0] > 0:
+                        from scipy.spatial import cKDTree
+                        _river_spline_kdtree_cache = cKDTree(pts_50k)
+                    else:
+                        _river_spline_kdtree_cache = None
+                    # Write the cache atomically so a crashed process
+                    # cannot leave a half-written pickle behind. Skip
+                    # save when explicitly disabled or when key build
+                    # failed (we'd rebuild anyway).
+                    if (
+                        not _spline_cache_disabled
+                        and _spline_cache_key is not None
+                    ):
+                        try:
+                            _tmp_path = _spline_cache_path.with_suffix(
+                                '.pkl.tmp'
+                            )
+                            with open(_tmp_path, 'wb') as _f:
+                                _pickle.dump({
+                                    'key': _spline_cache_key,
+                                    'pts': _river_spline_pts_50k_cache,
+                                    'kdtree': _river_spline_kdtree_cache,
+                                    'polygons': _river_spline_polygons_50k_cache,
+                                }, _f, protocol=_pickle.HIGHEST_PROTOCOL)
+                            _os.replace(_tmp_path, _spline_cache_path)
+                            print(f"[hydro_region_overlay] spline cache SAVED "
+                                  f"({_spline_cache_path.name}, "
+                                  f"{pts_50k.shape[0]} pts)")
+                        except Exception as _save_exc:
+                            print(f"[hydro_region_overlay] spline cache save "
+                                  f"failed: {type(_save_exc).__name__}: "
+                                  f"{_save_exc}")
+                except Exception as _spline_exc:
+                    # Robust failure: fall through to old SDF only (no spline).
+                    print(f"[hydro_region_overlay] spline-fit skipped: "
+                          f"{type(_spline_exc).__name__}: {_spline_exc}")
+                    _river_spline_pts_50k_cache = np.zeros((0, 2), dtype=np.float32)
                     _river_spline_kdtree_cache = None
-            except Exception as _spline_exc:
-                # Robust failure: fall through to old SDF only (no spline).
-                print(f"[hydro_region_overlay] spline-fit skipped: "
-                      f"{type(_spline_exc).__name__}: {_spline_exc}")
-                _river_spline_pts_50k_cache = np.zeros((0, 2), dtype=np.float32)
-                _river_spline_kdtree_cache = None
-                _river_spline_polygons_50k_cache = []
+                    _river_spline_polygons_50k_cache = []
         else:
             # Empty paint: large negative SDF everywhere (sigmoid → 0).
             _paint_smooth_8k_cache = np.full(
@@ -497,6 +1077,343 @@ def _ensure_caches(hr_path: Path) -> None:
             _river_spline_kdtree_cache = None
             _river_spline_polygons_50k_cache = []
         _lake_mask_cache = lake_paint
+
+        # ═══════════════════════════════════════════════════════════════
+        # S83 v8: GLOBAL RIVER BED PRECOMPUTE (sand-dunes architecture)
+        # ═══════════════════════════════════════════════════════════════
+        # Compute the smoothed river bed elevation globally at 8k once
+        # here. Per-tile reads sample via bilinear → no per-tile gaussian
+        # boundary artifacts → eliminates the bed-elevation seam at tile
+        # boundaries by construction.
+        #
+        # bed_8k = LUT(height_8k) - carve_depth_8k, smoothed by a weighted
+        # gaussian inside the painted footprint (matches the legacy
+        # per-tile bank smooth-brush which used σ=16 × 3 passes at 50k;
+        # σ=4 at 8k is equivalent in physical extent ≈ 25 blocks).
+        #
+        # Note _paint_smooth_8k_cache here is the SDF in PIXEL units (not
+        # blocks). The smoothstep uses block-scale, so convert via the
+        # 8k→50k pixel-ratio = 50000/8192 ≈ 6.1 blocks per 8k pixel.
+        _river_bed_8k_cache = None
+        if paint_mask.any() and _paint_smooth_8k_cache is not None:
+            try:
+                height_8k_for_bed = _load_height_8k(masks_dir)
+                if height_8k_for_bed is not None:
+                    _BLOCKS_PER_8K_PX = _WORLD_PX / _REGION_PX  # ≈ 6.1
+                    _sdf_blocks_8k = (
+                        _paint_smooth_8k_cache.astype(np.float32)
+                        * np.float32(_BLOCKS_PER_8K_PX)
+                    )
+                    # S83 v17: POWER-CURVE CARVE (replaces smoothstep + plateau
+                    # + linear). Soft monotonic curve, no plateau, no cap.
+                    # carve_depth = SCALE * max(0, sdf)^POWER
+                    _sdf_pos = np.maximum(_sdf_blocks_8k, np.float32(0.0))
+                    _carve_depth_8k = (
+                        np.float32(_DEPTH_POWER_SCALE)
+                        * np.power(_sdf_pos, np.float32(_DEPTH_POWER_EXPONENT))
+                    ).astype(np.float32)
+                    # LUT height → MC Y at 8k
+                    _LUT_in_8k = np.array(
+                        [0, 17050, 45000, 65496], dtype=np.float64)
+                    _LUT_out_8k = np.array(
+                        [-64, 63, 200, 448], dtype=np.float64)
+                    _height_mc_8k = np.interp(
+                        height_8k_for_bed.ravel().astype(np.float64),
+                        _LUT_in_8k, _LUT_out_8k,
+                    ).reshape(height_8k_for_bed.shape).astype(np.float32)
+                    _bed_raw_8k = _height_mc_8k - _carve_depth_8k
+
+                    # Weighted gaussian: footprint cells (carve > 0.5) get
+                    # smoothed; outside-footprint cells keep raw height
+                    # (so the smoothing sees bank elevation as "pad").
+                    # S83 v11: WIDEN footprint by _TROUGH_EXPAND_BIAS_8K
+                    # so the trough wall sits FURTHER OUT from the
+                    # skeleton than any water block. The water_y gate
+                    # in the carver uses `water_zone = footprint &
+                    # ~lake_mask` (carver-side footprint computed from
+                    # the 50k carve_depth), so we mirror that expansion
+                    # here at the 8k cache level by lowering the depth
+                    # threshold slightly — a bigger active region for
+                    # the bed override means the wall always sits 1
+                    # 8k-px (≈6 50k blocks) further out than where
+                    # water can show.
+                    _footprint_8k = _carve_depth_8k > 0.1
+                    _w_bed_8k = _footprint_8k.astype(np.float32)
+                    _cur_bed_8k = _bed_raw_8k.copy()
+                    # One gaussian pass at σ=4 (≈ σ=24 at 50k = matches
+                    # legacy 3×σ=16 effective extent).
+                    _blurred_bed_8k = _gf_sdf(
+                        _cur_bed_8k, sigma=_RIVER_BED_GAUSS_SIGMA_8K)
+                    _bed_smooth_8k = (
+                        _w_bed_8k * _blurred_bed_8k
+                        + (1.0 - _w_bed_8k) * _cur_bed_8k
+                    )
+
+                    # ─── S83 v11: WORLDEDIT //BRUSH SMOOTH ×5 ───
+                    # User feedback on v8c3: "weird, big chunks, as if
+                    # there were rectangular prisms stuck into the walls
+                    # of the river trough. We should just, imagine, take
+                    # the worldedit //brush smooth like 5 times passed
+                    # over the river trough surface."
+                    #
+                    # Apply 5 additional weighted gaussian passes at a
+                    # smaller σ (=2 ≈ 12 blocks at 50k) restricted to
+                    # the trough footprint. Each pass: cur = w*gauss(cur)
+                    # + (1-w)*cur where w = footprint. The outside-
+                    # footprint cells of _cur_bed_8k still carry raw
+                    # LUT(height) so the gaussian sees bank elevation
+                    # as the boundary condition — banks tug bed UP at
+                    # the wall, smoothing away the "rectangular prism"
+                    # protrusions while preserving overall depth in the
+                    # interior. Same architecture as the carver's
+                    # per-tile bank smooth-brush.
+                    for _smooth_pass in range(_RIVER_TROUGH_SMOOTH_PASSES):
+                        _bl = _gf_sdf(
+                            _bed_smooth_8k,
+                            sigma=_RIVER_TROUGH_SMOOTH_SIGMA_8K)
+                        _bed_smooth_8k = (
+                            _w_bed_8k * _bl
+                            + (1.0 - _w_bed_8k) * _bed_smooth_8k
+                        )
+
+                    # ─── S83 v12: REAL-RIVER GEOMORPHOLOGY ───
+                    # Apply thalweg asymmetry + bedform + riffle-pool
+                    # biases BEFORE bank smoothing so the asymmetry is
+                    # embedded in the trough surface. Bank smoothing
+                    # follows and is ASYMMETRIC: point-bar side (inside
+                    # of bend) smooths into a gentle ramp; cut-bank
+                    # side (outside of bend) stays sharp.
+                    try:
+                        _bed_smooth_8k = _apply_river_geomorph_8k(
+                            _bed_smooth_8k,
+                            _footprint_8k,
+                            _river_spline_polygons_50k_cache,
+                            skel_8k,
+                            _river_edges_cache,
+                            _BLOCKS_PER_8K_PX,
+                        )
+                    except Exception as _gm_exc:
+                        print(f"[hydro_region_overlay] geomorph skipped: "
+                              f"{type(_gm_exc).__name__}: {_gm_exc}")
+
+                    # S83 v15: bowl bonus removed. Depth now scales linearly
+                    # with SDF past plateau (applied directly in carve_depth_8k
+                    # above), giving naturally varying floor without an
+                    # explicit per-cell bonus subtraction.
+                    try:
+                        if _S83_V12_BANK_ASYM_ENABLED:
+                            _bed_smooth_8k = _apply_asymmetric_bank_smoothing_8k(
+                                _bed_smooth_8k,
+                                _footprint_8k,
+                                _river_spline_polygons_50k_cache,
+                            )
+                        else:
+                            raise RuntimeError(
+                                "bank asymmetry gated off — falling back to "
+                                "v11 uniform bank ring")
+                    except Exception as _ba_exc:
+                        # Fall back to legacy uniform bank ring on failure
+                        print(f"[hydro_region_overlay] asym bank skipped, "
+                              f"using legacy ring: {type(_ba_exc).__name__}"
+                              f": {_ba_exc}")
+                        try:
+                            from scipy.ndimage import (
+                                binary_dilation as _bd_ring,
+                            )
+                            _ring_dilated_8k = _bd_ring(
+                                _footprint_8k,
+                                iterations=_BANK_RING_RADIUS_8K)
+                            _bank_ring_8k = (
+                                _ring_dilated_8k & ~_footprint_8k
+                            )
+                            if _bank_ring_8k.any():
+                                _w_bank_ring = _bank_ring_8k.astype(np.float32)
+                                _bl_bank = _gf_sdf(
+                                    _bed_smooth_8k,
+                                    sigma=_BANK_RING_GAUSS_SIGMA_8K)
+                                _bed_smooth_8k = (
+                                    _w_bank_ring * _bl_bank
+                                    + (1.0 - _w_bank_ring) * _bed_smooth_8k
+                                )
+                        except Exception:
+                            pass
+
+                    # ─── S83 v15: MELT GAUSSIAN (VoxelSniper /b e smooth) ───
+                    # User direction: "add a final pass gaussian before you
+                    # set the surface escape wall at farthest bounds. the
+                    # rivers should look melted, as if with /b e smooth on
+                    # voxelsniper."
+                    # Applied unmasked to the entire bed cache to round out
+                    # the linear-past-plateau depths into a continuous
+                    # "melted" profile. Bbox-optimized (footprint + pad)
+                    # so it doesn't allocate a full 8192x8192 intermediate.
+                    try:
+                        if _footprint_8k.any() and _MELT_GAUSSIAN_SIGMA_8K > 0:
+                            _pad_melt = int(np.ceil(
+                                3.0 * _MELT_GAUSSIAN_SIGMA_8K)) + 2
+                            _fp_y, _fp_x = np.where(_footprint_8k)
+                            _yMin = max(0, int(_fp_y.min()) - _pad_melt)
+                            _yMax = min(_REGION_PX,
+                                        int(_fp_y.max()) + 1 + _pad_melt)
+                            _xMin = max(0, int(_fp_x.min()) - _pad_melt)
+                            _xMax = min(_REGION_PX,
+                                        int(_fp_x.max()) + 1 + _pad_melt)
+                            _crop_melt = _bed_smooth_8k[
+                                _yMin:_yMax, _xMin:_xMax]
+                            _smoothed_melt = _gf_sdf(
+                                _crop_melt, sigma=_MELT_GAUSSIAN_SIGMA_8K)
+                            _bed_smooth_8k[
+                                _yMin:_yMax, _xMin:_xMax
+                            ] = _smoothed_melt.astype(np.float32)
+                            _bbox_h = _yMax - _yMin
+                            _bbox_w = _xMax - _xMin
+                            print(f"[hydro_region_overlay] melt gaussian: "
+                                  f"sigma={_MELT_GAUSSIAN_SIGMA_8K} at 8k "
+                                  f"(~{_MELT_GAUSSIAN_SIGMA_8K * 6.1:.0f}b "
+                                  f"at 50k), bbox={_bbox_h}x{_bbox_w} "
+                                  f"(pad={_pad_melt})")
+                    except Exception as _melt_exc:
+                        print(f"[hydro_region_overlay] melt gaussian "
+                              f"skipped: {type(_melt_exc).__name__}: "
+                              f"{_melt_exc}")
+
+                    # Legacy bank ring block kept for the trailing print stat
+                    from scipy.ndimage import (
+                        binary_dilation as _bd_ring,
+                    )
+                    _ring_dilated_8k = _bd_ring(
+                        _footprint_8k, iterations=1)
+                    _bank_ring_8k = _ring_dilated_8k & ~_footprint_8k
+                    _bed_out_8k = _bed_smooth_8k
+
+                    _river_bed_8k_cache = _bed_out_8k.astype(np.float32)
+                    print(f"[hydro_region_overlay] global river bed "
+                          f"precomputed at 8k (max_depth="
+                          f"{_CARVE_MAX_DEPTH:.0f}, sigma="
+                          f"{_RIVER_BED_GAUSS_SIGMA_8K:.0f}, "
+                          f"footprint={int(_footprint_8k.sum())} "
+                          f"bank_ring={int(_bank_ring_8k.sum())} cells)")
+            except Exception as _bed_exc:  # noqa: BLE001
+                print(f"[hydro_region_overlay] global bed precompute "
+                      f"skipped: {type(_bed_exc).__name__}: {_bed_exc}")
+                _river_bed_8k_cache = None
+
+        # ═══════════════════════════════════════════════════════════════
+        # S83 v9: GLOBAL RIVER WATER_Y PRECOMPUTE (skeleton-graph walk)
+        # ═══════════════════════════════════════════════════════════════
+        # Walk the painted skeleton source→sink via the flow-graph already
+        # built for `_compute_flow_accumulation`. For each cell, track the
+        # running minimum of LUT(height) seen from source down to this
+        # cell — this is the monotonic water-surface elevation. After the
+        # walk, EDT-propagate per-skel water_y to all painted-river
+        # footprint cells at 8k so cross-section is uniform per Voronoi.
+        # Then per-tile bilinear-sampling gives globally-consistent
+        # water_y → eliminates the 2-block water step at tile boundaries
+        # that the per-tile gravity walk produced.
+        #
+        # Lakes are NOT touched (paint_mask is id=2 only; lake_paint is
+        # id=1). Lake water levels in run_pipeline.py and the BLEND_DIST
+        # cascade still operate as before, just on globally-consistent
+        # river water_y values.
+        _river_water_y_8k_cache = None
+        # S83 v8c: v9b water_y skeleton walk DISABLED — user reverted to
+        # v8b behavior (per-tile gravity walk water_y, with its 2-block
+        # boundary seam). The v9b skeleton walk distributed the gradient
+        # along the river but introduced "land seam under water" artifacts
+        # that the user found worse than the original water seam.
+        _S83_V9_WATER_Y_ENABLED = False
+        if (_S83_V9_WATER_Y_ENABLED
+                and paint_mask.any() and edges and height_8k is not None
+                and skel_8k.any()):
+            try:
+                # Rebuild flow graph (or reuse — _build_flow_graph is cheap
+                # vs the rest of _ensure_caches). Already called earlier
+                # if _compute_flow_accumulation ran, but we want explicit
+                # in_degree/out_edges scoped here.
+                _graph_out, _graph_in = _build_flow_graph(edges, height_8k)
+
+                # MC-Y LUT once for vectorized later use
+                _LUT_in_w = np.array(
+                    [0, 17050, 45000, 65496], dtype=np.float64)
+                _LUT_out_w = np.array(
+                    [-64, 63, 200, 448], dtype=np.float64)
+
+                def _height_mc_at(p):
+                    return float(np.interp(
+                        float(height_8k[p[0], p[1]]),
+                        _LUT_in_w, _LUT_out_w,
+                    ))
+
+                # Kahn's topo sort: process in_degree=0 cells first.
+                # running_min[p] = min(LUT(height) at p, min over upstream
+                # predecessors of their running_min).
+                from collections import deque as _deque_w
+                _in_remain = dict(_graph_in)
+                _running_min: dict[tuple[int, int], float] = {}
+                _q = _deque_w(
+                    p for p, d in _graph_in.items() if d == 0
+                )
+                # Initialize source water_y = LUT(height) at source.
+                for _src in _q:
+                    _running_min[_src] = _height_mc_at(_src)
+
+                while _q:
+                    _cell = _q.popleft()
+                    _curr = _running_min.get(
+                        _cell, _height_mc_at(_cell))
+                    for _ds in _graph_out.get(_cell, ()):
+                        _ds_h = _height_mc_at(_ds)
+                        _new_min = min(_curr, _ds_h)
+                        if _ds in _running_min:
+                            _running_min[_ds] = min(
+                                _running_min[_ds], _new_min)
+                        else:
+                            _running_min[_ds] = _new_min
+                        _in_remain[_ds] -= 1
+                        if _in_remain[_ds] == 0:
+                            _q.append(_ds)
+
+                # Build skel_water_y_8k: per skeleton cell, running_min - 1
+                # (water surface sits 1 below local bank top in the
+                # canonical formula).
+                _skel_water_y_8k = np.full(
+                    skel_8k.shape, -999.0, dtype=np.float32)
+                for (_r, _c), _m in _running_min.items():
+                    _skel_water_y_8k[_r, _c] = float(_m) - 1.0
+
+                # Propagate from skeleton to all painted cells at 8k via
+                # cKDTree (NOT distance_transform_edt with return_indices,
+                # which allocates a (2, 8192, 8192) int32 array = 512 MiB
+                # and can OOM workers running in parallel). cKDTree on
+                # ~35k skeleton points uses ~MB and per-query is O(log N).
+                _has_water = _skel_water_y_8k > -500.0
+                _n_skel = int(_has_water.sum())
+                _n_paint = int(paint_mask.sum())
+                if _has_water.any() and _n_paint > 0:
+                    _skel_rows, _skel_cols = np.where(_has_water)
+                    _skel_pts_kd = np.column_stack(
+                        [_skel_rows, _skel_cols]).astype(np.float32)
+                    _skel_wy_vals = _skel_water_y_8k[_skel_rows, _skel_cols]
+                    from scipy.spatial import cKDTree as _cKDTree_w
+                    _kd_w = _cKDTree_w(_skel_pts_kd)
+                    # Query for painted cells only (sparse subset, not all 67M).
+                    _p_rows, _p_cols = np.where(paint_mask)
+                    _query_pts = np.column_stack(
+                        [_p_rows, _p_cols]).astype(np.float32)
+                    _, _idx_w = _kd_w.query(_query_pts, k=1)
+                    # Build sparse result array
+                    _water_y_propagated = np.full(
+                        paint_mask.shape, -999.0, dtype=np.float32)
+                    _water_y_propagated[_p_rows, _p_cols] = (
+                        _skel_wy_vals[_idx_w])
+                    _river_water_y_8k_cache = _water_y_propagated
+                    print(f"[hydro_region_overlay] global river water_y "
+                          f"precomputed at 8k ({_n_skel} skel cells, "
+                          f"{_n_paint} painted cells, via cKDTree)")
+            except Exception as _wy_exc:  # noqa: BLE001
+                print(f"[hydro_region_overlay] global water_y precompute "
+                      f"skipped: {type(_wy_exc).__name__}: {_wy_exc}")
+                _river_water_y_8k_cache = None
     _cache_path = hr_path
 
 
@@ -566,17 +1483,9 @@ def _rasterize_river_edges_tile(
     #
     # Falls back to the old EDT-cache SDF if no spline (paint missing
     # or splprep failed).
-    _CARVE_MAX_DEPTH = 6.0       # blocks below water at paint center (flat plateau)
-    _CARVE_SOFTNESS = 3.0        # blocks-wide smoothstep transition zone (S81 v8.6: 4 → 3)
+    # S83 v8: use module-level constants (also used by _ensure_caches for
+    # global bed precompute, so both paths agree on params).
     _SDF_SMOOTH_SIGMA_50K = 4.0  # 50k gaussian sigma for SDF smoothing (fallback path)
-    # Smoothstep model: cells with sdf >= INWARD_BIAS get FULL MAX_DEPTH
-    # (flat plateau). Cells with sdf < (INWARD_BIAS - SOFTNESS) get zero.
-    # Smoothstep transition between. S81 v8.6: bias=4, softness=3 — middle
-    # ground between v8.1 (bias=5, soft=2.5, sigmoid) and v8.5 (bias=3,
-    # soft=4, smoothstep). Plateau still wider than v8.4 sigmoid; carved
-    # water boundary closer to paint extent (avoids v8.5's water-over-
-    # banks regression).
-    _CARVE_INWARD_BIAS = 4.0
     paint_smooth_full_50k = None
     flow_50k = np.zeros((tile_size, tile_size), dtype=np.float32)
     carve_depth_50k = None
@@ -610,21 +1519,13 @@ def _rasterize_river_edges_tile(
         sdf_blocks = np.where(
             inside_mask_flat, dist_50k_flat, -dist_50k_flat
         ).reshape(tile_size, tile_size).astype(np.float32)
-        # S81 v8.5 Issue 1: SMOOTHSTEP with explicit plateau (replaces
-        # asymptotic sigmoid). Cells with sdf >= INWARD_BIAS get the FULL
-        # MAX_DEPTH carve (flat-bottom trough). Cells with sdf <
-        # (INWARD_BIAS - SOFTNESS) get zero carve. In between is a
-        # smoothstep cubic: 3t² - 2t³. Result: most of the river width
-        # is at full depth instead of asymptotic-tapered.
-        # Sigmoid never reached MAX (only ~88% at sdf = bias + 2σ).
-        # Smoothstep with clip plateaus at MAX exactly when sdf >= bias.
-        _t_norm = np.clip(
-            (sdf_blocks - (_CARVE_INWARD_BIAS - _CARVE_SOFTNESS)) / _CARVE_SOFTNESS,
-            0.0, 1.0,
-        )
+        # S83 v17: POWER-CURVE CARVE (matches _ensure_caches formula).
+        # depth = SCALE * max(0, sdf)^POWER — no plateau, no cap.
+        _sdf_pos_50k = np.maximum(sdf_blocks, 0.0)
         carve_depth_50k = (
-            _CARVE_MAX_DEPTH * _t_norm * _t_norm * (3.0 - 2.0 * _t_norm)
-        )
+            np.float32(_DEPTH_POWER_SCALE)
+            * np.power(_sdf_pos_50k, np.float32(_DEPTH_POWER_EXPONENT))
+        ).astype(np.float32)
         paint_eroded_50k = carve_depth_50k > 0.5
         paint_smooth_full_50k = paint_eroded_50k.copy()
         # Width sampling still uses the 8k EDT cache (cheap, OK quality)
@@ -651,14 +1552,12 @@ def _rasterize_river_edges_tile(
                       mode="constant", cval=-1e6)
         sdf_50k = _gf_50k(sdf_50k, sigma=_SDF_SMOOTH_SIGMA_50K)
         sdf_blocks = sdf_50k * scale  # 8k pixels → MC blocks
-        # S81 v8.5: smoothstep with explicit plateau (matches spline branch).
-        _t_norm_fb = np.clip(
-            (sdf_blocks - (_CARVE_INWARD_BIAS - _CARVE_SOFTNESS)) / _CARVE_SOFTNESS,
-            0.0, 1.0,
-        )
+        # S83 v17: power curve (matches spline path)
+        _sdf_pos_50k_fb = np.maximum(sdf_blocks, 0.0)
         carve_depth_50k = (
-            _CARVE_MAX_DEPTH * _t_norm_fb * _t_norm_fb * (3.0 - 2.0 * _t_norm_fb)
-        )
+            np.float32(_DEPTH_POWER_SCALE)
+            * np.power(_sdf_pos_50k_fb, np.float32(_DEPTH_POWER_EXPONENT))
+        ).astype(np.float32)
         paint_eroded_50k = carve_depth_50k > 0.5
         paint_smooth_full_50k = paint_eroded_50k.copy()
 
@@ -908,6 +1807,44 @@ def apply_hydro_region_overlay(
             np.maximum(ld, _LAKE_DEPTH_MIN / 255.0,
                         where=lake_paint, out=ld)
             masks["hydro_lkdep"] = ld
+
+    # ---- S83 v8: Sample GLOBAL river bed at 50k tile coords ──
+    # The bed_8k cache was computed once globally in _ensure_caches.
+    # Sample to 50k tile bilinearly → smooth by construction, identical
+    # values at tile boundaries when both tiles sample the same physical
+    # coords. Write to masks dict as raw MC-Y float (carver reads it).
+    if (_river_bed_8k_cache is not None
+            or _river_water_y_8k_cache is not None):
+        try:
+            from scipy.ndimage import map_coordinates as _mc_bed
+            _scale_50k_to_8k = _REGION_PX / _WORLD_PX
+            _rows_f = (
+                (np.arange(tile_size, dtype=np.float64) + row_off)
+                * _scale_50k_to_8k
+            )
+            _cols_f = (
+                (np.arange(tile_size, dtype=np.float64) + col_off)
+                * _scale_50k_to_8k
+            )
+            _rg, _cg = np.meshgrid(_rows_f, _cols_f, indexing="ij")
+            _coords = np.stack([_rg, _cg])
+            if _river_bed_8k_cache is not None:
+                _bed_50k = _mc_bed(
+                    _river_bed_8k_cache, _coords, order=1,
+                    mode='constant', cval=0.0,
+                ).astype(np.float32)
+                masks["hydro_river_bed"] = _bed_50k
+            # S83 v9: also sample the global water_y cache to 50k tile.
+            # Carver overrides water_y_field at painted-river cells.
+            if _river_water_y_8k_cache is not None:
+                _wy_50k = _mc_bed(
+                    _river_water_y_8k_cache, _coords, order=1,
+                    mode='constant', cval=-999.0,
+                ).astype(np.float32)
+                masks["hydro_river_water_y"] = _wy_50k
+        except Exception as _bed_samp_exc:  # noqa: BLE001
+            print(f"[hydro_region_overlay] bed/water_y sample skipped: "
+                  f"{type(_bed_samp_exc).__name__}: {_bed_samp_exc}")
 
     if verbose:
         stats = (

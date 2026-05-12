@@ -2,7 +2,67 @@
 
 *Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`. For the physical-realism refactor plan + implementation log, see `PHYSICAL_REALISM_REFACTOR.md` (§18 is the running log).*
 
-**Current state:** Session 81 (2026-05-11) — **VANDIR HYDROLOGY COMPLETE through v8.14.**  Pipeline produces beautiful naturalistic painted rivers + lakes with: (a) spline-fit boundary (no 8k-pixel staircase fingerprint), (b) smoothstep carve depth with explicit plateau (no sigmoid soft tail), (c) inward-bias choke (rivers narrower than painted footprint), (d) WP-style periodic meander, (e) BLEND_DIST=24 cascade at lake-river junctions, (f) WP-style "fix water escaping" iterative escape-fix + EDT berm with stepped 1-block-per-cell falloff out to 8 cells, (g) **v8.14 final cleanup pass: river water_y capped at adjacent natural bank − 1 (with EDT propagation to wide-river interior), BLEND-protected cells exempt** — eliminates "perched water above natural ground" / "wall sticking up out of land" artifacts.  Last user verdict: "Pass working great."  S80 (painted source) handoff: [memory/S80_river_handoff.md](memory/S80_river_handoff.md).  Full S81 progression v8 → v8.14: [memory/S81_river_handoff.md](memory/S81_river_handoff.md).
+**Current state:** Session 83 (2026-05-12) — **VANDIR HYDROLOGY FINAL @ v17. User verdict: "it's perfect."**  Pipeline produces lake-bowl-style naturalistic painted rivers + lakes at every channel width.  The v8.14 baseline ("Pass working great") was extended through 9 more iterations (v9-v17) to add real-river geomorphology, a smoothing pipeline, and three new tile-level passes that resolve narrow-channel/wide-channel mismatch.  **Next: full-world 50k generation.**  Full S83 handoff: [memory/S83_v17_handoff.md](memory/S83_v17_handoff.md).  Prior baselines: S80 [memory/S80_river_handoff.md](memory/S80_river_handoff.md), S81 v8-v8.14 [memory/S81_river_handoff.md](memory/S81_river_handoff.md).
+
+**S83 ARCHITECTURE (v17 — current production):**
+
+The painted-rivers pipeline now has **two carving phases + three smoothing/correction passes**, all gated on `_paint_river_pad.any()`:
+
+1. **GLOBAL BED PRECOMPUTE** (`core/hydro_region_overlay.py:_ensure_caches`, runs once per Python process):
+   - SDF from spline-fit polygon outline (cKDTree on dense sampled points) — eliminates 8k-pixel staircase.
+   - **Power-curve carve depth** (S83 v17): `depth = _DEPTH_POWER_SCALE × sdf_blocks^_DEPTH_POWER_EXPONENT` with SCALE=2.0, POWER=0.7. No plateau, no hard cap, geomorphically sub-linear (Hack's law-ish).
+   - σ=4 weighted gaussian inside footprint (seed pass).
+   - 5-pass σ=2 weighted gaussian inside footprint (WorldEdit smooth-brush ×5).
+   - **Geomorph apply** — thalweg asymmetry, bedform, riffle-pool. Skeleton-arclength based (not polygon — polygon would create cross-channel chessboard).
+   - **Bank asymmetry (bbox-optimized)** — point-bar σ=2.5 ramp, cut-bank σ=0.0 cliff, 6-cell ring.
+   - **σ=4 unmasked melt gaussian (bbox-optimized)** — VoxelSniper-style /b e smooth equivalent on the bed cache.
+   - Result: `_river_bed_8k_cache` (float32 MC-Y values, bilinear-sampled to 50k per tile).
+
+2. **PER-TILE CARVE** (`core/river_carver_v2.py`):
+   - Gravity carve at 50k: `surface_y = original − depth_at_cell`, only LOWER (np.minimum).
+   - Bed override: `surface_y[footprint] = min(_river_bed (bilinear-sampled), surface_y)` — never raises terrain.
+   - For narrow channels (sub-pixel at 8k), the 8k bed cache contains ~natural terrain values, so the clamp picks the gravity-carved floor — gravity carve dominates for narrow rivers, bed override dominates for wide.
+
+3. **THREE TILE-LEVEL PASSES** (`run_pipeline.py`, inside the PADDED escape-fix block at PAD=48):
+   - **PASS 0: Carve completion** — for cells where `water_y > SEA & surface ≥ water_y & ~lake`, lower surface to `water_y − 1`. Eliminates "wall in middle of water" artifacts caused by smoothing-pulls-bed-up at boundary cells. Typically ~17,000 cells per painted-river tile.
+   - **PASS 0.25: Bed melt at 50k** — weighted σ=2 gaussian on `surface_y` at water cells, clamp ≤ `water_y − 1`. Smooths narrow-channel beds invisible to 8k cache. σ=2 not σ=4: preserves bowl variation in 3-5 block channels. ~14,000-18,000 cells per tile.
+   - **PASS 0.5: Bank smoothing** — σ=4 gaussian on `surface_y` at LAND cells within 12 blocks of water, clamps preserve natural silhouette + never below water level. ~11,000-13,000 cells per tile.
+   - Then existing v8.6 iterative escape-fix, v8.8 EDT berm (BERM_RADIUS=8), v8.14 cap (river water_y ≤ adjacent natural bank − 1, BLEND-protected near lakes).
+
+**S83 v17 KEY TUNABLES (`core/hydro_region_overlay.py` module-level):**
+```python
+_DEPTH_POWER_SCALE = 2.0       # carve_depth = SCALE × sdf^POWER
+_DEPTH_POWER_EXPONENT = 0.7    # < 1 = sublinear (depth caps gracefully on wide rivers)
+_THALWEG_AMP_BLOCKS = 2.5      # cut-bank deeper, point-bar shallower
+_BEDFORM_AMP_BLOCKS = 1.2      # texture sin wave, λ=30 blocks
+_RIFFLE_AMP_BLOCKS = 2.5       # riffle-pool sin wave, λ=250 blocks (5-7× channel width)
+_BANK_ASYM_SIGMA_POINTBAR_8K = 2.5   # smooth point-bar into ramp
+_BANK_ASYM_SIGMA_CUTBANK_8K = 0.0    # cut-bank stays sharp
+_BANK_ASYM_RING_RADIUS_8K = 6        # 6-cell ring (~36 blocks at 50k)
+_MELT_GAUSSIAN_SIGMA_8K = 4.0        # final melt at 8k, bbox-optimized
+```
+
+In `run_pipeline.py`:
+```python
+_BED_MELT_SIGMA_50K = 2.0           # narrow-channel bed melt (S83 v17: 4 → 2)
+_BANK_SMOOTH_SIGMA = 4.0
+_BANK_SMOOTH_RADIUS_BLOCKS = 12
+```
+
+**S83 v9 → v17 PROGRESSION (compressed):**
+- v8c3 (baseline checkpoint): 5-pass smooth + stochastic rounding, "90% perfect"
+- v11: np.minimum clamp on bed override (never raise)
+- v12: Geomorph (thalweg + bedform + riffle), skeleton-arclength, polygon-curvature, bank asym (gated off, OOM)
+- v13: Depth halved 6, amplitudes bumped, bank asym + bbox enabled, carve completion pass added
+- v14 (reverted): bowl bonus, SOFTNESS bumped
+- v15: Uncap depth via linear-past-plateau, σ=4 melt gauss + σ=4 bank smoothing
+- v16: 50k bed_melt pass σ=4 weighted at water cells — exposed that σ=4 was killing narrow-channel variation
+- **v17 (current production):** Replaced smoothstep + plateau + linear with single power-curve `SCALE × sdf^POWER`. σ=2 bed_melt preserves variation. User: "it's perfect."
+
+**Memory & perf:**
+- Per-worker peak: ~2.5-3 GB. **1 worker safe** for `_ensure_caches`.
+- 2 workers OOMed during v12 dev. For full-world: start at 1 worker; profile to confirm 2 workers is safe with v17's lighter memory profile.
+- Single tile elapsed: ~30 min (=1800s). 9409 tiles × 30 min single-worker = 195 days. Need parallelism or cloud.
 
 **S81 KEY DIFFS (read before any river-related work):**
 - `run_pipeline.py:152-160` — adds `apply_hydro_region_overlay(masks, masks_dir, col_off, row_off, w)` immediately after `read_tile`. **Without this call the painted overlay is invisible to the carver and you carve the on-disk WP-findPath rivers.** This is the single load-bearing line of S81.

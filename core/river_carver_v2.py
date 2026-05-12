@@ -235,6 +235,8 @@ def carve_rivers(
     hydro_lake_wl:  np.ndarray | None = None,  # (H, W) float32 [0,1] — water level
     hydro_centerline: np.ndarray | None = None,  # (H, W) float32 [0,1] — precomputed NMS centerline
     height_norm:    np.ndarray | None = None,  # (H, W) float32 [0,1] — raw terrain
+    hydro_river_bed:  np.ndarray | None = None,  # (H, W) float32 MC-Y from global 8k precompute (S83 v8)
+    hydro_river_water_y: np.ndarray | None = None,  # (H, W) float32 MC-Y from skeleton walk (S83 v9)
     masks_dir:      "Path | None" = None,
     tile_x:         int | None = None,
     tile_z:         int | None = None,
@@ -998,6 +1000,42 @@ def carve_rivers(
         if footprint.any():
             surface_out[footprint] = np.round(new_y_f[footprint]).astype(surface_out.dtype)
 
+        # S83 v8 + v10: GLOBAL BED + BANK OVERRIDE. hydro_river_bed
+        # encodes:
+        #   - footprint cells: globally-smoothed bed (σ=4 weighted)
+        #   - bank ring cells (1 8k-px around footprint): σ=1 smoothed
+        #     LUT(height) — gentle smooth removing bank "raised area"
+        #     anomalies
+        #   - elsewhere: sentinel -999 (carver skips)
+        # The sentinel sits well below BEDROCK_Y+3 (=-61), so the
+        # check below cleanly identifies cells where the cache wants
+        # to override.
+        if hydro_river_bed is not None and footprint.any():
+            # S83 v11: GLOBAL bed override at painted footprint. The 8k
+            # bed cache is computed in _ensure_caches via:
+            #   raw bed → σ=4 weighted gaussian (single pass)
+            #   → 5 additional σ=2 weighted gaussian passes
+            #     (WorldEdit //brush smooth ×5 equivalent on trough surface)
+            # Clean np.round (NOT stochastic) — user feedback: "clean steps
+            # are fine"; the real defect was rectangular-prism anomalies
+            # protruding from trough walls, fixed by the 5-pass smooth.
+            _bed_valid = footprint & (
+                hydro_river_bed > float(BEDROCK_Y + 3))
+            if _bed_valid.any():
+                # S83 v11 invariant: ONLY LOWER terrain (never raise).
+                # The 5-pass smooth can pull a deeply-carved bed slightly
+                # upward at boundary cells (gaussian averaging). Clamping
+                # to current surface_out keeps the trough wall above any
+                # water, preventing "river bed sticking up out of land"
+                # artifacts at footprint edges.
+                _new_bed = np.maximum(hydro_river_bed,
+                                       float(BEDROCK_Y + 3))
+                _cur_b = surface_out.astype(np.float32)
+                _new_bed = np.minimum(_new_bed, _cur_b)
+                surface_out[_bed_valid] = (
+                    np.round(_new_bed[_bed_valid])
+                    .astype(surface_out.dtype))
+
         # 7.7 — Water level: BANK-RELATIVE (S80 v26).
         #
         # FAIL HISTORY: Previous formulas referenced `nearest_avg` (smoothed
@@ -1082,6 +1120,20 @@ def carve_rivers(
         water_zone = footprint & ~lake_mask
         if water_zone.any():
             water_y_int = np.round(water_y).astype(np.int16)
+            # S83 v9: OVERRIDE water_y with the global skeleton-walk value
+            # at painted-river cells where the precompute set it. The
+            # global walk produces a monotonic source→sink water profile
+            # that is identical at the same physical cell between both
+            # tiles → eliminates the 2-block water step at boundaries.
+            # Lake cells, BLEND zone, and the per-tile water_y formula
+            # for non-painted footprint cells are all untouched.
+            if hydro_river_water_y is not None:
+                _global_wy_valid = water_zone & (
+                    hydro_river_water_y > float(SEA_LEVEL))
+                if _global_wy_valid.any():
+                    water_y_int[_global_wy_valid] = np.round(
+                        hydro_river_water_y[_global_wy_valid]
+                    ).astype(np.int16)
             water_y_field[water_zone] = water_y_int[water_zone]
             # S80 v15: ensure surface_y is at LEAST 1 below water_y at every
             # footprint cell.  Without this, the guardrail formula keeps
@@ -1124,30 +1176,160 @@ def carve_rivers(
         from scipy.ndimage import gaussian_filter as _gf_bank
         BANK_SIGMA = 16.0    # gaussian sigma — WorldEdit-style
         BANK_PASSES = 3      # iterate the blur 3× for cumulative effect
-        if footprint.any():
+        # S83 v8: SKIP per-tile bank smooth-brush when global hydro_river_bed
+        # is provided (it pre-smoothed the bed at 8k globally → consistent
+        # across tile boundaries by construction). The per-tile gaussian
+        # below was the visible bed-elevation seam source; replacing it
+        # with the global precompute eliminates that seam.
+        _skip_bank_smooth = (hydro_river_bed is not None)
+        if footprint.any() and not _skip_bank_smooth:
             sy_f_bank = surface_out.astype(np.float32)
             in_zone = footprint & above_sea & ~lake_mask
             if in_zone.any():
-                # Weight: 1 inside footprint, 0 outside. Hard mask.
                 w_bank = in_zone.astype(np.float32)
-                cur = sy_f_bank.copy()
-                for _bp in range(BANK_PASSES):
-                    blurred_bank = _gf_bank(cur, sigma=BANK_SIGMA)
-                    cur = (w_bank * blurred_bank
-                           + (1.0 - w_bank) * cur)
-                # Constraint: footprint cells capped at water_y - 1
-                # (water visible) and floored at original carved surface
-                # (smoothing can pull up but never carve deeper).
-                final = cur.copy()
-                cap = (water_y - 1.0).astype(np.float32)
-                final[in_zone] = np.minimum(final[in_zone], cap[in_zone])
-                final[in_zone] = np.maximum(final[in_zone], sy_f_bank[in_zone])
-                # Apply where the result actually changes the cell.
-                changed = in_zone & (np.abs(final - sy_f_bank) > 0.5)
-                if changed.any():
-                    surface_out[changed] = np.round(
-                        final[changed]
-                    ).astype(surface_out.dtype)
+                # === S83 v7: ONLY pad the bank smooth-brush gaussian. ===
+                # Everything else in the carver stays at v8.14 baseline
+                # (gravity ON, skeleton/EDT unpadded). The σ=16 × 3 passes
+                # gaussian was the main cause of 3-block bed elevation
+                # step at the tile boundary; padding it eliminates the
+                # reflect-mode boundary artifact without touching any
+                # algorithmic semantics.
+                _BSP = 48
+                _PH_B = H + 2 * _BSP
+                _PW_B = W + 2 * _BSP
+                _bank_padded = False
+                if (masks_dir is not None and tile_x is not None
+                        and tile_z is not None):
+                    try:
+                        import rasterio as _rio_b
+                        from rasterio.windows import Window as _RWin_b
+                        _ht_b = masks_dir / "height.tif"
+                        if _ht_b.exists():
+                            _col_off_b = tile_x * W
+                            _row_off_b = tile_z * H
+                            with _rio_b.open(str(_ht_b)) as _src_b:
+                                _px0b = max(_col_off_b - _BSP, 0)
+                                _pz0b = max(_row_off_b - _BSP, 0)
+                                _px1b = min(_col_off_b + W + _BSP, _src_b.width)
+                                _pz1b = min(_row_off_b + H + _BSP, _src_b.height)
+                                _h_raw_b = _src_b.read(1, window=_RWin_b(
+                                    _px0b, _pz0b,
+                                    _px1b - _px0b, _pz1b - _pz0b))
+                            _LUT_in_b = np.array(
+                                [0, 17050, 45000, 65496], dtype=np.float64)
+                            _LUT_out_b = np.array(
+                                [-64, 63, 200, 448], dtype=np.float64)
+                            _mc_y_b = np.interp(
+                                _h_raw_b.ravel().astype(np.float64),
+                                _LUT_in_b, _LUT_out_b
+                            ).reshape(_h_raw_b.shape).astype(np.float32)
+                            _pre_carve_pad_b = np.zeros(
+                                (_PH_B, _PW_B), dtype=np.float32)
+                            _dr0b = _pz0b - (_row_off_b - _BSP)
+                            _dc0b = _px0b - (_col_off_b - _BSP)
+                            _pre_carve_pad_b[
+                                _dr0b:_dr0b + _h_raw_b.shape[0],
+                                _dc0b:_dc0b + _h_raw_b.shape[1]
+                            ] = _mc_y_b
+
+                            _sy_pad_b = _pre_carve_pad_b.copy()
+                            _sy_pad_b[_BSP:_BSP + H, _BSP:_BSP + W] = (
+                                surface_out.astype(np.float32))
+
+                            # Footprint approximation in pad: use painted
+                            # river binary at padded coords.
+                            _hr_path_b = masks_dir / "hydro_region.png"
+                            _paint_river_pad_b = np.zeros(
+                                (_PH_B, _PW_B), dtype=bool)
+                            _paint_lake_pad_b = np.zeros(
+                                (_PH_B, _PW_B), dtype=bool)
+                            if _hr_path_b.exists():
+                                try:
+                                    from PIL import Image as _PILImg_b
+                                    _hr8k_b = np.asarray(
+                                        _PILImg_b.open(_hr_path_b).convert("L"),
+                                        dtype=np.uint8)
+                                    if _hr8k_b.shape == (8192, 8192):
+                                        _S_b = 8192.0 / 50000.0
+                                        _ys_b = (np.arange(_PH_B)
+                                                 + (_row_off_b - _BSP))
+                                        _xs_b = (np.arange(_PW_B)
+                                                 + (_col_off_b - _BSP))
+                                        _y8b = np.clip(
+                                            (_ys_b * _S_b).astype(np.int32),
+                                            0, 8191)
+                                        _x8b = np.clip(
+                                            (_xs_b * _S_b).astype(np.int32),
+                                            0, 8191)
+                                        _yyb, _xxb = np.meshgrid(
+                                            _y8b, _x8b, indexing="ij")
+                                        _paint_river_pad_b = (
+                                            _hr8k_b[_yyb, _xxb] == 2)
+                                        _paint_lake_pad_b = (
+                                            (_hr8k_b[_yyb, _xxb] == 1)
+                                            & ~_paint_river_pad_b)
+                                except Exception:
+                                    pass
+
+                            _footprint_pad_b = _paint_river_pad_b.copy()
+                            _footprint_pad_b[
+                                _BSP:_BSP + H, _BSP:_BSP + W] = footprint
+                            _lake_pad_b = _paint_lake_pad_b.copy()
+                            _lake_pad_b[_BSP:_BSP + H, _BSP:_BSP + W] = lake_mask
+                            _above_sea_pad_b = (
+                                _pre_carve_pad_b > float(SEA_LEVEL))
+                            _in_zone_pad_b = (
+                                _footprint_pad_b
+                                & _above_sea_pad_b
+                                & ~_lake_pad_b
+                            )
+
+                            _w_bank_pad = _in_zone_pad_b.astype(np.float32)
+                            _cur_pad_b = _sy_pad_b.copy()
+                            for _bp in range(BANK_PASSES):
+                                _blur_pad = _gf_bank(_cur_pad_b, sigma=BANK_SIGMA)
+                                _cur_pad_b = (
+                                    _w_bank_pad * _blur_pad
+                                    + (1.0 - _w_bank_pad) * _cur_pad_b
+                                )
+
+                            final = _cur_pad_b[
+                                _BSP:_BSP + H, _BSP:_BSP + W].copy()
+                            cap = (water_y - 1.0).astype(np.float32)
+                            final[in_zone] = np.minimum(
+                                final[in_zone], cap[in_zone])
+                            final[in_zone] = np.maximum(
+                                final[in_zone], sy_f_bank[in_zone])
+                            changed = in_zone & (
+                                np.abs(final - sy_f_bank) > 0.5)
+                            if changed.any():
+                                surface_out[changed] = np.round(
+                                    final[changed]
+                                ).astype(surface_out.dtype)
+                            _bank_padded = True
+                    except Exception as _bank_exc:  # noqa: BLE001
+                        print(f"[river_carver_v2] S83 v7 bank padding "
+                              f"skipped: {type(_bank_exc).__name__}: "
+                              f"{_bank_exc}")
+                        _bank_padded = False
+
+                if not _bank_padded:
+                    # === Unpadded fallback (v8.14 baseline) ===
+                    cur = sy_f_bank.copy()
+                    for _bp in range(BANK_PASSES):
+                        blurred_bank = _gf_bank(cur, sigma=BANK_SIGMA)
+                        cur = (w_bank * blurred_bank
+                               + (1.0 - w_bank) * cur)
+                    final = cur.copy()
+                    cap = (water_y - 1.0).astype(np.float32)
+                    final[in_zone] = np.minimum(final[in_zone], cap[in_zone])
+                    final[in_zone] = np.maximum(
+                        final[in_zone], sy_f_bank[in_zone])
+                    changed = in_zone & (np.abs(final - sy_f_bank) > 0.5)
+                    if changed.any():
+                        surface_out[changed] = np.round(
+                            final[changed]
+                        ).astype(surface_out.dtype)
 
         # 7.6c — Steppable shore lip (S81). Final pass: just outside the
         # carve footprint, if the bank still rises more than 1 block
