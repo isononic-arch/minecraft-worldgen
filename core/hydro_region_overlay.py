@@ -851,6 +851,137 @@ def _apply_asymmetric_bank_smoothing_8k(
     return bed_smooth_8k
 
 
+def _make_bed_cache_key(hr_path: Path) -> str:
+    """Hash key for the disk-pickled bed cache. Invalidates when the
+    paint mask, the _ensure_caches source, or any tunable changes."""
+    import hashlib
+    import inspect
+    paint_md5 = hashlib.md5(hr_path.read_bytes()).hexdigest()
+    src_md5 = hashlib.md5(inspect.getsource(_ensure_caches).encode()).hexdigest()
+    tunables = (
+        _DEPTH_POWER_SCALE, _DEPTH_POWER_EXPONENT,
+        _THALWEG_AMP_BLOCKS, _THALWEG_SCALE, _THALWEG_SIGN,
+        _BEDFORM_AMP_BLOCKS, _BEDFORM_WAVELEN_BLOCKS,
+        _RIFFLE_AMP_BLOCKS, _RIFFLE_WAVELEN_BLOCKS,
+        _BANK_ASYM_SIGMA_POINTBAR_8K, _BANK_ASYM_SIGMA_CUTBANK_8K,
+        _BANK_ASYM_RING_RADIUS_8K, _BANK_ASYM_SIGN,
+        _MELT_GAUSSIAN_SIGMA_8K, _RIVER_BED_GAUSS_SIGMA_8K,
+        _RIVER_TROUGH_SMOOTH_PASSES, _RIVER_TROUGH_SMOOTH_SIGMA_8K,
+        _CARVE_MAX_DEPTH, _CARVE_SOFTNESS, _CARVE_INWARD_BIAS,
+        _S83_V12_BANK_ASYM_ENABLED,
+    )
+    tun_md5 = hashlib.md5(repr(tunables).encode()).hexdigest()
+    return f"{paint_md5}_{src_md5}_{tun_md5}"
+
+
+def _load_bed_cache_from_disk(hr_path: Path) -> bool:
+    """Try to load the bed-cache pickle from disk. Returns True on success
+    (and populates module-level cache globals); False if missing, key
+    mismatch, or load error.
+
+    S83 v18: this is the key optimization that allows multi-worker
+    parallelism on memory-constrained boxes. Each worker process loads
+    the pre-computed bed cache from disk in ~5-10 sec with ~1.5 GB peak
+    memory (vs ~4 GB peak for fresh compute). Net effect: --threads 8
+    fits in 16 GB instead of OOMing at --threads 5.
+    """
+    global _river_edges_cache, _river_width_8k_cache
+    global _paint_smooth_8k_cache, _paint_eroded_8k_cache
+    global _lake_mask_cache, _flow_accum_8k_cache, _cache_path
+    global _river_spline_pts_50k_cache, _river_spline_kdtree_cache
+    global _river_spline_polygons_50k_cache
+    global _river_bed_8k_cache, _river_water_y_8k_cache
+
+    import os as _os
+    import pickle as _pickle
+
+    if _os.environ.get("VANDIR_NO_BED_CACHE"):
+        return False
+
+    bed_cache_path = hr_path.parent / "_bed_cache_v17.pkl"
+    if not bed_cache_path.exists():
+        return False
+    try:
+        expected_key = _make_bed_cache_key(hr_path)
+    except Exception as exc:
+        print(f"[hydro_region_overlay] bed cache key build failed: {exc}")
+        return False
+    try:
+        with open(bed_cache_path, 'rb') as f:
+            data = _pickle.load(f)
+        if data.get('key') != expected_key:
+            print(f"[hydro_region_overlay] bed cache MISMATCH "
+                  f"(masks/_bed_cache_v17.pkl is stale) — rebuilding")
+            return False
+        _river_bed_8k_cache = data['river_bed_8k']
+        _paint_smooth_8k_cache = data['paint_smooth_8k']
+        _paint_eroded_8k_cache = _paint_smooth_8k_cache
+        _lake_mask_cache = data['lake_mask']
+        _flow_accum_8k_cache = data['flow_accum_8k']
+        _river_edges_cache = data['river_edges']
+        _river_width_8k_cache = data['river_width_8k']
+        _river_spline_pts_50k_cache = data['spline_pts']
+        _river_spline_polygons_50k_cache = data['spline_polygons']
+        _river_water_y_8k_cache = data['river_water_y_8k']
+        # cKDTree is not picklable cleanly; rebuild from points (~5 sec)
+        if (_river_spline_pts_50k_cache is not None
+                and _river_spline_pts_50k_cache.shape[0] > 0):
+            from scipy.spatial import cKDTree
+            _river_spline_kdtree_cache = cKDTree(_river_spline_pts_50k_cache)
+        else:
+            _river_spline_kdtree_cache = None
+        _cache_path = hr_path
+        print(f"[hydro_region_overlay] bed cache HIT "
+              f"({bed_cache_path.name}, "
+              f"bed shape {_river_bed_8k_cache.shape})")
+        return True
+    except Exception as exc:
+        print(f"[hydro_region_overlay] bed cache load failed: "
+              f"{type(exc).__name__}: {exc}")
+        return False
+
+
+def _save_bed_cache_to_disk(hr_path: Path) -> None:
+    """Save the bed cache to disk for subsequent workers to load."""
+    import os as _os
+    import pickle as _pickle
+
+    if _os.environ.get("VANDIR_NO_BED_CACHE"):
+        return
+
+    bed_cache_path = hr_path.parent / "_bed_cache_v17.pkl"
+    try:
+        key = _make_bed_cache_key(hr_path)
+    except Exception as exc:
+        print(f"[hydro_region_overlay] bed cache key build failed "
+              f"(skipping save): {exc}")
+        return
+
+    try:
+        data = {
+            'key': key,
+            'river_bed_8k': _river_bed_8k_cache,
+            'paint_smooth_8k': _paint_smooth_8k_cache,
+            'lake_mask': _lake_mask_cache,
+            'flow_accum_8k': _flow_accum_8k_cache,
+            'river_edges': _river_edges_cache,
+            'river_width_8k': _river_width_8k_cache,
+            'spline_pts': _river_spline_pts_50k_cache,
+            'spline_polygons': _river_spline_polygons_50k_cache,
+            'river_water_y_8k': _river_water_y_8k_cache,
+        }
+        tmp_path = bed_cache_path.with_suffix('.pkl.tmp')
+        with open(tmp_path, 'wb') as f:
+            _pickle.dump(data, f, protocol=_pickle.HIGHEST_PROTOCOL)
+        _os.replace(tmp_path, bed_cache_path)
+        sz_mb = bed_cache_path.stat().st_size / (1024 * 1024)
+        print(f"[hydro_region_overlay] bed cache SAVED "
+              f"({bed_cache_path.name}, {sz_mb:.0f} MB)")
+    except Exception as exc:
+        print(f"[hydro_region_overlay] bed cache save failed: "
+              f"{type(exc).__name__}: {exc}")
+
+
 def _ensure_caches(hr_path: Path) -> None:
     global _river_edges_cache, _river_width_8k_cache
     global _paint_smooth_8k_cache, _paint_eroded_8k_cache
@@ -859,6 +990,11 @@ def _ensure_caches(hr_path: Path) -> None:
     global _river_spline_polygons_50k_cache
     global _river_bed_8k_cache, _river_water_y_8k_cache
     if _cache_path == hr_path:
+        return
+    # S83 v18: try loading from disk pickle first. Skip the ~3-4 GB peak
+    # memory build if a valid cache exists from a previous process or
+    # warm_cache run.
+    if _load_bed_cache_from_disk(hr_path):
         return
     from PIL import Image as _PILImage
     hr_arr = np.asarray(_PILImage.open(hr_path).convert("L"), dtype=np.uint8)
@@ -1415,6 +1551,13 @@ def _ensure_caches(hr_path: Path) -> None:
                       f"skipped: {type(_wy_exc).__name__}: {_wy_exc}")
                 _river_water_y_8k_cache = None
     _cache_path = hr_path
+    # S83 v18: persist the bed cache to disk so subsequent workers
+    # (this process or other processes on the same box) can load in
+    # ~5 sec at ~1.5 GB peak memory instead of rebuilding at ~4 GB peak.
+    try:
+        _save_bed_cache_to_disk(hr_path)
+    except Exception:
+        pass
 
 
 def _rasterize_river_edges_tile(
