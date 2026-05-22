@@ -1709,13 +1709,53 @@ def _rasterize_river_edges_tile(
         # Distance from each tile cell to nearest spline curve point.
         dist_50k_flat, _ = _river_spline_kdtree_cache.query(tile_pts, k=1)
         # Sign via point-in-polygon: union of all spline polygons.
+        # S84 PERF FIX: bbox cull each polygon against the current tile's
+        # 50k bbox before doing the (expensive) inside-test on all 262144
+        # tile cells. Profile (py-spy 2026-05-22 on pure-ocean (48,48))
+        # showed `contains_points` consuming 68% of total wall time on
+        # tiles where ZERO polygons actually intersect — the loop was
+        # testing every painted spline polygon globally against every
+        # cell in the tile.
+        # bbox check: ~4×N_vertices min/max ops per polygon (microseconds);
+        # skipped contains_points call: ~262K-vertex-O ops saved (minutes).
+        # For an ocean tile this drops _rasterize_river_edges_tile from
+        # ~20 min to ~negligible.
         from matplotlib.path import Path as _MplPath
         inside_mask_flat = np.zeros(tile_pts.shape[0], dtype=bool)
+        _tile_min_x = float(col_off)
+        _tile_max_x = float(col_off + tile_size)
+        _tile_min_y = float(row_off)
+        _tile_max_y = float(row_off + tile_size)
+        _n_tested = 0
+        _n_skipped = 0
         for poly in _river_spline_polygons_50k_cache:
+            # Cheap bbox overlap check first.
+            if poly is None or poly.shape[0] == 0:
+                _n_skipped += 1
+                continue
+            _pmin_x = float(poly[:, 0].min())
+            _pmax_x = float(poly[:, 0].max())
+            if _pmax_x < _tile_min_x or _pmin_x > _tile_max_x:
+                _n_skipped += 1
+                continue
+            _pmin_y = float(poly[:, 1].min())
+            _pmax_y = float(poly[:, 1].max())
+            if _pmax_y < _tile_min_y or _pmin_y > _tile_max_y:
+                _n_skipped += 1
+                continue
+            _n_tested += 1
             try:
                 inside_mask_flat |= _MplPath(poly).contains_points(tile_pts)
             except Exception:
                 pass
+        # Lightweight diagnostic (per-tile, one line) to surface savings.
+        if (_n_tested + _n_skipped) > 0:
+            print(
+                f"[hydro_region_overlay] tile=({col_off // tile_size},"
+                f"{row_off // tile_size}) spline polygons: "
+                f"{_n_tested} tested, {_n_skipped} skipped via bbox cull",
+                flush=True,
+            )
         sdf_blocks = np.where(
             inside_mask_flat, dist_50k_flat, -dist_50k_flat
         ).reshape(tile_size, tile_size).astype(np.float32)
