@@ -2,7 +2,45 @@
 
 *Broad project memory. Consolidates 40+ scattered memory entries into one widely-useful reference. Read this when CLAUDE.md doesn't have enough context. Updated after major milestones.*
 
-**Last updated:** 2026-04-14 (Session 54)
+**Last updated:** 2026-05-22 (Session 84)
+
+---
+
+## 0. RECENT SESSION HIGHLIGHTS (S60 → S84)
+
+For ground-truth on the river carver, [memory/S84_river_carver_geomorphology.md](memory/S84_river_carver_geomorphology.md) is the canonical reference.
+
+**S60-S69** (consolidated):
+- S60 — Lithology palette repaint, Catmull-Rom + query-time gap sampler, vegetation overhaul, schematic ground-touch validation, per-column biome emission. Vegetation overhaul retired the §11 Phase 3/4/5 layer-protocol revamp.
+- S61 — Schematic placement two-strategy stamp (tree = trunk extension, bush = sink). Commit `3e4cc92` on master.
+- S62 — BOREAL_ALPINE per-section sky-biome override (`BIOME_TO_MC_SKY = {"BOREAL_ALPINE": "minecraft:plains"}`).
+- S64 — Wholesale `minecraft:plains` mapping for problematic biomes (cold ones removed).
+- S69 — Override Studio paint tool + overlay-layer pipeline + P0 fixes. Commit `f81eb13`. (This is where master is currently parked.)
+
+**S70-S79**: Carver work — gravity flatten, path-smoothing, depth tuning, connectivity experiments (rejected, archived behind `_CONNECTIVITY_ENABLED=False`). See [memory/S72-79_handoff.md](memory/S72-79_handoff.md).
+
+**S80** — Painted rivers pivot. `masks/hydro_region.png` (8K, value 2=river, value 1=lake) became canonical hydrology source. WP findPath + spline pickle disabled. Endpoint pruning removed.
+
+**S81** — Spline-fit river outline (the "staircase saga"). 8 iterations to eliminate visible pixel staircase at MC scale. v8 final: `skimage.find_contours` → `splprep` → `cKDTree`. v8.1 added periodic meander injection. v8.6 iterative escape-fix. v8.8 EDT berm. v8.12 lake-river BLEND=24. v8.14 water-level cap. **User: "Pass working great."** Full detail: [memory/S81_river_handoff.md](memory/S81_river_handoff.md).
+
+**S82** — Tile-boundary fix. PAD=48 ring + neighbor data reconstruction added to escape-fix block in `run_pipeline.py`. All cross-tile passes now run on padded array.
+
+**S83 v17** — Real-river geomorphology. Power-curve depth `2.0 × sdf^0.7` replacing smoothstep + plateau. σ=4 + 5×σ=2 smoothing combo. Thalweg / bedform / riffle-pool geomorph. Bank asymmetry (point-bar smooth, cut-bank cliff). σ=4 final melt gaussian. Three new tile-level passes (carve_completion, bed_melt σ=2, bank_smooth σ=4). **User: "It's perfect"** on (51,53). Full detail: [memory/S83_v17_handoff.md](memory/S83_v17_handoff.md).
+
+**Cloud bake (between S83 and S84)** — User successfully baked the full 9409-tile world on 8× Hetzner CCX63 in ~8 hours for ~$15. See [cloud_bake/SETUP.md](cloud_bake/SETUP.md). Snapshot from this bake is at master/S69. **Full session details: [memory/S84_world_bake_session_NEEDS_USER_NOTES.md](memory/S84_world_bake_session_NEEDS_USER_NOTES.md)** — has known gaps (endless-ocean datapack, specific IPs/regions, snapshot creation specifics) that user is filling in after pulling the SSD with the bake artifacts.
+
+**S84** — Coastal river fixes + world height bump + skip-empty-sections optimization. See [memory/S84_river_carver_geomorphology.md](memory/S84_river_carver_geomorphology.md) for full detail. Key changes:
+- Paint-always-carves (`above_sea | painted_mask` at `core/river_carver_v2.py:292`)
+- PAD LUT fix (`run_pipeline.py:609-622` now uses `core_col_gen._LUT`)
+- Tanh depth saturation toward `_DEPTH_MAX_BLOCKS=10`
+- Coast-distance taper (`_COAST_TAPER_BLOCKS=60`)
+- World height 768 (was 512)
+- 13-point realistic terrain_spline
+- Lithology palette repaint
+- Skip-empty-sections in chunk_writer
+- User verdict: **"It's perfect"** on both (49,53) coastal + (51,53) inland.
+
+S84 lives in branch `sweet-margulis-6fbeed` (24+ commits ahead of master). Next bake requires merging to master OR bootstrapping CCX63 from that branch.
 
 ---
 
@@ -16,7 +54,8 @@ A 50,000 × 50,000 block Minecraft Java world (1.21.10) generated from Gaea heig
 - 9409 tiles (97×97), each 512×512 blocks
 - Tradewind direction: 270° (west → east)
 - Sea level: MC Y 63 = Gaea raw 17050
-- Vertical range: Y -64 to 447 (custom `vandir_height` datapack, height=512)
+- Vertical range: Y -64 to 703 (S84: bumped from 447 → 703 via updated `vandir_height` datapack, height=768, 48 sections per chunk)
+- Terrain spline: 13-point realistic curve (S84) — continental shelf, beach flat, rolling lowlands, mountain rise. Read live from `config/thresholds.json` via `core/column_generator.py:_LUT`
 
 **Quality bar:** worth flying over at low altitude in spectator mode and seeing nothing that screams "procedural artifact." Tile seams, biome staircases, and noise blobs are the recurring enemies.
 

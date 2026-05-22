@@ -693,8 +693,14 @@ def place_schematics(
     # appear floating because the schematic anchors at the snow surface
     # rather than the buried ground beneath. This applies even after the
     # zone-40 → BOREAL_ALPINE remap eliminates most natural snow.
+    # S84: Removed snow_block from skip set so trees can place on snow ground
+    # in BOREAL_TAIGA / SNOWY_BOREAL_TAIGA / BOREAL_ALPINE (was zero trees
+    # there because Gaea dusting painted snow_block over the whole biome
+    # surface). Keep "snow" (1-block snow layer overlay) skipped — trees on
+    # that look bad. powder_snow stays skipped (pest block; also removed at
+    # source elsewhere in S84). Ice variants still skipped.
     _SNOW_SURFACE_BLOCKS = frozenset({
-        "snow", "snow_block", "powder_snow", "ice", "packed_ice", "blue_ice",
+        "snow", "powder_snow", "ice", "packed_ice", "blue_ice",
     })
     snow_surface_mask = None
     if surface_blocks is not None:
@@ -766,6 +772,31 @@ def place_schematics(
             score[cliff_deg > max_slope] = 0.0
 
             species_scores[sp] = score
+
+    # ── S84: PALM COAST-DISTANCE GATE ────────────────────────────────────
+    # Real palms grow within ~50m of tropical coastlines. Zero out palm
+    # species scores beyond PALM_MAX_COAST_BLOCKS from the nearest ocean.
+    # Without this, palms could spawn anywhere their MC-jungle biome paint
+    # exists (which can include inland jungle patches).
+    _PALM_SPECIES = {"mpalm", "rfpalm", "cpalm"}
+    _PALM_MAX_COAST_BLOCKS = int(cfg.get("eco_placement", {}).get(
+        "palm_coast_max_blocks", 30))
+    _palms_present = _PALM_SPECIES & set(species_scores.keys())
+    if _palms_present:
+        from scipy.ndimage import distance_transform_edt as _edt_coast
+        SEA_Y = 63
+        _ocean_mask = surface_y < SEA_Y
+        if _ocean_mask.any() and not _ocean_mask.all():
+            _dist_from_ocean = _edt_coast(~_ocean_mask).astype(np.float32)
+            _far_inland = _dist_from_ocean > _PALM_MAX_COAST_BLOCKS
+            for sp in _palms_present:
+                species_scores[sp][_far_inland] = 0.0
+            del _dist_from_ocean, _far_inland
+        elif not _ocean_mask.any():
+            # No ocean in this tile — palms can't spawn (pure-inland)
+            for sp in _palms_present:
+                species_scores[sp][:] = 0.0
+        del _ocean_mask
 
     # ── Two-pass pixel iteration: trees first, then bushes ──────────────
     # Pass 1 places trees with full canopy exclusion.

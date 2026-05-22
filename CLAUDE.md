@@ -2,7 +2,20 @@
 
 *Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`. For the physical-realism refactor plan + implementation log, see `PHYSICAL_REALISM_REFACTOR.md` (§18 is the running log).*
 
-**Current state:** Session 83 (2026-05-12) — **VANDIR HYDROLOGY FINAL @ v17. User verdict: "it's perfect."**  Pipeline produces lake-bowl-style naturalistic painted rivers + lakes at every channel width.  The v8.14 baseline ("Pass working great") was extended through 9 more iterations (v9-v17) to add real-river geomorphology, a smoothing pipeline, and three new tile-level passes that resolve narrow-channel/wide-channel mismatch.  **Next: full-world 50k generation.**  Full S83 handoff: [memory/S83_v17_handoff.md](memory/S83_v17_handoff.md).  Prior baselines: S80 [memory/S80_river_handoff.md](memory/S80_river_handoff.md), S81 v8-v8.14 [memory/S81_river_handoff.md](memory/S81_river_handoff.md).
+**Current state:** Session 84 (2026-05-22) — **S84 BATCH LANDED.** Coastal painted rivers visible (paint-always-carves), tile-boundary walls fixed (PAD LUT now reads new 13-point spline), river depths capped at 10 blocks via tanh saturation (no flat pools), mouth-shallowing via coast-distance taper (real delta look), world height 768, lithology palettes repainted, vegetation polished, skip-empty-sections chunk_writer optimization landed. **User verdict on (49,53) coastal + (51,53) inland: "It's perfect."** Full reference: [memory/S84_river_carver_geomorphology.md](memory/S84_river_carver_geomorphology.md). Cloud bake setup: [cloud_bake/SETUP.md](cloud_bake/SETUP.md) — 8× CCX63 / ~3h / ~$15 per bake. **Next: re-bake full world with S84 changes** (snapshot refresh needed: yesterday's snapshot is at master/S69, S84 lives in sweet-margulis-6fbeed). Prior baselines: S83 [memory/S83_v17_handoff.md](memory/S83_v17_handoff.md), S80 [memory/S80_river_handoff.md](memory/S80_river_handoff.md), S81 v8-v8.14 [memory/S81_river_handoff.md](memory/S81_river_handoff.md).
+
+**S84 PATCH SUMMARY (this batch — see [memory/S84_river_carver_geomorphology.md](memory/S84_river_carver_geomorphology.md) for full detail):**
+
+- **Paint-always-carves** (`core/river_carver_v2.py:292`): `above_sea = (surface_out > SEA_LEVEL) | (hydro_centerline > 0)`. Painted cells at or below sea level now carve normally. Propagates through 6 downstream gates (footprint l.1000, zone l.1195, orphan l.1348, river_strict l.1367, water_mask l.1469). Bank widening (l.1503/1510/1517) stays strict so banks don't extend into ocean.
+- **PAD LUT fix** (`run_pipeline.py:609-622`): replaced hardcoded 4-point spline with `core_col_gen._LUT` (config-driven 13-point). Inner/pad LUT match eliminates tile-boundary walls from escape-fix.
+- **Tanh depth saturation** (`core/hydro_region_overlay.py:_DEPTH_MAX_BLOCKS=10.0`): `depth = MAX × tanh(SCALE × sdf^EXP / MAX)`. Soft asymptotic cap. No flat pool bottoms — preserves bowl shape.
+- **Coast-distance taper** (`core/hydro_region_overlay.py:_COAST_TAPER_BLOCKS=60.0`): `depth × tanh(coast_edt_blocks / 60)`. Painted rivers shallow over ~60 blocks approaching ocean → bed flush with sea floor at shoreline. Real delta look.
+- **Skip-empty-sections** (`core/chunk_writer.py`): cached module-level `_AIR_BLOCK_STATES_NBT` reused for all-air sections. Skips np.unique + _entry parsing + Compound construction. ~25-80s saved per tile, biggest signal on ocean tiles.
+- **World height 768** (chunk_writer Y_MAX=704, Y_RANGE=768, N_SECTIONS=48). Heightmap bpe derived: `_math.ceil(_math.log2(Y_RANGE + 1))`.
+- **13-point realistic terrain_spline** in `config/thresholds.json`. Continental shelf at low ranges, beach flat, rolling lowlands, mountain rise. Read via `core/column_generator.py:_LUT`.
+- **Lithology** (`config/thresholds.json`): `temperate_basaltic` = deepslate-heavy, `arid_basaltic` = basalt mix.
+- **Vegetation** (`core/surface_decorator.py`): stone fade Y 480-580, ARCTIC_TUNDRA → SBT below Y 500. (`core/schematic_placement.py`): trees CAN place on snow_block, palm coast-distance gate (max 30 blocks from ocean), rfc palms stripped.
+- **Coast vegetation adjacency** (`core/chunk_writer.py`): `binary_dilation(below_sea, 1)` kills terrestrial GC at sea-level cells adjacent to water.
 
 **S83 ARCHITECTURE (v17 — current production):**
 

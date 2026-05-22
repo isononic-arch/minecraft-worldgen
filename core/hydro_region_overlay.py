@@ -96,6 +96,23 @@ _CARVE_INWARD_BIAS = 4.0      # S83 v17: kept for legacy code paths but unused b
 # Geomorphically: real rivers follow D ~ W^0.6-0.8 (Hack's law-ish).
 _DEPTH_POWER_SCALE = 2.0
 _DEPTH_POWER_EXPONENT = 0.7
+# S84: tanh saturation toward a maximum depth. Soft cap — preserves the
+# natural bowl shape (depth monotonically increases from edge to center)
+# while preventing wide rivers from carving absurd 30-50 block troughs.
+# User feedback: "the river carver melts too intensely- all the way down
+# to a y of 1! Make rivers a more realistic depth (matches coastal shelf
+# ~Y 54 = 9 blocks below sea). Don't unnaturally flatten out like a pool."
+# Formula: depth = MAX * tanh(SCALE * sdf^EXP / MAX)
+# tanh approaches MAX asymptotically; no hard cap = no flat plateaus.
+_DEPTH_MAX_BLOCKS = 10.0
+# S84: coast-distance depth taper. Real river beds ramp to natural sea
+# floor depth over ~50-100 blocks approaching the ocean (delta/sediment
+# effect + continental shelf bathymetry). Modulate carve_depth by
+# coast_factor = tanh(coast_edt_blocks / _COAST_TAPER_BLOCKS).
+# At the ocean shoreline: factor=0 → depth=0 → bed = natural sea floor.
+# Far inland (~200 blocks): factor≈1 → depth = full natural carve.
+# Smooth transition over ~60 blocks gives realistic delta look.
+_COAST_TAPER_BLOCKS = 60.0
 _RIVER_BED_GAUSS_SIGMA_8K = 4.0  # gaussian sigma for global bed smooth at 8k
                                   # (≈ σ=24 at 50k, matches per-tile σ=16×3-pass)
 # S83 v11: WorldEdit //brush smooth ×5 equivalent applied to the trough
@@ -199,6 +216,9 @@ _river_spline_polygons_50k_cache: list | None = None  # list of (Mi, 2) arrays f
 # boundary artifacts. Replaces the per-tile bank smooth-brush gaussian which was
 # the visible bed-elevation seam source.
 _river_bed_8k_cache: np.ndarray | None = None  # float32 (8192, 8192) MC Y values
+# S84: coast-distance depth modulation factor, computed once in _ensure_caches.
+# Values in [0, 1]: 0 at ocean shoreline (no carve), →1 far inland (full carve).
+_coast_factor_8k_cache: np.ndarray | None = None
 # S83 v9: GLOBAL river water_y at 8k via skeleton-graph monotonic-descent walk.
 # Same architecture as bed cache but for water-surface elevation. Walks the
 # painted skeleton source→sink (Kahn's topo sort), running-min of LUT(height),
@@ -859,7 +879,8 @@ def _make_bed_cache_key(hr_path: Path) -> str:
     paint_md5 = hashlib.md5(hr_path.read_bytes()).hexdigest()
     src_md5 = hashlib.md5(inspect.getsource(_ensure_caches).encode()).hexdigest()
     tunables = (
-        _DEPTH_POWER_SCALE, _DEPTH_POWER_EXPONENT,
+        _DEPTH_POWER_SCALE, _DEPTH_POWER_EXPONENT, _DEPTH_MAX_BLOCKS,
+        _COAST_TAPER_BLOCKS,
         _THALWEG_AMP_BLOCKS, _THALWEG_SCALE, _THALWEG_SIGN,
         _BEDFORM_AMP_BLOCKS, _BEDFORM_WAVELEN_BLOCKS,
         _RIFFLE_AMP_BLOCKS, _RIFFLE_WAVELEN_BLOCKS,
@@ -891,6 +912,7 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
     global _river_spline_pts_50k_cache, _river_spline_kdtree_cache
     global _river_spline_polygons_50k_cache
     global _river_bed_8k_cache, _river_water_y_8k_cache
+    global _coast_factor_8k_cache
 
     import os as _os
     import pickle as _pickle
@@ -923,6 +945,11 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
         _river_spline_pts_50k_cache = data['spline_pts']
         _river_spline_polygons_50k_cache = data['spline_polygons']
         _river_water_y_8k_cache = data['river_water_y_8k']
+        # S84: coast factor; may be missing in pre-S84 caches (will be None).
+        # Bed cache key includes _COAST_TAPER_BLOCKS so an old cache without
+        # this field would be rejected by key mismatch above, but defensive-
+        # load with .get() in case of partial pickles.
+        _coast_factor_8k_cache = data.get('coast_factor_8k')
         # cKDTree is not picklable cleanly; rebuild from points (~5 sec)
         if (_river_spline_pts_50k_cache is not None
                 and _river_spline_pts_50k_cache.shape[0] > 0):
@@ -969,6 +996,7 @@ def _save_bed_cache_to_disk(hr_path: Path) -> None:
             'spline_pts': _river_spline_pts_50k_cache,
             'spline_polygons': _river_spline_polygons_50k_cache,
             'river_water_y_8k': _river_water_y_8k_cache,
+            'coast_factor_8k': _coast_factor_8k_cache,  # S84
         }
         tmp_path = bed_cache_path.with_suffix('.pkl.tmp')
         with open(tmp_path, 'wb') as f:
@@ -989,6 +1017,7 @@ def _ensure_caches(hr_path: Path) -> None:
     global _river_spline_pts_50k_cache, _river_spline_kdtree_cache
     global _river_spline_polygons_50k_cache
     global _river_bed_8k_cache, _river_water_y_8k_cache
+    global _coast_factor_8k_cache
     if _cache_path == hr_path:
         return
     # S83 v18: try loading from disk pickle first. Skip the ~3-4 GB peak
@@ -1240,13 +1269,41 @@ def _ensure_caches(hr_path: Path) -> None:
                         _paint_smooth_8k_cache.astype(np.float32)
                         * np.float32(_BLOCKS_PER_8K_PX)
                     )
+
+                    # S84: COAST DISTANCE EDT — modulate carve depth so painted
+                    # rivers shallow as they approach the ocean. Real river
+                    # mouths are shallow due to sediment deposition + shelf
+                    # bathymetry. coast_factor: 0 at ocean shoreline → ~1 far
+                    # inland (asymptotic via tanh). Multiplies into carve depth.
+                    # Computed once here, cached in pickle, sampled at 50k in
+                    # _rasterize_river_edges_tile.
+                    from scipy.ndimage import distance_transform_edt as _edt_coast
+                    _SEA_LEVEL_RAW = 17050  # matches LUT breakpoint for Y 63
+                    _ocean_mask_8k = height_8k_for_bed < _SEA_LEVEL_RAW
+                    # EDT measures inland distance; ocean cells have EDT=0.
+                    _coast_edt_pixels_8k = _edt_coast(~_ocean_mask_8k).astype(np.float32)
+                    _coast_edt_blocks_8k = (
+                        _coast_edt_pixels_8k * np.float32(_BLOCKS_PER_8K_PX)
+                    )
+                    _coast_factor_8k_cache = np.tanh(
+                        _coast_edt_blocks_8k / np.float32(_COAST_TAPER_BLOCKS)
+                    ).astype(np.float32)
+
                     # S83 v17: POWER-CURVE CARVE (replaces smoothstep + plateau
-                    # + linear). Soft monotonic curve, no plateau, no cap.
-                    # carve_depth = SCALE * max(0, sdf)^POWER
+                    # + linear). Soft monotonic curve, S84 adds tanh
+                    # saturation toward _DEPTH_MAX_BLOCKS (no flat plateaus,
+                    # asymptotic approach — preserves bowl shape).
+                    # carve_depth = MAX * tanh(SCALE * max(0, sdf)^POWER / MAX)
+                    # × coast_factor (0 at ocean → 1 inland).
                     _sdf_pos = np.maximum(_sdf_blocks_8k, np.float32(0.0))
-                    _carve_depth_8k = (
+                    _depth_raw_8k = (
                         np.float32(_DEPTH_POWER_SCALE)
                         * np.power(_sdf_pos, np.float32(_DEPTH_POWER_EXPONENT))
+                    )
+                    _carve_depth_8k = (
+                        np.float32(_DEPTH_MAX_BLOCKS)
+                        * np.tanh(_depth_raw_8k / np.float32(_DEPTH_MAX_BLOCKS))
+                        * _coast_factor_8k_cache  # S84 mouth-shallowing
                     ).astype(np.float32)
                     # LUT height → MC Y at 8k
                     _LUT_in_8k = np.array(
@@ -1662,15 +1719,18 @@ def _rasterize_river_edges_tile(
         sdf_blocks = np.where(
             inside_mask_flat, dist_50k_flat, -dist_50k_flat
         ).reshape(tile_size, tile_size).astype(np.float32)
-        # S83 v17: POWER-CURVE CARVE (matches _ensure_caches formula).
-        # depth = SCALE * max(0, sdf)^POWER — no plateau, no cap.
+        # S83 v17 + S84: power curve with tanh saturation (matches
+        # _ensure_caches formula). depth = MAX * tanh(SCALE * sdf^POWER / MAX)
+        # × coast_factor (0 at ocean → 1 inland, sampled at 50k from 8k cache).
         _sdf_pos_50k = np.maximum(sdf_blocks, 0.0)
-        carve_depth_50k = (
+        _depth_raw_50k = (
             np.float32(_DEPTH_POWER_SCALE)
             * np.power(_sdf_pos_50k, np.float32(_DEPTH_POWER_EXPONENT))
+        )
+        carve_depth_50k = (
+            np.float32(_DEPTH_MAX_BLOCKS)
+            * np.tanh(_depth_raw_50k / np.float32(_DEPTH_MAX_BLOCKS))
         ).astype(np.float32)
-        paint_eroded_50k = carve_depth_50k > 0.5
-        paint_smooth_full_50k = paint_eroded_50k.copy()
         # Width sampling still uses the 8k EDT cache (cheap, OK quality)
         from scipy.ndimage import map_coordinates as _mc
         scale_to_8k = _REGION_PX / _WORLD_PX
@@ -1681,6 +1741,17 @@ def _rasterize_river_edges_tile(
         edt_at_tile_8k = _mc(_river_width_8k_cache, coords, order=3,
                              mode="constant", cval=0.0)
         edt_blocks = edt_at_tile_8k * scale
+        # S84: sample coast factor (8k cache) at 50k via bilinear interp.
+        if _coast_factor_8k_cache is not None:
+            _coast_factor_50k = _mc(
+                _coast_factor_8k_cache, coords, order=1,
+                mode="constant", cval=0.0,
+            ).astype(np.float32)
+            carve_depth_50k = (
+                carve_depth_50k * _coast_factor_50k
+            ).astype(np.float32)
+        paint_eroded_50k = carve_depth_50k > 0.5
+        paint_smooth_full_50k = paint_eroded_50k.copy()
     elif _paint_eroded_8k_cache is not None:
         # Fallback: old SDF-from-pixel-mask path
         from scipy.ndimage import map_coordinates as _mc
@@ -1695,12 +1766,27 @@ def _rasterize_river_edges_tile(
                       mode="constant", cval=-1e6)
         sdf_50k = _gf_50k(sdf_50k, sigma=_SDF_SMOOTH_SIGMA_50K)
         sdf_blocks = sdf_50k * scale  # 8k pixels → MC blocks
-        # S83 v17: power curve (matches spline path)
+        # S83 v17 + S84: power curve with tanh saturation (matches spline path)
+        # × coast_factor (sampled at 50k from 8k cache).
         _sdf_pos_50k_fb = np.maximum(sdf_blocks, 0.0)
-        carve_depth_50k = (
+        _depth_raw_50k_fb = (
             np.float32(_DEPTH_POWER_SCALE)
             * np.power(_sdf_pos_50k_fb, np.float32(_DEPTH_POWER_EXPONENT))
+        )
+        carve_depth_50k = (
+            np.float32(_DEPTH_MAX_BLOCKS)
+            * np.tanh(_depth_raw_50k_fb / np.float32(_DEPTH_MAX_BLOCKS))
         ).astype(np.float32)
+        # S84: sample coast factor at 50k via bilinear interp (fallback path
+        # reuses the same coords as _paint_eroded_8k_cache sampling above).
+        if _coast_factor_8k_cache is not None:
+            _coast_factor_50k_fb = _mc(
+                _coast_factor_8k_cache, coords, order=1,
+                mode="constant", cval=0.0,
+            ).astype(np.float32)
+            carve_depth_50k = (
+                carve_depth_50k * _coast_factor_50k_fb
+            ).astype(np.float32)
         paint_eroded_50k = carve_depth_50k > 0.5
         paint_smooth_full_50k = paint_eroded_50k.copy()
 

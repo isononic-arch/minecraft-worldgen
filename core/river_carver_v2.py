@@ -289,7 +289,21 @@ def carve_rivers(
     # shoreline follows the natural terrain contour — smooth by construction.
     lake_mask = np.zeros((H, W), dtype=bool)  # default: no lakes
     lake_raw = lake_u16 > 0
+    # S84: above_sea includes painted river cells regardless of elevation.
+    # Painted cells whose natural terrain dips at/below sea level (coastal
+    # paint, river extending into ocean) must still receive the v17 bed
+    # cache carve + water_y assignment. Without this, every `& above_sea`
+    # gate downstream (footprint at l.1000, zone at l.1195, orphan at
+    # l.1348, river_strict at l.1367, water_mask at l.1469) excludes
+    # below-sea painted cells — and the river abruptly disappears at the
+    # Y 63 contour. Bank widening at l.1503/1510/1517 uses
+    # `surface_out > SEA_LEVEL` directly (not `above_sea`), so banks
+    # correctly remain bounded above sea.
     above_sea = surface_out > SEA_LEVEL
+    if hydro_centerline is not None:
+        _painted_any = np.asarray(hydro_centerline) > 0
+        if _painted_any.any():
+            above_sea = above_sea | _painted_any
 
     if lake_raw.any():
         from scipy.ndimage import label
@@ -784,7 +798,13 @@ def carve_rivers(
     # depth from per-pixel width × slope × elevation; sections 5/6 (legacy
     # `river_depth_map` + parabolic profile + flow modulation) were removed
     # in S72 — they were dead code, computed but never read.
-    river_channel = centerline & (surface_out > SEA_LEVEL) & ~lake_mask
+    # S84: drop above_sea gate — paint always carves. Painted cells whose
+    # natural terrain dips below sea level still get the spline+SDF+bed-cache
+    # carve, producing a real underwater channel that extends the river into
+    # the ocean (real river-delta look) instead of abruptly flattening at the
+    # Y 63 contour. Bank widening (sec 8) still gates on above_sea so banks
+    # don't extend into ocean.
+    river_channel = centerline & ~lake_mask
 
     # ── 7. Carve river channels (S71-3: WP-style guardrails) ──────────────
     # Replaces S70 5x5 minimum_filter + S71 valley smoothing β.  Adapted from
@@ -806,7 +826,9 @@ def carve_rivers(
     # S71-3 final-river: combine all centerlines (river_channel + conn_channel_mask)
     # into one footprint set so connectivity channels also get water_y_field.
     # This addresses "river deltas — land connects but water doesn't".
-    river_full_mask = river_channel | (conn_channel_mask & (surface_out > SEA_LEVEL) & ~lake_mask)
+    # S84: drop above_sea gate here too (matches river_channel — paint always
+    # carves, even below sea level).
+    river_full_mask = river_channel | (conn_channel_mask & ~lake_mask)
 
     # Pre-allocate water_y_field (default -1 = no water at this pixel).
     water_y_field = np.full((H, W), -1, dtype=np.int16)

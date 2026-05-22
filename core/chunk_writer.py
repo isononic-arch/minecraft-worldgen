@@ -12,7 +12,7 @@ Responsibilities:
 
 World constants (Higher Heights datapack):
   Y_MIN    = -64   (bedrock layer)
-  Y_MAX    = 448   (build height)
+  Y_MAX    = 704   (build height, S84: 512-block world -> 768-block world)
   SEA_Y    = 63    (MC sea level — water fill mandatory below this)
   SECTION_H = 16   (blocks per ChunkSection)
 
@@ -36,11 +36,11 @@ import numpy as np
 # WORLD CONSTANTS (Higher Heights datapack — locked)
 # ---------------------------------------------------------------------------
 Y_MIN     = -64
-Y_MAX     = 448
+Y_MAX     = 704   # S84: bumped 448 -> 704 for 768-block world height
 SEA_Y     = 63
 SECTION_H = 16
-Y_RANGE   = Y_MAX - Y_MIN          # 512
-N_SECTIONS = Y_RANGE // SECTION_H  # 32
+Y_RANGE   = Y_MAX - Y_MIN          # 768 (S84: was 512)
+N_SECTIONS = Y_RANGE // SECTION_H  # 48 (S84: was 32)
 
 # MC 1.20.1 biome name → internal string (subset used in Vandir)
 # Full MC biome IDs assigned by amulet via string name — no numeric IDs needed.
@@ -750,14 +750,22 @@ def build_column_array(
     ) & (surface_y + 1 > SEA_Y)
     if _kill_short.any():
         ground_cover[_kill_short] = ""
-    # S70: Kill terrestrial ground cover at coast edges where surface_y <= SEA_Y.
-    # Prevents grass/tall_grass/ferns etc. from poking out over ocean water
-    # when a land-biome pixel sits exactly at sea level next to an ocean cell.
+    # S84: Narrow the S70 coast-edge veg cleanup. Previously this killed
+    # terrestrial ground cover EVERYWHERE surface_y <= SEA_Y — bald-ifying
+    # vast coastal bands (every land cell at Y=63 lost its grass/flowers).
+    # Now requires the cell to be literally adjacent (within 1 block) to a
+    # cell whose surface is BELOW sea level (i.e., an actual water-bearing
+    # cell). Preserves inland-but-low coastal vegetation; still kills the
+    # literal beach edge that's flush with ocean.
+    from scipy.ndimage import binary_dilation as _bin_dilation
     _water_plants = ("seagrass", "tall_seagrass", "kelp", "sea_pickle")
+    _below_sea = surface_y < SEA_Y
+    _adj_to_water = _bin_dilation(_below_sea, iterations=1)
     _kill_terrestrial = (
         (ground_cover != "")
         & ~np.isin(ground_cover, _water_plants)
         & (surface_y <= SEA_Y)
+        & _adj_to_water
     )
     if _kill_terrestrial.any():
         ground_cover[_kill_terrestrial] = ""
@@ -1534,10 +1542,34 @@ import traceback as _traceback
 
 _CHUNK_DATA_VERSION = 4556   # Java 1.21.10
 _SECTION_Y_MIN      = -4     # Y_MIN // 16 = -64 // 16
-_N_SECTIONS         = 32     # (448 - (-64)) // 16
+_N_SECTIONS         = 48     # S84: (704 - (-64)) // 16 = 48 (was 32 for 512-block world)
 _SECTOR_SZ          = 4096   # Anvil .mca sector size
 
-_TEST_SECTION_Y_MAX = None   # Full Higher Heights range: sections -4 to 27 (Y -64 to 447)
+_TEST_SECTION_Y_MAX = None   # Full Higher Heights range: sections -4 to 43 (Y -64 to 703)
+
+# S84: skip-empty-sections fast path. Most sections at high Y are entirely
+# air. Build the trivial all-air block_states Compound once at module
+# scope and reuse for every all-air section we emit. Avoids ~1-2ms of
+# np.unique + _entry parsing + Compound construction per air section
+# (= ~25,000-40,000 calls per tile on average → ~25-80s saved per tile).
+# Biome compound stays per-section because biome can vary across sections
+# (sky-biome override for BOREAL_ALPINE altitude snow, etc.).
+_AIR_BLOCK_STATES_NBT = None  # lazy-built on first use (after nbtlib import)
+
+
+def _get_air_block_states_nbt():
+    """Return the cached all-air block_states Compound, building on
+    first use. Same Compound instance is reused — nbtlib serialization
+    reads but does not mutate."""
+    global _AIR_BLOCK_STATES_NBT
+    if _AIR_BLOCK_STATES_NBT is None:
+        import nbtlib
+        _AIR_BLOCK_STATES_NBT = nbtlib.Compound({
+            "palette": nbtlib.List[nbtlib.Compound]([
+                nbtlib.Compound({"Name": nbtlib.String("minecraft:air")})
+            ])
+        })
+    return _AIR_BLOCK_STATES_NBT
 
 
 def _pack_indices(indices: np.ndarray, palette_size: int, min_bits: int = 4) -> np.ndarray:
@@ -1636,9 +1668,13 @@ def _build_heightmaps_nbt(chunk_vol: np.ndarray) -> "nbtlib.Compound":
         return highest.astype(np.int64)          # stored = yi = MC_Y - Y_MIN
 
     def _pack_hm(values: np.ndarray) -> "nbtlib.LongArray":
-        bpe     = 9
-        vpl     = 64 // bpe                      # 7 values per long
-        n_longs = _math.ceil(len(values) / vpl)  # 37
+        # S84: bits_per_entry derived from world height. 9 bits maxes at 511
+        # (was correct for 512-block world), but 768-block world needs 10
+        # bits (max 1023). MC computes bits per heightmap as
+        # ceil(log2(world_height + 1)) — matches our derivation.
+        bpe     = _math.ceil(_math.log2(Y_RANGE + 1))
+        vpl     = 64 // bpe                      # 7 values/long @ 9bpe; 6 @ 10bpe
+        n_longs = _math.ceil(len(values) / vpl)  # 37 @ 9bpe; 43 @ 10bpe
         pad     = n_longs * vpl - len(values)
         padded  = np.concatenate([values, np.zeros(pad, dtype=np.int64)])
         reshaped    = padded.reshape(n_longs, vpl)
@@ -1759,9 +1795,15 @@ def _chunk_to_nbt_bytes(
         sec_blk = np.full((CHUNK_SZ, CHUNK_SZ, CHUNK_SZ), "air", dtype=object)
         yi_lo = max(0, yi_base);  yi_hi = min(Y_RANGE, yi_base + CHUNK_SZ)
         by_lo = yi_lo - yi_base;  by_hi = yi_hi - yi_base
-        if yi_hi > yi_lo and bx_hi > bx_lo and bz_hi > bz_lo:
+        # S84: track whether section is all-air (no copy needed if outside
+        # vol range; if copied, check the copied data).
+        _sec_populated = yi_hi > yi_lo and bx_hi > bx_lo and bz_hi > bz_lo
+        if _sec_populated:
             sec_blk[by_lo:by_hi, lz_lo:lz_hi, lx_lo:lx_hi] = \
                 chunk_vol[yi_lo:yi_hi, lz_lo:lz_hi, lx_lo:lx_hi]
+            _is_all_air = bool((sec_blk == "air").all())
+        else:
+            _is_all_air = True  # section was outside vol range, sec_blk is the np.full default
 
         # Build (4, 4, 4) biome quanta for this section — 4 vertical cells,
         # each covering a 4-block Y range.  Rule: cell painted sky iff
@@ -1789,9 +1831,17 @@ def _chunk_to_nbt_bytes(
         # length 24` at chunk load.
         # S62: biome_q4 is now per-section — sky-biome override for
         # BOREAL_ALPINE and friends kills altitude snow without datapacks.
+        # S84: fast path for all-air sections. Skip np.unique + _entry
+        # parsing + Compound construction; reuse the cached air palette.
+        # Biome compound still emitted per-section (biome can differ at
+        # altitude vs ground, e.g. BOREAL_ALPINE sky override).
+        _block_states_nbt = (
+            _get_air_block_states_nbt() if _is_all_air
+            else _build_block_states_nbt(sec_blk)
+        )
         sections.append(nbtlib.Compound({
             "Y":            nbtlib.Byte(sec_y),
-            "block_states": _build_block_states_nbt(sec_blk),
+            "block_states": _block_states_nbt,
             "biomes":       _build_biomes_nbt(biome_q4),
             # SkyLight / BlockLight intentionally omitted — isLightOn=0 tells MC
             # to compute lighting itself, so providing arrays is unnecessary.

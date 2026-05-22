@@ -1690,11 +1690,9 @@ def decorate_surface(
             snow_px = _gap == 7
             if snow_px.any():
                 surface_blocks[snow_px] = "snow_block"
-                # Rare powder_snow in concavities (deep snow pockets)
-                if eco_grads is not None and hasattr(eco_grads, 'concavity_norm'):
-                    _powder = snow_px & (eco_grads.concavity_norm > 0.6) & (_gap_rand < 0.15)
-                    surface_blocks[_powder] = "powder_snow"
-                    del _powder
+                # S84: powder_snow generation removed — was placed in concavities
+                # but powder_snow is a hazard ("pest block") that traps players.
+                # All snow now renders as snow_block.
 
             # ── Sand dunes (gap==8): pure sand ───────────────────────────
             sand_px = _gap == 8
@@ -1947,8 +1945,10 @@ def decorate_surface(
     # (which fires on slope) by handling the flat-but-high case — alpine
     # plateaus shouldn't read as grass even if slope is modest. Also kills
     # ground cover above the full-fade band so bare rock stays bare.
-    _FADE_Y_START = 230   # 0% fade below this
-    _FADE_Y_FULL  = 280   # 100% fade above this
+    # S84: bumped from 230-280 for 768-height world. Y 480-580 matches
+    # real-world bare-rock altitude (~3500-4500m) in our compressed scale.
+    _FADE_Y_START = 480   # 0% fade below this
+    _FADE_Y_FULL  = 580   # 100% fade above this
     _GRASS_FAMILY = frozenset({
         "grass_block", "podzol", "coarse_dirt", "packed_mud",
         "rooted_dirt", "moss_block", "dirt", "mycelium",
@@ -2309,6 +2309,12 @@ def decorate_surface(
     # Single source of truth: if biome_grid stays SBT, both carpet + snowy_taiga
     # tag apply.  If remapped to BA, neither applies.
     _apply_sbt_mountaincap_remap(biome_grid, surface_y, tile_x, tile_y, cfg)
+
+    # S84: ARCTIC_TUNDRA only valid on actual high peaks. Below Y 500,
+    # remap to SNOWY_BOREAL_TAIGA — softer transition + same snowy look.
+    _at_low = (biome_grid == "ARCTIC_TUNDRA") & (surface_y < 500)
+    if _at_low.any():
+        biome_grid[_at_low] = "SNOWY_BOREAL_TAIGA"
 
     # ──────────────────────────────────────────────────────────────────
     # S64: SNOW CARPET PASS

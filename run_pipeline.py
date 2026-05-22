@@ -445,8 +445,18 @@ def _process_tile(args: dict) -> dict:
             # there) — which gives the correct natural shoreline.
             _hydro_lake_wl = masks.get("hydro_lake_wl")
             if _hydro_lake_wl is not None:
-                _gaea_in = np.array([0, 17050, 45000, 65496], dtype=np.float64)
-                _mc_y_out = np.array([-64, 63, 200, 448], dtype=np.float64)
+                # S84: read spline from config (was hardcoded OLD spline
+                # [0,17050,45000,65496]→[-64,63,200,448]). With new spline
+                # column_generator places terrain at new Y values; this
+                # mapped lake water_y to OLD Y, leaving lakes 4+ blocks
+                # above surrounding terrain. Now matches column LUT.
+                _sp_cfg = cfg.get("terrain_spline", {})
+                _gaea_in = np.array(_sp_cfg.get("gaea_in",
+                                                [0, 17050, 45000, 65496]),
+                                    dtype=np.float64)
+                _mc_y_out = np.array(_sp_cfg.get("mc_y_out",
+                                                 [-64, 63, 200, 448]),
+                                     dtype=np.float64)
                 _wl_mc_float = np.interp(
                     (_hydro_lake_wl * 65535.0).ravel(),
                     _gaea_in, _mc_y_out
@@ -596,12 +606,20 @@ def _process_tile(args: dict) -> dict:
         if _lake_wl_pad_norm is None:
             _lake_wl_pad_norm = np.zeros((_PH, _PW), dtype=np.float32)
 
-        # LUT from raw uint16 height → MC Y (matches column_generator).
-        _LUT_GAEA_IN  = np.array([0, 17050, 45000, 65496], dtype=np.float64)
-        _LUT_MC_Y_OUT = np.array([-64, 63, 200, 448], dtype=np.float64)
-        _height_raw_pad = (_height_pad_norm * 65535.0).astype(np.float64)
+        # S84 FIX: use core_col_gen._LUT (which reads terrain_spline from
+        # config/thresholds.json at module load). Previously this block had
+        # a hardcoded 4-point LUT [0,17050,45000,65496]→[-64,63,200,448]
+        # that diverged from the live 13-point realistic spline by 10-36 Y
+        # in the inland range. Inner tile used the new spline (via
+        # column_generator) but this pad ring used the old hardcoded one;
+        # the step at the inner/pad boundary caused escape-fix to wall
+        # inner-edge cells to "contain" perceived water spillage. Fix:
+        # share the same 65536-entry _LUT.
+        _height_raw_pad_int = np.clip(
+            (_height_pad_norm * 65535.0).astype(np.int32), 0, 65535
+        )
         _pre_carve_pad = np.clip(
-            np.interp(_height_raw_pad, _LUT_GAEA_IN, _LUT_MC_Y_OUT),
+            core_col_gen._LUT[_height_raw_pad_int],
             core_col_gen.MC_Y_MIN + 4, core_col_gen.MC_Y_MAX - 1,
         ).astype(np.int16)
         # Overwrite inner with the authoritative pre_carve_y (which
@@ -610,14 +628,13 @@ def _process_tile(args: dict) -> dict:
         # cells the cap touches, but be exact where we can).
         _pre_carve_pad[_PAD:_PAD + _H, _PAD:_PAD + _W] = pre_carve_y
 
-        # Lake water_y in MC Y space for the pad region (same spline
-        # used at line ~447 above for inner lake_water_levels). Cells
-        # with no lake (lake_wl_norm == 0) produce wl_mc < SEA_LEVEL
+        # Lake water_y in MC Y space for the pad region. Same _LUT.
+        # Cells with no lake (lake_wl_norm == 0) produce wl_mc < SEA_LEVEL
         # after interpolation, which we treat as "no water" below.
-        _lake_wl_mc_pad = np.interp(
-            (_lake_wl_pad_norm * 65535.0).ravel(),
-            _LUT_GAEA_IN, _LUT_MC_Y_OUT
-        ).reshape(_lake_wl_pad_norm.shape).astype(np.float32)
+        _lake_wl_raw_int = np.clip(
+            (_lake_wl_pad_norm * 65535.0).astype(np.int32), 0, 65535
+        )
+        _lake_wl_mc_pad = core_col_gen._LUT[_lake_wl_raw_int].astype(np.float32)
 
         # Read hydro_region.png at 8k, nearest-sample onto padded 50k coords
         # so we know which pad cells are painted-river / painted-lake.
@@ -713,6 +730,12 @@ def _process_tile(args: dict) -> dict:
                 print(f"[s83v13] tile=({tile_x},{tile_y}) carve_completion: "
                       f"lowered {_n_dry} dry-bed-in-water cells",
                       file=sys.stderr, flush=True)
+
+            # S84 PASS 0.1 (flat Y=55 floor coastal hack) REMOVED.
+            # Replaced by paint-always-carves in core/river_carver_v2.py:
+            # the above_sea gate was dropped from river_channel and
+            # river_full_mask construction so painted cells get the full
+            # v17 spline+SDF+bed-cache treatment regardless of sea level.
 
         # === S83 v16 PASS 0.25: BED MELT AT 50K (painted rivers only) ===
         # User v15 feedback: "still flat bottoms at small channels" + "harsh
