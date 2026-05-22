@@ -29,7 +29,7 @@ For ground-truth on the river carver, [memory/S84_river_carver_geomorphology.md]
 
 **Cloud bake (between S83 and S84)** — User successfully baked the full 9409-tile world on 8× Hetzner CCX63 in ~8 hours for ~$15. See [cloud_bake/SETUP.md](cloud_bake/SETUP.md). Snapshot from this bake is at master/S69. **Full session details: [memory/S84_world_bake_session_NEEDS_USER_NOTES.md](memory/S84_world_bake_session_NEEDS_USER_NOTES.md)** — has known gaps (endless-ocean datapack, specific IPs/regions, snapshot creation specifics) that user is filling in after pulling the SSD with the bake artifacts.
 
-**S84** — Coastal river fixes + world height bump + skip-empty-sections optimization. See [memory/S84_river_carver_geomorphology.md](memory/S84_river_carver_geomorphology.md) for full detail. Key changes:
+**S84** — Coastal river fixes + world height bump + skip-empty-sections + **bbox-cull perf win**. ON MASTER (commits `a5bf8a7` + `5ed1c87`). See [memory/S84_river_carver_geomorphology.md](memory/S84_river_carver_geomorphology.md) for full detail. Key changes:
 - Paint-always-carves (`above_sea | painted_mask` at `core/river_carver_v2.py:292`)
 - PAD LUT fix (`run_pipeline.py:609-622` now uses `core_col_gen._LUT`)
 - Tanh depth saturation toward `_DEPTH_MAX_BLOCKS=10`
@@ -38,9 +38,10 @@ For ground-truth on the river carver, [memory/S84_river_carver_geomorphology.md]
 - 13-point realistic terrain_spline
 - Lithology palette repaint
 - Skip-empty-sections in chunk_writer
-- User verdict: **"It's perfect"** on both (49,53) coastal + (51,53) inland.
+- **Bbox-cull spline polygons** (`5ed1c87`): py-spy profile showed `matplotlib.contains_points` was 67.87% of ocean-tile wall; bbox check culls 95%+ of polygons that don't intersect the tile. **3.3-3.5× speedup per tile.** Byte-exact MCA output on (51,53) post-cull → proven correct.
+- User verdict: **"It's perfect"** on (49,53) coastal + (51,53) inland + (51,53) post-bbox-cull.
 
-S84 lives in branch `sweet-margulis-6fbeed` (24+ commits ahead of master). Next bake requires merging to master OR bootstrapping CCX63 from that branch.
+**Wall time: ~9 min/tile (down from ~30 min). Projected next bake: ~3-4h on 8× CCX63 / ~$7-9** (vs S83 bake's 8h / $15).
 
 ---
 

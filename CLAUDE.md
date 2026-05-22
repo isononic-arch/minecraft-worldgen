@@ -2,7 +2,19 @@
 
 *Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`. For the physical-realism refactor plan + implementation log, see `PHYSICAL_REALISM_REFACTOR.md` (§18 is the running log).*
 
-**Current state:** Session 84 (2026-05-22) — **S84 BATCH LANDED.** Coastal painted rivers visible (paint-always-carves), tile-boundary walls fixed (PAD LUT now reads new 13-point spline), river depths capped at 10 blocks via tanh saturation (no flat pools), mouth-shallowing via coast-distance taper (real delta look), world height 768, lithology palettes repainted, vegetation polished, skip-empty-sections chunk_writer optimization landed. **User verdict on (49,53) coastal + (51,53) inland: "It's perfect."** Full reference: [memory/S84_river_carver_geomorphology.md](memory/S84_river_carver_geomorphology.md). Cloud bake setup: [cloud_bake/SETUP.md](cloud_bake/SETUP.md) — 8× CCX63 / ~3h / ~$15 per bake. **Next: re-bake full world with S84 changes** (snapshot refresh needed: yesterday's snapshot is at master/S69, S84 lives in sweet-margulis-6fbeed). Prior baselines: S83 [memory/S83_v17_handoff.md](memory/S83_v17_handoff.md), S80 [memory/S80_river_handoff.md](memory/S80_river_handoff.md), S81 v8-v8.14 [memory/S81_river_handoff.md](memory/S81_river_handoff.md).
+**Current state:** Session 84 (2026-05-22) — **S84 BATCH + BBOX-CULL OPTIMIZATION LANDED. ON MASTER.** Coastal painted rivers visible (paint-always-carves), tile-boundary walls fixed (PAD LUT now reads new 13-point spline), river depths capped at 10 blocks via tanh saturation (no flat pools), mouth-shallowing via coast-distance taper (real delta look), world height 768, lithology palettes repainted, vegetation polished, skip-empty-sections chunk_writer optimization. **Plus a massive perf win: bbox-cull on spline polygons cut wall time ~3.3× per tile (commit `5ed1c87`).** py-spy profile revealed 68% of ocean-tile wall was wasted on matplotlib.contains_points across 138 spline polygons that didn't even intersect the tile. **User verdict on (49,53) coastal + (51,53) inland + (51,53) post-bbox-cull: "It's perfect."** Master is at `5ed1c87`. Full reference: [memory/S84_river_carver_geomorphology.md](memory/S84_river_carver_geomorphology.md). Cloud bake setup: [cloud_bake/SETUP.md](cloud_bake/SETUP.md). **Projected S84 bake: ~3-4h on 8× CCX63, ~$7-9** (vs ~8h / ~$15 for the S83 bake). **Next: snapshot refresh + full-world bake with S84.** Prior baselines: S83 [memory/S83_v17_handoff.md](memory/S83_v17_handoff.md), S80 [memory/S80_river_handoff.md](memory/S80_river_handoff.md), S81 v8-v8.14 [memory/S81_river_handoff.md](memory/S81_river_handoff.md).
+
+**S84 PERF DIAGNOSTIC — read before any chunk_writer / hydrology overlay perf work:**
+
+py-spy profile at `profile_48_48.svg` (2026-05-22, 91934 samples over 30 min of ocean-tile rendering). Pre-bbox-cull, top hot paths were:
+
+| Function | % wall |
+|---|---|
+| `matplotlib.path.Path.contains_points` (called from `_rasterize_river_edges_tile`) | **67.87%** |
+| `_apply_biome_patch_noise` (opensimplex) | 5.91% |
+| `assign_biomes` | 5.97% |
+
+Bbox cull (commit `5ed1c87`) eliminated #1 in cases where polygons don't intersect the tile. If we ever need to chase the next-tier perf wins, the candidates are `_apply_biome_patch_noise` (opensimplex Python loop) and the nbtlib pure-Python serialization (not isolated in this profile but estimated 15-25% of remaining ~9 min/tile chunk_writer cost).
 
 **S84 PATCH SUMMARY (this batch — see [memory/S84_river_carver_geomorphology.md](memory/S84_river_carver_geomorphology.md) for full detail):**
 
