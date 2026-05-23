@@ -235,25 +235,37 @@ def carve_rivers(
     hydro_lake_wl:  np.ndarray | None = None,  # (H, W) float32 [0,1] — water level
     hydro_centerline: np.ndarray | None = None,  # (H, W) float32 [0,1] — precomputed NMS centerline
     height_norm:    np.ndarray | None = None,  # (H, W) float32 [0,1] — raw terrain
+    hydro_river_bed:  np.ndarray | None = None,  # (H, W) float32 MC-Y from global 8k precompute (S83 v8)
+    hydro_river_water_y: np.ndarray | None = None,  # (H, W) float32 MC-Y from skeleton walk (S83 v9)
     masks_dir:      "Path | None" = None,
     tile_x:         int | None = None,
     tile_z:         int | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Carve rivers and lakes into surface_y using precomputed hydrology masks.
 
     If hydro masks are not provided (None), falls back to legacy
     threshold-based carving from river_carver.py.
 
-    Returns (surface_y_carved, river_meta) matching the v1 contract.
+    Returns (surface_y_carved, river_meta, conn_channel_mask, water_y_field).
+    Legacy fallback returns empty conn_channel_mask + water_y_field=-1
+    everywhere (no per-pixel water surface; chunk_writer falls back to lake
+    handling + standard river_meta for water emission).
     """
-    # If no hydro masks AND no precomputed centerline, fall back to legacy carver
+    # If no hydro masks AND no precomputed centerline, fall back to legacy carver.
+    # NOTE: hydro_lake counts — tiles with lakes but no rivers (e.g. inland
+    # closed basins) MUST run the new carver to get terrain-intersection lake
+    # painting; the legacy carver knows nothing about hydro_lake. Without
+    # this, lake-only tiles like (30,49) silently dry up. (S80 v24 fix.)
     _has_any_hydro = ((hydro_order is not None and hydro_order.max() > 0)
-                      or (hydro_centerline is not None and hydro_centerline.max() > 0))
+                      or (hydro_centerline is not None and hydro_centerline.max() > 0)
+                      or (hydro_lake is not None and hydro_lake.max() > 0))
     if not _has_any_hydro:
         from core.river_carver import carve_rivers as _legacy
         sy, rm = _legacy(surface_y, flow_tile, river_tile, cfg)
-        return sy, rm, np.zeros(surface_y.shape, dtype=bool)
+        return (sy, rm,
+                np.zeros(surface_y.shape, dtype=bool),
+                np.full(surface_y.shape, -1, dtype=np.int16))
 
     H, W = surface_y.shape
     hcfg = cfg.get("hydrology_engine", {})
@@ -277,25 +289,47 @@ def carve_rivers(
     # shoreline follows the natural terrain contour — smooth by construction.
     lake_mask = np.zeros((H, W), dtype=bool)  # default: no lakes
     lake_raw = lake_u16 > 0
+    # S84: above_sea includes painted river cells regardless of elevation.
+    # Painted cells whose natural terrain dips at/below sea level (coastal
+    # paint, river extending into ocean) must still receive the v17 bed
+    # cache carve + water_y assignment. Without this, every `& above_sea`
+    # gate downstream (footprint at l.1000, zone at l.1195, orphan at
+    # l.1348, river_strict at l.1367, water_mask at l.1469) excludes
+    # below-sea painted cells — and the river abruptly disappears at the
+    # Y 63 contour. Bank widening at l.1503/1510/1517 uses
+    # `surface_out > SEA_LEVEL` directly (not `above_sea`), so banks
+    # correctly remain bounded above sea.
     above_sea = surface_out > SEA_LEVEL
+    if hydro_centerline is not None:
+        _painted_any = np.asarray(hydro_centerline) > 0
+        if _painted_any.any():
+            above_sea = above_sea | _painted_any
 
     if lake_raw.any():
         from scipy.ndimage import label
 
         # ── 3a. Absorb small river fragments near lakes ──────────────────
-        river_px_raw  = order_u8 > 0
-        absorb_dist   = float(geo.get("lake_absorb_dist", 25.0))
-        min_creek_px  = int(geo.get("min_creek_pixels", 80))
-
-        if river_px_raw.any():
-            dist_riv_to_lake = distance_transform_edt(~lake_raw).astype(np.float32)
-            riv_labeled, n_riv = label(river_px_raw)
-            for rid in range(1, n_riv + 1):
-                comp = riv_labeled == rid
-                comp_size = comp.sum()
-                comp_near_lake = (dist_riv_to_lake[comp] <= absorb_dist).any()
-                if comp_size < min_creek_px and comp_near_lake:
-                    lake_raw = lake_raw | comp  # absorb into lake
+        # S80: DISABLED.  This pass was tuned for the old D8/Strahler
+        # network where small NMS fragments near lakes were noise.  WP
+        # findPath in S80 produces guaranteed-connected source-to-sink
+        # paths; per-tile fragments of those paths can legitimately be
+        # short (a few cells crossing the tile near a lake junction).
+        # Absorbing them removes visible streams the user expects to see
+        # ("streams not streaming" — user observation, S80 v4 walk).
+        # Kept the code commented for reference / re-enable.
+        #
+        # river_px_raw  = order_u8 > 0
+        # absorb_dist   = float(geo.get("lake_absorb_dist", 25.0))
+        # min_creek_px  = int(geo.get("min_creek_pixels", 80))
+        # if river_px_raw.any():
+        #     dist_riv_to_lake = distance_transform_edt(~lake_raw).astype(np.float32)
+        #     riv_labeled, n_riv = label(river_px_raw)
+        #     for rid in range(1, n_riv + 1):
+        #         comp = riv_labeled == rid
+        #         comp_size = comp.sum()
+        #         comp_near_lake = (dist_riv_to_lake[comp] <= absorb_dist).any()
+        #         if comp_size < min_creek_px and comp_near_lake:
+        #             lake_raw = lake_raw | comp  # absorb into lake
 
         # ── 3b. Terrain-intersection lake fill ───────────────────────────
         # The lake boundary is defined by where Gaea terrain < spill
@@ -304,7 +338,14 @@ def carve_rivers(
         # test region extends past the 8x8 NEAREST staircase of the hydro
         # mask; terrain intersection clips it naturally.
         PAD = 48  # enough for basin expansion dilation
-        basin_expand_px = int(geo.get("lake_basin_expand_px", 32))
+        # S80 v9: basin_expand_px was 32, propagating lake water up to
+        # 32 blocks beyond the precompute basin via maximum_filter +
+        # terrain-intersection.  This added ~45k mystery water cells
+        # per tile and was the dominant cause of "giant streams" (some
+        # lake-water bleeding far from any lake into stream
+        # neighbourhoods).  Cut to 2 — just enough to bridge the 8x8
+        # NEAREST staircase edge from the 1:8 mask, no further.
+        basin_expand_px = int(geo.get("lake_basin_expand_px", 2))
 
         _use_terrain = (masks_dir is not None and tile_x is not None
                         and tile_z is not None)
@@ -508,14 +549,33 @@ def carve_rivers(
             thin_corridor = (precomp_cl > 0) & (precomp_cl < 128)
             thin_corridor |= (precomp_cl > 128) & (precomp_cl < 255)
 
-            # Load spline data (saved by meander_rivers in precompute)
+            # S80 v32: spline loading is GATED on hydro_region.png absence.
+            # When the user has painted rivers (hydro_region.png exists
+            # AND contains id=2 paint), the spline pickle from a prior
+            # WP-findPath run would inject those WP rivers on top of
+            # the user's paint — defeating the "paint is the sole
+            # source" invariant. We skip spline loading entirely in
+            # that case. When there's no paint, splines load as before.
             import pickle
             from scipy.interpolate import splev
             _spline_path = (masks_dir / "river_splines.pkl"
                             if masks_dir is not None else None)
-            _splines_loaded = []
+            _splines_loaded: list = []
             _SCALE = 8  # 1:8 → 50k
-            if _spline_path is not None and _spline_path.exists():
+
+            _paint_active = False
+            if masks_dir is not None:
+                _hr = masks_dir / "hydro_region.png"
+                if _hr.exists():
+                    try:
+                        from PIL import Image as _PIL
+                        _hr_arr = np.asarray(_PIL.open(_hr).convert("L"))
+                        _paint_active = bool(np.any(_hr_arr == 2))
+                    except Exception:
+                        _paint_active = False
+
+            if (_spline_path is not None and _spline_path.exists()
+                    and not _paint_active):
                 with open(_spline_path, "rb") as _sf:
                     _spline_bundle = pickle.load(_sf)
                 _SCALE = _spline_bundle.get("scale", 8)
@@ -633,14 +693,15 @@ def carve_rivers(
                 centerline = spline_channel | braid_water | wadi_channel
                 order_u8 = spline_order.copy()
             else:
-                # Fallback: use precomputed centerline (blocky but works)
-                nms_corridor = binary_dilation(thin_corridor, iterations=2)
-                flow_corr = np.where(nms_corridor, flow_tile, 0.0)
-                flow_peak = maximum_filter(flow_corr, size=flow_nms_size)
-                nms_centerline = (nms_corridor
-                                  & (flow_tile >= flow_peak * flow_nms_frac)
-                                  & (flow_tile > 0.001))
-                centerline = nms_centerline | braid_water | wadi_channel
+                # S80 v12: use precomputed centerline DIRECTLY (no flow-NMS filter).
+                # The NMS-flow filter (flow >= 0.85 * peak & flow > 0.001) was
+                # dropping ~55% of WP centerline cells in dry biomes (where
+                # Gaea flow accumulation is ~0).  Result: 11,648 path cells →
+                # carved water at only ~5,200 → 35 fragmented water blobs
+                # instead of 3 connected systems.  WP findPath already
+                # curates the paths through findPath's cost surface; no
+                # need for flow-based re-thinning.
+                centerline = thin_corridor | braid_water | wadi_channel
                 order_u8 = precomp_cl.copy()
 
             # Order: braid fill gets max local order
@@ -719,174 +780,12 @@ def carve_rivers(
     # Snapshot centerline BEFORE connectivity channels — diff = connectivity pixels
     _cl_before_conn = centerline.copy()
 
-    if lake_water.any() and centerline.any():
-        from scipy.ndimage import label as _label_outlet
-
-        # ── Build cost surface ───────────────────────────────────────
-        # Concavity = local mean height − actual height.  Positive in
-        # valleys (concave up), zero on ridges.  Guides paths through
-        # valleys even where flow accumulation is negligible.
-        if height_norm is not None:
-            h_local_mean = gaussian_filter(height_norm, sigma=3.0)
-            concavity = np.maximum(h_local_mean - height_norm, 0.0)
-        else:
-            concavity = np.zeros((H, W), dtype=np.float32)
-        path_cost = 1.0 / (flow_tile + concavity * 5.0 + 0.001)
-        # Penalise crossing existing lake water (paths should go around,
-        # not through the lake interior)
-        path_cost[lake_water] *= 50.0
-
-        dist_to_river_cl = distance_transform_edt(
-            ~centerline).astype(np.float32)
-
-        # Identify the largest centerline component — outflow should
-        # target the main river body, not small edge-touching fragments.
-        cl_labeled_out, cl_n_out = _label_outlet(centerline)
-        main_river = np.zeros((H, W), dtype=bool)
-        if cl_n_out > 0:
-            biggest_size, biggest_id = 0, 1
-            for cid in range(1, cl_n_out + 1):
-                s = (cl_labeled_out == cid).sum()
-                if s > biggest_size:
-                    biggest_size, biggest_id = s, cid
-            main_river = cl_labeled_out == biggest_id
-        dist_to_main = distance_transform_edt(~main_river).astype(np.float32)
-
-        lk_out_labeled, lk_out_n = _label_outlet(lake_water)
-
-        tile_interior = np.ones((H, W), dtype=bool)
-        tile_interior[0, :] = False; tile_interior[-1, :] = False
-        tile_interior[:, 0] = False; tile_interior[:, -1] = False
-
-        for lid in range(1, lk_out_n + 1):
-            lcomp = lk_out_labeled == lid
-
-            # ── 4d-i. OUTFLOW — spill point to river ─────────────────
-            perim = binary_dilation(lcomp, iterations=1) & ~lcomp
-            perim_above = perim & (surface_out > SEA_LEVEL) & tile_interior
-            if not perim_above.any():
-                continue
-            perim_rows, perim_cols = np.where(perim_above)
-            if height_norm is not None:
-                perim_h = height_norm[perim_rows, perim_cols]
-            else:
-                perim_h = surface_out[perim_rows, perim_cols].astype(np.float32)
-
-            # Biased spill point: low terrain + close to river
-            h_range = max(float(perim_h.max() - perim_h.min()), 1e-6)
-            h_norm_score = (perim_h - perim_h.min()) / h_range
-            perim_dist = dist_to_river_cl[perim_rows, perim_cols]
-            d_range = max(float(perim_dist.max() - perim_dist.min()), 1e-6)
-            d_norm_score = (perim_dist - perim_dist.min()) / d_range
-            spill_score = h_norm_score * 0.3 + d_norm_score * 0.7
-            sp_idx = np.argmin(spill_score)
-            sr, sc = int(perim_rows[sp_idx]), int(perim_cols[sp_idx])
-
-            # Track outflow endpoint so inflow channels avoid it
-            outflow_end_r, outflow_end_c = -1, -1
-
-            if not main_river[sr, sc] and dist_to_main[sr, sc] <= lake_outlet_max:
-                result = _least_cost_path(path_cost, sr, sc, main_river)
-                if result is not None:
-                    pr, pc = result
-                    _draw_tapered_channel(
-                        centerline, order_u8, pr, pc, H, W,
-                        taper_frac=0.16, taper_max_w=3, channel_order=1)
-                    outflow_end_r = int(pr[-1])
-                    outflow_end_c = int(pc[-1])
-
-            # ── 4d-ii. INFLOW — river endpoints to lake ──────────────
-            # Find centerline components near this lake.  For each, trace
-            # a channel from the river to the lake shore.
-            #
-            # Key constraint: inflow channels must land on a DIFFERENT
-            # part of the lake perimeter than the outflow.  An exclusion
-            # zone around the outflow spill point + a minimum angular
-            # separation prevent the channels from merging.
-            dist_to_this_lake = distance_transform_edt(
-                ~lcomp).astype(np.float32)
-            near_cl = centerline & (dist_to_this_lake <= lake_inlet_max)
-            # Exclude pixels already touching the lake or within the
-            # outflow channel (which was just drawn onto centerline)
-            touching_lake = centerline & (dist_to_this_lake <= 1.5)
-            near_cl &= ~touching_lake
-
-            if near_cl.any():
-                near_labeled, n_near = _label_outlet(near_cl)
-
-                # Lake centroid for angular separation test
-                lk_rows, lk_cols = np.where(lcomp)
-                lake_cr = float(lk_rows.mean())
-                lake_cc = float(lk_cols.mean())
-                # Outflow angle from lake center
-                outflow_angle = np.arctan2(sr - lake_cr, sc - lake_cc)
-
-                # Exclusion zone: block inflow landing within 60px of
-                # the outflow spill point so they can't merge
-                INFLOW_EXCL = 60
-                excl_zone = np.zeros((H, W), dtype=bool)
-                if outflow_end_r >= 0:
-                    # Exclude around both the spill point and the
-                    # outflow path endpoint on the river
-                    for er, ec in [(sr, sc), (outflow_end_r, outflow_end_c)]:
-                        r0 = max(er - INFLOW_EXCL, 0)
-                        r1 = min(er + INFLOW_EXCL + 1, H)
-                        c0 = max(ec - INFLOW_EXCL, 0)
-                        c1 = min(ec + INFLOW_EXCL + 1, W)
-                        excl_zone[r0:r1, c0:c1] = True
-
-                # Inflow-eligible lake boundary: perimeter pixels NOT
-                # in the exclusion zone and at least 45° angular
-                # separation from the outflow
-                lake_boundary = perim_above | (perim & ~tile_interior)
-                inflow_boundary = lake_boundary & ~excl_zone
-
-                # Angular filter: only allow landing on the far side
-                if inflow_boundary.any():
-                    ib_rows, ib_cols = np.where(inflow_boundary)
-                    ib_angles = np.arctan2(
-                        ib_rows.astype(np.float64) - lake_cr,
-                        ib_cols.astype(np.float64) - lake_cc)
-                    ang_diff = np.abs(ib_angles - outflow_angle)
-                    ang_diff = np.minimum(ang_diff, 2 * np.pi - ang_diff)
-                    # Keep only perimeter pixels >= 45° away from outflow
-                    MIN_ANG_SEP = np.radians(45.0)
-                    far_enough = ang_diff >= MIN_ANG_SEP
-                    if far_enough.any():
-                        inflow_boundary_filtered = np.zeros((H, W), dtype=bool)
-                        inflow_boundary_filtered[
-                            ib_rows[far_enough], ib_cols[far_enough]] = True
-                    else:
-                        inflow_boundary_filtered = inflow_boundary
-                else:
-                    inflow_boundary_filtered = lake_boundary
-
-                for nid in range(1, n_near + 1):
-                    ncomp = near_labeled == nid
-                    if ncomp.sum() < 100:
-                        continue  # too small to be a real river
-                    # Pick the pixel in this component closest to the lake
-                    nc_rows, nc_cols = np.where(ncomp)
-                    nc_dists = dist_to_this_lake[nc_rows, nc_cols]
-                    best_i = np.argmin(nc_dists)
-                    ir, ic = int(nc_rows[best_i]), int(nc_cols[best_i])
-
-                    # Skip if this river endpoint is inside the outflow
-                    # exclusion zone (same river the outflow connects to)
-                    if excl_zone[ir, ic]:
-                        continue
-
-                    # Trace from river endpoint to filtered lake boundary
-                    result = _least_cost_path(
-                        path_cost, ir, ic, inflow_boundary_filtered)
-                    if result is not None:
-                        ipr, ipc = result
-                        inlet_order = max(int(order_u8[ir, ic]), 1)
-                        _draw_tapered_channel(
-                            centerline, order_u8, ipr, ipc, H, W,
-                            taper_frac=0.20, taper_max_w=2,
-                            channel_order=inlet_order)
-
+    # S80: connectivity layer DELETED.  WP findPath in hydrology_precompute
+    # produces guaranteed-connected paths (mountain → lake / ocean,
+    # spillpoint → next sink), so the post-hoc connectivity Dijkstra here
+    # is redundant.  Conn_channel_mask remains in the API for downstream
+    # post-process passes (run_pipeline.py wall-to-wall + lake-override),
+    # but is empty by construction now.
     # Connectivity channel mask: everything added by Section 4d
     conn_channel_mask = centerline & ~_cl_before_conn
 
@@ -895,128 +794,681 @@ def carve_rivers(
     is_river  = centerline & (order_u8 >= 3)
 
     # ── 5. Channel = NMS centerline directly (no width expansion) ────────
-    # The NMS ridgeline IS the channel.  Carve depth by Strahler order.
-    river_channel = centerline & (surface_out > SEA_LEVEL) & ~lake_mask
+    # The NMS ridgeline IS the channel.  Section 7 (WP guardrails) computes
+    # depth from per-pixel width × slope × elevation; sections 5/6 (legacy
+    # `river_depth_map` + parabolic profile + flow modulation) were removed
+    # in S72 — they were dead code, computed but never read.
+    # S84: drop above_sea gate — paint always carves. Painted cells whose
+    # natural terrain dips below sea level still get the spline+SDF+bed-cache
+    # carve, producing a real underwater channel that extends the river into
+    # the ocean (real river-delta look) instead of abruptly flattening at the
+    # Y 63 contour. Bank widening (sec 8) still gates on above_sea so banks
+    # don't extend into ocean.
+    river_channel = centerline & ~lake_mask
 
-    min_depths = geo.get("min_depths_by_order", {
-        "1": 3, "2": 3, "3": 4, "4": 5, "5": 6,
-    })
-    max_carve = float(geo.get("max_carve_depth", 7))
-    river_depth_map = np.zeros((H, W), dtype=np.float32)
+    # ── 7. Carve river channels (S71-3: WP-style guardrails) ──────────────
+    # Replaces S70 5x5 minimum_filter + S71 valley smoothing β.  Adapted from
+    # sijmen_v_b's WorldPainter river script.  For each centerline pixel:
+    #   1. Width (block-radius) from Strahler order × hydro_width.
+    #   2. avg_terrain = Gaussian-smoothed surface_y (sigma proportional to
+    #      width) — captures the "mean elevation under a circle of radius
+    #      width" without per-pixel circle iteration.
+    #   3. slope = magnitude of smoothed surface_y gradient.
+    #   4. Per-pixel in `width` radius:
+    #        factor = clamp(dist_to_centerline / width, 0, 0.99)
+    #        depth  = width * RIVER_DEPTH_FRAC + 1.5
+    #        guard  = 4.2 * clamp(slope, DYKE_MIN, GUARDRAIL_MAX)
+    #        new_y  = (1-f) * (avg - depth + f * depth * guard)
+    #               + f * surface_y
+    #   5. water_y = avg - 0.5 - slope_correction (lowers on wide+steep)
+    # Effect: river cuts a soft valley with raised berms on slopes;
+    # cross-section is naturally concave; water never sits above land.
+    # S71-3 final-river: combine all centerlines (river_channel + conn_channel_mask)
+    # into one footprint set so connectivity channels also get water_y_field.
+    # This addresses "river deltas — land connects but water doesn't".
+    # S84: drop above_sea gate here too (matches river_channel — paint always
+    # carves, even below sea level).
+    river_full_mask = river_channel | (conn_channel_mask & ~lake_mask)
 
-    if river_channel.any():
-        for order_val in range(1, 6):
-            omask = river_channel & (order_u8 == order_val)
-            if omask.any():
-                d = float(min_depths.get(str(order_val), order_val + 1))
-                river_depth_map[omask] = min(d, max_carve)
+    # Pre-allocate water_y_field (default -1 = no water at this pixel).
+    water_y_field = np.full((H, W), -1, dtype=np.int16)
 
-        # Pixels with order 0 but on centerline (from propagation)
-        # get depth 2
-        no_order = river_channel & (order_u8 == 0)
-        river_depth_map[no_order] = 2.0
+    if river_full_mask.any():
+        from scipy.ndimage import gaussian_filter as _gf
+        from scipy.ndimage import label as _label_grav
 
-        # Connectivity channels need minimum 3 blocks depth for visible
-        # water fill (water_y = pre_carve - 1, floor = pre_carve - depth;
-        # depth >= 2 needed for at least 1 water block above floor).
-        conn_river = conn_channel_mask & river_channel
-        if conn_river.any():
-            river_depth_map[conn_river] = np.maximum(
-                river_depth_map[conn_river], 3.0)
+        # S81 v8.5 Step B: compute skeleton ONCE at the top of section 7
+        # so both the gravity pre-pass (7.1b) AND the EDT propagation (7.5)
+        # operate on the same 1-cell-wide medial axis. Pre-S81 only the EDT
+        # used skeleton (Step A); the gravity pre-pass + 1D path-smoothing
+        # iterated wide-footprint cells which produced the v8.4 "giant
+        # chunks of rising water at curves" — at confluences the wide
+        # gravity sort mixed cells from multiple flow paths.
+        from skimage.morphology import skeletonize as _skel_for_grav
+        _skeleton_mask = _skel_for_grav(river_full_mask)
+        if not _skeleton_mask.any():
+            # Degenerate: small fragments where skeletonize returns empty
+            _skeleton_mask = river_full_mask
 
-    # ── 6b. (Removed — stochastic jitter replaced by morphological
-    #         smoothing in Section 4c2) ───────────────────────────────────
+        # 7.1 — per-centerline width (block half-radius) from ``hydro_width``.
+        # Per user directive (S81): paint is the sole source. The legacy
+        # Strahler-ORDER_TO_WIDTH lookup table is gone — every painted
+        # cell carries an explicit EDT-derived + slope-modified + Hack's-
+        # law width set by apply_hydro_region_overlay. Painted cells with
+        # no explicit width (rare edge case) fall to a 2.5-block default.
+        # WP-style slope augmentation (+ 2·slope²) is applied below.
+        width_at_pixel = np.zeros((H, W), dtype=np.float32)
+        _w_painted = river_full_mask & (width_u8 > 0) if width_u8 is not None \
+            else np.zeros_like(river_full_mask)
+        if _w_painted.any():
+            width_at_pixel[_w_painted] = width_u8[_w_painted].astype(np.float32)
+        _w_default = river_full_mask & ~_w_painted
+        if _w_default.any():
+            width_at_pixel[_w_default] = 2.5
 
-    # ── 6c. Concave depth profile ────────────────────────────────────────
-    # Instead of flat carve depth, use distance from channel edge for
-    # parabolic cross-section: deepest at center, shallow at banks.
-    if river_channel.any():
-        chan_dist = distance_transform_edt(river_channel).astype(np.float32)
-        chan_max_dist = max(float(chan_dist.max()), 1.0)
-        # Normalize to [0, 1] — 0 at edge, 1 at center
-        depth_profile = np.clip(chan_dist / min(chan_max_dist, 8.0), 0, 1)
-        # Bowled parabola: steep walls, flat deep center.
-        # profile^0.5 = aggressive bowl (edges shallow, center deep).
-        # 0.25 base keeps at least 25% depth even at edges → visible water.
-        bowl = 0.25 + 0.75 * depth_profile[river_channel] ** 0.5
+        # 7.1b — GRAVITY pre-pass (S72 fix).  Walk each centerline component
+        # from source to ocean (descending dist-from-ocean) tracking running
+        # min surface_y; drop any cell exceeding it (= upstream bump that
+        # would block flow).  MUST run BEFORE avg_terrain & water_y are
+        # computed so they reflect the gravity-corrected centerline.
+        # JS reference: river_script1.7.js:455-481 (per-path topological walk).
+        # S71 bug: argsort by surface_y (height order) instead of topological
+        # order flattened the ENTIRE centerline to its global min.
+        _ocean_seed = surface_out <= SEA_LEVEL
+        if not _ocean_seed.any():
+            # No ocean in tile — seed at lowest centerline cell so dist-EDT
+            # still gives a usable topological proxy.
+            _r0, _c0 = np.where(river_full_mask)
+            if len(_r0) > 0:
+                _min_idx = int(np.argmin(surface_out[_r0, _c0]))
+                _ocean_seed = np.zeros((H, W), dtype=bool)
+                _ocean_seed[_r0[_min_idx], _c0[_min_idx]] = True
+        _gravity_ran = False
+        if _ocean_seed.any():
+            _dist_from_ocean = distance_transform_edt(~_ocean_seed).astype(np.float32)
+            # S81 v8.6: REVERTED Step B — back to labeling the wide footprint.
+            # Step B (label skeleton) caused triangle-shaped water columns at
+            # confluences: degree-3 skeleton junctions sit in a single
+            # connected component, the 1D path-smoothing argsorts dist_from_ocean
+            # which interleaves cells from converging branches, and gaussian
+            # smoothing then mixes their independent water_y values. Reverting
+            # to wide-mask labeling restores v8.3 behavior at confluences while
+            # Step A's skeleton-EDT (below) still keeps cross-sections uniform.
+            _grav_labeled, _grav_n = _label_grav(river_full_mask)
+            _gravity_ran = True
+            for _grav_iter in range(5):
+                _stable = True
+                for _cid in range(1, _grav_n + 1):
+                    _comp = _grav_labeled == _cid
+                    _r, _c = np.where(_comp)
+                    if len(_r) < 2:
+                        continue
+                    _d = _dist_from_ocean[_r, _c]
+                    _ord = np.argsort(-_d)  # source first (descending dist)
+                    _min_y = np.iinfo(np.int32).max
+                    for _i in _ord:
+                        _rr, _cc = int(_r[_i]), int(_c[_i])
+                        _y = int(surface_out[_rr, _cc])
+                        if _y > _min_y:
+                            surface_out[_rr, _cc] = _min_y
+                            _stable = False
+                        else:
+                            _min_y = _y
+                if _stable:
+                    break
 
-        # Flow-based depth modulation: higher flow = deeper erosion.
-        # This mimics how lakes get organic depth from terrain — rivers
-        # get it from flow accumulation (more water = more erosion).
-        if flow_tile is not None:
-            flow_in_chan = flow_tile[river_channel]
-            f_max = max(float(flow_in_chan.max()), 0.001)
-            flow_frac = flow_in_chan / f_max
-            # Higher flow: up to 40% more depth; lower flow: 20% less
-            flow_mod = 0.8 + 0.4 * flow_frac
-        else:
-            flow_mod = 1.0
+        # 7.2 — avg_terrain: Gaussian-smoothed surface_y (sigma=4 captures
+        # ~7-9 block circle, matches typical river width).  Computed AFTER
+        # gravity pre-pass so it reflects the monotonic-descent centerline.
+        avg_terrain = _gf(surface_out.astype(np.float32), sigma=4.0)
 
-        river_depth_map[river_channel] *= bowl * flow_mod
+        # 7.3 — slope magnitude (smoothed gradient)
+        _sy_smooth = _gf(surface_out.astype(np.float32), sigma=2.0)
+        _gy, _gx = np.gradient(_sy_smooth)
+        slope_mag = np.sqrt(_gx * _gx + _gy * _gy).astype(np.float32)
+        del _sy_smooth, _gy, _gx
 
-    # ── 7. Carve river channels ───────────────────────────────────────────
-    if river_channel.any():
-        carve_depth = np.round(river_depth_map).astype(np.int32)
-        carve_depth[river_channel & (carve_depth < 1)] = 1
+        # WP slope-aware width: width += 2 * slope^2 (steep needs guardrail headroom)
+        slope_at_centerline = np.zeros((H, W), dtype=np.float32)
+        slope_at_centerline[river_full_mask] = slope_mag[river_full_mask]
+        width_at_pixel = width_at_pixel + 2.0 * np.square(slope_at_centerline)
 
-        max_allowed = surface_out - (BEDROCK_Y + 3)
-        carve_depth = np.minimum(carve_depth, max_allowed)
-        carve_depth = np.maximum(carve_depth, 0)
+        # 7.4 — meander: simplex-noise displacement field, world-coord seamless.
+        # Per WP: noise(x/1000, y/1000) but we use a scale better-tuned for our
+        # 1-pixel-per-block resolution.  Strength scales with slope so flat
+        # rivers wiggle less, steep rivers (which would naturally erode banks)
+        # wiggle more.  Apply to all centerlines INCLUDING connectivity channels.
+        try:
+            import opensimplex as _ox_meander
+            _tx = tile_x if tile_x is not None else 0
+            _tz = tile_z if tile_z is not None else 0
+            _meander_seed = (_tx * 73856093 ^ _tz * 19349663 ^ 0xC1EA5F) & 0x7FFFFFFF
+            _ox_m = _ox_meander.OpenSimplex(seed=_meander_seed)
+            _world_xs = ((np.arange(W) + _tx * W) / 40.0).astype(np.float64)
+            _world_zs = ((np.arange(H) + _tz * H) / 40.0).astype(np.float64)
+            meander_noise = _ox_m.noise2array(_world_xs, _world_zs).astype(np.float32)
+            # meander_noise in [-1, 1]; scale by amplitude × slope_factor
+            MEANDER_AMP = 4.0  # max ±4-block perpendicular displacement
+        except ImportError:
+            meander_noise = np.zeros((H, W), dtype=np.float32)
+            MEANDER_AMP = 0.0
 
-        carve_px = river_channel & (carve_depth > 0)
-        surface_out[carve_px] -= carve_depth[carve_px]
+        # 7.5 — distance to nearest centerline + propagate per-pixel width
+        # S81 v8.3 Step A: EDT source = SKELETONIZED centerline (1-cell-wide
+        # medial axis), not the wide painted footprint. Pre-S80 WP-findPath
+        # rivers were naturally 1-3 cells wide so EDT-from-full-mask gave
+        # near-uniform per-Voronoi propagation. Painted rivers (S80+) are
+        # 6-12 cells wide → inside-footprint cells got dist=0 and
+        # nearest_idx pointing to themselves, so they inherited per-cell
+        # nearest_avg / slope / width values → broke cross-section water_y
+        # uniformity (~14k uneven cells on (51,53) per memory/diag_water_y).
+        # The S73-v7 comment block at 7.7 documented intent ("centerline
+        # path only"). Implementation now matches the documented intent.
+        from scipy.ndimage import distance_transform_edt as _edt_g
+        # S81 v8.5: reuse the skeleton computed at the top of section 7
+        # (Step B). _skeleton_mask is already validated (fallback to
+        # river_full_mask if degenerate).
+        _skel_for_edt = _skeleton_mask
+        dist_to_center, ind_center = _edt_g(~_skel_for_edt, return_indices=True)
+        dist_to_center = dist_to_center.astype(np.float32)
+        # Preserve indices for plateau-water-y propagation in Section 7.7b.
+        # Cost: ~2 MB (H*W*int32*2) — fine for 512x512 tiles.
+        nearest_idx_r = ind_center[0]
+        nearest_idx_c = ind_center[1]
+        nearest_width = width_at_pixel[nearest_idx_r, nearest_idx_c]
+        nearest_avg   = avg_terrain[nearest_idx_r, nearest_idx_c]
+        nearest_slope = slope_mag[nearest_idx_r, nearest_idx_c]
+        del ind_center
 
-        # Set river_meta for channel pixels
+        # Apply meander displacement to dist_to_center: shifts the deepest cut
+        # ±MEANDER_AMP perpendicularly (in noise-space, not flow-space — close
+        # enough for organic-looking wobble at 50k scale).
+        if MEANDER_AMP > 0:
+            meander_shift = meander_noise * MEANDER_AMP * np.minimum(nearest_slope * 4, 1.0)
+            dist_to_center = np.abs(dist_to_center - meander_shift)
+
+        # 7.6 — terrain-intersection carve from precomputed depth field.
+        #
+        # S81 v8: TRUE continuous carve.
+        #   1. Read depth as FLOAT (sub-block precision via hydro_depth
+        #      × 255) — uint8 round() was throwing away the smooth taper.
+        #   2. Apply carve EVERYWHERE depth > 0 (no narrow footprint
+        #      gate). Cells far from paint have depth ≈ 0 → no effect.
+        #      Cells near paint have continuous carve depth → smooth
+        #      surface transition.
+        #   3. Subtract from cell's OWN original surface_y, preserving
+        #      Gaea's ±1-2 block natural terrain variation. Together
+        #      with continuous carve, this is the same mechanism as
+        #      lakes: surface = terrain_natural - smooth_offset; the
+        #      `surface < water_y` contour follows TERRAIN VARIATION,
+        #      not a binary mask boundary = no staircase.
+        depth_at_cell = (hydro_depth.astype(np.float32) * 255.0
+                         if hydro_depth is not None
+                         else np.zeros_like(surface_out, dtype=np.float32))
+        original_sy_f = surface_out.astype(np.float32)
+        new_y_f = (original_sy_f - depth_at_cell).astype(np.float32)
+        # Footprint covers the BROAD carve buffer (any non-trivial
+        # depth) so water_y_field is set across the full area where
+        # terrain intersection determines visibility. The actual
+        # river_meta tagging uses a stricter threshold below.
+        footprint = (depth_at_cell > 0.05) & ~lake_mask & above_sea
+
+        # Only LOWER (never raise) and clamp to bedrock min
+        cur_y_f = surface_out.astype(np.float32)
+        new_y_f = np.minimum(new_y_f, cur_y_f)
+        new_y_f = np.maximum(new_y_f, float(BEDROCK_Y + 3))
+
+        # Apply within footprint
+        if footprint.any():
+            surface_out[footprint] = np.round(new_y_f[footprint]).astype(surface_out.dtype)
+
+        # S83 v8 + v10: GLOBAL BED + BANK OVERRIDE. hydro_river_bed
+        # encodes:
+        #   - footprint cells: globally-smoothed bed (σ=4 weighted)
+        #   - bank ring cells (1 8k-px around footprint): σ=1 smoothed
+        #     LUT(height) — gentle smooth removing bank "raised area"
+        #     anomalies
+        #   - elsewhere: sentinel -999 (carver skips)
+        # The sentinel sits well below BEDROCK_Y+3 (=-61), so the
+        # check below cleanly identifies cells where the cache wants
+        # to override.
+        if hydro_river_bed is not None and footprint.any():
+            # S83 v11: GLOBAL bed override at painted footprint. The 8k
+            # bed cache is computed in _ensure_caches via:
+            #   raw bed → σ=4 weighted gaussian (single pass)
+            #   → 5 additional σ=2 weighted gaussian passes
+            #     (WorldEdit //brush smooth ×5 equivalent on trough surface)
+            # Clean np.round (NOT stochastic) — user feedback: "clean steps
+            # are fine"; the real defect was rectangular-prism anomalies
+            # protruding from trough walls, fixed by the 5-pass smooth.
+            _bed_valid = footprint & (
+                hydro_river_bed > float(BEDROCK_Y + 3))
+            if _bed_valid.any():
+                # S83 v11 invariant: ONLY LOWER terrain (never raise).
+                # The 5-pass smooth can pull a deeply-carved bed slightly
+                # upward at boundary cells (gaussian averaging). Clamping
+                # to current surface_out keeps the trough wall above any
+                # water, preventing "river bed sticking up out of land"
+                # artifacts at footprint edges.
+                _new_bed = np.maximum(hydro_river_bed,
+                                       float(BEDROCK_Y + 3))
+                _cur_b = surface_out.astype(np.float32)
+                _new_bed = np.minimum(_new_bed, _cur_b)
+                surface_out[_bed_valid] = (
+                    np.round(_new_bed[_bed_valid])
+                    .astype(surface_out.dtype))
+
+        # 7.7 — Water level: BANK-RELATIVE (S80 v26).
+        #
+        # FAIL HISTORY: Previous formulas referenced `nearest_avg` (smoothed
+        # centerline elevation). For V-shaped or sloped valleys, banks rise
+        # ABOVE centerline → water_y based on centerline sat 2-5+ blocks
+        # below visible bank top → multi-block air gap at the bank.
+        # User said "river sits 2 blocks of air down. need 1 row of air."
+        #
+        # Fix: estimate bank elevation as `nearest_avg + slope * width`
+        # (elevation gain from centerline to bank, using local gradient
+        # over half-width distance). Then water_y = bank_estimate - 1.0.
+        # For flat terrain, slope≈0 → water = avg - 1 → 1 below bank
+        # (since bank ≈ center on flat). For sloped terrain, slope*width
+        # captures the bank rise → water tracks bank → consistent 1 air
+        # gap regardless of slope.
+        #
+        # Capped at nearest_avg + 4.0 to prevent runaway on extreme cliffs
+        # (would overflow trench).
+        bank_lift = np.minimum(nearest_slope * nearest_width, 4.0).astype(np.float32)
+        water_y = nearest_avg + bank_lift - 1.0
+        # S73-v7: 1D smoothing along each centerline component's flow path.
+        # 2D gaussian (v6) blurred across cross-sections at curves and
+        # produced TILTED water surfaces (one side of channel higher than
+        # the other).  The fix: smooth water_y values ALONG the centerline
+        # path only (1D), then re-propagate via EDT.  Result: every Voronoi
+        # cell takes its nearest centerline pixel's smoothed water_y, and
+        # neighbors-along-path are heavily smoothed → adjacent Voronoi
+        # cells have nearly-identical water_y → cross-sections (which
+        # span 2-3 path pixels at curves) all share the same water_y → MC
+        # sees ONE uniform water surface across each cross-section, with
+        # Y drops only along flow direction.
+        if _gravity_ran:
+            from scipy.ndimage import gaussian_filter1d as _gf1
+            for _cid in range(1, _grav_n + 1):
+                _comp = _grav_labeled == _cid
+                _r_arr, _c_arr = np.where(_comp)
+                if len(_r_arr) < 2:
+                    continue
+                _d_arr = _dist_from_ocean[_r_arr, _c_arr]
+                _ord = np.argsort(-_d_arr)  # source first
+                _r_ord = _r_arr[_ord]
+                _c_ord = _c_arr[_ord]
+                _path_y = water_y[_r_ord, _c_ord].astype(np.float32)
+                # sigma=8: ~16-cell support along path → adjacent path
+                # pixels round to same int (longer implicit plateaus, no
+                # cross-section tilt).
+                _path_y_smooth = _gf1(_path_y, sigma=8.0, mode='reflect')
+                water_y[_r_ord, _c_ord] = _path_y_smooth
+            # Propagate smoothed centerline water_y to ALL footprint cells
+            # via existing EDT: every pixel takes its nearest centerline's
+            # water_y → uniform per Voronoi cell → uniform per cross-section.
+            water_y = water_y[nearest_idx_r, nearest_idx_c]
+        # S72 — Bug 1 fix: clamp to SEA_LEVEL (matches JS `Math.max(..., minWaterDepth)`),
+        # NOT `surface_out + 1`.  The old clamp coupled water_y to the
+        # gravity-flattened centerline, dragging the entire water surface flat
+        # along long stretches.  The Pass 3 narrow-section fix (below) handles
+        # "surface poking through water" by lowering surface, not raising water.
+        water_y = np.maximum(water_y, float(SEA_LEVEL))
+
+        # 7.7b — Plateau quantization REMOVED (S73-v5).  Tried in S73 v1-v4
+        # but explicit plateau-stepping concentrates MC's water cascade
+        # artifacts at plateau boundaries (visible as "ghost weirs" — 7-cell
+        # bands of flowing water at the higher plateau's Y above the lower
+        # plateau's source).  Reverting to per-pixel water_y matches the JS
+        # WorldPainter approach: nearest_avg propagation via EDT already
+        # gives every cross-section a uniform water_y, and MC's int-rounding
+        # creates IMPLICIT mini-plateaus (~2-5 cells) distributed organically
+        # along the river — each cascade tier is just 1 row long, visually
+        # subtle.  Bank-lift (size=15) + interior hole fill below still
+        # contain water laterally.
+
+
+        # 7.8 — populate water_y_field for chunk_writer.
+        # S73-v7: fill ENTIRE trench (was: factor < edge_threshold gate).
+        # Water_y_field is set for every footprint cell; whether water
+        # shows depends on surface_y < water_y (carve dipped surface
+        # below water level) vs surface_y >= water_y (terrain bank pokes
+        # through).  Banks contained naturally by surface vs water_y;
+        # bank-lift in 7c handles cells where surface needs to rise to
+        # contain laterally.  Eliminates the edge_threshold "dry strip"
+        # that left visible cross-section non-uniformity at curves.
+        water_zone = footprint & ~lake_mask
+        if water_zone.any():
+            water_y_int = np.round(water_y).astype(np.int16)
+            # S83 v9: OVERRIDE water_y with the global skeleton-walk value
+            # at painted-river cells where the precompute set it. The
+            # global walk produces a monotonic source→sink water profile
+            # that is identical at the same physical cell between both
+            # tiles → eliminates the 2-block water step at boundaries.
+            # Lake cells, BLEND zone, and the per-tile water_y formula
+            # for non-painted footprint cells are all untouched.
+            if hydro_river_water_y is not None:
+                _global_wy_valid = water_zone & (
+                    hydro_river_water_y > float(SEA_LEVEL))
+                if _global_wy_valid.any():
+                    water_y_int[_global_wy_valid] = np.round(
+                        hydro_river_water_y[_global_wy_valid]
+                    ).astype(np.int16)
+            water_y_field[water_zone] = water_y_int[water_zone]
+            # S80 v15: ensure surface_y is at LEAST 1 below water_y at every
+            # footprint cell.  Without this, the guardrail formula keeps
+            # edge cells (factor > 0.1) at original surface, while water_y
+            # is set lower — the chunk_writer's
+            # `river_water_mask = (abs_y > surface) & (abs_y <= water_y)`
+            # comes back EMPTY for those cells, so they show as dry land.
+            # Result before fix: visible water = ~2-3-cell centerline, NOT
+            # the full footprint width.  Visible streams disconnect from
+            # lake water by 1-2 dry cells at the junction.
+            # After fix: visible water = full footprint width = spec width.
+            too_high = water_zone & (surface_out >= water_y_int)
+            if too_high.any():
+                surface_out[too_high] = (water_y_int[too_high] - 1).astype(
+                    surface_out.dtype
+                )
+
+        carve_px = footprint & (cur_y_f > new_y_f)
+
+        # 7.6b — Carve-floor smooth-brush pass (S81 v8.13: FOOTPRINT-ONLY).
+        # PRIOR (v8.5-v8.12): smoothing zone was BANK_ZONE=24 blocks wide,
+        # including bank cells outside the footprint. The gaussian's
+        # kernel reached into the carved (low) river floor and pulled
+        # bank cells DOWN, creating an artificial valley dip that the
+        # later run_pipeline.py escape-fix + EDT berm couldn't fully
+        # restore (berm only reaches BERM_RADIUS=8 with 1/cell falloff,
+        # but the smooth-brush valley extended out to 24 cells).
+        # Visible result: a 1-cell wall at water sticking up out of a
+        # smoothed-down valley — user feedback "trench wall higher than
+        # the soft valley around it".
+        # NEW: smoothing applies ONLY to footprint cells (inside the
+        # trench, where water is). Bank cells stay at natural Y.
+        # Footprint cells still get constrained to [original_carved,
+        # water_y - 1] so the smoothing only affects the carve-floor
+        # taper pattern, not the depth itself. Bank shaping is now
+        # entirely the responsibility of run_pipeline's escape-fix
+        # (1-cell wall at water_y) + EDT berm (1/cell slope to 8 cells
+        # out, then natural terrain).
+        from scipy.ndimage import binary_dilation as _bd_shore
+        from scipy.ndimage import gaussian_filter as _gf_bank
+        BANK_SIGMA = 16.0    # gaussian sigma — WorldEdit-style
+        BANK_PASSES = 3      # iterate the blur 3× for cumulative effect
+        # S83 v8: SKIP per-tile bank smooth-brush when global hydro_river_bed
+        # is provided (it pre-smoothed the bed at 8k globally → consistent
+        # across tile boundaries by construction). The per-tile gaussian
+        # below was the visible bed-elevation seam source; replacing it
+        # with the global precompute eliminates that seam.
+        _skip_bank_smooth = (hydro_river_bed is not None)
+        if footprint.any() and not _skip_bank_smooth:
+            sy_f_bank = surface_out.astype(np.float32)
+            in_zone = footprint & above_sea & ~lake_mask
+            if in_zone.any():
+                w_bank = in_zone.astype(np.float32)
+                # === S83 v7: ONLY pad the bank smooth-brush gaussian. ===
+                # Everything else in the carver stays at v8.14 baseline
+                # (gravity ON, skeleton/EDT unpadded). The σ=16 × 3 passes
+                # gaussian was the main cause of 3-block bed elevation
+                # step at the tile boundary; padding it eliminates the
+                # reflect-mode boundary artifact without touching any
+                # algorithmic semantics.
+                _BSP = 48
+                _PH_B = H + 2 * _BSP
+                _PW_B = W + 2 * _BSP
+                _bank_padded = False
+                if (masks_dir is not None and tile_x is not None
+                        and tile_z is not None):
+                    try:
+                        import rasterio as _rio_b
+                        from rasterio.windows import Window as _RWin_b
+                        _ht_b = masks_dir / "height.tif"
+                        if _ht_b.exists():
+                            _col_off_b = tile_x * W
+                            _row_off_b = tile_z * H
+                            with _rio_b.open(str(_ht_b)) as _src_b:
+                                _px0b = max(_col_off_b - _BSP, 0)
+                                _pz0b = max(_row_off_b - _BSP, 0)
+                                _px1b = min(_col_off_b + W + _BSP, _src_b.width)
+                                _pz1b = min(_row_off_b + H + _BSP, _src_b.height)
+                                _h_raw_b = _src_b.read(1, window=_RWin_b(
+                                    _px0b, _pz0b,
+                                    _px1b - _px0b, _pz1b - _pz0b))
+                            _LUT_in_b = np.array(
+                                [0, 17050, 45000, 65496], dtype=np.float64)
+                            _LUT_out_b = np.array(
+                                [-64, 63, 200, 448], dtype=np.float64)
+                            _mc_y_b = np.interp(
+                                _h_raw_b.ravel().astype(np.float64),
+                                _LUT_in_b, _LUT_out_b
+                            ).reshape(_h_raw_b.shape).astype(np.float32)
+                            _pre_carve_pad_b = np.zeros(
+                                (_PH_B, _PW_B), dtype=np.float32)
+                            _dr0b = _pz0b - (_row_off_b - _BSP)
+                            _dc0b = _px0b - (_col_off_b - _BSP)
+                            _pre_carve_pad_b[
+                                _dr0b:_dr0b + _h_raw_b.shape[0],
+                                _dc0b:_dc0b + _h_raw_b.shape[1]
+                            ] = _mc_y_b
+
+                            _sy_pad_b = _pre_carve_pad_b.copy()
+                            _sy_pad_b[_BSP:_BSP + H, _BSP:_BSP + W] = (
+                                surface_out.astype(np.float32))
+
+                            # Footprint approximation in pad: use painted
+                            # river binary at padded coords.
+                            _hr_path_b = masks_dir / "hydro_region.png"
+                            _paint_river_pad_b = np.zeros(
+                                (_PH_B, _PW_B), dtype=bool)
+                            _paint_lake_pad_b = np.zeros(
+                                (_PH_B, _PW_B), dtype=bool)
+                            if _hr_path_b.exists():
+                                try:
+                                    from PIL import Image as _PILImg_b
+                                    _hr8k_b = np.asarray(
+                                        _PILImg_b.open(_hr_path_b).convert("L"),
+                                        dtype=np.uint8)
+                                    if _hr8k_b.shape == (8192, 8192):
+                                        _S_b = 8192.0 / 50000.0
+                                        _ys_b = (np.arange(_PH_B)
+                                                 + (_row_off_b - _BSP))
+                                        _xs_b = (np.arange(_PW_B)
+                                                 + (_col_off_b - _BSP))
+                                        _y8b = np.clip(
+                                            (_ys_b * _S_b).astype(np.int32),
+                                            0, 8191)
+                                        _x8b = np.clip(
+                                            (_xs_b * _S_b).astype(np.int32),
+                                            0, 8191)
+                                        _yyb, _xxb = np.meshgrid(
+                                            _y8b, _x8b, indexing="ij")
+                                        _paint_river_pad_b = (
+                                            _hr8k_b[_yyb, _xxb] == 2)
+                                        _paint_lake_pad_b = (
+                                            (_hr8k_b[_yyb, _xxb] == 1)
+                                            & ~_paint_river_pad_b)
+                                except Exception:
+                                    pass
+
+                            _footprint_pad_b = _paint_river_pad_b.copy()
+                            _footprint_pad_b[
+                                _BSP:_BSP + H, _BSP:_BSP + W] = footprint
+                            _lake_pad_b = _paint_lake_pad_b.copy()
+                            _lake_pad_b[_BSP:_BSP + H, _BSP:_BSP + W] = lake_mask
+                            _above_sea_pad_b = (
+                                _pre_carve_pad_b > float(SEA_LEVEL))
+                            _in_zone_pad_b = (
+                                _footprint_pad_b
+                                & _above_sea_pad_b
+                                & ~_lake_pad_b
+                            )
+
+                            _w_bank_pad = _in_zone_pad_b.astype(np.float32)
+                            _cur_pad_b = _sy_pad_b.copy()
+                            for _bp in range(BANK_PASSES):
+                                _blur_pad = _gf_bank(_cur_pad_b, sigma=BANK_SIGMA)
+                                _cur_pad_b = (
+                                    _w_bank_pad * _blur_pad
+                                    + (1.0 - _w_bank_pad) * _cur_pad_b
+                                )
+
+                            final = _cur_pad_b[
+                                _BSP:_BSP + H, _BSP:_BSP + W].copy()
+                            cap = (water_y - 1.0).astype(np.float32)
+                            final[in_zone] = np.minimum(
+                                final[in_zone], cap[in_zone])
+                            final[in_zone] = np.maximum(
+                                final[in_zone], sy_f_bank[in_zone])
+                            changed = in_zone & (
+                                np.abs(final - sy_f_bank) > 0.5)
+                            if changed.any():
+                                surface_out[changed] = np.round(
+                                    final[changed]
+                                ).astype(surface_out.dtype)
+                            _bank_padded = True
+                    except Exception as _bank_exc:  # noqa: BLE001
+                        print(f"[river_carver_v2] S83 v7 bank padding "
+                              f"skipped: {type(_bank_exc).__name__}: "
+                              f"{_bank_exc}")
+                        _bank_padded = False
+
+                if not _bank_padded:
+                    # === Unpadded fallback (v8.14 baseline) ===
+                    cur = sy_f_bank.copy()
+                    for _bp in range(BANK_PASSES):
+                        blurred_bank = _gf_bank(cur, sigma=BANK_SIGMA)
+                        cur = (w_bank * blurred_bank
+                               + (1.0 - w_bank) * cur)
+                    final = cur.copy()
+                    cap = (water_y - 1.0).astype(np.float32)
+                    final[in_zone] = np.minimum(final[in_zone], cap[in_zone])
+                    final[in_zone] = np.maximum(
+                        final[in_zone], sy_f_bank[in_zone])
+                    changed = in_zone & (np.abs(final - sy_f_bank) > 0.5)
+                    if changed.any():
+                        surface_out[changed] = np.round(
+                            final[changed]
+                        ).astype(surface_out.dtype)
+
+        # 7.6c — Steppable shore lip (S81). Final pass: just outside the
+        # carve footprint, if the bank still rises more than 1 block
+        # above the water surface (after bank-smooth pass above), drop
+        # it down to water_y + 1 so the player can hop out of the river
+        # without jumping. 1-cell-wide ring at footprint boundary.
+        shore_ring = (_bd_shore(footprint, iterations=1)
+                      & ~footprint & ~lake_mask & above_sea)
+        if shore_ring.any():
+            water_y_int_pre = np.round(water_y).astype(np.int16)
+            target_y = water_y_int_pre + np.int16(1)
+            need_step = shore_ring & (surface_out > target_y)
+            if need_step.any():
+                surface_out[need_step] = target_y[need_step]
+
+        # Set river_meta for footprint pixels (Strahler-aware)
         not_lake = ~lake_mask
         order_prop_k2 = min(flow_refine_radius * 2 + 1, 31)
         order_propagated = maximum_filter(
             order_u8.astype(np.float32), size=order_prop_k2
         ).astype(np.uint8)
-
-        stream_expanded = (order_propagated <= 2) & carve_px & not_lake
-        river_expanded  = (order_propagated >= 3) & carve_px & not_lake
+        # river_meta uses STRICTER mask than the broad water_y_field
+        # footprint — the broad footprint extends ~22 blocks past the
+        # visible river, which would mark unrelated terrain as river
+        # bank (suppressing schematics and biome decorations there).
+        # Strict: depth ≥ 1 block of carve (the "real" river area).
+        river_strict = (depth_at_cell >= 1.0) & ~lake_mask & above_sea
+        stream_expanded = river_strict & (order_propagated <= 2) & not_lake
+        river_expanded  = river_strict & (order_propagated >= 3) & not_lake
         river_meta[stream_expanded] = CHAN_STREAM
         river_meta[river_expanded]  = CHAN_RIVER
 
         # Wadi channels: carved terrain but no water fill — sand surface
         if wadi_channel is not None and wadi_channel.any():
-            wadi_carved = wadi_channel & carve_px & not_lake
+            from scipy.ndimage import binary_dilation as _bd_wadi
+            wadi_footprint = _bd_wadi(wadi_channel, iterations=3) & footprint
+            wadi_carved = wadi_footprint & not_lake
             river_meta[wadi_carved] = CHAN_WADI
 
-    # ── 7a. River bank leveling ─────────────────────────────────────────
-    # The 1-2 block border of land along rivers should be at the same Y
-    # as the water surface, not 1 above.  Lower bank pixels to match the
-    # pre-carve surface minus 1 (= water level for terrain-following rivers).
-    river_or_stream_7a = (river_meta == CHAN_RIVER) | (river_meta == CHAN_STREAM)
-    if river_or_stream_7a.any():
-        bank_dist = distance_transform_edt(~river_or_stream_7a).astype(np.float32)
-        # 2-pixel-wide border of land touching the river
-        bank_border = (~river_or_stream_7a & ~lake_mask
-                       & (bank_dist <= 2) & (bank_dist > 0)
-                       & above_sea)
-        if bank_border.any():
-            # Target: water surface = pre_surface - 1 (terrain-following)
-            # Lower bank to match that level
-            # Use the nearest river pixel's pre-carve surface as reference
-            river_surface_ref = maximum_filter(
-                np.where(river_or_stream_7a,
-                         surface_out + np.round(river_depth_map).astype(np.int32),
-                         0).astype(np.float32),
-                size=5)
-            target_y = river_surface_ref[bank_border] - 1
-            current_y = surface_out[bank_border].astype(np.float32)
-            # Only lower, never raise
-            lower = current_y > target_y
-            lowered = bank_border.copy()
-            lowered_rows, lowered_cols = np.where(bank_border)
-            surface_out[lowered_rows[lower], lowered_cols[lower]] = np.round(
-                target_y[lower]).astype(surface_out.dtype)
+        # ── 7a. Two-pass containment ─────────────────────────────────────
+        # (Gravity Pass 1 was moved to Section 7.1b above — it must run
+        #  BEFORE avg_terrain/water_y are computed so they see the
+        #  monotonic-descent centerline.  S71 had it here AFTER, which left
+        #  water_y based on pre-gravity bumpy terrain.)
+
+        # Pass 2 (edge-spillover guard) REMOVED. It was designed for the
+        # legacy tapered carve where edge cells were barely lowered and
+        # could let water spill over banks. With the flat-bottom paint
+        # carve every footprint cell is uniformly lowered to avg-depth,
+        # banks (cells OUTSIDE footprint) keep their original elevation,
+        # so water containment is automatic — no spillover possible.
+        # When this pass DID fire on flat-bottom carve, it raised carved
+        # edges back to water_y level, eating ~half the carve width and
+        # producing the "rivers narrower than painted" symptom.
+
+        # Pass 3: narrow-section fix.  Centerline pixels where surface_y >=
+        # water_y - 1 → drop them to water_y - 1.  Catches per-pixel spikes
+        # that survive the carve.
+        if river_channel.any():
+            narrow_fix = river_channel & (surface_out.astype(np.float32) >= water_y - 1)
+            if narrow_fix.any():
+                surface_out[narrow_fix] = np.round(water_y[narrow_fix] - 1).astype(surface_out.dtype)
+
+        # ── 7b. Fixify spike relaxation (cheap final pass on river footprint) ──
+        # Smooth 1-pixel local maxima/minima within the river footprint.
+        # Average a local extremum with its 4-neighbours (clamped so it
+        # doesn't go below the lowest neighbour or above the highest).
+        if footprint.any():
+            from scipy.ndimage import minimum_filter as _mf_minf
+            from scipy.ndimage import maximum_filter as _mf_maxf
+            sy_f = surface_out.astype(np.float32)
+            # 3x3 cross neighborhood (size=3 = 8-connected; use cross via two
+            # passes for true 4-neighbor — close enough with 3x3 box here).
+            nb_min = _mf_minf(sy_f, size=3)
+            nb_max = _mf_maxf(sy_f, size=3)
+            is_local_max = footprint & (sy_f > nb_max - 0.5) & (sy_f - nb_min > 1.5)
+            is_local_min = footprint & (sy_f < nb_min + 0.5) & (nb_max - sy_f > 1.5)
+            # Average of 4-neighbors (3x3 mean minus self/9 ≈ 3x3 mean)
+            # uniform_filter works fine here
+            from scipy.ndimage import uniform_filter
+            nb_avg = uniform_filter(sy_f, size=3)
+            if is_local_max.any():
+                surface_out[is_local_max] = np.round(
+                    np.maximum(nb_avg[is_local_max], nb_min[is_local_max] + 0.5)
+                ).astype(surface_out.dtype)
+            if is_local_min.any():
+                surface_out[is_local_min] = np.round(
+                    np.minimum(nb_avg[is_local_min], nb_max[is_local_min] - 0.5)
+                ).astype(surface_out.dtype)
+
+        # ── 7c. DISABLED in S80 v8 ──────────────────────────────────────
+        # The interior-hole-fill + bank-lift was producing ~67k extra
+        # water cells per tile (footprint computation gives 14k
+        # cells but MCA had 82k water cells).  binary_fill_holes
+        # closes any U-shaped meander into a solid water mass; the
+        # max-filter then propagates water_y outward.  For narrow
+        # WP streams this turns isolated meanders into giant water
+        # blobs.  Disabled entirely — narrow streams contain water
+        # vertically (1-2 block deep) without needing bank-lift.
+        # Re-enable only if water-escape regressions appear on
+        # steep terrain.
 
     # ── 7b. Smooth depth at river-lake junctions ──────────────────────────
-    # Where a river channel meets the lake bowl, the independent carving
-    # can produce a vertical wall (river at depth 4, adjacent lake at depth
-    # 0-1 near its edge).  Blend surface_out in a narrow zone around each
-    # junction so the floor ramps smoothly between them.
+    # S80 v20: DISABLED.  This gaussian-blur of surface_out at
+    # river-lake junctions was UNDOING the v15 fix.  v15 lowers surface
+    # at every water_zone cell to ensure visible water; this pass blurred
+    # surface upward toward the lake's higher terrain (basin-shore was
+    # at terrain==wl, blur pulls river surface from Y69 up to Y70+),
+    # which made `surface >= water_y` again so chunk_writer skipped
+    # placing water blocks at the river-lake junction.  Result: visible
+    # 18-cell dry gap between river and lake water.
+    # Re-enable only if vertical-wall artifacts return at junctions.
+    # S80 v20 vs v21: re-enable section 7b but PROTECT v15 surface lowering.
+    # Section 7b's gaussian blur was raising surface above water_y at junctions,
+    # undoing my v15 carve.  Disabling caused (30,49) lake painting to fail.
+    # The fix: run the blur but only update cells where the new surface is
+    # STRICTLY LOWER than the existing surface, so v15-fixed cells stay deep.
     river_or_stream = (river_meta == CHAN_RIVER) | (river_meta == CHAN_STREAM)
     lake_water_meta = river_meta == CHAN_LAKE
     if river_or_stream.any() and lake_water_meta.any():
@@ -1039,7 +1491,16 @@ def carve_rivers(
             contact_dist = np.minimum(dist_lake_to_river, dist_river_to_lake)
             blend_t = np.clip(1.0 - contact_dist / JUNCTION_R, 0, 1)
             blended = (blend_t * blurred + (1.0 - blend_t) * surface_out.astype(np.float32))
-            surface_out[junction] = np.round(blended[junction]).astype(surface_out.dtype)
+            # S80 v21: only LOWER surface, never raise.  Without this, the
+            # gaussian blur was raising surface above water_y at the river
+            # side of junctions, undoing the v15 carve fix and leaving
+            # river cells dry.  np.minimum keeps each cell at the lower of
+            # blurred-or-current → smooth at junctions without breaking
+            # v15's water visibility guarantee.
+            new_sy = np.round(blended).astype(surface_out.dtype)
+            keep = (new_sy < surface_out) & junction
+            if keep.any():
+                surface_out[keep] = new_sy[keep]
 
     # ── 8. Bank zones (wider, for surface_decorator) ──────────────────────
     water_mask = (river_meta > 0)
@@ -1070,4 +1531,17 @@ def carve_rivers(
             ) & ~water_mask & (river_meta == 0) & (surface_out > SEA_LEVEL)
             river_meta[lake_bank] = CHAN_LAKE
 
-    return surface_out.astype(np.int16), river_meta, conn_channel_mask
+    # ── 9. Delta connectivity (WP `pathFindDown` equivalent) ───────────────
+    # S80 v9: DELTA CONNECTIVITY pass DISABLED.  This pre-S80 hack walked
+    # downhill 80 steps from any above-sea river component tail and
+    # stamped a tapered-width 1→4 footprint with carve + water_y_field.
+    # It was the dominant source of "mystery water cells" (45k+ extra
+    # water cells per tile not in any centerline footprint or lake).
+    # WP findPath already produces source-to-sink connected paths via
+    # _wp_find_path + _add_mouth_extensions, so this hack is redundant.
+    # If a river component still doesn't reach a sink, the right fix is
+    # to improve findPath's success rate, not bandaid with a downhill
+    # walk that ignores the precompute spec.
+    pass
+
+    return surface_out.astype(np.int16), river_meta, conn_channel_mask, water_y_field

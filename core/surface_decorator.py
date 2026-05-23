@@ -87,15 +87,23 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
         ("coarse_dirt",       "gravel",       "noise2"),
     ],
     # ── Arctic (ALPINE_MEADOW retired S56) ──────────────────────────────
+    # S71-3 swap: AT keeps the FF-clone palette (snow_block + coarse_dirt/dirt
+    # for plantable scrub + gravel/stone) so non-mountain AT cells still have
+    # vegetation.  At HIGH altitude, snowgap (gap==7) overrides → snow_carpet
+    # fills.  AT thus reads as scrubby at lowland plateaus + snow caps at peaks.
     "ARCTIC_TUNDRA": [
-        ("snow_block",        "stone",        "base"),
-        ("coarse_dirt",       "stone",        "noise"),
-        ("gravel",            "stone",        "noise2"),
-    ],
-    "FROZEN_FLATS": [
         ("snow_block",        "stone",        "base"),
         ("coarse_dirt",       "dirt",         "noise"),
         ("gravel",            "stone",        "noise2"),
+    ],
+    # S71-3 swap: FROZEN_FLATS redesigned as "Tundra Valley" — permafrost meadow
+    # with dark-greenish swamp tint MC biome, scattered snow_carpet GC, lots of
+    # short_grass + bushes + small pines.  Surface palette mirrors BIRCH_FOREST
+    # noise patterns (grass_block/podzol/coarse_dirt mix) for forest-floor feel.
+    "FROZEN_FLATS": [
+        ("grass_block",       "dirt",         "base"),
+        ("podzol",            "dirt",         "noise"),
+        ("coarse_dirt",       "dirt",         "noise2"),
     ],
     # ── Temperate Forests ────────────────────────────────────────────────
     "TEMPERATE_DECIDUOUS": [
@@ -111,13 +119,16 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
         ("rooted_dirt",       "dirt",         "noise2"),
         ("coarse_dirt",       "coarse_dirt",  "noise3"),
     ],
+    # S70: reduced mud surfaces per user — 3 mud-surface entries → 1.
+    # eco_basin and moisture use podzol/grass instead; only the most extreme
+    # moisture2 keeps mud surface for waterlogged feel.
     "RAINFOREST_COAST": [
         ("moss_block",        "rooted_dirt",  "base"),
-        ("mud",               "mud",          "eco_basin"),       # waterlogged basins
+        ("podzol",            "mud",          "eco_basin"),       # was mud surface
         ("podzol",            "rooted_dirt",  "eco_deep_soil"),   # deep humus
         ("rooted_dirt",       "dirt",         "eco_ridge"),       # wind-exposed
-        ("mud",               "mud",          "moisture"),
-        ("mud",               "clay",         "moisture2"),
+        ("grass_block",       "dirt",         "moisture"),         # was mud surface
+        ("mud",               "clay",         "moisture2"),       # extreme wet kept
         ("podzol",            "rooted_dirt",  "erosion"),
         ("gravel",            "stone",        "erosion2"),
         ("grass_block",       "rooted_dirt",  "noise"),
@@ -266,16 +277,20 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
         ("dirt_path",         "coarse_dirt",  "noise3"),
     ],
     "SEMI_ARID_SHRUBLAND": [
-        ("coarse_dirt",       "dirt",         "base"),
-        ("grass_block",       "dirt",         "eco_moist"),       # moisture corridors
-        ("sand",              "sandstone",    "eco_dry"),         # bare sand patches
-        ("podzol",            "stone",        "eco_shallow_soil"),# rocky outcrops
+        # S76: ALL coarse_dirt/packed_mud swapped to grass_block per user.
+        # Sand + gravel kept on dry/erosion channels for desert pockets.
+        # Net: 8 grass_block channels out of 10 → grassy meadow look.
+        ("grass_block",       "dirt",         "base"),
+        ("grass_block",       "dirt",         "eco_moist"),
+        ("sand",              "sandstone",    "eco_dry"),         # sand pockets
+        ("grass_block",       "dirt",         "eco_shallow_soil"),
         ("grass_block",       "dirt",         "moisture"),
+        ("grass_block",       "dirt",         "moisture2"),
         ("sand",              "sandstone",    "erosion"),
         ("gravel",            "stone",        "erosion2"),
-        ("dirt_path",         "coarse_dirt",  "noise"),
-        ("andesite",          "stone",        "noise2"),
-        ("podzol",            "gravel",       "noise3"),
+        ("grass_block",       "dirt",         "noise"),
+        ("grass_block",       "dirt",         "noise2"),
+        ("grass_block",       "dirt",         "noise3"),
     ],
     "DRY_WOODLAND_MAQUIS": [
         ("coarse_dirt",       "terracotta",   "base"),
@@ -352,12 +367,14 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # ── Boreal / Cold ────────────────────────────────────────────────────
     # S60: global resin_clump removal per user. Density bumps on all taiga
     # biomes (BOREAL_TAIGA, SNOWY_BOREAL_TAIGA, BOREAL_ALPINE).
+    # S71: GC density ~1.4x bumped per user — differentiates from BOREAL_ALPINE
+    # which has its own (sparser) palette.  MC biome also changed to
+    # minecraft:stony_shore for visual differentiation.
     "BOREAL_TAIGA": [
-        ("fern", 0.50), ("large_fern", 0.20), ("leaf_litter", 0.35),
-        ("moss_carpet", 0.25), ("pale_moss_carpet", 0.10), ("bush", 0.20),
-        ("sweet_berry_bush", 0.01), ("short_grass", 0.30),
+        ("fern", 0.70), ("large_fern", 0.28), ("leaf_litter", 0.49),
+        ("moss_carpet", 0.35), ("pale_moss_carpet", 0.14), ("bush", 0.30),
+        ("sweet_berry_bush", 0.02), ("short_grass", 0.42),
         ("dead_bush", 0.005),
-        # S60 flowers (very rare)
         ("lily_of_the_valley", 0.005), ("oxeye_daisy", 0.005),
     ],
     "SNOWY_BOREAL_TAIGA": [
@@ -375,18 +392,41 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
         ("cornflower", 0.008), ("oxeye_daisy", 0.008),
     ],
     # "ALPINE_MEADOW" retired S56
+    # S70: scrubland — bumped dead_bush + short_dry_grass + bush so ground
+    # reads as sparse arctic scrub (paired with tree-density-near-zero in
+    # schematic_placement Item I).
+    # S71-3 swap: AT keeps the FF-clone GC palette so non-snow-cap AT cells
+    # still have scattered scrubland.  Snowgap-affected cells (gap==7) get
+    # _SNOW_CAP_SPECIES multiplier (mostly zeros) → snow_carpet fallback fills
+    # the snow look.  Result: peaks read snowy, plateaus read scrubby.
+    # S71-3 follow-up: dead_bush → tall_dry_grass per user direction.
     "ARCTIC_TUNDRA": [
-        ("dead_bush", 0.01), ("short_dry_grass", 0.06), ("short_grass", 0.04),
+        ("tall_dry_grass", 0.10),  # S71-3 follow-up: replaces dead_bush 0.06 + tall_dry_grass 0.04
+        ("short_dry_grass", 0.06),
+        ("bush", 0.05),
     ],
+    # S71-3 swap: FROZEN_FLATS = "Tundra Valley" permafrost meadow.  Defining
+    # characteristic = scattered snow_carpet (snow[layers=1]) over a moss/grass
+    # underlay.  MC biome = swamp (dark-greenish tint); surface = grass_block
+    # + podzol + coarse_dirt mix; schematics = smallest pines + bushes very
+    # very sparsely.  Snow_carpet is explicit GC (FF removed from snow_carpet
+    # config so the 95% fallback doesn't dominate).
     "FROZEN_FLATS": [
-        # S85: was empty — bleached steppe look with rare dry tufts
-        ("short_dry_grass", 0.04), ("dead_bush", 0.015),
+        ("snow[layers=1]", 0.30),                # defining "cold" cue (S71-3 was 0.20, bumped per user)
+        ("short_grass",     0.45),                # lots
+        ("bush",            0.12),                # some bush block
+        ("fern",            0.10),                # taiga forest-floor staple
+        ("large_fern",      0.04),                # sparse hardy ferns (no moss carpet — user direction)
+        ("short_dry_grass", 0.03),                # "dead short" — very sparse
+        ("tall_dry_grass",  0.02),                # "dead tall" — very sparse
+        ("sweet_berry_bush", 0.005),              # taiga signature, very rare
+        ("lily_of_the_valley", 0.005),            # cool-temperate flower
     ],
     # ── Temperate Forests ────────────────────────────────────────────────
     "TEMPERATE_DECIDUOUS": [
         ("leaf_litter", 0.35), ("short_grass", 0.30), ("tall_grass", 0.08),
         ("fern", 0.12), ("bush", 0.18), ("moss_carpet", 0.08),
-        ("azalea", 0.04), ("peony", 0.01),
+        ("azalea", 0.04), ("peony", 0.005),  # S71 peony /2 per user
         ("flowering_azalea", 0.003),
         # S60 woodland wildflowers (very rare)
         ("oxeye_daisy", 0.01), ("lily_of_the_valley", 0.008),
@@ -414,20 +454,26 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     ],
     # ── Coastal / Heath ──────────────────────────────────────────────────
     # S60: up short_grass density, bush rare per user + rare coastal meadow flowers.
+    # S70: flowers reduced ×0.2 (very sparse per user). Bush density
+    # doubled in schematic_placement (Item K), not here.
     "COASTAL_HEATH": [
         ("short_grass", 0.48), ("short_dry_grass", 0.14), ("tall_grass", 0.02),
-        ("bush", 0.04), ("dead_bush", 0.01), ("cornflower", 0.01),
-        ("allium", 0.01), ("oxeye_daisy", 0.01), ("dandelion", 0.008),
+        ("bush", 0.04), ("dead_bush", 0.01),
+        ("cornflower", 0.002), ("allium", 0.002),
+        ("oxeye_daisy", 0.002), ("dandelion", 0.0016),
     ],
     # S60: coastline-vibe (Cape Cod / Outer Banks dune-barrens), heavy flowers.
     # Ammophila beach grass dominant, bayberry/beach plum bush, salt-marsh
     # flower accents.
+    # S71: WAY fewer flowers per user walk — they were dominating the visual.
+    # Cut all flowers ~6x and roll the absent density into short_grass.  Still
+    # has the "wow" coastline feel via short_dry_grass dominance, just not a
+    # technicolor mess.
     "EASTERN_TEMPERATE_COAST": [
-        ("short_dry_grass", 0.52), ("short_grass", 0.18), ("tall_grass", 0.04),
+        ("short_dry_grass", 0.52), ("short_grass", 0.36), ("tall_grass", 0.04),
         ("tall_dry_grass", 0.10), ("bush", 0.12), ("dead_bush", 0.01),
-        # S60 coastline wildflowers — heavy density for "wow" factor
-        ("azure_bluet", 0.05), ("dandelion", 0.04),
-        ("allium", 0.04), ("cornflower", 0.03), ("oxeye_daisy", 0.03),
+        ("azure_bluet", 0.008), ("dandelion", 0.006),
+        ("allium", 0.006), ("cornflower", 0.005), ("oxeye_daisy", 0.005),
     ],
     # S60: ensure dense per user; removed duplicate bush entry.
     "LUSH_RAINFOREST_COAST": [
@@ -445,19 +491,23 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     ],
     # ── Dry / Arid ───────────────────────────────────────────────────────
     # S60: up density of all + very rare prairie wildflowers per user.
+    # S70: flowers ×0.5 per user.
     "DRY_OAK_SAVANNA": [
         ("short_dry_grass", 0.52), ("tall_dry_grass", 0.34),
         ("short_grass", 0.22), ("bush", 0.10), ("dead_bush", 0.02),
-        # S60 oak-savanna wildflowers (very rare)
-        ("dandelion", 0.01), ("oxeye_daisy", 0.01), ("poppy", 0.008),
+        # S70 oak-savanna wildflowers (halved from S60)
+        ("dandelion", 0.005), ("oxeye_daisy", 0.005), ("poppy", 0.004),
     ],
     # S60: way more short_grass + tall_dry_grass (single-block) + very rare steppe flowers.
+    # S71-3: intense grassland vibe per user walk — flowers ÷10, bush block
+    # tripled (0.08 → 0.30), trees gated to almost zero in placement.  Goal:
+    # vast tall+short grass with frequent bush blocks (Minecraft 1.20.5 bush
+    # block, not bush schematic) and only the rarest flower accents.
     "CONTINENTAL_STEPPE": [
-        ("short_grass", 0.72), ("tall_grass", 0.02), ("tall_dry_grass", 0.17),
-        ("short_dry_grass", 0.20), ("bush", 0.08), ("sunflower", 0.01),
-        ("dead_bush", 0.01), ("cornflower", 0.015),
-        # S60 prairie wildflowers (very rare)
-        ("dandelion", 0.012), ("poppy", 0.01), ("oxeye_daisy", 0.01),
+        ("short_grass", 0.85), ("tall_grass", 0.04), ("tall_dry_grass", 0.08),
+        ("short_dry_grass", 0.10), ("bush", 0.30), ("sunflower", 0.001),
+        ("dead_bush", 0.005), ("cornflower", 0.0015),
+        ("dandelion", 0.0012), ("poppy", 0.001), ("oxeye_daisy", 0.001),
     ],
     # S60: remove resin_clump, add tall_dry_grass, up all per user.
     "DRY_PINE_BARRENS": [
@@ -467,14 +517,15 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     ],
     # S60: "wow damn there's flowers everywhere" heathland — heather-style
     # purple + gorse-style yellow + bilberry white.
+    # S71: WAY fewer flowers, replaced with short_grass + bush per user.  Still
+    # has heathland palette (allium / dandelion accents) but no longer a
+    # superbloom — just a moor with the occasional flower.
     "SCRUBBY_HEATHLAND": [
-        ("short_grass", 0.60), ("short_dry_grass", 0.22), ("bush", 0.15),
+        ("short_grass", 0.78), ("short_dry_grass", 0.22), ("bush", 0.28),
         ("tall_grass", 0.02), ("dead_bush", 0.01),
-        # S60 heathland superbloom — heather-purple (allium) + gorse-yellow
-        # (dandelion) + bilberry-white (azure_bluet) + accent flowers
-        ("allium", 0.08), ("dandelion", 0.06),
-        ("azure_bluet", 0.05), ("oxeye_daisy", 0.05),
-        ("cornflower", 0.04),
+        ("allium", 0.012), ("dandelion", 0.010),
+        ("azure_bluet", 0.008), ("oxeye_daisy", 0.008),
+        ("cornflower", 0.006),
     ],
     # S60: bump base palette ~5x to counter the 0.05 eco_density_mod multiplier
     # that was suppressing ground cover to near-zero. Still very rare in-world
@@ -502,18 +553,20 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     ],
     # S60: add tall_dry_grass, up short_grass, bush more infrequent per user.
     # Mediterranean-scrub flora — halved existing flowers per user's global rare-ify.
+    # S71-2: torchflower removed per user — too saturated for dry biome.
     "DRY_WOODLAND_MAQUIS": [
         ("short_grass", 0.43), ("short_dry_grass", 0.22), ("tall_dry_grass", 0.13),
         ("bush", 0.06), ("tall_grass", 0.02), ("leaf_litter", 0.06),
         ("dead_bush", 0.01),
-        ("allium", 0.015), ("poppy", 0.02), ("torchflower", 0.01),
+        ("allium", 0.015), ("poppy", 0.02),
         ("oxeye_daisy", 0.008),
     ],
     # S60: up all, add short_grass (was 0.02, now 0.12) + tall_dry_grass per user.
     # S66: way more bushes per user — scrubland feel.  bush 0.05 → 0.30.
+    # S70: more short_grass, less dry/dead grass per user.
     "KARST_BARRENS": [
-        ("dead_bush", 0.02), ("short_dry_grass", 0.14), ("bush", 0.30),
-        ("short_grass", 0.18), ("tall_dry_grass", 0.10),
+        ("dead_bush", 0.02), ("short_dry_grass", 0.05), ("bush", 0.30),
+        ("short_grass", 0.45), ("tall_dry_grass", 0.05),
     ],
     # ── Wetland / Riparian ───────────────────────────────────────────────
     # S60: removed duplicate bush entry. Otherwise unchanged per user.
@@ -1359,8 +1412,9 @@ def decorate_surface(
     # grass surfaces at alpine/mountaintop elevations where only stone/dirt
     # should be visible.  Replacement block = subsurface of the biome's base
     # palette entry (usually dirt/coarse_dirt).
-    GRASS_Y_FLOOR = 325.0
-    GRASS_Y_CEIL  = 350.0
+    # S85: scaled for 768-height world (was 325/350 for 448-height era).
+    GRASS_Y_FLOOR = 460.0
+    GRASS_Y_CEIL  = 500.0
     _grass_eligible = (surface_blocks == "grass_block") & (surface_y >= GRASS_Y_FLOOR)
     if _grass_eligible.any():
         _sy_f = surface_y.astype(np.float32)
@@ -1531,10 +1585,12 @@ def decorate_surface(
             # ── gap==6 (alpine_meadow) RETIRED S56 — Gaea slope mask replaces ──
 
             # ── Rock (gap==5): surface block selection via lithology palette ──
-            # S60: route rock-gap surface through `config.lithology.groups[zone_to_group[biome]].palette`
-            # so surface block variety matches subsurface geology (chunk_writer
-            # _fill_geology_layers uses the same palettes). Previously hardcoded
-            # to stone/andesite/granite/diorite regardless of biome.
+            # S71-3: PAINTED lithology mask is source of truth.  Per-pixel
+            # group ID from `lithology_tile` selects the palette; only unpainted
+            # cells (id=0) fall back to the biome-based `zone_to_group` path.
+            # Previously this was per-biome, which ignored the user's painted
+            # lithology overlay (e.g. arid_basaltic continents rendered as
+            # whatever biome's hardcoded mapping said).
             rock_px = _gap == 5
             if rock_px.any():
                 _rng = np.random.default_rng(tile_x * 48271 ^ tile_y * 31337 ^ 0xB10C)
@@ -1545,7 +1601,25 @@ def decorate_surface(
                 _groups = _litho_cfg.get("groups", {})
                 _DEFAULT_PAL = ["stone", "andesite", "granite", "diorite"]
 
-                def _palette_for(biome_name: str) -> list:
+                # Build group-id → palette LUT from config.
+                _gid_to_pal: dict[int, list] = {}
+                for _gname, _gdata in _groups.items():
+                    _gid = int(_gdata.get("id", 0))
+                    _pal_g = _gdata.get("palette") or _DEFAULT_PAL
+                    _gid_to_pal[_gid] = _pal_g
+
+                # Upscale lithology to tile resolution if needed.
+                _litho_at_res = None
+                if lithology_tile is not None:
+                    if lithology_tile.shape != (H, W):
+                        from scipy.ndimage import zoom as _sd_zoom
+                        _zh = H / lithology_tile.shape[0]
+                        _zw = W / lithology_tile.shape[1]
+                        _litho_at_res = _sd_zoom(lithology_tile, (_zh, _zw), order=0)
+                    else:
+                        _litho_at_res = lithology_tile
+
+                def _palette_for_biome(biome_name: str) -> list:
                     g = _zone_to_group.get(biome_name)
                     if g and g in _groups:
                         p = _groups[g].get("palette")
@@ -1553,24 +1627,51 @@ def decorate_surface(
                             return p
                     return _DEFAULT_PAL
 
-                # Per-biome rock painting: iterate only over biomes present under rock_px.
-                _rock_biomes = np.unique(biome_grid[rock_px])
-                for _bname in _rock_biomes:
-                    _b_str = str(_bname)
-                    _bm = rock_px & (biome_grid == _bname)
-                    if not _bm.any():
-                        continue
-                    _pal = _palette_for(_b_str)
-                    _n = len(_pal)
-                    # Equal-weight scatter across palette blocks
-                    for _i, _blk in enumerate(_pal):
-                        _lo = _i / _n
-                        _hi = (_i + 1) / _n
-                        _band = _bm & (_scatter >= _lo) & (_scatter < _hi)
-                        if _band.any():
-                            surface_blocks[_band] = _blk
-                    # Subsurface: palette[0] (base stone of the group)
-                    subsurface_blocks[_bm] = _pal[0]
+                if _litho_at_res is not None:
+                    # PAINTED-FIRST path: iterate over unique lithology IDs
+                    _unique_gids = np.unique(_litho_at_res[rock_px])
+                    for _gid in _unique_gids:
+                        _gid = int(_gid)
+                        _bm_lith = rock_px & (_litho_at_res == _gid)
+                        if not _bm_lith.any():
+                            continue
+                        if _gid == 0:
+                            # Unpainted cells — fall back to per-biome
+                            for _bname in np.unique(biome_grid[_bm_lith]):
+                                _bm_fb = _bm_lith & (biome_grid == _bname)
+                                if not _bm_fb.any():
+                                    continue
+                                _pal = _palette_for_biome(str(_bname))
+                                _n = len(_pal)
+                                for _i, _blk in enumerate(_pal):
+                                    _lo = _i / _n; _hi = (_i + 1) / _n
+                                    _band = _bm_fb & (_scatter >= _lo) & (_scatter < _hi)
+                                    if _band.any():
+                                        surface_blocks[_band] = _blk
+                                subsurface_blocks[_bm_fb] = _pal[0]
+                        else:
+                            _pal = _gid_to_pal.get(_gid, _DEFAULT_PAL)
+                            _n = len(_pal)
+                            for _i, _blk in enumerate(_pal):
+                                _lo = _i / _n; _hi = (_i + 1) / _n
+                                _band = _bm_lith & (_scatter >= _lo) & (_scatter < _hi)
+                                if _band.any():
+                                    surface_blocks[_band] = _blk
+                            subsurface_blocks[_bm_lith] = _pal[0]
+                else:
+                    # No lithology mask available — pure biome fallback (legacy)
+                    for _bname in np.unique(biome_grid[rock_px]):
+                        _bm = rock_px & (biome_grid == _bname)
+                        if not _bm.any():
+                            continue
+                        _pal = _palette_for_biome(str(_bname))
+                        _n = len(_pal)
+                        for _i, _blk in enumerate(_pal):
+                            _lo = _i / _n; _hi = (_i + 1) / _n
+                            _band = _bm & (_scatter >= _lo) & (_scatter < _hi)
+                            if _band.any():
+                                surface_blocks[_band] = _blk
+                        subsurface_blocks[_bm] = _pal[0]
 
                 # Flow-driven wash channels (subtle sand in drainage paths) — global,
                 # independent of lithology (water erodes everything).
@@ -1587,9 +1688,11 @@ def decorate_surface(
             # Gaea dusting mask drives gap==7. All snow pixels get snow_block.
             # Dither edges are baked into the mask at 50k by rebuild_gaea_gaps.py
             # (blue-noise dither), so no per-pixel probability ramp needed here.
-            # S85: SNOWY_BOREAL_TAIGA + FROZEN_FLATS exempted — their native
-            # surface (podzol / coarse_dirt) supports foliage. Snow visual still
-            # delivered via `_apply_snow_carpet` (vanilla snow[layers=1]) on top.
+            # S85: SNOWY_BOREAL_TAIGA + FROZEN_FLATS exempted — SBT's native podzol
+            # surface supports foliage and snow_carpet (vanilla snow[layers=1])
+            # provides the snowy visual on top.  FF is the Tundra Valley design
+            # (grass_block + scattered snow_carpet); forcing snow_block here would
+            # break the Tundra Valley palette + nuke its rich GC palette.
             snow_px = _gap == 7
             if snow_px.any():
                 _snow_exempt = (
@@ -1856,13 +1959,19 @@ def decorate_surface(
     # ground cover above the full-fade band so bare rock stays bare.
     # S84: bumped from 230-280 for 768-height world. Y 480-580 matches
     # real-world bare-rock altitude (~3500-4500m) in our compressed scale.
-    _FADE_Y_START = 480   # 0% fade below this
+    # S85: nudged start 480 -> 500 per user direction — keeps mid-mountain forests
+    # green longer, only bleaches into stone at true alpine zone.
+    _FADE_Y_START = 500   # 0% fade below this
     _FADE_Y_FULL  = 580   # 100% fade above this
     _GRASS_FAMILY = frozenset({
         "grass_block", "podzol", "coarse_dirt", "packed_mud",
         "rooted_dirt", "moss_block", "dirt", "mycelium",
     })
-    _above = surface_y >= _FADE_Y_START
+    # S71-3 swap: AT KEEPS its high-elevation stone-fade EXEMPTION so that
+    # coarse_dirt cells stay coarse_dirt at altitude → GC palette can fire on
+    # them.  Snowgap (now applied to AT again per user direction) provides the
+    # peak-snow visual where altitude/slope warrant it.
+    _above = (surface_y >= _FADE_Y_START) & (biome_grid != "ARCTIC_TUNDRA")
     if _above.any():
         _fade_prob = np.clip(
             (surface_y.astype(np.float32) - _FADE_Y_START) /
@@ -1879,21 +1988,73 @@ def decorate_surface(
             _zone_to_group = _litho_cfg.get("zone_to_group", {})
             _groups = _litho_cfg.get("groups", {})
             _DEFAULT_STONE_PAL = ["stone", "andesite", "granite", "diorite"]
-            for _bname in np.unique(biome_grid[_fade_mask]):
-                _bm = _fade_mask & (biome_grid == _bname)
-                if not _bm.any():
-                    continue
-                _g = _zone_to_group.get(str(_bname))
-                _pal = (_groups.get(_g, {}).get("palette")
-                        if _g else None) or _DEFAULT_STONE_PAL
-                _n = len(_pal)
-                for _i, _blk in enumerate(_pal):
-                    _lo = _i / _n
-                    _hi = (_i + 1) / _n
-                    _band = _bm & (_scatter_pal >= _lo) & (_scatter_pal < _hi)
-                    if _band.any():
-                        surface_blocks[_band] = _blk
-                subsurface_blocks[_bm] = _pal[0]
+
+            # S71-3: PAINTED lithology mask is source of truth for fade palette.
+            # Only fall back to biome-based zone_to_group on unpainted cells.
+            _gid_to_pal_fade: dict[int, list] = {}
+            for _gname, _gdata in _groups.items():
+                _gid_f = int(_gdata.get("id", 0))
+                _gid_to_pal_fade[_gid_f] = _gdata.get("palette") or _DEFAULT_STONE_PAL
+
+            _litho_at_res_fade = None
+            if lithology_tile is not None:
+                if lithology_tile.shape != (H, W):
+                    from scipy.ndimage import zoom as _sd_zoom_fade
+                    _zh_f = H / lithology_tile.shape[0]
+                    _zw_f = W / lithology_tile.shape[1]
+                    _litho_at_res_fade = _sd_zoom_fade(lithology_tile, (_zh_f, _zw_f), order=0)
+                else:
+                    _litho_at_res_fade = lithology_tile
+
+            def _fade_palette_for_biome(biome_name: str) -> list:
+                _gname = _zone_to_group.get(biome_name)
+                _pal_b = (_groups.get(_gname, {}).get("palette")
+                          if _gname else None) or _DEFAULT_STONE_PAL
+                return _pal_b
+
+            if _litho_at_res_fade is not None:
+                for _gid_v in np.unique(_litho_at_res_fade[_fade_mask]):
+                    _gid_v = int(_gid_v)
+                    _bm_l = _fade_mask & (_litho_at_res_fade == _gid_v)
+                    if not _bm_l.any():
+                        continue
+                    if _gid_v == 0:
+                        # Unpainted — biome fallback
+                        for _bname in np.unique(biome_grid[_bm_l]):
+                            _bm_fb = _bm_l & (biome_grid == _bname)
+                            if not _bm_fb.any():
+                                continue
+                            _pal = _fade_palette_for_biome(str(_bname))
+                            _n = len(_pal)
+                            for _i, _blk in enumerate(_pal):
+                                _lo = _i / _n; _hi = (_i + 1) / _n
+                                _band = _bm_fb & (_scatter_pal >= _lo) & (_scatter_pal < _hi)
+                                if _band.any():
+                                    surface_blocks[_band] = _blk
+                            subsurface_blocks[_bm_fb] = _pal[0]
+                    else:
+                        _pal = _gid_to_pal_fade.get(_gid_v, _DEFAULT_STONE_PAL)
+                        _n = len(_pal)
+                        for _i, _blk in enumerate(_pal):
+                            _lo = _i / _n; _hi = (_i + 1) / _n
+                            _band = _bm_l & (_scatter_pal >= _lo) & (_scatter_pal < _hi)
+                            if _band.any():
+                                surface_blocks[_band] = _blk
+                        subsurface_blocks[_bm_l] = _pal[0]
+            else:
+                # No lithology — pure biome fallback (legacy)
+                for _bname in np.unique(biome_grid[_fade_mask]):
+                    _bm = _fade_mask & (biome_grid == _bname)
+                    if not _bm.any():
+                        continue
+                    _pal = _fade_palette_for_biome(str(_bname))
+                    _n = len(_pal)
+                    for _i, _blk in enumerate(_pal):
+                        _lo = _i / _n; _hi = (_i + 1) / _n
+                        _band = _bm & (_scatter_pal >= _lo) & (_scatter_pal < _hi)
+                        if _band.any():
+                            surface_blocks[_band] = _blk
+                    subsurface_blocks[_bm] = _pal[0]
 
     # --- Ground cover --------------------------------------------------------
     # NOTE: ground cover is applied here provisionally; if the surface pipeline
@@ -1953,6 +2114,17 @@ def decorate_surface(
     if eco_grads is not None and hasattr(eco_grads, 'gap_mask'):
         from scipy.ndimage import binary_dilation as _bd_meadow_final
         _raw_meadow = (eco_grads.gap_mask == 1) | (eco_grads.gap_mask == 4)
+        # S70: skip RIPARIAN_WOODLAND + FRESHWATER_FEN + LUSH_RAINFOREST_COAST
+        # + SAND_DUNE_DESERT.  Those biomes had floodplain (gap=4) suppressed
+        # in eco_gradients (Item C), but if any meadow (gap=1) survives the
+        # dilation we don't want it to force grass over what the user wants
+        # there (trees / sand surface).  S70-f2 added LUSH; S70-f4 added DUNE.
+        if biome_grid is not None:
+            _raw_meadow = _raw_meadow & ~(
+                (biome_grid == "RIPARIAN_WOODLAND")
+                | (biome_grid == "FRESHWATER_FEN")
+                | (biome_grid == "LUSH_RAINFOREST_COAST")
+                | (biome_grid == "SAND_DUNE_DESERT"))
         if _raw_meadow.any():
             _final_meadow = _bd_meadow_final(_raw_meadow, iterations=2)
             # Don't expand into water, rock, snow, alpine meadow, sand dune, or beach
@@ -2127,7 +2299,12 @@ def decorate_surface(
             "terracotta", "orange_terracotta", "brown_terracotta",
             "white_terracotta", "yellow_terracotta", "red_terracotta",
             "light_gray_terracotta",
-            "packed_mud", "sand", "red_sand",
+            "packed_mud",
+            # S70-f5: REMOVED sand, red_sand, suspicious_sand — these DO
+            # support cactus, dead_bush, short_dry_grass, tall_dry_grass
+            # in MC 1.21+.  Keeping them in the list nuked ALL vegetation
+            # on SAND_DUNE_DESERT (sand surface), which was the bug user
+            # reported as "literal zero vegetation in dunes".
             "snow_block", "powder_snow", "ice", "packed_ice", "blue_ice",
         })
         _np_mask = np.zeros((H, W), dtype=bool)
@@ -2147,8 +2324,9 @@ def decorate_surface(
     # tag apply.  If remapped to BA, neither applies.
     _apply_sbt_mountaincap_remap(biome_grid, surface_y, tile_x, tile_y, cfg)
 
-    # S85: ARCTIC_TUNDRA → SBT below Y 500 remap REMOVED.  User-painted
-    # ARC_TUN in override.tif now appears as ARC_TUN regardless of altitude.
+    # S85: ARCTIC_TUNDRA → SBT below Y 500 remap REMOVED.  User-painted ARC_TUN
+    # in override.tif now appears as ARC_TUN regardless of altitude.  Painted
+    # intent is canonical (same philosophy as BIOME_ALTITUDE_REMAPS removal).
 
     # ──────────────────────────────────────────────────────────────────
     # S64: SNOW CARPET PASS
@@ -2476,12 +2654,38 @@ def _compute_ecotone_swap_fields(
         mask = biome_grid == bname
         dist_inside[mask] = d[mask]
 
-    # Linear ramp → ±20% noise modulation → zero outside has_neighbour
+    # NOISE_PATTERNS.md §4 — Gradient probability ramp + decision coin with
+    # PLATEAU CLAMP.  S71-3 fix: previous formula `swap_cap * (1 - t)` ramped
+    # from cap down to 0, which gave near-zero swap probability deep on the
+    # inside of the seam and at the outer edge — boundaries still read as
+    # nearly hard lines.  Per the doc: "clip probability to [0.15, 0.85]
+    # within the seam zone — guarantees visible salt-and-pepper on BOTH
+    # sides of the boundary instead of mostly-inside inner / mostly-outside
+    # outer sub-bands."  Floor at 0.15 means even far-inside cells still
+    # have a 15% swap chance; ceiling at swap_cap (0.75) keeps boundary
+    # pixels from being 100% swapped.
     t = dist_inside / width_px
-    swap_prob_grid = np.clip(swap_cap * (1.0 - t), 0.0, swap_cap).astype(np.float32)
+    swap_prob_grid = np.clip(swap_cap * (1.0 - t), 0.15, swap_cap).astype(np.float32)
     if noise_b is not None:
         swap_prob_grid = (swap_prob_grid * (0.8 + 0.4 * noise_b)).astype(np.float32)
+    # Outside the has_neighbour zone (no nearby boundary), zero out so
+    # interior pixels stay at biome's own palette.
     swap_prob_grid = np.where(has_neighbour, swap_prob_grid, 0.0).astype(np.float32)
+
+    # S71: RIPARIAN_BIOMES dither boost — user reported missing visible dither
+    # at FRESHWATER_FEN boundaries on (8,73).  Bump swap_prob 1.6x for boundary
+    # pixels in any riparian biome so the cross-biome veg + block scatter is
+    # visible against neighbouring rainforest/coast palettes (which have similar
+    # wet-palette blocks → low natural contrast).
+    _RIPARIAN_BIOMES = ("RIPARIAN_WOODLAND", "FRESHWATER_FEN",
+                        "MANGROVE_COAST", "TIDAL_JUNGLE_FRINGE",
+                        "LUSH_RAINFOREST_COAST", "RAINFOREST_COAST")
+    rip_mask = np.zeros((H, W), dtype=bool)
+    for _rb in _RIPARIAN_BIOMES:
+        rip_mask |= (biome_grid == _rb)
+    if rip_mask.any():
+        swap_prob_grid = np.where(rip_mask, np.clip(swap_prob_grid * 1.6, 0.0, 0.85),
+                                  swap_prob_grid).astype(np.float32)
 
     return has_neighbour, neighbour_biome, swap_prob_grid, biome_names, width_px, swap_cap
 
@@ -2928,7 +3132,11 @@ def _apply_ground_cover(
                 snow_cap_px = gap_mask == 7
                 eco_density_mod[snow_cap_px] = 0.02  # almost nothing on snow
                 sand_dune_px = gap_mask == 8
-                eco_density_mod[sand_dune_px] = 0.05  # bare sand
+                # S70-f5: was 0.05 (95% suppress) → 0.20 (80% suppress).
+                # Diagnostic showed only ~1160 plants per 262k tile (<0.5%).
+                # User wants "rareish but visible" general desert vegetation.
+                # 4x bump → ~4600 plants/tile = ~1 per 56 px = clearly visible.
+                eco_density_mod[sand_dune_px] = 0.20
                 beach_px = gap_mask == 9
                 eco_density_mod[beach_px] = 0.02  # bare beach
                 # S55 v8: thin vegetation on the beach-edge transition zone
@@ -2992,6 +3200,9 @@ def _apply_ground_cover(
             continue
         n_species = len(palette)
 
+        # S70-f5 DIAG (kept silent — turn on by setting _DIAG_SD True).
+        _DIAG_SD = False
+
         # Noise multiplier in [floor, 1.0], further modulated by ecology + slope
         density_mult = floor + (1.0 - floor) * noise_b
         density_mult = density_mult * eco_density_mod * slope_density_mod
@@ -3023,14 +3234,22 @@ def _apply_ground_cover(
             "dead_bush": 0.02,
         }
         _SAND_DUNE_SPECIES = {
-            # Sand dunes: predominantly bare sand. Very rare bushes.
-            "dead_bush": 0.05, "short_dry_grass": 0.02,
-            # Suppress everything else
-            "tall_grass": 0.0, "tall_dry_grass": 0.0,
+            # Sand dunes (gap==8): S70 — gap==8 strictly fires only in
+            # SAND_DUNE_DESERT after the Item D strict gate, so these
+            # multipliers are by definition the SAND_DUNE_DESERT defaults.
+            # User direction (S70-f5): general desert vegetation on dunes,
+            # NOT wadi-near-river patches.  Grass species + dead bushes +
+            # very rare cacti.  No wet-biome species (ferns, moss, flowers).
+            "bush": 0.5,
+            "dead_bush": 0.6,
+            "short_dry_grass": 0.6,
+            "tall_dry_grass": 0.5,
+            "cactus": 0.05,         # S71: was 0.7 (S70-f5 restore) — user said much much rarer
+            # Suppress everything else (ferns, mosses, flowers — wet)
+            "tall_grass": 0.0,
             "fern": 0.0, "large_fern": 0.0, "leaf_litter": 0.0,
             "moss_carpet": 0.0, "pale_moss_carpet": 0.0,
             "azalea": 0.0, "flowering_azalea": 0.0,
-            "bush": 0.0,
         }
         _FLOODPLAIN_SPECIES = {
             "tall_grass": 3.5, "short_grass": 2.0,
@@ -3085,8 +3304,16 @@ def _apply_ground_cover(
                 # gap==6 (alpine_meadow) species suppression retired S56
                 snow_cap_px = bio_mask & (gap_mask == 7)
                 if snow_cap_px.any():
-                    mult = _SNOW_CAP_SPECIES.get(block, 0.0)
-                    fd[snow_cap_px] = np.clip(fd[snow_cap_px] * mult, 0.0, 1.0)
+                    # S71: ARCTIC_TUNDRA exception — gap==7 covers most of
+                    # this biome, but user wants the F.1 palette (bushes,
+                    # short_dry_grass, etc.) to fire even on the snow surface.
+                    # Use full palette density there instead of the near-zero
+                    # _SNOW_CAP_SPECIES multiplier that empties everything.
+                    if False:  # S71-3 swap: AT exception removed (back to harsh-mountain)
+                        pass
+                    else:
+                        mult = _SNOW_CAP_SPECIES.get(block, 0.0)
+                        fd[snow_cap_px] = np.clip(fd[snow_cap_px] * mult, 0.0, 1.0)
                 sand_dune_px = bio_mask & (gap_mask == 8)
                 if sand_dune_px.any():
                     mult = _SAND_DUNE_SPECIES.get(block, 0.0)

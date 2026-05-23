@@ -467,6 +467,19 @@ def compute_eco_gradients(
             # Exclude water and off-land pixels
             water_mask_fp = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
             flood_candidate = flood_precomputed & land_mask & ~water_mask_fp
+            # S70: skip floodplain in RIPARIAN_WOODLAND + FRESHWATER_FEN
+            # + LUSH_RAINFOREST_COAST + SAND_DUNE_DESERT.  User directions:
+            # - first three biomes: trees should survive (not wiped by mud)
+            # - SAND_DUNE_DESERT (S70-f4): floodplain (gap=4) was outranking
+            #   sand_dune (gap=8) near rivers, causing grass_block surfaces
+            #   in dune river channels via the final meadow override.
+            #   Skipping flood in dunes lets sand_dune claim those pixels.
+            if biome_grid is not None:
+                _flood_skip = ((biome_grid == "RIPARIAN_WOODLAND")
+                               | (biome_grid == "FRESHWATER_FEN")
+                               | (biome_grid == "LUSH_RAINFOREST_COAST")
+                               | (biome_grid == "SAND_DUNE_DESERT"))
+                flood_candidate &= ~_flood_skip
             gap_mask[flood_candidate] = 4
         # ── End floodplain corridor ────────────────────────────────────────
 
@@ -480,10 +493,13 @@ def compute_eco_gradients(
         #   cliff_deg biases toward ridges/peaks (steep = more snow).
         #   Height ramp kills low-elevation false positives.
         #   Combined: snow_score = dusting * slope_factor * height_ramp.
+        # S85: snow Y bands scaled for 768-height world (was 250/275 for 448-era).
+        # Rock Y constants are dead code (S64 removed Y-fade in favor of pure slope gate)
+        # but kept for documentation.
         ROCK_Y_FLOOR = 150.0
         ROCK_Y_CEIL = 200.0
-        SNOW_Y_FLOOR = 250.0
-        SNOW_Y_CEIL = 275.0
+        SNOW_Y_FLOOR = 430.0
+        SNOW_Y_CEIL = 475.0
         SNOW_SLOPE_BIAS_MIN = 8.0   # degrees — below this, slope factor = 0.1
         SNOW_SLOPE_BIAS_MAX = 30.0  # degrees — above this, slope factor = 1.0
         SNOW_PEAK_RADIUS = 15       # pixels for local-mean peak detection
@@ -534,6 +550,11 @@ def compute_eco_gradients(
             _snow_rng = np.random.default_rng(tile_x * 73019 ^ tile_z * 58237)
             _snow_coin = _snow_rng.random((H, W)).astype(np.float32)
             snow_avail = land_mask & ~water_mask_re & (gap_mask != 4)
+            # S71-3 final: snow_gap APPLIES to AT (per user direction) — AT
+            # cells outside this tile's main area appear at peaks and need the
+            # snowgap to show snowy summits.  Schematic placement still has the
+            # snow_in_arctic exception in `full_suppress` so sparse pines/bushes
+            # can place on snowgap cells.
             gap_mask[snow_avail & _sg & (_snow_coin < _snow_prob)] = 7
             del _sg, _snow_height, _slope_factor, _peak_factor, _terrain_factor
             del _snow_prob, _snow_rng, _snow_coin, snow_avail
@@ -568,9 +589,14 @@ def compute_eco_gradients(
             # surface_decorator handles edge fade across the full range.
             # S55: biome gate — sand_dunes mask overreaches into
             # DESERT_STEPPE_TRANSITION (65%) and SEMI_ARID_SHRUBLAND (80%).
-            # Restrict gap==8 to true dune desert; other arid biomes use
-            # their own palette for incidental sand patches.
-            _sd_biome_ok = (biome_grid == "SAND_DUNE_DESERT") if biome_grid is not None else np.ones((H, W), dtype=bool)
+            # S70: STRICT gate — gap==8 ONLY fires where biome_grid is
+            # present AND biome == SAND_DUNE_DESERT.  No fall-through.
+            # User direction: sand dune terrain morphing should ONLY be
+            # in the sand dune desert.  If biome_grid is absent, skip.
+            if biome_grid is None:
+                _sd_biome_ok = np.zeros((H, W), dtype=bool)
+            else:
+                _sd_biome_ok = (biome_grid == "SAND_DUNE_DESERT")
             gap_mask[sd_avail & (sd_jittered >= 0.05) & _sd_biome_ok] = 8
             del _sd_biome_ok
             del sd_jittered, _sd_noise, sd_avail, water_mask_sd

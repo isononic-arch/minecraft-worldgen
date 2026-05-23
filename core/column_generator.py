@@ -85,12 +85,10 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
         ("gravel",      "stone",       "noise"),
     ],
     "FROZEN_FLATS": [
-        # S85: base swapped snow_block -> coarse_dirt so foliage can survive.
-        # Snow visual now via _apply_snow_carpet (snow[layers=1]) on GC layer.
-        # Sparse ice patches retained for bleached-tundra variety.
-        ("coarse_dirt", "dirt",        "base"),
+        ("snow_block",  "dirt",        "base"),
         ("ice",         "dirt",        "moisture"),
-        ("packed_mud",  "dirt",        "noise"),
+        # S84: powder_snow removed (pest block) — use snow_block instead
+        ("snow_block",  "dirt",        "noise"),
     ],
     "TEMPERATE_DECIDUOUS": [
         ("grass_block", "dirt",        "base"),
@@ -801,9 +799,7 @@ SEA_LEVEL  =   63
 BEDROCK_Y  =  -64
 Y_RANGE    =  768   # S84: was 512; MC_Y_MAX - MC_Y_MIN = 768
 # 48 chunk sections (Y_RANGE / 16 = 48), matches chunk_writer.N_SECTIONS
-# Check column_generator constants:
 _Y_RANGE   = MC_Y_MAX - MC_Y_MIN  # S84: = 768 (exclusive top)
-
 
 _DEFAULT_GAEA_IN  = [0, 17050, 45000, 65496]
 _DEFAULT_MC_Y_OUT = [-64,   63,   200,   448]

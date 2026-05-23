@@ -1219,6 +1219,764 @@ def detect_lakes(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Phase 5b — Lake spillpoint detection (S80 — feeds WP-style outflow rivers)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def compute_lake_spillpoints(
+    lake_id: np.ndarray,    # uint16 (H, W) — labelled lakes from detect_lakes
+    height:  np.ndarray,    # float32 (H, W) — terrain (lower value = lower terrain)
+    lake_wl: np.ndarray | None = None,  # float32 (H, W) — per-cell water level
+) -> np.ndarray:
+    """
+    For each labelled lake, find the SPILLPOINT — the lowest non-basin cell
+    adjacent to the actual UNDERWATER lake surface (terrain<wl).  This is
+    where water would naturally spill out if the lake overflowed, AND
+    where the spillpoint outflow river will start carved-water cells that
+    are immediately adjacent to actual lake water.
+
+    S80 v16: critical fix — earlier this function used "adjacent to basin"
+    which is the lake_id mask extent.  But the carver paints water only
+    where `terrain < wl` (terrain-intersection), so the actual visible
+    lake water is a subset of the basin.  The basin can extend 5-20+
+    cells beyond actual underwater area when terrain rises above wl in
+    the basin.  Using basin-adjacency as spillpoint left a visible 18+
+    cell dry-terrain gap between the spillpoint outflow river and the
+    actual lake water — they showed as separate water components.
+
+    Falls back to old behaviour (basin-adjacency) if lake_wl is None.
+    """
+    from scipy.ndimage import distance_transform_edt
+
+    H, W = lake_id.shape
+    if lake_id.max() == 0:
+        return np.zeros((H, W), dtype=np.uint16)
+
+    if lake_wl is not None:
+        underwater_mask = (lake_id > 0) & (height < lake_wl)
+    else:
+        underwater_mask = lake_id > 0
+
+    # For each non-basin cell, find the nearest underwater cell (any lake).
+    # idx[0] / idx[1] give the (row, col) of that nearest underwater cell.
+    if not underwater_mask.any():
+        return np.zeros((H, W), dtype=np.uint16)
+    _, idx = distance_transform_edt(~underwater_mask, return_indices=True)
+    nearest_underwater_lake = lake_id[idx[0], idx[1]]
+
+    # Spillpoint candidates: cells NOT in any basin (lake_id == 0).
+    # These are the only cells where findPath can start a spillpoint path
+    # (cells inside a basin would be blocked by forbid_lake_id).
+    candidates = lake_id == 0
+    out_r, out_c = np.where(candidates)
+    if len(out_r) == 0:
+        return np.zeros((H, W), dtype=np.uint16)
+
+    # For each candidate cell: which underwater lake does it map to?
+    # (the candidate's nearest underwater cell's lake_id)
+    out_lid = nearest_underwater_lake[out_r, out_c]
+    out_h = height[out_r, out_c]
+    # Distance to underwater per candidate (Euclidean from EDT)
+    dist_to_uw = distance_transform_edt(~underwater_mask)
+    out_dist = dist_to_uw[out_r, out_c]
+
+    # For each lake, find the spillpoint = lowest-height cell that:
+    # - is non-basin (already filtered)
+    # - has THIS lake as its nearest underwater
+    # - tie-break by closer-to-underwater
+    # Composite score: height + small alpha × distance (favours close + low).
+    alpha = 0.001  # tiny — height dominates; distance only breaks ties / penalises far
+    out_score = out_h + alpha * out_dist
+    spill_id = np.zeros((H, W), dtype=np.uint16)
+    n_lakes = int(lake_id.max())
+    for lid in range(1, n_lakes + 1):
+        mask = out_lid == lid
+        if not mask.any():
+            continue
+        local = np.argmin(out_score[mask])
+        global_idx = np.where(mask)[0][local]
+        spill_id[out_r[global_idx], out_c[global_idx]] = np.uint16(lid)
+
+    n_spill = int((spill_id > 0).sum())
+    _log(f"  spillpoints: {n_spill} found across {n_lakes} lakes")
+    return spill_id
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase 5c — WP-style findPath river network (S80, replaces NMS+Strahler)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Port of river_script1.7.js (sijmen_v_b's WorldPainter river generator).
+# Per source, runs a weighted Dijkstra to the nearest sink (ocean OR lake
+# OR an already-drawn river). Cost = path_dist + 150·height_blocks +
+# meander_noise·random.  Neighborhood is rim-of-5×5-without-corners (12
+# cells) which lets paths "jump" past tiny ridges and produces more
+# natural-looking routes than 8-connected.
+#
+# Sources:
+#   • Stream heads (river_mask & in_count==0) — top-flow per spatial bucket
+#   • Lake spillpoints (one per labelled lake, lowest just-outside-lake
+#     cell adjacent to the lake)
+#
+# Widths follow the WP linear formula: width = startWidth + (length-i)/length
+# × (endWidth - startWidth) + slope-bonus.  Defaults are scaled to our 50k
+# world (start=8 blocks, end=40 blocks) — WP defaults of 3-15 are tuned
+# for 1-2k WP worlds and look like trickles at our scale.
+
+# WP findPath neighborhood: rim of 5×5 minus the corners
+_RIM_5X5_OFFSETS = np.array([
+    (2, 1), (2, 0), (2, -1),
+    (-2, 1), (-2, 0), (-2, -1),
+    (1, 2), (0, 2), (-1, 2),
+    (1, -2), (0, -2), (-1, -2),
+], dtype=np.int32)
+
+#
+# IMPORTANT: WP widths are RADII (the carver and the original WP script
+# both treat "width" as half-width / distance from centerline).  WP
+# defaults are 3 and 15 — these are radii.  When wp_river_network was
+# first written I treated these as diameters and doubled them, which
+# inflated all carved rivers ~2× through the carver's
+# `footprint = dist <= nearest_width` test, producing the "blobby
+# circles" the user flagged.  S80 v3 fixes this — values below are
+# RADII in MC blocks; total carved widths = 2 × these.
+WP_START_WIDTH_BLOCKS = 2.0    # river HALF-width at source (radius, MC blocks)
+WP_END_WIDTH_BLOCKS   = 5.0    # river HALF-width at mouth (radius, MC blocks)
+                                # S80 v7: dropped 12→5 to fix "giant streams"
+                                # complaint.  Trench widths now 4→10 blocks.
+WP_RIVER_DEPTH        = 0.35   # depth = width × this + 1.5
+WP_MIN_APPARENT_LEN   = 25     # min path length used in width formula (1:8 cells)
+WP_MOUTH_EXTENSION_CELLS = 8   # ~60 MC blocks at 1:8 scale
+WP_LAKE_EXTENSION_CELLS = 4    # cells to push lake-terminating paths INTO the
+                                # lake interior so the carve crosses the lake
+                                # boundary cleanly (no river→lake connection gap).
+WP_MOUTH_WIDEN_FACTOR = 1.2    # mouth flare = end_radius × this
+WP_HEIGHT_PENALTY     = 150.0  # cost of detouring vs going up 1 MC block
+WP_RANDOMNESS         = 1000.0 # meander noise amplitude (baseline)
+WP_MAX_VISITS         = 250_000
+
+
+def _build_meander_field(H: int, W: int, seed: int = 0xC0DEC0D) -> np.ndarray:
+    """
+    Deterministic smooth-ish noise field, [0, 1].  Used in place of WP's
+    simplex2 for production.  Two-octave bilinear-upsampled value-noise.
+    """
+    rng = np.random.default_rng(seed)
+    cH, cW = H // 16 + 2, W // 16 + 2
+    coarse = rng.random((cH, cW), dtype=np.float32)
+    yi = np.linspace(0, cH - 1, H).astype(np.float32)
+    xi = np.linspace(0, cW - 1, W).astype(np.float32)
+    y0 = np.floor(yi).astype(np.int32)
+    x0 = np.floor(xi).astype(np.int32)
+    y1 = np.minimum(y0 + 1, cH - 1)
+    x1 = np.minimum(x0 + 1, cW - 1)
+    fy = (yi - y0)[:, None]
+    fx = (xi - x0)[None, :]
+    a = coarse[y0[:, None], x0[None, :]]
+    b = coarse[y0[:, None], x1[None, :]]
+    c = coarse[y1[:, None], x0[None, :]]
+    d = coarse[y1[:, None], x1[None, :]]
+    return a * (1 - fy) * (1 - fx) + b * (1 - fy) * fx + c * fy * (1 - fx) + d * fy * fx
+
+
+def _wp_find_path(
+    sr: int, sc: int,
+    height_blocks: np.ndarray,
+    sink_mask: np.ndarray,
+    avoid_mask: np.ndarray,
+    meander: np.ndarray,
+    randomness: float = WP_RANDOMNESS,
+    height_penalty: float = WP_HEIGHT_PENALTY,
+    max_visits: int = WP_MAX_VISITS,
+    forbid_lake_id: int = 0,
+    lake_id_arr: np.ndarray | None = None,
+) -> list[tuple[int, int]] | None:
+    """
+    Single-source WP findPath.  Returns path source→sink (1-cell connected,
+    intermediate cells re-parented through low-h candidates), or None.
+    """
+    import heapq
+
+    H, W = height_blocks.shape
+    if not (0 <= sr < H and 0 <= sc < W):
+        return None
+
+    # When pathing FROM a lake spillpoint, exclude the source lake cells
+    # so the path doesn't trivially re-enter the lake it just spilled from.
+    use_sink_mask = sink_mask
+    use_avoid_mask = avoid_mask
+    if forbid_lake_id and lake_id_arr is not None:
+        forbid_cells = lake_id_arr == forbid_lake_id
+        if forbid_cells.any():
+            use_sink_mask = sink_mask & ~forbid_cells
+            use_avoid_mask = avoid_mask | forbid_cells
+
+    if use_sink_mask[sr, sc] or use_avoid_mask[sr, sc]:
+        return None
+
+    counter = 0
+    open_set: list[tuple[float, int, int, int, float]] = []
+    heapq.heappush(open_set, (4.0, counter, sr, sc, 4.0))
+    counter += 1
+
+    came_from = -np.ones((H, W, 2), dtype=np.int32)
+    came_from[sr, sc] = (-1, -1)
+    visited = np.zeros((H, W), dtype=bool)
+    visited[sr, sc] = True
+
+    visits = 0
+    while open_set and visits < max_visits:
+        _, _, r, c, dist = heapq.heappop(open_set)
+        visits += 1
+
+        if use_sink_mask[r, c]:
+            path: list[tuple[int, int]] = []
+            cr, cc = r, c
+            while cr >= 0 and cc >= 0:
+                path.append((int(cr), int(cc)))
+                pr, pc = came_from[cr, cc]
+                cr, cc = int(pr), int(pc)
+            path.reverse()
+            return path
+
+        parent_meander = float(meander[r, c]) * randomness
+
+        for dr, dc in _RIM_5X5_OFFSETS:
+            nr, nc = r + int(dr), c + int(dc)
+            if not (0 <= nr < H and 0 <= nc < W):
+                continue
+            if use_avoid_mask[nr, nc] or visited[nr, nc]:
+                continue
+            cell_dist = 1.0 if abs(dr) + abs(dc) <= 1 else float(np.hypot(dr, dc))
+            new_dist = dist + cell_dist
+            h_blocks = float(height_blocks[nr, nc])
+            priority = new_dist + height_penalty * h_blocks + parent_meander
+
+            visited[nr, nc] = True
+            came_from[nr, nc] = (r, c)
+            heapq.heappush(open_set, (priority, counter, nr, nc, new_dist))
+            counter += 1
+
+            # Intermediate fill for 5×5-rim moves
+            if abs(dr) == 2 or abs(dc) == 2:
+                if abs(dr) == 2:
+                    cand = [(r + dr // 2, c), (r + dr // 2, c + dc)]
+                else:
+                    cand = [(r, c + dc // 2), (r + dr, c + dc // 2)]
+                best = None
+                best_h = np.inf
+                for ir, ic in cand:
+                    if not (0 <= ir < H and 0 <= ic < W):
+                        continue
+                    if visited[ir, ic]:
+                        continue
+                    h = float(height_blocks[ir, ic])
+                    if h < best_h:
+                        best_h = h
+                        best = (ir, ic)
+                if best is not None:
+                    visited[best] = True
+                    came_from[best] = (r, c)
+                    came_from[nr, nc] = best
+
+    return None
+
+
+def _densify_path_4conn(
+    path: list[tuple[int, int]],
+) -> list[tuple[int, int]]:
+    """
+    Ensure every adjacent pair of cells in the path is 4-connected.
+    WP findPath uses rim-of-5x5 moves which include diagonal jumps
+    (delta=(2,1) etc.); the in-loop intermediate fill bridges 1 cell
+    but leaves the path 8-connected at best.  At 50k after NEAREST
+    upsample, diagonally-adjacent 1:8 cells produce 8x8 blocks that
+    touch only at a corner — EDT treats them as separate regions and
+    the trench renders as disjoint blobs.
+    """
+    if len(path) < 2:
+        return path
+    out = [path[0]]
+    for i in range(1, len(path)):
+        r0, c0 = out[-1]
+        r1, c1 = path[i]
+        dr = r1 - r0
+        dc = c1 - c0
+        # Walk in 4-connected steps from (r0,c0) to (r1,c1)
+        while (r0, c0) != (r1, c1):
+            step_r = 1 if dr > 0 else (-1 if dr < 0 else 0)
+            step_c = 1 if dc > 0 else (-1 if dc < 0 else 0)
+            # Prefer the larger-magnitude axis first to keep the path
+            # near a straight line.
+            if abs(dr) >= abs(dc):
+                r0 += step_r
+                dr -= step_r
+            else:
+                c0 += step_c
+                dc -= step_c
+            out.append((r0, c0))
+    return out
+
+
+def _widths_along_path(
+    path: list[tuple[int, int]],
+    height_blocks: np.ndarray,
+    start_width: float = WP_START_WIDTH_BLOCKS,
+    end_width:   float = WP_END_WIDTH_BLOCKS,
+    min_apparent_len: int = WP_MIN_APPARENT_LEN,
+) -> np.ndarray:
+    """WP-linear width per centerline cell, in MC blocks. Source → mouth."""
+    n = len(path)
+    if n == 0:
+        return np.array([], dtype=np.float32)
+    L = max(n, min_apparent_len)
+    widths = np.zeros(n, dtype=np.float32)
+    for i in range(n):
+        i_from_mouth = (n - 1) - i
+        adj_i = i_from_mouth - (n - L)
+        frac = max(0.0, min(1.0, (L - adj_i) / L))
+        w = start_width + frac * (end_width - start_width)
+        if 0 < i < n - 4:
+            r0, c0 = path[i]
+            r1, c1 = path[min(i + 4, n - 1)]
+            slope = abs(float(height_blocks[r0, c0]) - float(height_blocks[r1, c1])) / 4.0
+            slope = min(slope, 1.0)
+            w += 2.0 * slope * slope
+        if i_from_mouth < 4:
+            w += 0.5  # source guardrail
+        widths[i] = w
+    return widths
+
+
+def _add_mouth_extensions(
+    paths: list[list[tuple[int, int]]],
+    widths_per_path: list[np.ndarray],
+    lake_mask: np.ndarray,
+    H: int, W: int,
+    extension_cells: int = WP_MOUTH_EXTENSION_CELLS,
+    lake_extension_cells: int = WP_LAKE_EXTENSION_CELLS,
+    mouth_widen: float = WP_MOUTH_WIDEN_FACTOR,
+) -> tuple[list[list[tuple[int, int]]], list[np.ndarray]]:
+    """
+    Append a tapered extension at every path terminus:
+      • OCEAN-terminating: extend `extension_cells` cells with widening up
+        to end_w × mouth_widen (delta).
+      • LAKE-terminating: extend `lake_extension_cells` cells INTO the lake
+        interior (constant width), so the carved trench crosses the lake
+        boundary cleanly and the river-to-lake water transition has no gap.
+    """
+    new_paths, new_widths = [], []
+    for path, widths in zip(paths, widths_per_path):
+        new_paths.append(path)
+        new_widths.append(widths)
+        if len(path) < 4:
+            continue
+        r_last, c_last = path[-1]
+        if not (0 <= r_last < H and 0 <= c_last < W):
+            continue
+        # Direction from last 4 cells (averaged trajectory)
+        r_pre, c_pre = path[-4]
+        dr = r_last - r_pre
+        dc = c_last - c_pre
+        n = max(abs(dr), abs(dc), 1)
+        dr_unit = dr / n
+        dc_unit = dc / n
+        end_w = float(widths[-1]) if len(widths) else WP_END_WIDTH_BLOCKS
+
+        ext_path = []
+        ext_w = []
+
+        if lake_mask[r_last, c_last]:
+            # LAKE terminus — push into the lake interior with constant width
+            for k in range(1, lake_extension_cells + 1):
+                er = int(round(r_last + dr_unit * k))
+                ec = int(round(c_last + dc_unit * k))
+                if not (0 <= er < H and 0 <= ec < W):
+                    break
+                # Stop if we've left the lake (don't extend into far shore)
+                if not lake_mask[er, ec]:
+                    break
+                ext_path.append((er, ec))
+                ext_w.append(end_w)
+        else:
+            # OCEAN terminus — taper-widen into the water
+            for k in range(1, extension_cells + 1):
+                er = int(round(r_last + dr_unit * k))
+                ec = int(round(c_last + dc_unit * k))
+                if not (0 <= er < H and 0 <= ec < W):
+                    break
+                t = k / extension_cells
+                w = end_w * (1.0 + (mouth_widen - 1.0) * t)
+                ext_path.append((er, ec))
+                ext_w.append(w)
+
+        if ext_path:
+            new_paths.append(ext_path)
+            new_widths.append(np.array(ext_w, dtype=np.float32))
+    return new_paths, new_widths
+
+
+def _pick_sources_grid(
+    river_mask: np.ndarray,
+    in_count: np.ndarray,
+    avoid_mask: np.ndarray,
+    flow: np.ndarray,
+    grid_cells: int = 24,
+    max_sources: int = 1000,
+) -> list[tuple[int, int]]:
+    """
+    Stream heads = (river_mask & in_count==0 & ~avoid).  Subsample by
+    spatial grid: keep highest-flow head per grid cell for uniform coverage.
+    """
+    cand_mask = river_mask & (in_count == 0) & ~avoid_mask
+    head_r, head_c = np.where(cand_mask)
+    if len(head_r) == 0:
+        return []
+    H, W = river_mask.shape
+    bucket_h = max(1, H // grid_cells)
+    bucket_w = max(1, W // grid_cells)
+    head_flow = flow[head_r, head_c]
+    bucket = (head_r // bucket_h) * grid_cells + (head_c // bucket_w)
+    order = np.argsort(bucket, kind="stable")
+    bucket_s = bucket[order]
+    flow_s = head_flow[order]
+    starts = np.concatenate(([0], np.where(np.diff(bucket_s) != 0)[0] + 1))
+    ends = np.concatenate((starts[1:], [len(bucket_s)]))
+    keep_idx = []
+    for s, e in zip(starts, ends):
+        local = order[s:e]
+        local_flow = flow_s[s:e]
+        keep_idx.append(local[np.argmax(local_flow)])
+    keep_idx = np.array(keep_idx, dtype=np.int64)
+    if len(keep_idx) > max_sources:
+        flow_keep = flow[head_r[keep_idx], head_c[keep_idx]]
+        top = np.argsort(flow_keep)[::-1][:max_sources]
+        keep_idx = keep_idx[top]
+    return [(int(head_r[i]), int(head_c[i])) for i in keep_idx]
+
+
+def wp_river_network(
+    height: np.ndarray,           # (H, W) float32 [0,1] — terrain
+    lake_id: np.ndarray,          # (H, W) uint16 — lake basin labels
+    lake_spill: np.ndarray,       # (H, W) uint16 — spillpoint cells per lake
+    override: np.ndarray,         # (H, W) uint8 — biome zone codes
+    flow: np.ndarray,             # (H, W) float32 [0,1]
+    d8: np.ndarray,               # (H, W) int8
+    river_mask: np.ndarray,       # (H, W) bool
+    in_count: np.ndarray,         # (H, W) int32
+    cfg: dict,
+    grid_cells: int = 24,
+    max_stream_sources: int = 1000,
+    lake_wl: np.ndarray | None = None,  # (H, W) float32 [0,1] — per-cell water level
+    masks_dir: Path | None = None,      # for writing river_splines.pkl
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Run WP findPath from all sources (stream heads + lake spillpoints) and
+    rasterise the result into (centerline_order, width, depth) arrays.
+
+    Returns:
+        centerline_order: (H, W) uint8 — 0 outside rivers, 1+ inside.
+                          1 = stream-head paths, 2+ = spillpoint outflows
+                          (encoding lake_id+1 capped at 254).
+        width:            (H, W) uint8 — river width in MC blocks
+        depth:            (H, W) uint8 — river depth in MC blocks
+    """
+    from scipy.ndimage import distance_transform_edt
+
+    H, W = height.shape
+
+    # Convert normalized height -> MC Y blocks for cost-units consistency
+    # (height ∈ [0,1] times 65535 → raw uint16, then via the gaea-MC LUT
+    # gives MC Y).  Use linear approximation matching column_generator's
+    # spline at first order (same breakpoints).
+    raw = (height.astype(np.float64) * 65535.0).clip(0, 65535)
+    gaea_in = np.array([0, 17050, 45000, 65496], dtype=np.float64)
+    mc_y_out = np.array([-64, 63, 200, 448], dtype=np.float64)
+    height_blocks = np.interp(raw.ravel(), gaea_in, mc_y_out).astype(np.float32).reshape(H, W)
+
+    # Masks
+    SAND_DUNE_DESERT_ZONE = 170
+    ocean_mask = height <= SEA_NORM
+    lake_mask = lake_id > 0
+    # override may be raw uint8 (zone codes) or normalized float32 (zone/255).
+    # read_downscaled normalises uint8 to [0, 1], so the precompute path
+    # passes a float here.  Detect and normalise the comparison value.
+    if override.dtype.kind == "f":
+        override_u8 = np.round(override * 255.0).astype(np.uint8)
+    else:
+        override_u8 = override.astype(np.uint8)
+    sand_dune_mask = override_u8 == SAND_DUNE_DESERT_ZONE
+    # S80 v13: sink_mask uses TERRAIN-INTERSECTION lake (height < wl), NOT
+    # full basin extent.  The carver paints lake water only where
+    # `terrain < spill_elevation` (CLAUDE.md hard rule).  Cells in the
+    # basin where terrain rises ABOVE WL are dry land in-game.  If
+    # findPath terminates paths at basin-edge cells that are dry, streams
+    # visibly stop short of the actual lake water surface.  Using
+    # terrain-intersection sink ensures paths reach where water actually
+    # is.  Falls back to full basin if lake_wl wasn't provided.
+    if lake_wl is not None:
+        underwater_lake = lake_mask & (height < lake_wl)
+    else:
+        underwater_lake = lake_mask
+    sink_mask = ocean_mask | underwater_lake
+    # No avoid-blocked cells by default.
+    #   - Ocean is a SINK (target), not a wall — putting it in avoid
+    #     prevents Dijkstra from ever reaching it.
+    #   - SAND_DUNE_DESERT used to block traversal but that produces
+    #     unrealistic "rivers tracing around the dune sea" artefacts.
+    #     Real rivers cross deserts.  Sources are still excluded from
+    #     dunes via river_mask (flow≈0 in arid zones) — paths can
+    #     still pass through.
+    avoid_mask = np.zeros_like(sand_dune_mask, dtype=bool)
+    _log(f"  WP: ocean {ocean_mask.sum():,} cells | lakes {lake_mask.sum():,} | "
+         f"dunes {sand_dune_mask.sum():,}")
+
+    # Sources — exclude dunes from source selection only (paths can still
+    # cross them at carve time per the avoid_mask above).
+    source_avoid = sand_dune_mask
+    sources = _pick_sources_grid(river_mask, in_count, source_avoid, flow,
+                                 grid_cells=grid_cells,
+                                 max_sources=max_stream_sources)
+    _log(f"  WP: {len(sources)} stream-head sources")
+
+    # Spillpoint sources + their forbid_lake_id mapping + per-spillpoint
+    # PREPEND CELLS that walk a Bresenham line from spillpoint INTO the
+    # closest underwater cell of the source lake.  This bridges the
+    # basin's dry shore (the gap between actual lake water and the
+    # spillpoint cell that's outside the basin), so when the spline is
+    # rasterized the river touches lake water.
+    spill_source_lid: dict[tuple[int, int], int] = {}
+    spill_prepend: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    spill_r, spill_c = np.where(lake_spill > 0)
+    if len(spill_r) > 0 and lake_wl is not None:
+        # Build per-lake nearest-underwater EDT for prepend computation
+        underwater_global = lake_mask & (height < lake_wl)
+        for r, c in zip(spill_r, spill_c):
+            r, c = int(r), int(c)
+            spill_source_lid[(r, c)] = int(lake_spill[r, c])
+            # Find closest underwater cell of THIS lake
+            this_uw = underwater_global & (lake_id == lake_spill[r, c])
+            if not this_uw.any():
+                continue
+            uw_r, uw_c = np.where(this_uw)
+            # Closest underwater cell to spillpoint by L1
+            d = np.abs(uw_r - r) + np.abs(uw_c - c)
+            ki = int(np.argmin(d))
+            tr, tc = int(uw_r[ki]), int(uw_c[ki])
+            # Bresenham line from underwater target → spillpoint (inclusive both ends)
+            dr = tr - r
+            dc = tc - c
+            steps = max(abs(dr), abs(dc), 1)
+            line: list[tuple[int, int]] = []
+            for s in range(steps + 1):
+                lr = r + int(round(dr * s / steps))
+                lc = c + int(round(dc * s / steps))
+                line.append((lr, lc))
+            # Prepend list = walk from the underwater target back toward
+            # spillpoint, stopping JUST BEFORE the spillpoint (which becomes
+            # the path's first cell from findPath).  We keep the underwater
+            # target IN the prepend so the path's first cell is in actual
+            # lake water — making the carved water 4-connect to the lake's
+            # painted water.
+            if len(line) > 1:
+                # line = [spillpoint, ..., target].  Reversed = [target, ..., spillpoint]
+                # We want prepend = [target, ..., cell-just-before-spillpoint]
+                # which is line reversed minus its first (which would be the spillpoint).
+                spill_prepend[(r, c)] = list(reversed(line))[:-1]
+            else:
+                spill_prepend[(r, c)] = []
+    else:
+        for r, c in zip(spill_r, spill_c):
+            spill_source_lid[(int(r), int(c))] = int(lake_spill[r, c])
+    _log(f"  WP: {len(spill_source_lid)} spillpoint sources, "
+         f"{sum(len(p) for p in spill_prepend.values())} prepend cells")
+    sources.extend(spill_source_lid.keys())
+
+    # Meander field
+    meander = _build_meander_field(H, W, seed=0xC0DEC0D)
+
+    # S80 v14: TRIBUTARY MERGING.
+    # Process sources in priority order (highest source elevation first =
+    # longest mainstem rivers first).  After each path is computed, add its
+    # cells to a running sink set.  Subsequent paths terminate at:
+    #   ocean | underwater_lake | EXISTING DRAWN PATHS
+    # This is what makes tributaries merge into mainstem rivers visibly,
+    # instead of every source producing an independent disconnected channel.
+    sources_sorted = sorted(
+        sources,
+        key=lambda rc: float(height_blocks[rc[0], rc[1]]),
+        reverse=True,  # highest elevation first
+    )
+    paths_ok: list[list[tuple[int, int]]] = []
+    paths_failed: list[tuple[int, int]] = []
+    spillpoint_lids: list[int] = []
+    existing_path_mask = np.zeros((H, W), dtype=bool)
+    n_lake = 0
+    n_ocean = 0
+    n_tributary = 0
+    for i, (sr, sc) in enumerate(sources_sorted):
+        if i % 50 == 0 and i > 0:
+            _log(f"    WP findPath: {i}/{len(sources_sorted)} sources processed, "
+                 f"{len(paths_ok)} ok ({n_ocean} ocean / {n_lake} lake / "
+                 f"{n_tributary} tributary)")
+        forbid_lid = spill_source_lid.get((sr, sc), 0)
+        # Sink set for this path = static sinks ∪ existing drawn paths
+        per_path_sink = sink_mask | existing_path_mask
+        path = _wp_find_path(
+            sr, sc, height_blocks, per_path_sink, avoid_mask, meander,
+            forbid_lake_id=forbid_lid,
+            lake_id_arr=lake_id if forbid_lid else None,
+        )
+        if path is None:
+            paths_failed.append((sr, sc))
+            continue
+        # PREPEND the spillover bridge cells (underwater → spillpoint) for
+        # spillpoint paths.  These cells are inside the source lake's
+        # basin (dry-shore portion) and connect actual lake water to the
+        # spillpoint, ensuring the spline rasterizes through them.
+        prepend = spill_prepend.get((sr, sc), [])
+        if prepend:
+            path = prepend + path
+        paths_ok.append(path)
+        spillpoint_lids.append(forbid_lid)
+        # Classify terminus
+        end_r, end_c = path[-1]
+        if existing_path_mask[end_r, end_c]:
+            n_tributary += 1
+        elif lake_mask[end_r, end_c]:
+            n_lake += 1
+        elif ocean_mask[end_r, end_c]:
+            n_ocean += 1
+        # Add this path's cells to the existing sink set so subsequent
+        # paths can merge into it as tributaries.
+        for r, c in path:
+            if 0 <= r < H and 0 <= c < W:
+                existing_path_mask[r, c] = True
+
+    _log(f"  WP findPath: {len(paths_ok)}/{len(sources_sorted)} reached water "
+         f"({n_ocean} ocean, {n_lake} lake, {n_tributary} tributary)")
+
+    # Densify paths to 4-connectivity so the NEAREST upsample to 50k
+    # produces a continuous centerline (without this, diagonal rim-5x5
+    # moves leave gaps that the carver's EDT renders as disjoint blobs).
+    paths_ok = [_densify_path_4conn(p) for p in paths_ok]
+    n_cells_after = sum(len(p) for p in paths_ok)
+    _log(f"  WP densify: {n_cells_after:,} total path cells (4-connected)")
+
+    # Compute WP-linear widths per path
+    widths_per_path = [_widths_along_path(p, height_blocks) for p in paths_ok]
+
+    # Add mouth extensions for ocean-terminating paths
+    paths_ext, widths_ext = _add_mouth_extensions(
+        paths_ok, widths_per_path, lake_mask, H, W,
+    )
+    n_ext = len(paths_ext) - len(paths_ok)
+    _log(f"  WP mouth extensions: {n_ext} added")
+
+    # ─────────────────────────────────────────────────────────────────────
+    # S80 v13 — fit B-splines through each WP path, save to
+    # masks/river_splines.pkl.  The carver re-rasterizes these splines at
+    # 50k resolution producing smooth curves (not 8-block stairsteps from
+    # NEAREST upsample).  Per-spline `widths_18` holds the WP-linear
+    # widths, so the carver gets correct geometry.
+    # ─────────────────────────────────────────────────────────────────────
+    spline_branches: list[dict] = []
+    try:
+        from scipy.interpolate import splprep
+        for path, widths in zip(paths_ext, widths_ext):
+            if len(path) < 4:
+                continue  # too short for B-spline (need k+1 = 4 points min)
+            # Coords in 1:8 space.  Spline parametrised over [0, 1].
+            ys = np.asarray([p[0] for p in path], dtype=np.float64)
+            xs = np.asarray([p[1] for p in path], dtype=np.float64)
+            # Drop consecutive duplicates (splprep doesn't accept them)
+            keep = np.ones(len(xs), dtype=bool)
+            keep[1:] = (np.diff(xs) != 0) | (np.diff(ys) != 0)
+            xs, ys, ws = xs[keep], ys[keep], widths[keep]
+            if len(xs) < 4:
+                continue
+            try:
+                tck, _u = splprep([xs, ys], s=len(xs) * 0.5, k=3)
+            except Exception:
+                continue
+            # widths_18 is in 1:8-SCALE radii (carver does radii_50k = radii_18 * SCALE).
+            # ws here is in MC blocks (50k radii).  Divide by SCALE=8 so the
+            # carver's multiplication restores the correct 50k radii.
+            ws_18 = ws.astype(np.float32) / 8.0
+            spline_branches.append({
+                "tck": tck,
+                "order": 1,            # WP paths emit as Strahler-1
+                "branch_idx": len(spline_branches),
+                "widths_18": list(ws_18),
+            })
+    except ImportError:
+        _log("  WARNING: scipy.interpolate.splprep unavailable; skipping splines")
+
+    # Write splines to masks/river_splines.pkl for the carver.
+    if masks_dir is not None:
+        import pickle
+        spline_path = masks_dir / "river_splines.pkl"
+        with open(spline_path, "wb") as f:
+            pickle.dump({"scale": 8, "branches": spline_branches}, f, protocol=4)
+        _log(f"  WP splines: {len(spline_branches)} branches saved to {spline_path}")
+    else:
+        _log(f"  WP splines: {len(spline_branches)} branches computed (no masks_dir, not saved)")
+
+    # Stamp into width array (per-cell max if multiple paths cross)
+    centerline_mask = np.zeros((H, W), dtype=bool)
+    width_at_cell = np.zeros((H, W), dtype=np.float32)
+    order_at_cell = np.zeros((H, W), dtype=np.uint8)
+    for i, (path, widths) in enumerate(zip(paths_ext, widths_ext)):
+        # Order encoding: 1 for any WP path (kept simple — confluence
+        # widening would change this, deferred to follow-up).
+        order_val = np.uint8(1)
+        for (r, c), w in zip(path, widths):
+            if 0 <= r < H and 0 <= c < W:
+                centerline_mask[r, c] = True
+                if w > width_at_cell[r, c]:
+                    width_at_cell[r, c] = w
+                if order_val > order_at_cell[r, c]:
+                    order_at_cell[r, c] = order_val
+
+    # Stamp footprint via EDT-based variable-width fill so the carver's
+    # NMS-like behaviour gets a centerline + width pair to consume.
+    if centerline_mask.any():
+        dist_map, (iy, ix) = distance_transform_edt(~centerline_mask, return_indices=True)
+        nearest_w = width_at_cell[iy, ix]
+        # Width in BLOCKS, divide by SCALE to get cells, /2 for radius
+        footprint = dist_map <= (nearest_w / 2.0 / SCALE)
+        # Carver expects: centerline marks the river's traced line, width
+        # carries the per-pixel target width.  Output width array spans
+        # the entire footprint so the carver's per-tile rasterisation
+        # picks up the right width at every river pixel.
+        nearest_w_full = np.where(footprint, nearest_w, 0).astype(np.float32)
+    else:
+        nearest_w_full = np.zeros((H, W), dtype=np.float32)
+        footprint = np.zeros((H, W), dtype=bool)
+
+    # Build output arrays.
+    # S80 v2: ONLY mark thin centerline cells in the order field.  The
+    # earlier version stamped 255 ("braid fill") at footprint cells, which
+    # caused the carver to treat the entire footprint as centerline, then
+    # re-EDT from those cells, producing "puffy circle" artifacts in wide
+    # river sections.  The width array (already per-cell across the
+    # footprint via EDT propagation) carries enough information for the
+    # carver to compute the right trench geometry from the thin centerline.
+    centerline_order = np.where(centerline_mask, order_at_cell, np.uint8(0))
+
+    # uint8 width clamped to [0, 255] blocks
+    width_out = np.clip(nearest_w_full, 0, 255).astype(np.uint8)
+    # Depth via WP formula: depth = width * 0.35 + 1.5
+    depth_f = nearest_w_full * WP_RIVER_DEPTH + 1.5
+    depth_f = np.where(footprint, depth_f, 0)
+    depth_out = np.clip(depth_f, 0, 255).astype(np.uint8)
+
+    n_river_px = int(footprint.sum())
+    _log(f"  WP final: {n_river_px:,} river-footprint cells "
+         f"({n_river_px*100/(H*W):.2f}% of map)")
+    return centerline_order, width_out, depth_out
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Phase 6 — Connectivity enforcement
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1590,54 +2348,39 @@ def run(
     order = strahler_order(d8, river_mask, height)
     _log(f"  Strahler done in {time.perf_counter()-t0:.1f}s")
 
-    # ── 3b. Global NMS centerline extraction ─────────────────────────────
-    # Thin the river network at 1:8 scale using NMS on the flow field.
-    # This produces a globally consistent centerline — no tile seams.
-    # The 50k per-tile carver will use this as a corridor constraint.
-    _log("Phase 3b: Global NMS centerline...")
-    t0 = time.perf_counter()
-    centerline, braid_fill = nms_centerline(order, flow, height, cfg)
-    cl_px = centerline.sum()
-    bf_px = braid_fill.sum()
-    _log(f"  NMS centerline: {cl_px} px "
-         f"({cl_px*100/river_mask.sum():.0f}% of river, "
-         f"{cl_px*100/river_mask.size:.2f}% of map), "
-         f"braid fill: {bf_px} px  "
-         f"in {time.perf_counter()-t0:.1f}s")
-    # Encode: Strahler order on NMS pixels, 255 on braid fill (solid water)
-    centerline_order = np.where(centerline, order, np.uint8(0))
-    centerline_order[braid_fill] = np.uint8(255)
-
-    # ── 4. Leopold geometry ───────────────────────────────────────────────
-    _log("Phase 4: Computing Leopold geometry...")
-    t0 = time.perf_counter()
-    width, depth = leopold_geometry(order, flow, slope, override, cfg)
-    _log(f"  Leopold done in {time.perf_counter()-t0:.1f}s")
-
-    # ── 5. Lake detection ─────────────────────────────────────────────────
+    # ── 5. Lake detection (moved up — needed for WP findPath sinks) ──────
     _log("Phase 5: Detecting lakes...")
     gc.collect()  # free memory before lake detection (EDT is memory-hungry)
     t0 = time.perf_counter()
     lake_id, lake_depth, lake_wl = detect_lakes(height, flow, slope, d8, cfg)
     _log(f"  Lakes done in {time.perf_counter()-t0:.1f}s")
 
-    # ── 6. Connectivity enforcement ───────────────────────────────────────
-    _log("Phase 6: Enforcing connectivity...")
+    # ── 5b. Lake spillpoints (S80) ────────────────────────────────────────
+    _log("Phase 5b: Computing lake spillpoints...")
     t0 = time.perf_counter()
-    connect_lake_outlets(order, width, depth, lake_id, d8, height)
-    order = enforce_connectivity(order, d8, height, lake_id)
+    lake_spill = compute_lake_spillpoints(lake_id, height, lake_wl=lake_wl)
+    _log(f"  Spillpoints done in {time.perf_counter()-t0:.1f}s")
 
-    # Fill width/depth for connectivity-extended pixels (they got order=1 but
-    # were added after Leopold geometry, so width=depth=0).
-    geo = hcfg.get("river_geometry", {})
-    missing = (order > 0) & (width == 0)
-    n_missing = missing.sum()
-    if n_missing > 0:
-        width[missing] = max(geo.get("width_min", 1), 2)
-        depth[missing] = max(geo.get("depth_min", 2), 3)
-        _log(f"  Filled width/depth for {n_missing} connectivity-extended pixels")
+    # ── 5c. Build upstream count for WP source picking ────────────────────
+    in_count = build_upstream_count(d8, river_mask)
 
-    _log(f"  Connectivity done in {time.perf_counter()-t0:.1f}s")
+    # ── 5d. WP-style findPath river network (S80) ─────────────────────────
+    # Replaces Phase 3b NMS centerline + Phase 4 Leopold geometry +
+    # Phase 6 connectivity enforcement.  WP findPath produces guaranteed-
+    # connected paths from each source to nearest sink (ocean / lake /
+    # later: existing river), with WP-linear widths and WP mouth
+    # extensions for ocean-terminating paths.
+    _log("Phase 5d: WP findPath river network...")
+    t0 = time.perf_counter()
+    centerline_order, width, depth = wp_river_network(
+        height, lake_id, lake_spill, override,
+        flow, d8, river_mask, in_count, cfg,
+        lake_wl=lake_wl, masks_dir=masks_dir,
+    )
+    _log(f"  WP network done in {time.perf_counter()-t0:.1f}s")
+    # `order` (Strahler) has been replaced by WP-tagged centerline_order.
+    # Carver only checks `order_u8 > 0`, so equivalent for trenching.
+    order = centerline_order
 
     # ── 7. Write output masks ─────────────────────────────────────────────
     if not dry_run:
@@ -1656,6 +2399,8 @@ def run(
                 ("hydro_lake",  lake_id, "uint16"),
                 ("hydro_lkdep", lake_depth, "uint8"),
                 ("hydro_lake_wl", lake_wl, "float32"),
+                ("hydro_lake_spill", lake_spill, "uint16"),
+                ("hydro_centerline", order, "uint8"),
             ]:
                 import rasterio
                 out_path = masks_dir / f"{name}.tif"
@@ -1684,6 +2429,9 @@ def run(
             gc.collect()
             write_upscaled(lake_wl,    masks_dir / "hydro_lake_wl.tif", "float32", scale, full,
                            interpolation="nearest")    # per-lake water level (normalised height)
+            gc.collect()
+            write_upscaled(lake_spill, masks_dir / "hydro_lake_spill.tif", "uint16", scale, full,
+                           interpolation="nearest")    # discrete spillpoint cell per lake
             gc.collect()
             write_upscaled(centerline_order, masks_dir / "hydro_centerline.tif", "uint8", scale, full,
                            interpolation="nearest")    # NMS-thinned centerline with Strahler order

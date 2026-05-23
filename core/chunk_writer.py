@@ -31,7 +31,6 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from scipy.ndimage import binary_dilation as _bin_dilation
 
 # ---------------------------------------------------------------------------
 # WORLD CONSTANTS (Higher Heights datapack — locked)
@@ -46,29 +45,29 @@ N_SECTIONS = Y_RANGE // SECTION_H  # 48 (S84: was 32)
 # MC 1.20.1 biome name → internal string (subset used in Vandir)
 # Full MC biome IDs assigned by amulet via string name — no numeric IDs needed.
 BIOME_TO_MC: dict[str, str] = {
-    "COASTAL_HEATH":           "minecraft:plains",
+    "COASTAL_HEATH":           "minecraft:savanna_plateau",  # S71: was plains
     "TEMPERATE_RAINFOREST":    "minecraft:dark_forest",
-    "BOREAL_TAIGA":            "minecraft:meadow",  # S85: was old_growth_birch_forest; user swapped to meadow + dropped altitude remap
+    "BOREAL_TAIGA":            "minecraft:meadow",  # S85: was stony_shore (S71). Meadow temp=0.5 keeps it snow-free + clean differentiation from BA plains
     "BOREAL_ALPINE":           "minecraft:plains",  # S64: wholesale plains — dual-layer approach abandoned, snow never falls
     "SNOWY_BOREAL_TAIGA":      "minecraft:snowy_taiga",
-    "ARCTIC_TUNDRA":           "minecraft:frozen_peaks",
-    "FROZEN_FLATS":            "minecraft:snowy_plains",
+    "ARCTIC_TUNDRA":           "minecraft:snowy_plains",  # S70: was frozen_peaks (jagged ice spikes); user wants flat snow scrubland
+    "FROZEN_FLATS":            "minecraft:badlands",  # S71-3 was swamp — user changed to badlands tint
     "TEMPERATE_DECIDUOUS":     "minecraft:forest",
     "RAINFOREST_COAST":        "minecraft:old_growth_birch_forest",
-    "RIPARIAN_WOODLAND":       "minecraft:dark_forest",
+    "RIPARIAN_WOODLAND":       "minecraft:mangrove_swamp",  # S71-3 was dark_forest
     "DRY_OAK_SAVANNA":         "minecraft:savanna",
     "KARST_BARRENS":           "minecraft:savanna_plateau",
     "BIRCH_FOREST":            "minecraft:birch_forest",
     "EASTERN_TEMPERATE_COAST": "minecraft:beach",
     "MIXED_FOREST":            "minecraft:forest",
-    "CONTINENTAL_STEPPE":      "minecraft:plains",
+    "CONTINENTAL_STEPPE":      "minecraft:cherry_grove",  # S71: was plains
     "DRY_PINE_BARRENS":        "minecraft:wooded_badlands",
-    "SCRUBBY_HEATHLAND":       "minecraft:plains",
+    "SCRUBBY_HEATHLAND":       "minecraft:badlands",  # S71: was plains
     "LUSH_RAINFOREST_COAST":   "minecraft:jungle",
     "SAND_DUNE_DESERT":        "minecraft:desert",
     "DESERT_STEPPE_TRANSITION":"minecraft:savanna_plateau",
     "SEMI_ARID_SHRUBLAND":     "minecraft:savanna",
-    "DRY_WOODLAND_MAQUIS":     "minecraft:sparse_jungle",
+    "DRY_WOODLAND_MAQUIS":     "minecraft:wooded_badlands",  # S70: was sparse_jungle (bright green); user wants timber-badlands dry look
     "TIDAL_JUNGLE_FRINGE":     "minecraft:sparse_jungle",
     "MANGROVE_COAST":          "minecraft:mangrove_swamp",
     "FRESHWATER_FEN":          "minecraft:swamp",
@@ -99,12 +98,24 @@ BIOME_TO_MC_SKY: dict[str, str] = {
     # future biomes that need the dual-layer approach.
 }
 
-# S85: BIOME_ALTITUDE_REMAPS removed entirely.
-# Historical: this list let high-altitude pixels of source biome get the MC
-# tag of target biome (BIRCH/MIXED → BOREAL_ALPINE, BT → BA).  Intent was to
-# stop weather snow above treeline.  Per user S85: confusing and unwanted —
-# MC biome tag now follows the Vandir biome exactly (via BIOME_TO_MC).
+# S67: altitude-based biome remap.  User's rule:
+# "if there is another NON snowy biome at a higher value than snowy, we
+# should swap out snowy taiga for its non snowy option."
+#
+# Interpretation: BOREAL_TAIGA (snow-at-altitude) should ALWAYS become
+# BOREAL_ALPINE (plains = no snow) — the NON-snowy variant is aesthetically
+# equivalent at ground level (same palette + schematic routing) and never
+# snows.  Unconditional remap (threshold=-64) keeps the entire biome
+# snow-free.  For SNOWY_BOREAL_TAIGA (intentionally snowy), a dither zone
+# 200-250 controls snow coverage: pixels in that band with noise > 0.5 get
+# the snow, others do not.  Above 250: snowy.  Below 200: no snow unless
+# noise hit.  Creates mountaincap look.
 BIOME_ALTITUDE_REMAPS: list[dict] = []
+# S85: BIOME_ALTITUDE_REMAPS removed entirely.  Pre-S85 this list let high-altitude
+# pixels of source biome get the MC tag of target biome (e.g. BIRCH/MIXED → BA at Y>220,
+# BT → BA always).  Stale at the 220 threshold for the 768-height world.  Per user S85
+# direction "DELET" — MC biome tag now follows Vandir biome exactly via BIOME_TO_MC.
+# Runtime code at line ~1607 short-circuits cleanly on empty list (zero cost).
 
 # S67: SNOWY_BOREAL_TAIGA mountaincap dither.  Pixels with surface_y in
 # [200, 250] get probabilistic snowy biome based on a coarse simplex noise:
@@ -671,6 +682,22 @@ def build_column_array(
     c_idx = np.tile  (np.arange(W, dtype=np.int32), H)   # (H*W,)
     sy_flat   = surface_y.ravel().astype(np.int32)        # (H*W,)
 
+    # S81 v8.5 Issue 4: swap grass_block / podzol / mycelium to dirt for
+    # underwater cells. When the carver drops surface_y below river_water_y,
+    # surface_decorator may have already painted vegetated surface blocks
+    # per biome. They look wrong underwater (e.g. green grass at bottom of
+    # a river). Swap to dirt for natural riverbed appearance.
+    if river_water_y is not None:
+        _underwater_grass_like = (
+            np.isin(surface_blk, ("grass_block", "podzol", "mycelium",
+                                    "moss_block", "rooted_dirt", "coarse_dirt"))
+            & (river_water_y > surface_y)
+            & (river_water_y > SEA_Y)
+        )
+        if _underwater_grass_like.any():
+            surface_blk = surface_blk.copy()
+            surface_blk[_underwater_grass_like] = "dirt"
+
     # Convert string arrays to palette indices
     surf_idx_flat = pal.indices(surface_blk).ravel()
     sub_idx_flat  = pal.indices(sub_blk).ravel()
@@ -717,6 +744,7 @@ def build_column_array(
     # cell whose surface is BELOW sea level (i.e., an actual water-bearing
     # cell). Preserves inland-but-low coastal vegetation; still kills the
     # literal beach edge that's flush with ocean.
+    from scipy.ndimage import binary_dilation as _bin_dilation
     _water_plants = ("seagrass", "tall_seagrass", "kelp", "sea_pickle")
     _below_sea = surface_y < SEA_Y
     _adj_to_water = _bin_dilation(_below_sea, iterations=1)
@@ -728,6 +756,25 @@ def build_column_array(
     )
     if _kill_terrestrial.any():
         ground_cover[_kill_terrestrial] = ""
+    # S81 v8.4 Issue 2: kill ALL ground cover on water-zone cells PLUS a
+    # 1-cell shore buffer. Without this, river-edge cells where water_y
+    # was set in the broad sigmoid footprint but surface didn't drop
+    # below water_y leave grass at sy+1 visually adjacent to the river
+    # surface — looks like grass floating on water from any low angle.
+    # Buffer covers cells just outside the painted footprint that would
+    # otherwise grow vegetation at the visible water surface elevation.
+    if river_water_y is not None:
+        from scipy.ndimage import binary_dilation as _bd_water_buf
+        _water_zone = river_water_y > 0
+        _kill_at_water = _bd_water_buf(_water_zone, iterations=1)
+        if _kill_at_water.any():
+            _kill_terrestrial_water = (
+                (ground_cover != "")
+                & ~np.isin(ground_cover, _water_plants)
+                & _kill_at_water
+            )
+            if _kill_terrestrial_water.any():
+                ground_cover[_kill_terrestrial_water] = ""
     cov_flat = ground_cover.ravel()
 
     # ground cover sy+1 (only where non-empty)
@@ -913,6 +960,7 @@ def stamp_schematic(
     local_z:    int,          # tile-local row    (0..H-1)
     place_y:    int,          # world MC Y of schematic origin
     surface_y:  np.ndarray | None = None,  # (H, W) int16 — terrain surface
+    water_col_mask: np.ndarray | None = None,  # (H, W) bool — S71: water columns (river+ocean)
 ) -> None:
     """
     Stamp a schematic into the volume array.
@@ -1018,7 +1066,7 @@ def stamp_schematic(
         # Falls back to no-op when surface_y is None (smoke tests etc.).
         GROUND_COL_Y         = 2   # lowest_sy ≤ this → column is a "ground col"
         PLACE_MAX_FLOAT_BUSH = 3   # bush: max gap before reject
-        TRUNK_RUN_MIN        = 2   # ≥N consecutive logs in a column = trunk
+        TRUNK_RUN_MIN        = 2   # S70-f5 reverted from 1 back to 2 — single-log columns getting flagged as trunks caused branch-extension artifacts on bigger trees.  Original behavior: ≥2 consecutive logs = trunk.
         TRUNK_FIRST_MAX_Y    = 3   # lowest log sy must be ≤ this (else it's a branch)
         MAX_TRUNK_EXT        = 6   # max blocks the extension will fill
         if surface_y is not None:
@@ -1047,10 +1095,16 @@ def stamp_schematic(
             log_any_col       = is_log.any(axis=0)
             lowest_log_sy_col = is_log.argmax(axis=0)
             # Identify trunk columns: lowest log near ground (sy ≤ TRUNK_FIRST_MAX_Y)
-            # AND ≥TRUNK_RUN_MIN consecutive logs from that position. The
-            # first-log guard excludes horizontal branches (which can have 2-3
-            # consecutive logs at an elevated Y but aren't trunk candidates).
-            is_trunk_col = np.zeros((sl, sw), dtype=bool)
+            # AND consecutive log run from that position.
+            # S70-f5: relative-run threshold — column qualifies only if its
+            # run is ≥ max(TRUNK_RUN_MIN, max_run * TRUNK_RUN_FRAC).  This
+            # filters branch logs that have shorter consecutive runs than
+            # the main trunk (e.g., dosav_tree_soak_b_sm has main trunk
+            # run=6 but branch columns at run=2..3 were qualifying as
+            # "trunks", causing trunk-extension to fill fake side-trunks
+            # under leaf clusters → bushy "no visible trunk" look).
+            TRUNK_RUN_FRAC = 0.85   # S70-f5b: bumped from 0.6 — adjacent biome (DESERT_STEPPE_TRANSITION) still showed bushy fake trunks at 0.6
+            runs = np.zeros((sl, sw), dtype=np.int32)
             for _sz in range(sl):
                 for _sx in range(sw):
                     if not log_any_col[_sz, _sx]:
@@ -1064,8 +1118,10 @@ def stamp_schematic(
                             run += 1
                         else:
                             break
-                    if run >= TRUNK_RUN_MIN:
-                        is_trunk_col[_sz, _sx] = True
+                    runs[_sz, _sx] = run
+            max_run = int(runs.max()) if runs.size else 0
+            trunk_threshold = max(TRUNK_RUN_MIN, int(max_run * TRUNK_RUN_FRAC))
+            is_trunk_col = (runs >= trunk_threshold) & (runs > 0)
             has_trunks = bool(is_trunk_col.any())
             # Bbox out-of-tile reject + desink cutoff per column
             for _sz in range(sl):
@@ -1082,7 +1138,14 @@ def stamp_schematic(
                     # S64: footprint water gate — reject any column whose
                     # surface is below sea level so trees never leave leaves
                     # hanging over water from multi-column canopies.
+                    # S71: extended to also reject river-water columns (carved
+                    # rivers above sea level) via water_col_mask.  This catches
+                    # trees with canopy hanging over a river even though the
+                    # placement-time 14px buffer should prevent it — defence
+                    # in depth.  Whole-stamp reject below trips on this too.
                     if col_desink[_sz, _sx] < 63:
+                        col_reject[_sz, _sx] = True
+                    elif water_col_mask is not None and water_col_mask[tz, tx]:
                         col_reject[_sz, _sx] = True
             # S65: WHOLE-SCHEMATIC REJECT if ANY footprint column would
             # stand underwater.  Previous S64 fix only skipped underwater
@@ -1090,20 +1153,37 @@ def stamp_schematic(
             # overhanging toward water.  Abort the entire stamp instead.
             # (Only applies when the column has any content — an all-air
             # column is harmless even underwater.)
+            # S70-f5: reverted f4 relaxation — the canopy-anchor pass made
+            # branch leaves WORSE by adding fake logs under them.  User
+            # wants floating leaves above ground (natural look), not
+            # synthesized trunks under every leaf cluster.
             _uwater_hit = False
             for _sz in range(sl):
                 if _uwater_hit:
                     break
                 for _sx in range(sw):
-                    if (col_reject[_sz, _sx]
-                            and col_desink[_sz, _sx] < 63
-                            and non_air[:, _sz, _sx].any()):
+                    if not col_reject[_sz, _sx]:
+                        continue
+                    if not non_air[:, _sz, _sx].any():
+                        continue
+                    # Below-sea reject (oceans, deep lakes)
+                    if col_desink[_sz, _sx] < 63:
                         _uwater_hit = True
                         break
+                    # S71: river-water reject (carved channels above sea level).
+                    # Need world coords to query water_col_mask.
+                    if water_col_mask is not None:
+                        tz_chk = local_z + _sz
+                        tx_chk = local_x + _sx
+                        if (0 <= tz_chk < tile_H and 0 <= tx_chk < tile_W
+                                and water_col_mask[tz_chk, tx_chk]):
+                            _uwater_hit = True
+                            break
             if _uwater_hit:
                 return
             if has_trunks:
                 # Strategy A — trunk extension. Compute worst trunk gap.
+                # S70-f5: reverted f4 — back to original (skip col_reject).
                 max_trunk_gap = 0
                 for _sz in range(sl):
                     for _sx in range(sw):
@@ -1124,7 +1204,11 @@ def stamp_schematic(
                 else:
                     primary_log_idx = None
             else:
-                # Strategy B — bush sink. Same as S61-f4.
+                # Strategy B — bush sink.  S70: real fix for "columns of
+                # leaves" bug moved to TRUNK_RUN_MIN=1 above (catches
+                # single-log small trees as trees instead of bushes).
+                # This bush-sink path now only runs for schematics with
+                # genuinely zero log blocks anywhere — true leafy bushes.
                 max_gap = 0
                 any_ground_col = False
                 for _sz in range(sl):
@@ -1144,6 +1228,11 @@ def stamp_schematic(
                 if max_gap > 1:
                     place_y -= (max_gap - 1)
                 primary_log_idx = None
+                # S74 canopy-reject CANCELED in S75: user reviewed the 26-
+                # biome render (which was made WITHOUT this reject in effect)
+                # and found bush placement looked great.  Keep the existing
+                # PLACE_MAX_FLOAT_BUSH ground-col gating as the only bush
+                # gate.  Trees still use MAX_TRUNK_EXT=6 (unchanged).
         else:
             col_reject = None
             col_desink = None
@@ -1428,7 +1517,7 @@ def stamp_schematic(
 # 1.20.1 DIRECT REGION WRITER  (nbtlib + raw Anvil .mca — no amulet)
 # ---------------------------------------------------------------------------
 # Each 512×512-block tile maps exactly to one .mca region file.
-# DataVersion 4556 = Java 1.21.10.  32 sections cover Y=-64 to Y=447.
+# DataVersion 4556 = Java 1.21.10.  S84: 48 sections cover Y=-64 to Y=703 (was 32 sections / Y 447 for 448-height world).
 # Block states and biomes use the 1.18+ padded long-array format.
 # ---------------------------------------------------------------------------
 
@@ -1444,6 +1533,30 @@ _N_SECTIONS         = 48     # S84: (704 - (-64)) // 16 = 48 (was 32 for 512-blo
 _SECTOR_SZ          = 4096   # Anvil .mca sector size
 
 _TEST_SECTION_Y_MAX = None   # Full Higher Heights range: sections -4 to 43 (Y -64 to 703)
+
+# S84: skip-empty-sections fast path. Most sections at high Y are entirely
+# air. Build the trivial all-air block_states Compound once at module
+# scope and reuse for every all-air section we emit. Avoids ~1-2ms of
+# np.unique + _entry parsing + Compound construction per air section
+# (= ~25,000-40,000 calls per tile on average → ~25-80s saved per tile).
+# Biome compound stays per-section because biome can vary across sections
+# (sky-biome override for BOREAL_ALPINE altitude snow, etc.).
+_AIR_BLOCK_STATES_NBT = None  # lazy-built on first use (after nbtlib import)
+
+
+def _get_air_block_states_nbt():
+    """Return the cached all-air block_states Compound, building on
+    first use. Same Compound instance is reused — nbtlib serialization
+    reads but does not mutate."""
+    global _AIR_BLOCK_STATES_NBT
+    if _AIR_BLOCK_STATES_NBT is None:
+        import nbtlib
+        _AIR_BLOCK_STATES_NBT = nbtlib.Compound({
+            "palette": nbtlib.List[nbtlib.Compound]([
+                nbtlib.Compound({"Name": nbtlib.String("minecraft:air")})
+            ])
+        })
+    return _AIR_BLOCK_STATES_NBT
 
 
 def _pack_indices(indices: np.ndarray, palette_size: int, min_bits: int = 4) -> np.ndarray:
@@ -1669,9 +1782,15 @@ def _chunk_to_nbt_bytes(
         sec_blk = np.full((CHUNK_SZ, CHUNK_SZ, CHUNK_SZ), "air", dtype=object)
         yi_lo = max(0, yi_base);  yi_hi = min(Y_RANGE, yi_base + CHUNK_SZ)
         by_lo = yi_lo - yi_base;  by_hi = yi_hi - yi_base
-        if yi_hi > yi_lo and bx_hi > bx_lo and bz_hi > bz_lo:
+        # S84: track whether section is all-air (no copy needed if outside
+        # vol range; if copied, check the copied data).
+        _sec_populated = yi_hi > yi_lo and bx_hi > bx_lo and bz_hi > bz_lo
+        if _sec_populated:
             sec_blk[by_lo:by_hi, lz_lo:lz_hi, lx_lo:lx_hi] = \
                 chunk_vol[yi_lo:yi_hi, lz_lo:lz_hi, lx_lo:lx_hi]
+            _is_all_air = bool((sec_blk == "air").all())
+        else:
+            _is_all_air = True  # section was outside vol range, sec_blk is the np.full default
 
         # Build (4, 4, 4) biome quanta for this section — 4 vertical cells,
         # each covering a 4-block Y range.  Rule: cell painted sky iff
@@ -1692,16 +1811,25 @@ def _chunk_to_nbt_bytes(
         # S60: emit ALL sections, including fully-air ones. The biome_q4 tag
         # (desert/taiga/etc.) applies vertically through the entire column so
         # MC shows the correct biome label when the player flies above terrain.
-        # REQUIRES the `vandir_height.zip` datapack (min_y=-64, height=512) in
+        # REQUIRES the `vandir_height.zip` datapack (min_y=-64, height=768) in
         # the target world's `datapacks/` folder. Without the datapack MC uses
-        # vanilla 1.21.10 height=384 (24 sections) and emitting 32 sections
-        # triggers `ArrayIndexOutOfBoundsException: Index 24 out of bounds for
-        # length 24` at chunk load.
+        # vanilla 1.21.10 height=384 (24 sections) and emitting 48 sections
+        # triggers `ArrayIndexOutOfBoundsException: Index 47 out of bounds for
+        # length 24` at chunk load.  S74 added auto-install in run_pipeline.py
+        # to copy assets/vandir_height.zip into output/datapacks/.
         # S62: biome_q4 is now per-section — sky-biome override for
         # BOREAL_ALPINE and friends kills altitude snow without datapacks.
+        # S84: fast path for all-air sections. Skip np.unique + _entry
+        # parsing + Compound construction; reuse the cached air palette.
+        # Biome compound still emitted per-section (biome can differ at
+        # altitude vs ground, e.g. BOREAL_ALPINE sky override).
+        _block_states_nbt = (
+            _get_air_block_states_nbt() if _is_all_air
+            else _build_block_states_nbt(sec_blk)
+        )
         sections.append(nbtlib.Compound({
             "Y":            nbtlib.Byte(sec_y),
-            "block_states": _build_block_states_nbt(sec_blk),
+            "block_states": _block_states_nbt,
             "biomes":       _build_biomes_nbt(biome_q4),
             # SkyLight / BlockLight intentionally omitted — isLightOn=0 tells MC
             # to compute lighting itself, so providing arrays is unnecessary.
@@ -1919,6 +2047,69 @@ def write_tile(
         cfg            = cfg if _use_geo else None,
     )
 
+    # S71-2 Option β: river water-spread post-pass (purely additive — does
+    # not modify terrain).  For every river pixel, look at 4-neighbours up to
+    # 2 blocks away.  If a neighbour column has air at water_y AND solid
+    # land at (water_y - 1), place water there.  Effect: river water spills
+    # outward into downhill-bank airspace, filling cross-section gaps where
+    # natural terrain is below the water surface.  Container: only fills
+    # cells that have land directly below water_y, so water cannot flow over
+    # cliffs or into deeper terrain — it only completes the river's wet
+    # cross-section where the carve missed it.  Replaces S71's connected-
+    # component carve mod (which made rivers look "less natural").
+    if river_water_y is not None and (river_water_y > 0).any():
+        try:
+            water_idx = pal.idx("water")
+            air_idx   = pal.air
+            src_z, src_x = np.where(river_water_y > 0)
+            src_wy = river_water_y[src_z, src_x].astype(np.int64)
+            # 2-block horizontal spread (radii 1 and 2, all 4 directions per
+            # radius).  Skip neighbours that are themselves river pixels and
+            # neighbours where vol[water_y] isn't air or vol[water_y-1] isn't
+            # solid.
+            for r_step in (1, 2):
+                for dz, dx in ((-r_step, 0), (r_step, 0), (0, -r_step), (0, r_step)):
+                    tz = src_z + dz
+                    tx = src_x + dx
+                    twy = src_wy
+                    inb = (tz >= 0) & (tz < H) & (tx >= 0) & (tx < W)
+                    tz, tx, twy = tz[inb], tx[inb], twy[inb]
+                    if len(tz) == 0:
+                        continue
+                    # Skip neighbours that are themselves river pixels
+                    nb_is_river = river_water_y[tz, tx] > 0
+                    keep = ~nb_is_river
+                    tz, tx, twy = tz[keep], tx[keep], twy[keep]
+                    if len(tz) == 0:
+                        continue
+                    yi = twy - Y_MIN
+                    yi_ok = (yi >= 1) & (yi < Y_RANGE)
+                    tz, tx, yi = tz[yi_ok], tx[yi_ok], yi[yi_ok]
+                    if len(tz) == 0:
+                        continue
+                    # vol indexed (Y, Z, X)
+                    cur = vol[yi, tz, tx]
+                    below = vol[yi - 1, tz, tx]
+                    can_spread = (cur == air_idx) & (below != air_idx) & (below != water_idx)
+                    if can_spread.any():
+                        z_ok  = tz[can_spread]
+                        x_ok  = tx[can_spread]
+                        yi_ok = yi[can_spread]
+                        vol[yi_ok, z_ok, x_ok] = water_idx
+        except Exception as _e:
+            print(f"  [warn] river water-spread post-pass failed: {_e}", flush=True)
+
+    # S71: Build water_col_mask for tree footprint reject — catches carved
+    # river channels above sea level (river_water_y > 0) AND ocean (sy < 63).
+    # The placement-time 14px buffer in schematic_placement should already
+    # exclude these, but per-column reject in stamp_schematic is defence
+    # in depth: any tree whose footprint touches a water column → whole-stamp
+    # reject.
+    if river_water_y is not None:
+        water_col_mask = (river_water_y > 0) | (surface_y < 63)
+    else:
+        water_col_mask = (surface_y < 63)
+
     # Step 2 — stamp schematics
     for p in placements:
         local_x = p.world_x - tile_world_x
@@ -1929,12 +2120,59 @@ def write_tile(
             schem_data = schem_loader.load_schem(Path(p.schem_path))
             schem_data._rotation = getattr(p, 'rotation', 0)
             stamp_schematic(vol, pal, schem_data, local_x, local_z,
-                           p.place_y, surface_y=surface_y)
+                           p.place_y, surface_y=surface_y,
+                           water_col_mask=water_col_mask)
         except Exception as e:
             import traceback
             print(f"  [warn] schematic stamp failed: {p.schem_path}: {e}",
                   flush=True)
             traceback.print_exc()
+
+    # S71 — Snow-on-trees post-pass for snowy biomes per user walk feedback.
+    # In SNOWY_BOREAL_TAIGA, ARCTIC_TUNDRA, and FROZEN_FLATS, drop a snow_layer
+    # block on top of every leaf-block column that doesn't already have one.
+    # NOT applied to BOREAL_ALPINE (user explicit: keep it snow-free) and not
+    # to SAND_DUNE_DESERT or other dry/wet biomes.  Applied AFTER all schematic
+    # stamps so it covers tree canopies, not before (would be overwritten).
+    # S71-3: FF removed — user explicit "no snowcover on pines" for FF.
+    # Snow on FF surface comes from explicit snow_layer GC entries only.
+    _SNOWY_BIOMES = frozenset({"SNOWY_BOREAL_TAIGA", "ARCTIC_TUNDRA"})
+    snowy_mask = np.zeros((H, W), dtype=bool)
+    for _sb in _SNOWY_BIOMES:
+        snowy_mask |= (biome_grid == _sb)
+    if snowy_mask.any():
+        # Build leaf-index set from palette.  Includes vanilla leaf families +
+        # azalea variants — anything that should accumulate snow on top.
+        _LEAF_NAMES = (
+            "oak_leaves", "spruce_leaves", "birch_leaves", "jungle_leaves",
+            "acacia_leaves", "dark_oak_leaves", "mangrove_leaves",
+            "cherry_leaves", "azalea_leaves", "flowering_azalea_leaves",
+            "pale_oak_leaves",
+        )
+        leaf_indices: set[int] = set()
+        for _ln in _LEAF_NAMES:
+            try:
+                leaf_indices.add(pal.idx(_ln))
+            except Exception:
+                continue
+        if leaf_indices:
+            snow_idx = pal.idx("snow")
+            air_idx  = pal.air  # @property, not callable
+            # Find topmost leaf per (z, x).  vol = (Y_RANGE, H, W).
+            # Iterate Y top-down (vol indexing) and place snow at top_leaf+1
+            # if currently air.
+            leaf_mask_vol = np.isin(vol, list(leaf_indices))  # (Y_RANGE, H, W) bool
+            has_leaf = leaf_mask_vol.any(axis=0)  # (H, W)
+            apply = has_leaf & snowy_mask
+            if apply.any():
+                # Topmost leaf Y-index per column (argmax on reversed)
+                top_leaf_yi = (Y_RANGE - 1) - np.argmax(leaf_mask_vol[::-1, :, :], axis=0)
+                rows, cols = np.where(apply)
+                for r, c in zip(rows.tolist(), cols.tolist()):
+                    yi = int(top_leaf_yi[r, c])
+                    above = yi + 1
+                    if 0 <= above < Y_RANGE and vol[above, r, c] == air_idx:
+                        vol[above, r, c] = snow_idx
 
     # Step 3 — write to region files
     return write_tile_to_region(

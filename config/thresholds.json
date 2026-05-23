@@ -456,8 +456,7 @@
     "enabled": true,
     "biomes": [
       "SNOWY_BOREAL_TAIGA",
-      "ARCTIC_TUNDRA",
-      "FROZEN_FLATS"
+      "ARCTIC_TUNDRA"
     ],
     "ramp_blocks": 30
   },
@@ -668,19 +667,8 @@
     ],
     "ARCTIC_TUNDRA": [
       {
-        "name": "New Layer",
-        "noise": "mix",
-        "enabled": true,
-        "block": "coarse_dirt",
-        "sub": "stone",
-        "coverage": 0.03,
-        "scale": 5,
-        "seed": 85737,
-        "is_base": false
-      },
-      {
-        "name": "snow_block",
-        "noise": "simplex",
+        "name": "snow_block base",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "snow_block",
         "sub": "stone",
@@ -690,25 +678,47 @@
         "is_base": true
       },
       {
-        "name": "gravel (erosion2)",
+        "name": "gravel scatter",
         "noise": "simplex_fbm",
         "enabled": true,
         "block": "gravel",
         "sub": "stone",
-        "coverage": 0.03,
-        "scale": 15,
+        "coverage": 0.16,
+        "scale": 8,
         "seed": 243,
         "is_base": false
       },
       {
-        "name": "packed_mud (noise2)",
+        "name": "packed_mud scatter",
         "noise": "simplex_fbm",
         "enabled": true,
         "block": "packed_mud",
-        "sub": "andesite",
-        "coverage": 0.03,
-        "scale": 14,
-        "seed": 355,
+        "sub": "stone",
+        "coverage": 0.21,
+        "scale": 12,
+        "seed": 311,
+        "is_base": false
+      },
+      {
+        "name": "coarse_dirt mossy patches",
+        "noise": "simplex_fbm",
+        "enabled": true,
+        "block": "coarse_dirt",
+        "sub": "dirt",
+        "coverage": 0.52,
+        "scale": 20,
+        "seed": 137,
+        "is_base": false
+      },
+      {
+        "name": "snow_block over gravel",
+        "noise": "simplex_fbm",
+        "enabled": true,
+        "block": "snow_block",
+        "sub": "gravel",
+        "coverage": 0.65,
+        "scale": 131,
+        "seed": 555,
         "is_base": false
       }
     ],
@@ -1703,10 +1713,10 @@
     ],
     "SEMI_ARID_SHRUBLAND": [
       {
-        "name": "coarse_dirt",
+        "name": "grass_block (base)",
         "noise": "simplex_fbm",
         "enabled": true,
-        "block": "coarse_dirt",
+        "block": "grass_block",
         "sub": "dirt",
         "coverage": 1.0,
         "scale": 60,
@@ -1719,18 +1729,18 @@
         "enabled": true,
         "block": "sand",
         "sub": "sandstone",
-        "coverage": 0.38,
+        "coverage": 0.28,
         "scale": 12,
         "seed": 43,
         "is_base": false
       },
       {
-        "name": "coarse_dirt (noise3)",
+        "name": "grass_block (noise3)",
         "noise": "simplex_fbm",
         "enabled": true,
-        "block": "podzol",
-        "sub": "gravel",
-        "coverage": 0.33,
+        "block": "grass_block",
+        "sub": "dirt",
+        "coverage": 0.45,
         "scale": 60,
         "seed": 1041,
         "is_base": false
@@ -1741,7 +1751,7 @@
         "enabled": true,
         "block": "grass_block",
         "sub": "dirt",
-        "coverage": 0.45,
+        "coverage": 0.55,
         "scale": 134,
         "seed": 44,
         "is_base": false
@@ -2043,58 +2053,36 @@
     ],
     "FROZEN_FLATS": [
       {
-        "name": "snow_block",
+        "name": "grass_block base",
         "noise": "simplex_fbm",
         "enabled": true,
-        "block": "snow_block",
-        "sub": "stone",
+        "block": "grass_block",
+        "sub": "dirt",
         "coverage": 1.0,
         "scale": 60,
         "seed": 42,
         "is_base": true
       },
       {
-        "name": "gravel (erosion2)",
-        "noise": "simplex_fbm",
+        "name": "podzol salt-and-pepper",
+        "noise": "white",
         "enabled": true,
-        "block": "gravel",
-        "sub": "stone",
-        "coverage": 0.16,
-        "scale": 8,
-        "seed": 243,
+        "block": "podzol",
+        "sub": "dirt",
+        "coverage": 0.5,
+        "scale": 1,
+        "seed": 137,
         "is_base": false
       },
       {
-        "name": "packed_mud (noise2)",
-        "noise": "simplex_fbm",
-        "enabled": true,
-        "block": "packed_mud",
-        "sub": "stone",
-        "coverage": 0.21,
-        "scale": 12,
-        "seed": 355,
-        "is_base": false
-      },
-      {
-        "name": "coarse_dirt (noise)",
+        "name": "coarse_dirt clusters",
         "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
-        "coverage": 0.52,
-        "scale": 20,
-        "seed": 42,
-        "is_base": false
-      },
-      {
-        "name": "snow_block (erosion)",
-        "noise": "simplex_fbm",
-        "enabled": true,
-        "block": "snow_block",
-        "sub": "gravel",
-        "coverage": 0.65,
-        "scale": 131,
-        "seed": 43,
+        "coverage": 0.18,
+        "scale": 12,
+        "seed": 211,
         "is_base": false
       }
     ],
@@ -2309,11 +2297,13 @@
     "noise_amplitude": 0.2
   },
   "eco_ground_cover": {
+    "_comment_s85": "S85: width 40 -> 100 + swap_cap 0.75 -> 0.85. User wants 'incredibly wide transitional biomes where biomes almost become each other'. Net effect: 100-block fade each side of every biome boundary = 200-block transitional zone with up to 85% block-mix.",
     "canopy_suppression_factor": 0.4,
-    "ecotone_width_px": 24,
+    "ecotone_width_px": 100,
     "ecotone_sigmoid_sharpness": 4.0,
     "colony_scale_px": 48,
-    "colony_density_boost": 1.8
+    "colony_density_boost": 1.8,
+    "ecotone_swap_cap": 0.85
   },
   "eco_riparian": {
     "band_widths": [
@@ -3778,7 +3768,7 @@
     "_comment": "Phase 0.75 shadow_mode: smoke test (output discarded). Phase 2.0 feature_flag_enabled: when true, runs temperate cliff/talus/fluting layers and merges into surface_blocks. Legacy path preserved as fallback for unclaimed pixels."
   },
   "treelines": {
-    "_comment": "S85: full rescale for 768-height world. Old values targeted 448-height. Proportional bump preserves S58 ecological ordering (BT/SBT highest mountain forest, BA krummholz/treeline, ARC_TUN scrub, FROZEN_FLATS sparsest).",
+    "_comment_s85": "S85: full rescale for 768-height world. Old 380 was tuned for 448-height. Proportional bump preserves S58 ecological ordering (BT/SBT highest mountain forest, BA krummholz/treeline, ARC_TUN scrub, FROZEN_FLATS sparsest).",
     "ARCTIC_TUNDRA": {
       "y_top": 310,
       "fade_blocks": 100
@@ -3846,38 +3836,5 @@
     "dusting_threshold_noise_seed": 44,
     "seed": 42,
     "blue_noise_size": 512
-  },
-  "_spline_revert_concavity": {
-    "note": "pre-concavity-tweak; restore by copying these into terrain_spline",
-    "gaea_in": [
-      0,
-      5000,
-      12000,
-      17050,
-      18000,
-      21000,
-      26000,
-      30000,
-      35000,
-      42000,
-      50000,
-      58000,
-      65496
-    ],
-    "mc_y_out": [
-      -64,
-      -45,
-      25,
-      63,
-      64,
-      78,
-      110,
-      145,
-      220,
-      360,
-      490,
-      610,
-      700
-    ]
   }
 }

@@ -135,7 +135,7 @@ def render_tile(
 
     if mode == "height":
         # Greyscale: normalize surface_y to [0,255]
-        norm = np.clip((surface_y.astype(np.float32) - (-64)) / (448 - (-64)), 0, 1)
+        norm = np.clip((surface_y.astype(np.float32) - (-64)) / (704 - (-64))  # S85: 768-height world; was (448 - (-64)) for 448-era, 0, 1)
         grey = (norm * 255).astype(np.uint8)
         rgba[:, :, 0] = grey
         rgba[:, :, 1] = grey
@@ -177,7 +177,7 @@ def render_tile(
         # _compute_hillshade expects [0,1] input; raw MC Y in [-64,448]
         # causes gradient magnitudes of 200-4000 which clips the shading.
         sy_norm = np.clip(
-            (surface_y.astype(np.float32) - (-64)) / (448 - (-64)), 0.0, 1.0
+            (surface_y.astype(np.float32) - (-64)) / (704 - (-64))  # S85: 768-height world; was (448 - (-64)) for 448-era, 0.0, 1.0
         )
         hs = _compute_hillshade(sy_norm)
         # Blend: darken shadows, keep highlights

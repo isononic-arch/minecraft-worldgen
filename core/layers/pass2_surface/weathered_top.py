@@ -38,7 +38,8 @@ LAND_BIOMES: frozenset[str] = frozenset({
 })
 
 # Elevation threshold for "high enough to be windswept".
-EXPOSED_MIN_Y = 180
+# S85: scaled for 768-height world (was 180 for 448-era).
+EXPOSED_MIN_Y = 310
 
 # Wind exposure threshold.
 WIND_THRESHOLD = 0.5
