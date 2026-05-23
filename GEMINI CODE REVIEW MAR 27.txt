@@ -1,0 +1,207 @@
+VANDIR — MASTER ARCHITECTURE & CARRIER DOC v4
+Updated: March 27, 2026
+Context: For use in Claude Code / AI Agent Context. Read this completely before writing pipeline code or modifying the World Studio.
+1. PROJECT PHILOSOPHY & SCOPE PIVOT
+Vandir is a 50,000 x 50,000 block Minecraft world (Y -64 to 448). This is a terrain translation pipeline, not a procedural world generator. Source heightmaps and masks from Gaea are translated 1:1 into Minecraft chunk data.
+CRITICAL SCOPE UPDATE: The world is an untouched wilderness. There are NO human structures, NO roads, and NO ruins. All legacy code or logic pertaining to narrative structures is deprecated. The schematic placement system is strictly for geological and ecological features (custom trees, fallen logs, glacial erratics, karst pillars, scree fields).
+The standard for quality: The pipeline must think globally and render locally. Every biome, cliff face, and river bend must have the internal logic of geology and climate behind it.
+2. CORE CONSTRAINTS & MAGIC NUMBERS
+ * World Size: 50,000 x 50,000 blocks (97 x 97 tiles).
+ * Tile Size: 512 x 512 blocks.
+ * Vertical Range: Y -64 to Y 448 (vandir_height.zip datapack).
+ * Sea Level: raw 17050 -> MC Y 63.
+ * DataVersion: 4556 (MC 1.21.10).
+ * Python Environment: pythoncore-3.14-64\python.exe (rasterio, nbtlib, PyQt6, scipy, Pillow).
+ * Height Polarity: HIGH raw 16-bit = HIGH terrain. Normalization: height_norm = raw / 65535 (0.0 = ocean floor, 1.0 = peak). Sea norm is approx 0.260.
+ * Override Upscaling: ALWAYS use Image.NEAREST. Bilinear interpolation creates phantom biomes. ALWAYS np.fliplr() override source.
+ * Chunk Writing: Biome PalettedContainer min_bits=1 (NOT 4). isLightOn=0. Fluid ticks on top water block only.
+3. PIPELINE ARCHITECTURE (THE PRE-BAKE IMPERATIVE)
+The pipeline is designed to eliminate tile-boundary seams by pre-calculating all spatial data globally. No spatial math relying on neighboring pixels (like EDT) is allowed during chunk generation.
+ * Stage 0 (Geodata Manifest): Single affine transform matrix bridging Gaea and Minecraft coordinates.
+ * Stage 1 (Global Pre-Bakes): Derived masks (slope, aspect, shore_distance) are generated globally via scipy/rasterio and cached as TIFs.
+ * Stage 2 (Global Biome Assignment): override.tif -> Terrain Class -> Hydrology -> Patch Noise -> Final Biome String.
+ * Stage 3 (Flora & Geology Plan): Global Poisson Disk Sampling masked by slope, biome, and Simplex noise. Saves to flora_geology_plan.json.
+ * Stage 4 (Chunk Generation): Embarrassingly parallel. Reads pre-baked slices.
+ * Stage 5 (Writer): Asynchronous nbtlib MCA writer to prevent disk I/O bottlenecks.
+4. IMMEDIATE ACTION ITEMS & CRITICAL FIXES
+Execute these fixes before running any full tile generation.
+A. The run_pipeline.py Float Bug
+Issue: generate_columns casts a float32 [0,1] height array directly to uint16, flattening the world to Y=-64.
+Fix: Multiply by 65535 and round before casting.
+Code:
+height_raw = np.round(height_norm_array * 65535.0)
+height_data_uint = height_raw.astype(np.uint16)
+B. The Z-Seam EDT Bug (Global Shore Distance)
+Issue: Tiles 49,46 & 57,46 have mismatched ocean depths because EDT is computed per-tile.
+Fix: Create tools/generate_shore_distance.py to run distance_transform_edt globally.
+Code:
+import rasterio
+import numpy as np
+from scipy.ndimage import distance_transform_edt
+def generate_global_shore_distance():
+with rasterio.open('masks/height.tif') as src:
+height_data = src.read(1)
+profile = src.profile
+land_mask = height_data > 17050
+inland = distance_transform_edt(land_mask).astype(np.float32)
+offshore = distance_transform_edt(~land_mask).astype(np.float32)
+final_distance = inland - offshore
+profile.update(dtype=rasterio.float32, compress='lzw')
+with rasterio.open('masks/shore_distance.tif', 'w', **profile) as dst:
+dst.write(final_distance, 1)
+C. Global Flora & Geology Planner
+Issue: Random per-tile placement creates clumping and edge-slicing.
+Fix: Implement Bridson's algorithm via scipy to pre-bake organic coordinates.
+Code:
+import numpy as np
+import rasterio
+from scipy.stats import qmc
+from core.noise_fields import generate_simplex_noise
+class GlobalFloraPlanner:
+def init(self, world_size=50000, chunk_size=5000):
+self.world_size = world_size
+self.chunk_size = chunk_size
+def generate_flora_plan(self, radius=5.0, noise_scale=0.005, clearing_thresh=0.3):
+valid_points = []
+with rasterio.open('masks/slope.tif') as src_slope:
+for x_start in range(0, self.world_size, self.chunk_size):
+for z_start in range(0, self.world_size, self.chunk_size):
+engine = qmc.PoissonDisk(d=2, radius=radius/self.chunk_size, seed=42+x_start)
+pts = engine.fill_space() * self.chunk_size
+gx = (pts[:, 0] + x_start).astype(int)
+gz = (pts[:, 1] + z_start).astype(int)
+mask = (gx < self.world_size) & (gz < self.world_size)
+gx, gz = gx[mask], gz[mask]
+window = rasterio.windows.Window(x_start, z_start, self.chunk_size, self.chunk_size)
+slope_data = src_slope.read(1, window=window)
+lxi = np.clip(gx - x_start, 0, self.chunk_size - 1)
+lzi = np.clip(gz - z_start, 0, self.chunk_size - 1)
+geo_mask = slope_data[lzi, lxi] < 0.60
+gx, gz = gx[geo_mask], gz[geo_mask]
+noise = generate_simplex_noise(gx, gz, scale=noise_scale, seed=99)
+org_mask = noise > clearing_thresh
+fx, fz = gx[org_mask], gz[org_mask]
+for x, z in zip(fx, fz):
+valid_points.append({"x": int(x), "z": int(z), "type": "tree"})
+return valid_points
+5. WORLD STUDIO 2.0 VISION & OPTIMIZATION TARGETS
+The World Studio (tools/world_studio.py) is the primary lens for this project. Treat it as proprietary VFX software. Target these architectural upgrades:
+ * Decouple Engine from GUI: The Studio must be a headless controller. It dispatches a background render queue and listens for status updates, rather than running heavy numpy math on the main thread.
+ * Render-Status Overlay: Read render_manifest.json and paint grey (unrendered), amber (stale), or green (current) semi-transparent squares over the 97x97 grid.
+ * Telemetry/Heatmap View: Add a map mode that colors tiles based on render time to visually isolate CPU bottlenecks.
+ * Data Provenance (Inspector Stack): Hovering over a pixel must show the entire math stack (e.g., Raw Height -> Norm -> Slope -> Override -> Final Biome) to instantly debug logic.
+ * Palette Previews: The UI should generate a 2D noise-textured swatch based on the surface_decorator.py percentages to preview biome rock/dirt mixtures without a 3D render.
+ * Human-Scale 3D Anchors: The Voxel Previewer must default to a 1.6-block height camera and drop a 1x2 "Steve" reference pillar in the center of the viewport to prevent scale-blindness.
+ * Seam-Isolator View: Add a 3D preview mode that hides the center of a tile and only renders the outer 4-block perimeter alongside the adjacent tile's perimeter to stress-test boundaries.
+ * Pyramidal Mapping (LODs): Generate downsampled .ovr thumbnails of the 50k TIFs to keep the UI map panning buttery smooth without loading 10GB of float32 arrays into RAM.
+
+Nick Arreguy <nicholas.arreguy@gmail.com>
+	
+8:45 PM (15 minutes ago)
+	
+	
+to me
+
+Vandir World Generation - Code Review & Architecture Audit in Gemini Pro
+Date: March 27, 2026
+Project: Vandir (50k x 50k Minecraft Terrain Translation Pipeline)
+Reviewer: Gemini
+Context: Project scope has pivoted. Vandir is now strictly an untouched wilderness. All logic pertaining to human structures, roads, and ruins is deprecated. Schematics are exclusively for geological and ecological features (trees, boulders, karst pillars, etc.).
+ * Critical Bug Fixes
+1.1. The run_pipeline.py Float Truncation Bug
+Status: Blocker
+Issue: generate_columns is receiving a normalized float32 array bounded [0, 1]. When cast directly to uint16, every value truncates to 0, flattening the entire world to the ocean floor (Y = -64).
+Resolution: Un-normalize the height data back to its 16-bit raw range before casting.
+Suggested Code Change (run_pipeline.py):
+Multiply by max 16-bit integer (65535) and round to nearest whole number:
+height_raw = np.round(height_norm_array * 65535.0)
+height_data_uint = height_raw.astype(np.uint16)
+Pass height_data_uint to generate_columns
+1.2. Override Upscaling Interpolation
+Status: Integrity Check
+Issue: Using standard bilinear or bicubic interpolation when upscaling override_final.png blends discrete zone codes.
+Resolution: Strictly enforce Nearest-Neighbor resampling.
+Suggested Code Change (upscale_override_vectorized.py):
+from PIL import Image
+Ensure any resize operation explicitly uses Image.NEAREST
+img_upscaled = img_source.resize((50000, 50000), resample=Image.NEAREST)
+ * Architectural Shifts (The Pre-Bake Imperative)
+2.1. Z-Seam EDT Bug (Tiles 49,46 & 57,46)
+Status: Architecture Flaw
+Issue: Ocean depth transitions are currently jagged at chunk boundaries because the Euclidean Distance Transform (EDT) for shorelines is calculated locally per-tile.
+Resolution: Strip spatial math from Stage 4 (Chunk Generation). Move shoreline distance calculations to Stage 1. Run scipy.ndimage.distance_transform_edt over the entire 50k mask once and output masks/shore_distance.tif. Chunk generation should only read this file.
+2.2. Decoupling Disk I/O from the Rendering Pool
+Status: Bottleneck Warning
+Issue: Using ProcessPoolExecutor to serialize 9,409 .mca files via nbtlib will cause severe disk thrashing. CPUs will sit idle waiting for the hard drive to write.
+Resolution: Implement an asynchronous writer queue. Have your worker processes generate the raw block arrays in memory, then pass them to a dedicated I/O thread so the CPU pool can instantly move to the next tile.
+ * Feature Implementation: Global Flora & Geology Placement
+Status: New Feature (Replaces old load_index schematic logic)
+Issue: Random tile-local placement creates unnatural clumping, voids, and edge-slicing.
+Resolution: Implement a global Poisson Disk Sampling pre-bake (Stage 3). This generates mathematically even distributions for trees and rocks. We then use your existing OpenSimplex noise to carve out organic clearings ("grassy glades").
+Suggested Code Addition (core/flora_planner.py):
+import numpy as np
+import rasterio
+from scipy.stats import qmc
+from core.noise_fields import generate_simplex_noise
+class GlobalFloraPlanner:
+def init(self, world_size=50000, chunk_size=5000):
+self.world_size = world_size
+self.chunk_size = chunk_size
+def generate_flora_plan(self, radius_blocks=5.0, noise_scale=0.005, clearing_threshold=0.3):
+valid_points = []
+with rasterio.open('masks/slope.tif') as src_slope:
+for x_start in range(0, self.world_size, self.chunk_size):
+for z_start in range(0, self.world_size, self.chunk_size):
+engine = qmc.PoissonDisk(d=2, radius=radius_blocks / self.chunk_size, seed=42+x_start)
+local_pts = engine.fill_space() * self.chunk_size
+global_x = (local_pts[:, 0] + x_start).astype(int)
+global_z = (local_pts[:, 1] + z_start).astype(int)
+valid_mask = (global_x < self.world_size) & (global_z < self.world_size)
+global_x, global_z = global_x[valid_mask], global_z[valid_mask]
+window = rasterio.windows.Window(x_start, z_start, self.chunk_size, self.chunk_size)
+slope_data = src_slope.read(1, window=window)
+local_xi = np.clip(global_x - x_start, 0, self.chunk_size - 1)
+local_zi = np.clip(global_z - z_start, 0, self.chunk_size - 1)
+geo_mask = slope_data[local_zi, local_xi] < 0.60
+global_x, global_z = global_x[geo_mask], global_z[geo_mask]
+noise_vals = generate_simplex_noise(global_x, global_z, scale=noise_scale, seed=99)
+organic_mask = noise_vals > clearing_threshold
+final_x, final_z = global_x[organic_mask], global_z[organic_mask]
+for fx, fz in zip(final_x, final_z):
+valid_points.append({"x": int(fx), "z": int(fz), "type": "tree_generic"})
+return valid_points
+ * Tooling & QoL Upgrades
+4.1. Render-Status Overlay (world_studio.py)
+Priority: High
+Suggestion: The RenderManifest class must map "tx,tz" to a status (grey=unrendered, amber=stale, green=current). Update the WorldMapView to paint these colored squares over the grid.
+4.2. Granular Checkpoint Hashing
+Priority: Medium
+Suggestion: Update the config parser to map specific surface palettes to specific biomes. If you change the block palette for DRY_OAK_SAVANNA, only tiles containing that zone code should be flagged as amber in the UI.
+ * Global EDT Script (The Z-Seam Killer)
+File: tools/generate_shore_distance.py
+Note: A 50kx50k float32 array takes ~10GB of RAM.
+import rasterio
+import numpy as np
+from scipy.ndimage import distance_transform_edt
+def generate_global_shore_distance(height_tif_path='masks/height.tif', output_path='masks/shore_distance.tif'):
+print("Loading global height map (this will use ~10GB RAM)...")
+with rasterio.open(height_tif_path) as src:
+height_data = src.read(1)
+profile = src.profile
+print("Creating land mask...")
+land_mask = height_data > 17050
+print("Calculating inland distance...")
+inland_distance = distance_transform_edt(land_mask).astype(np.float32)
+print("Calculating offshore distance...")
+offshore_distance = distance_transform_edt(~land_mask).astype(np.float32)
+print("Merging distance fields...")
+final_distance = inland_distance - offshore_distance
+profile.update(dtype=rasterio.float32, compress='lzw')
+print(f"Writing global distance map to {output_path}...")
+with rasterio.open(output_path, 'w', **profile) as dst:
+dst.write(final_distance, 1)
+print("Done! Shoreline seams are permanently dead.")
+if name == "main":
+generate_global_shore_distance()
+Were you able to successfully copy this plain text version over to your Notepad?
+

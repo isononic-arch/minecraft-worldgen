@@ -1,0 +1,14 @@
+Loading override.tif at 1:8 resolution (6250×6250 expected)...
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+  full: 50000×50000, 1:8: 6250×6250
+Data shape: (6250, 6250), dtype uint8, unique zones: [  0  10  20  30  35  40  50  55  60  70  90 100 110 115 120 130 140 150
+ 160 170 190 200 210 220 230]
+Traceback (most recent call last):
+  File "C:\Users\nicho\minecraft-worldgen\tools\diag_biome_diversity.py", line 101, in <module>
+    print(f"Tiles with \u22651 biome above threshold: {len(records)}", flush=True)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nicho\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2265' in position 11: character maps to <undefined>

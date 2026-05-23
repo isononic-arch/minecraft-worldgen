@@ -1,0 +1,965 @@
+diff --git a/config/thresholds.json b/config/thresholds.json
+index 1dcec72..a5b2490 100644
+--- a/config/thresholds.json
++++ b/config/thresholds.json
+@@ -57,19 +57,33 @@
+   "terrain_spline": {
+     "gaea_in": [
+       0,
+-      11602,
+-      26921,
+-      35435,
+-      43437,
++      5000,
++      12000,
++      17050,
++      18000,
++      21000,
++      26000,
++      30000,
++      35000,
++      42000,
++      50000,
++      58000,
+       65496
+     ],
+     "mc_y_out": [
+       -64,
++      -45,
++      25,
+       63,
+-      120,
+-      278,
+-      398,
+-      448
++      64,
++      78,
++      110,
++      145,
++      180,
++      360,
++      490,
++      610,
++      700
+     ]
+   },
+   "ocean": {
+@@ -448,7 +462,7 @@
+     "ramp_blocks": 30
+   },
+   "sand_dune_smoothing": {
+-    "_comment": "S69: Reverted to S67 intensity — the S68 crank (sigma=16 passes=6 buffer=36) was needed only to hide sharp Gaea dune geometry, which the new dune_flatten pass now handles at the source. Mountain interiors adjacent to biome boundaries no longer get smeared 36 blocks deep.",
++    "_comment": "S69: Reverted to S67 intensity \u00e2\u20ac\u201d the S68 crank (sigma=16 passes=6 buffer=36) was needed only to hide sharp Gaea dune geometry, which the new dune_flatten pass now handles at the source. Mountain interiors adjacent to biome boundaries no longer get smeared 36 blocks deep.",
+     "enabled": true,
+     "buffer_blocks": 24,
+     "sigma": 8.0,
+@@ -467,7 +481,7 @@
+     "mask_dilation_blocks": 4
+   },
+   "sbt_mountaincap": {
+-    "_comment": "S68: unified SBT dither — one decision drives both snow carpet AND biome tag. Pixels below min_y OR with noise<threshold in [min_y,max_y] get remapped to BOREAL_ALPINE (no snow, plains tag). Above max_y always SBT (snow, snowy_taiga tag).",
++    "_comment": "S68: unified SBT dither \u00e2\u20ac\u201d one decision drives both snow carpet AND biome tag. Pixels below min_y OR with noise<threshold in [min_y,max_y] get remapped to BOREAL_ALPINE (no snow, plains tag). Above max_y always SBT (snow, snowy_taiga tag).",
+     "enabled": true,
+     "min_y": 200,
+     "max_y": 250,
+@@ -3667,15 +3681,24 @@
+           "smooth_basalt",
+           "cobbled_deepslate"
+         ],
+-        "description": "Arid/semi-arid mafic \u2014 dune + steppe + karst margins. S60 renamed from 'sedimentary'."
++        "description": "Arid/semi-arid mafic \u2014 dune + steppe + karst margins. S60 renamed from sedimentary."
+       },
+       "temperate_basaltic": {
+         "id": 3,
+         "palette": [
+-          "blackstone",
+-          "coal_block"
++          "deepslate",
++          "deepslate",
++          "deepslate",
++          "deepslate",
++          "cobbled_deepslate",
++          "cobbled_deepslate",
++          "cobbled_deepslate",
++          "basalt",
++          "basalt",
++          "basalt",
++          "deepslate_coal_ore"
+         ],
+-        "description": "Extrusive mafic \u2014 coastal headlands, peaks. S60 renamed from 'basaltic'."
++        "description": "S84: dark metamorphic mix \u2014 deepslate-heavy (~36%) + cobbled_deepslate (~27%) + basalt (~27%) + rare deepslate_coal_ore (~9%). Coastal headland / temperate peak feel."
+       },
+       "limestone": {
+         "id": 4,
+@@ -3755,53 +3778,54 @@
+     "_comment": "Phase 0.75 shadow_mode: smoke test (output discarded). Phase 2.0 feature_flag_enabled: when true, runs temperate cliff/talus/fluting layers and merges into surface_blocks. Legacy path preserved as fallback for unclaimed pixels."
+   },
+   "treelines": {
+-    "_default": {
++    "_comment": "S85: full rescale for 768-height world. Old values targeted 448-height. Proportional bump preserves S58 ecological ordering (BT/SBT highest mountain forest, BA krummholz/treeline, ARC_TUN scrub, FROZEN_FLATS sparsest).",
++    "ARCTIC_TUNDRA": {
+       "y_top": 310,
+-      "fade_blocks": 30
++      "fade_blocks": 100
+     },
+-    "BOREAL_TAIGA": {
++    "FROZEN_FLATS": {
+       "y_top": 280,
+-      "fade_blocks": 30
+-    },
+-    "SNOWY_BOREAL_TAIGA": {
+-      "y_top": 260,
+-      "fade_blocks": 25
++      "fade_blocks": 100
+     },
+     "BOREAL_ALPINE": {
+-      "y_top": 250,
+-      "fade_blocks": 25
++      "y_top": 430,
++      "fade_blocks": 100
+     },
+-    "TEMPERATE_RAINFOREST": {
+-      "y_top": 280,
+-      "fade_blocks": 30
+-    },
+-    "MIXED_FOREST": {
+-      "y_top": 280,
+-      "fade_blocks": 30
++    "BOREAL_TAIGA": {
++      "y_top": 600,
++      "fade_blocks": 100
+     },
+-    "TEMPERATE_DECIDUOUS": {
+-      "y_top": 270,
+-      "fade_blocks": 30
++    "SNOWY_BOREAL_TAIGA": {
++      "y_top": 600,
++      "fade_blocks": 100
+     },
+     "BIRCH_FOREST": {
+-      "y_top": 270,
+-      "fade_blocks": 30
++      "y_top": 460,
++      "fade_blocks": 100
+     },
+-    "ARCTIC_TUNDRA": {
+-      "y_top": 180,
+-      "fade_blocks": 15
++    "MIXED_FOREST": {
++      "y_top": 480,
++      "fade_blocks": 100
+     },
+-    "FROZEN_FLATS": {
+-      "y_top": 160,
+-      "fade_blocks": 10
++    "TEMPERATE_DECIDUOUS": {
++      "y_top": 460,
++      "fade_blocks": 100
++    },
++    "TEMPERATE_RAINFOREST": {
++      "y_top": 480,
++      "fade_blocks": 100
+     },
+     "RIPARIAN_WOODLAND": {
+-      "y_top": 210,
+-      "fade_blocks": 25
++      "y_top": 360,
++      "fade_blocks": 100
+     },
+     "SAND_DUNE_DESERT": {
+-      "y_top": 280,
+-      "fade_blocks": 20
++      "y_top": 350,
++      "fade_blocks": 100
++    },
++    "_default": {
++      "y_top": 530,
++      "fade_blocks": 100
+     }
+   },
+   "gaea_gaps": {
+@@ -3822,5 +3846,38 @@
+     "dusting_threshold_noise_seed": 44,
+     "seed": 42,
+     "blue_noise_size": 512
++  },
++  "_spline_revert_concavity": {
++    "note": "pre-concavity-tweak; restore by copying these into terrain_spline",
++    "gaea_in": [
++      0,
++      5000,
++      12000,
++      17050,
++      18000,
++      21000,
++      26000,
++      30000,
++      35000,
++      42000,
++      50000,
++      58000,
++      65496
++    ],
++    "mc_y_out": [
++      -64,
++      -45,
++      25,
++      63,
++      64,
++      78,
++      110,
++      145,
++      220,
++      360,
++      490,
++      610,
++      700
++    ]
+   }
+ }
+\ No newline at end of file
+diff --git a/core/chunk_writer.py b/core/chunk_writer.py
+index 31239e4..e5519f0 100644
+--- a/core/chunk_writer.py
++++ b/core/chunk_writer.py
+@@ -12,7 +12,7 @@ Responsibilities:
+ 
+ World constants (Higher Heights datapack):
+   Y_MIN    = -64   (bedrock layer)
+-  Y_MAX    = 448   (build height)
++  Y_MAX    = 704   (build height, S84: 512-block world -> 768-block world)
+   SEA_Y    = 63    (MC sea level — water fill mandatory below this)
+   SECTION_H = 16   (blocks per ChunkSection)
+ 
+@@ -31,23 +31,24 @@ from pathlib import Path
+ from typing import Optional
+ 
+ import numpy as np
++from scipy.ndimage import binary_dilation as _bin_dilation
+ 
+ # ---------------------------------------------------------------------------
+ # WORLD CONSTANTS (Higher Heights datapack — locked)
+ # ---------------------------------------------------------------------------
+ Y_MIN     = -64
+-Y_MAX     = 448
++Y_MAX     = 704   # S84: bumped 448 -> 704 for 768-block world height
+ SEA_Y     = 63
+ SECTION_H = 16
+-Y_RANGE   = Y_MAX - Y_MIN          # 512
+-N_SECTIONS = Y_RANGE // SECTION_H  # 32
++Y_RANGE   = Y_MAX - Y_MIN          # 768 (S84: was 512)
++N_SECTIONS = Y_RANGE // SECTION_H  # 48 (S84: was 32)
+ 
+ # MC 1.20.1 biome name → internal string (subset used in Vandir)
+ # Full MC biome IDs assigned by amulet via string name — no numeric IDs needed.
+ BIOME_TO_MC: dict[str, str] = {
+     "COASTAL_HEATH":           "minecraft:plains",
+     "TEMPERATE_RAINFOREST":    "minecraft:dark_forest",
+-    "BOREAL_TAIGA":            "minecraft:old_growth_birch_forest",
++    "BOREAL_TAIGA":            "minecraft:meadow",  # S85: was old_growth_birch_forest; user swapped to meadow + dropped altitude remap
+     "BOREAL_ALPINE":           "minecraft:plains",  # S64: wholesale plains — dual-layer approach abandoned, snow never falls
+     "SNOWY_BOREAL_TAIGA":      "minecraft:snowy_taiga",
+     "ARCTIC_TUNDRA":           "minecraft:frozen_peaks",
+@@ -98,39 +99,12 @@ BIOME_TO_MC_SKY: dict[str, str] = {
+     # future biomes that need the dual-layer approach.
+ }
+ 
+-# S67: altitude-based biome remap.  User's rule:
+-# "if there is another NON snowy biome at a higher value than snowy, we
+-# should swap out snowy taiga for its non snowy option."
+-#
+-# Interpretation: BOREAL_TAIGA (snow-at-altitude) should ALWAYS become
+-# BOREAL_ALPINE (plains = no snow) — the NON-snowy variant is aesthetically
+-# equivalent at ground level (same palette + schematic routing) and never
+-# snows.  Unconditional remap (threshold=-64) keeps the entire biome
+-# snow-free.  For SNOWY_BOREAL_TAIGA (intentionally snowy), a dither zone
+-# 200-250 controls snow coverage: pixels in that band with noise > 0.5 get
+-# the snow, others do not.  Above 250: snowy.  Below 200: no snow unless
+-# noise hit.  Creates mountaincap look.
+-BIOME_ALTITUDE_REMAPS: list[dict] = [
+-    {
+-        # BOREAL_TAIGA gets mapped to BOREAL_ALPINE unconditionally — MC tag
+-        # becomes minecraft:plains, no weather snow.  Ground palette stays
+-        # BOREAL_TAIGA via surface_decorator (since biome_grid passed in
+-        # the surface pass is unchanged from assign_biomes).
+-        "source":    "BOREAL_TAIGA",
+-        "target":    "BOREAL_ALPINE",
+-        "threshold": -100,  # effectively always-on
+-    },
+-    {
+-        "source":    "BIRCH_FOREST",
+-        "target":    "BOREAL_ALPINE",
+-        "threshold": 220,
+-    },
+-    {
+-        "source":    "MIXED_FOREST",
+-        "target":    "BOREAL_ALPINE",
+-        "threshold": 220,
+-    },
+-]
++# S85: BIOME_ALTITUDE_REMAPS removed entirely.
++# Historical: this list let high-altitude pixels of source biome get the MC
++# tag of target biome (BIRCH/MIXED → BOREAL_ALPINE, BT → BA).  Intent was to
++# stop weather snow above treeline.  Per user S85: confusing and unwanted —
++# MC biome tag now follows the Vandir biome exactly (via BIOME_TO_MC).
++BIOME_ALTITUDE_REMAPS: list[dict] = []
+ 
+ # S67: SNOWY_BOREAL_TAIGA mountaincap dither.  Pixels with surface_y in
+ # [200, 250] get probabilistic snowy biome based on a coarse simplex noise:
+@@ -736,14 +710,21 @@ def build_column_array(
+     ) & (surface_y + 1 > SEA_Y)
+     if _kill_short.any():
+         ground_cover[_kill_short] = ""
+-    # S70: Kill terrestrial ground cover at coast edges where surface_y <= SEA_Y.
+-    # Prevents grass/tall_grass/ferns etc. from poking out over ocean water
+-    # when a land-biome pixel sits exactly at sea level next to an ocean cell.
++    # S84: Narrow the S70 coast-edge veg cleanup. Previously this killed
++    # terrestrial ground cover EVERYWHERE surface_y <= SEA_Y — bald-ifying
++    # vast coastal bands (every land cell at Y=63 lost its grass/flowers).
++    # Now requires the cell to be literally adjacent (within 1 block) to a
++    # cell whose surface is BELOW sea level (i.e., an actual water-bearing
++    # cell). Preserves inland-but-low coastal vegetation; still kills the
++    # literal beach edge that's flush with ocean.
+     _water_plants = ("seagrass", "tall_seagrass", "kelp", "sea_pickle")
++    _below_sea = surface_y < SEA_Y
++    _adj_to_water = _bin_dilation(_below_sea, iterations=1)
+     _kill_terrestrial = (
+         (ground_cover != "")
+         & ~np.isin(ground_cover, _water_plants)
+         & (surface_y <= SEA_Y)
++        & _adj_to_water
+     )
+     if _kill_terrestrial.any():
+         ground_cover[_kill_terrestrial] = ""
+@@ -1459,10 +1440,10 @@ import traceback as _traceback
+ 
+ _CHUNK_DATA_VERSION = 4556   # Java 1.21.10
+ _SECTION_Y_MIN      = -4     # Y_MIN // 16 = -64 // 16
+-_N_SECTIONS         = 32     # (448 - (-64)) // 16
++_N_SECTIONS         = 48     # S84: (704 - (-64)) // 16 = 48 (was 32 for 512-block world)
+ _SECTOR_SZ          = 4096   # Anvil .mca sector size
+ 
+-_TEST_SECTION_Y_MAX = None   # Full Higher Heights range: sections -4 to 27 (Y -64 to 447)
++_TEST_SECTION_Y_MAX = None   # Full Higher Heights range: sections -4 to 43 (Y -64 to 703)
+ 
+ 
+ def _pack_indices(indices: np.ndarray, palette_size: int, min_bits: int = 4) -> np.ndarray:
+@@ -1561,9 +1542,13 @@ def _build_heightmaps_nbt(chunk_vol: np.ndarray) -> "nbtlib.Compound":
+         return highest.astype(np.int64)          # stored = yi = MC_Y - Y_MIN
+ 
+     def _pack_hm(values: np.ndarray) -> "nbtlib.LongArray":
+-        bpe     = 9
+-        vpl     = 64 // bpe                      # 7 values per long
+-        n_longs = _math.ceil(len(values) / vpl)  # 37
++        # S84: bits_per_entry derived from world height. 9 bits maxes at 511
++        # (was correct for 512-block world), but 768-block world needs 10
++        # bits (max 1023). MC computes bits per heightmap as
++        # ceil(log2(world_height + 1)) — matches our derivation.
++        bpe     = _math.ceil(_math.log2(Y_RANGE + 1))
++        vpl     = 64 // bpe                      # 7 values/long @ 9bpe; 6 @ 10bpe
++        n_longs = _math.ceil(len(values) / vpl)  # 37 @ 9bpe; 43 @ 10bpe
+         pad     = n_longs * vpl - len(values)
+         padded  = np.concatenate([values, np.zeros(pad, dtype=np.int64)])
+         reshaped    = padded.reshape(n_longs, vpl)
+diff --git a/core/column_generator.py b/core/column_generator.py
+index aa8dd4e..ec3ae69 100644
+--- a/core/column_generator.py
++++ b/core/column_generator.py
+@@ -46,7 +46,7 @@ from core.eco_gradients import compute_cliff_deg
+ 
+ # ── Constants (locked) ────────────────────────────────────────────────────────
+ MC_Y_MIN   = -64
+-MC_Y_MAX   = 448
++MC_Y_MAX   = 704   # S84: 448 -> 704 (768-block world, 48 sections)
+ SEA_LEVEL  = 63
+ BEDROCK_Y  = MC_Y_MIN  # -64
+ 
+@@ -74,8 +74,9 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
+         ("snow_block",  "dirt",        "altitude"),
+     ],
+     "SNOWY_BOREAL_TAIGA": [
++        # S84: powder_snow removed (pest block) — both variants snow_block now
+         ("snow_block",  "dirt",        "base"),
+-        ("powder_snow", "dirt",        "noise"),
++        ("snow_block",  "dirt",        "noise"),
+     ],
+     # "ALPINE_MEADOW" retired S56 — zone inherits nearest non-alpine biome
+     "ARCTIC_TUNDRA": [
+@@ -84,9 +85,12 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
+         ("gravel",      "stone",       "noise"),
+     ],
+     "FROZEN_FLATS": [
+-        ("snow_block",  "dirt",        "base"),
++        # S85: base swapped snow_block -> coarse_dirt so foliage can survive.
++        # Snow visual now via _apply_snow_carpet (snow[layers=1]) on GC layer.
++        # Sparse ice patches retained for bleached-tundra variety.
++        ("coarse_dirt", "dirt",        "base"),
+         ("ice",         "dirt",        "moisture"),
+-        ("powder_snow", "dirt",        "noise"),
++        ("packed_mud",  "dirt",        "noise"),
+     ],
+     "TEMPERATE_DECIDUOUS": [
+         ("grass_block", "dirt",        "base"),
+@@ -792,28 +796,47 @@ import numpy as np
+ 
+ # These constants must match column_generator.py
+ MC_Y_MIN   = -64
+-MC_Y_MAX   =  448
++MC_Y_MAX   =  704   # S84: 448 -> 704 (768-block world, 48 sections)
+ SEA_LEVEL  =   63
+ BEDROCK_Y  =  -64
+-Y_RANGE    =  512   # MC_Y_MAX - MC_Y_MIN + 1  = 512... wait 448-(-64)+1=513
+-# Actually Y_RANGE = 448 - (-64) + 1 = 513, but chunk_writer uses 512
++Y_RANGE    =  768   # S84: was 512; MC_Y_MAX - MC_Y_MIN = 768
++# 48 chunk sections (Y_RANGE / 16 = 48), matches chunk_writer.N_SECTIONS
+ # Check column_generator constants:
+-_Y_RANGE   = MC_Y_MAX - MC_Y_MIN  # = 512  (exclusive top)
++_Y_RANGE   = MC_Y_MAX - MC_Y_MIN  # S84: = 768 (exclusive top)
++
++
++_DEFAULT_GAEA_IN  = [0, 17050, 45000, 65496]
++_DEFAULT_MC_Y_OUT = [-64,   63,   200,   448]
+ 
+ 
+ def _build_lut_vectorized() -> np.ndarray:
+     """
+     Build a 65536-entry LUT mapping raw 16-bit Gaea height → MC Y.
+     Normal polarity (confirmed Session 13): HIGH raw = HIGH terrain.
+-    Breakpoints (ascending gaea → ascending mc_y):
+-        Gaea     0 → MC Y  -64  (ocean floor)
+-        Gaea 17050 → MC Y   63  (sea level — MUST equal SEA_LEVEL exactly)
+-        Gaea 45000 → MC Y  200
+-        Gaea 65496 → MC Y  448  (peak terrain)
+-    These values match config/thresholds.json terrain_spline and all display tools.
++
++    Reads terrain_spline from config/thresholds.json at module load time so
++    edits in config propagate to actual terrain heights. Falls back to the
++    legacy hardcoded breakpoints if the config file can't be read.
++
++    Pre-S84: spline was hardcoded here ([0, 17050, 45000, 65496] →
++    [-64, 63, 200, 448]) and ignored the config — terrain edits in config
++    had zero effect on rendered terrain. Fixed by reading the active spline.
+     """
+-    gaea_in  = np.array([0, 17050, 45000, 65496], dtype=np.float64)
+-    mc_y_out = np.array([-64,   63,   200,   448], dtype=np.float64)
++    gaea_in_list, mc_y_out_list = _DEFAULT_GAEA_IN, _DEFAULT_MC_Y_OUT
++    try:
++        import json
++        from pathlib import Path
++        cfg_path = Path(__file__).resolve().parent.parent / "config" / "thresholds.json"
++        if cfg_path.exists():
++            with open(cfg_path) as _f:
++                _cfg = json.load(_f)
++            _sp = _cfg.get("terrain_spline", {})
++            gaea_in_list = _sp.get("gaea_in", _DEFAULT_GAEA_IN)
++            mc_y_out_list = _sp.get("mc_y_out", _DEFAULT_MC_Y_OUT)
++    except Exception:
++        pass
++    gaea_in  = np.array(gaea_in_list,  dtype=np.float64)
++    mc_y_out = np.array(mc_y_out_list, dtype=np.float64)
+     lut = np.interp(np.arange(65536, dtype=np.float64), gaea_in, mc_y_out)
+     return np.clip(lut, MC_Y_MIN + 4, MC_Y_MAX - 1).astype(np.int16)
+ 
+diff --git a/core/eco_gradients.py b/core/eco_gradients.py
+index 2a666a5..ad534fc 100644
+--- a/core/eco_gradients.py
++++ b/core/eco_gradients.py
+@@ -653,9 +653,11 @@ def compute_eco_gradients(
+             # S55 v8 tuning: flip core:dither ratio — tiny always-sand core
+             # at the waterline, huge dither zone for visible mixing.
+             # Total width similar to v7 but dominated by the mix band.
++            # S84: bumped base widths by +1 each for wider beaches —
++            # makes coastal sand bands more visible and natural.
+             _base_width = np.where(
+-                _full_bch, np.float32(4.0),    # v7=11; thin solid sand at waterline
+-                np.where(_shallow_bch, np.float32(2.0), np.float32(0.0)),
++                _full_bch, np.float32(5.0),    # was 4.0 (v7=11); solid sand at waterline
++                np.where(_shallow_bch, np.float32(3.0), np.float32(0.0)),  # was 2.0
+             ).astype(np.float32)
+             _amp = np.where(
+                 _full_bch, np.float32(2.0),    # v7=6; small width jitter — core is tight
+diff --git a/core/schematic_placement.py b/core/schematic_placement.py
+index ab6a226..b519254 100644
+--- a/core/schematic_placement.py
++++ b/core/schematic_placement.py
+@@ -603,8 +603,14 @@ def place_schematics(
+     # appear floating because the schematic anchors at the snow surface
+     # rather than the buried ground beneath. This applies even after the
+     # zone-40 → BOREAL_ALPINE remap eliminates most natural snow.
++    # S84: Removed snow_block from skip set so trees can place on snow ground
++    # in BOREAL_TAIGA / SNOWY_BOREAL_TAIGA / BOREAL_ALPINE (was zero trees
++    # there because Gaea dusting painted snow_block over the whole biome
++    # surface). Keep "snow" (1-block snow layer overlay) skipped — trees on
++    # that look bad. powder_snow stays skipped (pest block; also removed at
++    # source elsewhere in S84). Ice variants still skipped.
+     _SNOW_SURFACE_BLOCKS = frozenset({
+-        "snow", "snow_block", "powder_snow", "ice", "packed_ice", "blue_ice",
++        "snow", "powder_snow", "ice", "packed_ice", "blue_ice",
+     })
+     snow_surface_mask = None
+     if surface_blocks is not None:
+@@ -670,6 +676,31 @@ def place_schematics(
+ 
+             species_scores[sp] = score
+ 
++    # ── S84: PALM COAST-DISTANCE GATE ────────────────────────────────────
++    # Real palms grow within ~50m of tropical coastlines. Zero out palm
++    # species scores beyond PALM_MAX_COAST_BLOCKS from the nearest ocean.
++    # Without this, palms could spawn anywhere their MC-jungle biome paint
++    # exists (which can include inland jungle patches).
++    _PALM_SPECIES = {"mpalm", "rfpalm", "cpalm"}
++    _PALM_MAX_COAST_BLOCKS = int(cfg.get("eco_placement", {}).get(
++        "palm_coast_max_blocks", 30))
++    _palms_present = _PALM_SPECIES & set(species_scores.keys())
++    if _palms_present:
++        from scipy.ndimage import distance_transform_edt as _edt_coast
++        SEA_Y = 63
++        _ocean_mask = surface_y < SEA_Y
++        if _ocean_mask.any() and not _ocean_mask.all():
++            _dist_from_ocean = _edt_coast(~_ocean_mask).astype(np.float32)
++            _far_inland = _dist_from_ocean > _PALM_MAX_COAST_BLOCKS
++            for sp in _palms_present:
++                species_scores[sp][_far_inland] = 0.0
++            del _dist_from_ocean, _far_inland
++        elif not _ocean_mask.any():
++            # No ocean in this tile — palms can't spawn (pure-inland)
++            for sp in _palms_present:
++                species_scores[sp][:] = 0.0
++        del _ocean_mask
++
+     # ── Two-pass pixel iteration: trees first, then bushes ──────────────
+     # Pass 1 places trees with full canopy exclusion.
+     # Pass 2 places bushes with smaller exclusion, allowed near trees.
+diff --git a/core/surface_decorator.py b/core/surface_decorator.py
+index d0b9ab5..062f752 100644
+--- a/core/surface_decorator.py
++++ b/core/surface_decorator.py
+@@ -378,7 +378,10 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
+     "ARCTIC_TUNDRA": [
+         ("dead_bush", 0.01), ("short_dry_grass", 0.06), ("short_grass", 0.04),
+     ],
+-    "FROZEN_FLATS": [],
++    "FROZEN_FLATS": [
++        # S85: was empty — bleached steppe look with rare dry tufts
++        ("short_dry_grass", 0.04), ("dead_bush", 0.015),
++    ],
+     # ── Temperate Forests ────────────────────────────────────────────────
+     "TEMPERATE_DECIDUOUS": [
+         ("leaf_litter", 0.35), ("short_grass", 0.30), ("tall_grass", 0.08),
+@@ -1584,14 +1587,21 @@ def decorate_surface(
+             # Gaea dusting mask drives gap==7. All snow pixels get snow_block.
+             # Dither edges are baked into the mask at 50k by rebuild_gaea_gaps.py
+             # (blue-noise dither), so no per-pixel probability ramp needed here.
++            # S85: SNOWY_BOREAL_TAIGA + FROZEN_FLATS exempted — their native
++            # surface (podzol / coarse_dirt) supports foliage. Snow visual still
++            # delivered via `_apply_snow_carpet` (vanilla snow[layers=1]) on top.
+             snow_px = _gap == 7
++            if snow_px.any():
++                _snow_exempt = (
++                    (biome_grid == "SNOWY_BOREAL_TAIGA") |
++                    (biome_grid == "FROZEN_FLATS")
++                )
++                snow_px = snow_px & ~_snow_exempt
+             if snow_px.any():
+                 surface_blocks[snow_px] = "snow_block"
+-                # Rare powder_snow in concavities (deep snow pockets)
+-                if eco_grads is not None and hasattr(eco_grads, 'concavity_norm'):
+-                    _powder = snow_px & (eco_grads.concavity_norm > 0.6) & (_gap_rand < 0.15)
+-                    surface_blocks[_powder] = "powder_snow"
+-                    del _powder
++                # S84: powder_snow generation removed — was placed in concavities
++                # but powder_snow is a hazard ("pest block") that traps players.
++                # All snow now renders as snow_block.
+ 
+             # ── Sand dunes (gap==8): pure sand ───────────────────────────
+             sand_px = _gap == 8
+@@ -1844,8 +1854,10 @@ def decorate_surface(
+     # (which fires on slope) by handling the flat-but-high case — alpine
+     # plateaus shouldn't read as grass even if slope is modest. Also kills
+     # ground cover above the full-fade band so bare rock stays bare.
+-    _FADE_Y_START = 230   # 0% fade below this
+-    _FADE_Y_FULL  = 280   # 100% fade above this
++    # S84: bumped from 230-280 for 768-height world. Y 480-580 matches
++    # real-world bare-rock altitude (~3500-4500m) in our compressed scale.
++    _FADE_Y_START = 480   # 0% fade below this
++    _FADE_Y_FULL  = 580   # 100% fade above this
+     _GRASS_FAMILY = frozenset({
+         "grass_block", "podzol", "coarse_dirt", "packed_mud",
+         "rooted_dirt", "moss_block", "dirt", "mycelium",
+@@ -2135,6 +2147,9 @@ def decorate_surface(
+     # tag apply.  If remapped to BA, neither applies.
+     _apply_sbt_mountaincap_remap(biome_grid, surface_y, tile_x, tile_y, cfg)
+ 
++    # S85: ARCTIC_TUNDRA → SBT below Y 500 remap REMOVED.  User-painted
++    # ARC_TUN in override.tif now appears as ARC_TUN regardless of altitude.
++
+     # ──────────────────────────────────────────────────────────────────
+     # S64: SNOW CARPET PASS
+     # Places `snow[layers=1]` on snowy biomes (SBT, ARCTIC_TUNDRA, FROZEN_FLATS,
+diff --git a/memory/BIOME_VALIDATOR_CHECKLIST.md b/memory/BIOME_VALIDATOR_CHECKLIST.md
+index 97d80d8..7a2b51f 100644
+--- a/memory/BIOME_VALIDATOR_CHECKLIST.md
++++ b/memory/BIOME_VALIDATOR_CHECKLIST.md
+@@ -4,34 +4,36 @@ Auto-generated. For each biome, `best tile` = tile with most pixels of that biom
+ 
+ Instructions: walk each biome in-world via the TP command. Mark columns Y/N.
+ 
++**S85 verdict (2026-05-22):** All present biomes validated good by user. RIPARIAN_WOODLAND + FRESHWATER_FEN absent from world (carry-forward — prune routing if not introduced before next bake).
++
+ | Biome | Zone | Best tile | Pure % | TP | Visually OK | GC OK | Schematics OK | Palette OK | Notes |
+ |-------|------|-----------|--------|----|-------------|-------|---------------|------------|-------|
+-| COASTAL_HEATH | 10 | (36,7) | 100.0% | `/tp @s 18688 90 3840` | [ ] | [ ] | [ ] | [ ] |  |
+-| TEMPERATE_RAINFOREST | 20 | (19,23) | 100.0% | `/tp @s 9984 180 12032` | [ ] | [ ] | [ ] | [ ] |  |
+-| BOREAL_TAIGA | 30 | (26,10) | 100.0% | `/tp @s 13568 200 5376` | [ ] | [ ] | [ ] | [ ] |  |
+-| SNOWY_BOREAL_TAIGA | 35 | (26,20) | 100.0% | `/tp @s 13568 220 10496` | [ ] | [ ] | [ ] | [ ] |  |
+-| BOREAL_ALPINE | 40 | (86,51) | 100.0% | `/tp @s 44288 250 26368` | [ ] | [ ] | [ ] | [ ] |  |
+-| ARCTIC_TUNDRA | 50 | (32,10) | 100.0% | `/tp @s 16640 180 5376` | [ ] | [ ] | [ ] | [ ] |  |
+-| FROZEN_FLATS | 55 | (31,3) | 100.0% | `/tp @s 16128 160 1792` | [ ] | [ ] | [ ] | [ ] |  |
+-| TEMPERATE_DECIDUOUS | 60 | (41,35) | 100.0% | `/tp @s 21248 180 18176` | [ ] | [ ] | [ ] | [ ] |  |
+-| RAINFOREST_COAST | 70 | (14,50) | 99.6% | `/tp @s 7424 90 25856` | [ ] | [ ] | [ ] | [ ] |  |
+-| RIPARIAN_WOODLAND | 80 | (absent) | 0.0% | `(biome not present)` | [ ] | [ ] | [ ] | [ ] |  |
+-| DRY_OAK_SAVANNA | 90 | (33,49) | 100.0% | `/tp @s 17152 130 25344` | [ ] | [ ] | [ ] | [ ] |  |
+-| KARST_BARRENS | 100 | (34,9) | 100.0% | `/tp @s 17664 160 4864` | [ ] | [ ] | [ ] | [ ] |  |
+-| BIRCH_FOREST | 110 | (20,36) | 100.0% | `/tp @s 10496 180 18688` | [ ] | [ ] | [ ] | [ ] |  |
+-| EASTERN_TEMPERATE_COAST | 115 | (72,92) | 50.4% | `/tp @s 37120 90 47360` | [ ] | [ ] | [ ] | [ ] |  |
+-| MIXED_FOREST | 120 | (50,48) | 100.0% | `/tp @s 25856 200 24832` | [ ] | [ ] | [ ] | [ ] |  |
+-| CONTINENTAL_STEPPE | 130 | (38,11) | 100.0% | `/tp @s 19712 140 5888` | [ ] | [ ] | [ ] | [ ] |  |
+-| DRY_PINE_BARRENS | 140 | (92,50) | 100.0% | `/tp @s 47360 140 25856` | [ ] | [ ] | [ ] | [ ] |  |
+-| SCRUBBY_HEATHLAND | 150 | (86,78) | 100.0% | `/tp @s 44288 140 40192` | [ ] | [ ] | [ ] | [ ] |  |
+-| LUSH_RAINFOREST_COAST | 160 | (11,64) | 100.0% | `/tp @s 5888 90 33024` | [ ] | [ ] | [ ] | [ ] |  |
+-| SAND_DUNE_DESERT | 170 | (17,66) | 100.0% | `/tp @s 8960 120 34048` | [ ] | [ ] | [ ] | [ ] |  |
+-| DESERT_STEPPE_TRANSITION | 190 | (18,62) | 100.0% | `/tp @s 9472 120 32000` | [ ] | [ ] | [ ] | [ ] |  |
+-| SEMI_ARID_SHRUBLAND | 200 | (86,75) | 100.0% | `/tp @s 44288 140 38656` | [ ] | [ ] | [ ] | [ ] |  |
+-| DRY_WOODLAND_MAQUIS | 210 | (36,75) | 100.0% | `/tp @s 18688 140 38656` | [ ] | [ ] | [ ] | [ ] |  |
+-| TIDAL_JUNGLE_FRINGE | 220 | (43,89) | 100.0% | `/tp @s 22272 90 45824` | [ ] | [ ] | [ ] | [ ] |  |
+-| MANGROVE_COAST | 230 | (32,89) | 55.4% | `/tp @s 16640 80 45824` | [ ] | [ ] | [ ] | [ ] |  |
+-| FRESHWATER_FEN | 240 | (absent) | 0.0% | `(biome not present)` | [ ] | [ ] | [ ] | [ ] |  |
++| COASTAL_HEATH | 10 | (36,7) | 100.0% | `/tp @s 18688 90 3840` | [x] | [x] | [x] | [x] |  |
++| TEMPERATE_RAINFOREST | 20 | (19,23) | 100.0% | `/tp @s 9984 180 12032` | [x] | [x] | [x] | [x] |  |
++| BOREAL_TAIGA | 30 | (26,10) | 100.0% | `/tp @s 13568 200 5376` | [x] | [x] | [x] | [x] |  |
++| SNOWY_BOREAL_TAIGA | 35 | (26,20) | 100.0% | `/tp @s 13568 220 10496` | [x] | [x] | [x] | [x] |  |
++| BOREAL_ALPINE | 40 | (86,51) | 100.0% | `/tp @s 44288 250 26368` | [x] | [x] | [x] | [x] |  |
++| ARCTIC_TUNDRA | 50 | (32,10) | 100.0% | `/tp @s 16640 180 5376` | [x] | [x] | [x] | [x] |  |
++| FROZEN_FLATS | 55 | (31,3) | 100.0% | `/tp @s 16128 160 1792` | [x] | [x] | [x] | [x] |  |
++| TEMPERATE_DECIDUOUS | 60 | (41,35) | 100.0% | `/tp @s 21248 180 18176` | [x] | [x] | [x] | [x] |  |
++| RAINFOREST_COAST | 70 | (14,50) | 99.6% | `/tp @s 7424 90 25856` | [x] | [x] | [x] | [x] |  |
++| RIPARIAN_WOODLAND | 80 | (absent) | 0.0% | `(biome not present)` | [ ] | [ ] | [ ] | [ ] | absent from world |
++| DRY_OAK_SAVANNA | 90 | (33,49) | 100.0% | `/tp @s 17152 130 25344` | [x] | [x] | [x] | [x] |  |
++| KARST_BARRENS | 100 | (34,9) | 100.0% | `/tp @s 17664 160 4864` | [x] | [x] | [x] | [x] |  |
++| BIRCH_FOREST | 110 | (20,36) | 100.0% | `/tp @s 10496 180 18688` | [x] | [x] | [x] | [x] |  |
++| EASTERN_TEMPERATE_COAST | 115 | (72,92) | 50.4% | `/tp @s 37120 90 47360` | [x] | [x] | [x] | [x] |  |
++| MIXED_FOREST | 120 | (50,48) | 100.0% | `/tp @s 25856 200 24832` | [x] | [x] | [x] | [x] |  |
++| CONTINENTAL_STEPPE | 130 | (38,11) | 100.0% | `/tp @s 19712 140 5888` | [x] | [x] | [x] | [x] |  |
++| DRY_PINE_BARRENS | 140 | (92,50) | 100.0% | `/tp @s 47360 140 25856` | [x] | [x] | [x] | [x] |  |
++| SCRUBBY_HEATHLAND | 150 | (86,78) | 100.0% | `/tp @s 44288 140 40192` | [x] | [x] | [x] | [x] |  |
++| LUSH_RAINFOREST_COAST | 160 | (11,64) | 100.0% | `/tp @s 5888 90 33024` | [x] | [x] | [x] | [x] |  |
++| SAND_DUNE_DESERT | 170 | (17,66) | 100.0% | `/tp @s 8960 120 34048` | [x] | [x] | [x] | [x] |  |
++| DESERT_STEPPE_TRANSITION | 190 | (18,62) | 100.0% | `/tp @s 9472 120 32000` | [x] | [x] | [x] | [x] |  |
++| SEMI_ARID_SHRUBLAND | 200 | (86,75) | 100.0% | `/tp @s 44288 140 38656` | [x] | [x] | [x] | [x] |  |
++| DRY_WOODLAND_MAQUIS | 210 | (36,75) | 100.0% | `/tp @s 18688 140 38656` | [x] | [x] | [x] | [x] |  |
++| TIDAL_JUNGLE_FRINGE | 220 | (43,89) | 100.0% | `/tp @s 22272 90 45824` | [x] | [x] | [x] | [x] |  |
++| MANGROVE_COAST | 230 | (32,89) | 55.4% | `/tp @s 16640 80 45824` | [x] | [x] | [x] | [x] |  |
++| FRESHWATER_FEN | 240 | (absent) | 0.0% | `(biome not present)` | [ ] | [ ] | [ ] | [ ] | absent from world |
+ 
+ ## Legend
+ - **Visually OK**: overall in-world first impression matches the intent.
+diff --git a/schematic_index.json b/schematic_index.json
+index 4ab03f3..306f922 100644
+--- a/schematic_index.json
++++ b/schematic_index.json
+@@ -2984,66 +2984,6 @@
+       "lowest_leaf_y": 0,
+       "anchor_review": false
+     },
+-    {
+-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_cpalm_a_sm.schematic",
+-      "type": "tree",
+-      "species": "cpalm",
+-      "variant": "a",
+-      "size": "sm",
+-      "weight": 3,
+-      "anchor_y": 0,
+-      "inset_depth": 0,
+-      "lowest_leaf_y": 5,
+-      "anchor_review": false
+-    },
+-    {
+-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_cpalm_b_sm.schematic",
+-      "type": "tree",
+-      "species": "cpalm",
+-      "variant": "b",
+-      "size": "sm",
+-      "weight": 3,
+-      "anchor_y": 0,
+-      "inset_depth": 0,
+-      "lowest_leaf_y": 10,
+-      "anchor_review": false
+-    },
+-    {
+-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_cpalm_c_md.schematic",
+-      "type": "tree",
+-      "species": "cpalm",
+-      "variant": "c",
+-      "size": "md",
+-      "weight": 2,
+-      "anchor_y": 0,
+-      "inset_depth": 0,
+-      "lowest_leaf_y": 4,
+-      "anchor_review": false
+-    },
+-    {
+-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_cpalm_d_md.schematic",
+-      "type": "tree",
+-      "species": "cpalm",
+-      "variant": "d",
+-      "size": "md",
+-      "weight": 2,
+-      "anchor_y": 0,
+-      "inset_depth": 0,
+-      "lowest_leaf_y": 5,
+-      "anchor_review": false
+-    },
+-    {
+-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_cpalm_e_lg.schematic",
+-      "type": "tree",
+-      "species": "cpalm",
+-      "variant": "e",
+-      "size": "lg",
+-      "weight": 1,
+-      "anchor_y": 0,
+-      "inset_depth": 0,
+-      "lowest_leaf_y": 13,
+-      "anchor_review": false
+-    },
+     {
+       "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_kapok_a_lg.schematic",
+       "type": "tree",
+diff --git a/tools/terrain_preview.py b/tools/terrain_preview.py
+index 037e48c..1fda264 100644
+--- a/tools/terrain_preview.py
++++ b/tools/terrain_preview.py
+@@ -63,15 +63,33 @@ CANVAS_SIZE  = DISPLAY_SIZE * GRID_N   # 768×768
+ # ---------------------------------------------------------------------------
+ # Height LUT  (Gaea 16-bit → MC Y)
+ # ---------------------------------------------------------------------------
++_DEFAULT_GAEA_IN  = [0, 17050, 45000, 65496]
++_DEFAULT_MC_Y_OUT = [-64,   63,   200,   448]
++
++
+ def _build_lut() -> np.ndarray:
+     # NORMAL polarity: LOW raw = deep ocean, HIGH raw = high terrain.
+-    # Confirmed Session 13: ocean pixels have low raw values (<17050), so the
+-    # previously-used inverted curve (raw 0 → Y 448) made ocean appear as
+-    # mountain peaks in the cross-section.  Matches step0_output.json spline.
+-    gaea_in  = np.array([0,   17050, 45000, 65496], dtype=np.float64)
+-    mc_y_out = np.array([-64,    63,   200,   448], dtype=np.float64)
++    # Reads terrain_spline from config/thresholds.json at module load so the
++    # cross-section panel reflects the current spline (matches the pipeline's
++    # column_generator behavior post-S84). Falls back to legacy hardcoded
++    # values if config can't be read.
++    gaea_in_list, mc_y_out_list = _DEFAULT_GAEA_IN, _DEFAULT_MC_Y_OUT
++    try:
++        import json as _json
++        from pathlib import Path as _Path
++        cfg_path = _Path(__file__).resolve().parent.parent / "config" / "thresholds.json"
++        if cfg_path.exists():
++            with open(cfg_path) as _f:
++                _cfg = _json.load(_f)
++            _sp = _cfg.get("terrain_spline", {})
++            gaea_in_list  = _sp.get("gaea_in",  _DEFAULT_GAEA_IN)
++            mc_y_out_list = _sp.get("mc_y_out", _DEFAULT_MC_Y_OUT)
++    except Exception:
++        pass
++    gaea_in  = np.array(gaea_in_list,  dtype=np.float64)
++    mc_y_out = np.array(mc_y_out_list, dtype=np.float64)
+     lut = np.interp(np.arange(65536, dtype=np.float64), gaea_in, mc_y_out)
+-    return np.clip(lut, -64, 448).astype(np.int16)
++    return np.clip(lut, -64, 703).astype(np.int16)
+ 
+ _LUT = _build_lut()
+ 
+@@ -105,8 +123,8 @@ def _surface_height_rgba(surface_y: np.ndarray) -> np.ndarray:
+     y = surface_y.astype(np.float32)
+     # Below sea level: Y in [-64, 63] → norm in [0.0, 0.22]
+     ocean_norm = np.clip((y - (-64.0)) / (63.0 - (-64.0)), 0.0, 1.0) * 0.22
+-    # Above sea level: Y in [63, 448] → norm in [0.22, 1.0]
+-    land_norm  = 0.22 + np.clip((y - 63.0) / (448.0 - 63.0), 0.0, 1.0) * 0.78
++    # Above sea level: Y in [63, 703] → norm in [0.22, 1.0]
++    land_norm  = 0.22 + np.clip((y - 63.0) / (703.0 - 63.0), 0.0, 1.0) * 0.78
+     norm = np.where(y < 63.0, ocean_norm, land_norm)
+     rgba = (cm.terrain(norm) * 255).astype(np.uint8)
+     return rgba  # (H, W, 4)
+@@ -587,7 +605,7 @@ class CrossSectionPanel(QWidget):
+         ax = self._ax
+         ax.set_facecolor("#0a2040")
+         ax.set_xlim(0, 511)
+-        ax.set_ylim(-64, 448)
++        ax.set_ylim(-64, 703)
+         ax.tick_params(colors="#6688aa", labelsize=8)
+         for spine in ax.spines.values():
+             spine.set_edgecolor("#1a5276")
+@@ -739,7 +757,7 @@ class SplineEditorWidget(QWidget):
+         ax.cla()
+         ax.set_facecolor("#0a1a2e")
+         ax.set_xlim(0, 65535)
+-        ax.set_ylim(-64, 448)
++        ax.set_ylim(-64, 703)
+         ax.tick_params(colors="#6688aa", labelsize=7)
+         for spine in ax.spines.values():
+             spine.set_edgecolor("#1a3a5c")
+@@ -753,7 +771,7 @@ class SplineEditorWidget(QWidget):
+             gs = [p[0] for p in self._pts]
+             ys = [p[1] for p in self._pts]
+             xs_dense = np.linspace(0, 65535, 600)
+-            ys_dense = np.clip(PchipInterpolator(gs, ys)(xs_dense), -64, 448)
++            ys_dense = np.clip(PchipInterpolator(gs, ys)(xs_dense), -64, 703)
+             ax.plot(xs_dense, ys_dense, color="#4488cc", linewidth=1.5, zorder=3)
+ 
+         # Sea level reference lines
+@@ -827,7 +845,7 @@ class SplineEditorWidget(QWidget):
+                 # Add new point at cursor
+                 if event.xdata is not None and event.ydata is not None:
+                     new_g = int(np.clip(event.xdata, 1, 65534))
+-                    new_y = int(np.clip(event.ydata, -64, 448))
++                    new_y = int(np.clip(event.ydata, -64, 703))
+                     # Insert maintaining sorted order by gaea raw
+                     insert_at = len(self._pts)
+                     for i, (g, _) in enumerate(self._pts):
+@@ -844,7 +862,7 @@ class SplineEditorWidget(QWidget):
+                 from scipy.interpolate import PchipInterpolator
+                 gs = [p[0] for p in self._pts]
+                 ys = [p[1] for p in self._pts]
+-                mc_y = float(np.clip(PchipInterpolator(gs, ys)(event.xdata), -64, 448))
++                mc_y = float(np.clip(PchipInterpolator(gs, ys)(event.xdata), -64, 703))
+                 self._hover_vline.set_xdata([event.xdata])
+                 self._hover_hline.set_ydata([mc_y])
+                 self._hover_vline.set_alpha(0.45)
+@@ -866,7 +884,7 @@ class SplineEditorWidget(QWidget):
+         x_max = (gs[idx + 1] - 1) if idx < len(self._pts) - 1 else 65535
+ 
+         new_g = int(np.clip(event.xdata, x_min, x_max))
+-        new_y = int(np.clip(event.ydata, -64, 448))
++        new_y = int(np.clip(event.ydata, -64, 703))
+ 
+         # Lock X for first and last points
+         if idx == 0:
+@@ -1922,7 +1940,7 @@ class ControlPanel(QWidget):
+                 np.array(gaea_in,  dtype=np.float64),
+                 np.array(mc_y_out, dtype=np.float64),
+             ),
+-            -64, 448,
++            -64, 703,
+         ).astype(np.int16)
+         if self.on_ocean_changed:
+             # Reuse the ocean callback to trigger a cross-section refresh
+diff --git a/upscale_override_vectorized.py b/upscale_override_vectorized.py
+index 79457f4..6fbe7f5 100644
+--- a/upscale_override_vectorized.py
++++ b/upscale_override_vectorized.py
+@@ -49,7 +49,7 @@ POST_JITTER_SEED   = 137  # different seed from pre-jitter for independent noise
+ # Median at intermediate (16384) with kernel 17 ≈ same smoothing as kernel 51 at 50k,
+ # but runs in ~30 seconds instead of ~100 minutes.
+ INTERMEDIATE_RES  = 16384   # intermediate resolution for median filter
+-MEDIAN_KERNEL     = 17      # kernel at intermediate res (17 @ 16k ≈ 51 @ 50k)
++MEDIAN_KERNEL     = 9       # S70: dropped 17→9 to reduce centroid drift on thin painted rings (oasis offset fix)
+ 
+ # Contour smoothing — applied at source resolution before jitter/upscale.
+ CONTOUR_SMOOTH    = False   # DISABLED — median filter at 50k is more effective
+@@ -58,7 +58,7 @@ CONTOUR_MIN_PTS   = 20
+ 
+ # Alignment (from override_aligner.py interactive session)
+ FLIP_Z        = False   # toggled Session 25 — contour smooth pass corrected orientation
+-ALIGN_SCALE   = 1.01    # override covers 1% more world space; pre-crops source to 8192/1.01 px
++ALIGN_SCALE   = 1.00    # S70: was 1.01 — caused painted features to drift up to 500 blocks at world edges relative to lake/height which are 1:1 mapped
+ 
+ # Valid zone codes from OVERRIDE_BIOME_MAP
+ VALID_ZONES = [
+@@ -356,6 +356,88 @@ def main():
+             r1 = min(r0 + CHUNK_H, TARGET)
+             full[r0:r1] = lut[full[r0:r1]]
+ 
++    # ── Phase 4.5: Ocean-Y prune (S70) ──────────────────────────────────────
++    # Set zone codes to 0 wherever height < SEA_LEVEL.  Painted biome zones
++    # in ocean-Y pixels (e.g. EASTERN_TEMPERATE_COAST tile (72,92) had its
++    # painted zone underwater) get cleared so chunk_writer renders them as
++    # ocean.  Lithology not affected — build_lithology overlays
++    # lithology_region.png AFTER biome-derived lookup, painted lithology
++    # wins regardless.
++    SEA_LEVEL_RAW = 17050  # raw 16-bit threshold (= MC Y 63 per CLAUDE.md)
++    HEIGHT_PATH = Path(r"C:\Users\nicho\minecraft-worldgen\masks\height.tif")
++    if HEIGHT_PATH.exists():
++        print(f"Phase 4.5: Pruning ocean-Y zones to 0 (SEA_LEVEL_RAW={SEA_LEVEL_RAW})...")
++        cleared_total = 0
++        with rasterio.open(HEIGHT_PATH) as hsrc:
++            for r0 in range(0, TARGET, CHUNK_H):
++                r1 = min(r0 + CHUNK_H, TARGET)
++                win = Window(col_off=0, row_off=r0, width=TARGET, height=r1-r0)
++                h = hsrc.read(1, window=win)
++                ocean_mask = h < SEA_LEVEL_RAW
++                ocean_with_zone = ocean_mask & (full[r0:r1] != 0)
++                cleared_total += int(ocean_with_zone.sum())
++                full[r0:r1][ocean_mask] = 0
++        print(f"  cleared {cleared_total:,} ocean-Y pixels with painted zones -> 0")
++    else:
++        print(f"Phase 4.5: SKIPPED — height.tif not found at {HEIGHT_PATH}")
++
++    # ── Phase 4.6: Coastal-zone repaint (S70) ───────────────────────────────
++    # Override Studio's land-clamp can leave a 1-3 block coastal sliver
++    # holding leftover old paint that the user's recent paint didn't
++    # overwrite.  Repaint those slivers with the dominant zone of nearby
++    # inland pixels via a strip-based distance-transform fill.
++    # Coastal biomes (mangrove, beach edges, etc.) are preserved as-is.
++    print(f"Phase 4.6: Coastal-zone repaint (24-block band)...")
++    from scipy.ndimage import binary_erosion, distance_transform_edt
++
++    COASTAL_WIDTH = 32  # blocks at 50k = 1:1 scale
++    # Zone codes that should NOT be repainted because they're legitimately
++    # coastal biomes:
++    # 10  COASTAL_HEATH
++    # 70  RAINFOREST_COAST
++    # 115 EASTERN_TEMPERATE_COAST
++    # 160 LUSH_RAINFOREST_COAST
++    # 220 TIDAL_JUNGLE_FRINGE
++    # 230 MANGROVE_COAST
++    COASTAL_PRESERVE_ZONES = np.array([10, 70, 115, 160, 220, 230],
++                                       dtype=np.uint8)
++
++    STRIP_H_COAST = 1000  # narrow strips to keep DT alloc under ~500MB peak
++    overlap_coast = COASTAL_WIDTH + 8  # safety margin
++    repainted_total = 0
++    for strip_y0 in range(0, TARGET, STRIP_H_COAST):
++        strip_y1 = min(TARGET, strip_y0 + STRIP_H_COAST)
++        ext_y0 = max(0, strip_y0 - overlap_coast)
++        ext_y1 = min(TARGET, strip_y1 + overlap_coast)
++        strip = full[ext_y0:ext_y1].copy()
++
++        strip_land = strip > 0
++        if not strip_land.any():
++            continue
++        strip_eroded = binary_erosion(strip_land, iterations=COASTAL_WIDTH)
++        strip_preserve = np.isin(strip, COASTAL_PRESERVE_ZONES)
++        strip_filled = strip_eroded | strip_preserve
++        strip_repaint = strip_land & ~strip_filled
++        if not strip_repaint.any():
++            continue
++
++        # Distance-transform: for each non-filled pixel, find the (y,x) of
++        # the nearest filled pixel and copy that pixel's zone.
++        _, (iy, ix) = distance_transform_edt(~strip_filled, return_indices=True)
++        strip[strip_repaint] = strip[iy[strip_repaint], ix[strip_repaint]]
++
++        # Write back only the non-overlap core
++        write_y0 = strip_y0 - ext_y0
++        write_y1 = write_y0 + (strip_y1 - strip_y0)
++        new_core = strip[write_y0:write_y1]
++        diff = int((new_core != full[strip_y0:strip_y1]).sum())
++        repainted_total += diff
++        full[strip_y0:strip_y1] = new_core
++        print(f"  strip {strip_y0:>5}-{strip_y1:>5}: {diff:>9,} px repainted")
++        del strip, strip_land, strip_eroded, strip_preserve, strip_filled, strip_repaint, iy, ix
++        import gc as _gc; _gc.collect()
++    print(f"  total coastal repaint: {repainted_total:,} pixels")
++
+     # ── Phase 5: Write to BigTIFF ────────────────────────────────────────────
+     print("Phase 5: Writing BigTIFF...")
+     profile = dict(

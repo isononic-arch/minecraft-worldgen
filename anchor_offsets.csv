@@ -1,0 +1,293 @@
+file,anchor_y,inset_depth,lowest_leaf_y,method,review,notes,format,block_count
+birch_tree_dbirch_a_sm.schematic,0,0,6,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,65
+birch_tree_dbirch_b_sm.schematic,0,0,4,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,50
+birch_tree_dbirch_c_sm.schematic,0,0,5,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,79
+birch_tree_dbirch_d_md.schematic,0,0,4,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,56
+birch_tree_dbirch_e_md.schematic,0,0,5,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,83
+birch_tree_dbirch_f_lg.schematic,0,0,6,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,47
+birch_tree_dbirch_g_lg.schematic,0,0,4,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,68
+birch_tree_rowan_a_sm.schematic,0,0,2,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,38
+birch_tree_rowan_b_sm.schematic,0,0,3,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,28
+birch_tree_rowan_c_sm.schematic,0,0,3,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,21
+birch_tree_sbirch_a_sm.schematic,2,2,4,marker_below_trunk,False,"marker blocks at Y0–Y1, trunk starts Y2. sink 2 blocks.",classic,109
+birch_tree_sbirch_b_sm.schematic,3,3,5,marker_below_trunk,False,"marker blocks at Y0–Y2, trunk starts Y3. sink 3 blocks.",classic,115
+birch_tree_sbirch_c_sm.schematic,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,166
+birch_tree_sbirch_d_sm.schem,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,420
+birch_tree_sbirch_e_sm.schematic,2,2,7,marker_below_trunk,False,"marker blocks at Y0–Y1, trunk starts Y2. sink 2 blocks.",classic,105
+birch_tree_sbirch_f_md.schematic,3,3,8,marker_below_trunk,False,"marker blocks at Y0–Y2, trunk starts Y3. sink 3 blocks.",classic,129
+birch_tree_sbirch_g_md.schem,0,0,10,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,401
+birch_tree_sbirch_h_md.schem,0,0,12,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,737
+birch_tree_sbirch_i_md.schem,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,731
+birch_tree_sbirch_j_md.schem,0,0,11,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,844
+birch_tree_sbirch_k_lg.schem,0,0,13,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,966
+birch_tree_sbirch_l_lg.schem,0,0,14,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,990
+birch_tree_sbirch_m_lg.schem,0,0,15,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,971
+btaiga_tree_balfir_a_sm.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,274
+btaiga_tree_bspruce_a_sm.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,403
+btaiga_tree_bspruce_b_sm.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,638
+btaiga_tree_bspruce_c_sm.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,356
+btaiga_tree_bspruce_d_sm.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,263
+btaiga_tree_bspruce_e_sm.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,98
+btaiga_tree_bspruce_f_md.schematic,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,149
+btaiga_tree_bspruce_g_md.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,149
+btaiga_tree_bspruce_h_md.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,140
+btaiga_tree_bspruce_i_md.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,147
+btaiga_tree_bspruce_j_lg.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,202
+btaiga_tree_bspruce_k_lg.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,175
+btaiga_tree_bspruce_l_lg.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,128
+btaiga_tree_jpine_a_sm.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,454
+btaiga_tree_tamarack_a_sm.schematic,0,0,1,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,57
+btaiga_tree_wspruce_a_sm.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,382
+btaiga_tree_wspruce_b_lg.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,315
+bush_generic_a_sm.schematic,0,0,0,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,19
+bush_generic_b_sm.schematic,0,0,0,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,34
+bush_generic_c_sm.schematic,0,0,0,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,20
+bush_generic_d_md.schematic,0,0,0,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,32
+bush_generic_e_md.schematic,0,0,0,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,34
+bush_generic_f_md.schematic,0,0,0,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,16
+bush_generic_g_lg.schematic,0,0,0,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,29
+bush_generic_h_lg.schematic,0,0,0,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,34
+bush_generic_i_lg.schematic,0,0,0,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,49
+cstep_tree_steppep_a_sm.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,99
+cstep_tree_steppep_b_md.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,179
+cstep_tree_steppep_c_lg.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,172
+dosav_tree_soak_a_sm.schem,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,577
+dosav_tree_soak_b_sm.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,222
+dosav_tree_soak_c_md.schem,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,380
+dosav_tree_soak_d_md.schem,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,525
+dosav_tree_soak_e_lg.schem,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,439
+dosav_tree_soak_f_lg.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,246
+dpine_dead_pine_a_sm.schematic,0,0,15,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,47
+dpine_dead_pine_b_sm.schematic,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,21
+dpine_dead_pine_c_md.schematic,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,26
+dpine_dead_pine_d_md.schematic,0,0,20,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,96
+dpine_dead_pine_e_lg.schematic,0,0,17,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,63
+dpine_tree_pitchp_a_sm.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,47
+dpine_tree_pitchp_b_lg.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,32
+dpine_tree_ppine_a_sm.schem,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,125
+dpine_tree_ppine_b_sm.schem,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,288
+dpine_tree_ppine_c_sm.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,68
+dpine_tree_ppine_d_md.schem,0,0,12,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,502
+dpine_tree_ppine_e_md.schem,0,0,13,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,779
+dpine_tree_ppine_f_lg.schem,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,307
+dpine_tree_ppine_g_lg.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,28
+dpine_tree_scotsp_a_sm.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,22
+dpine_tree_scotsp_b_sm.schem,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,378
+dpine_tree_scotsp_c_md.schem,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,505
+dpine_tree_scotsp_d_md.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,94
+dpine_tree_scotsp_e_lg.schem,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,341
+dstep_tree_acacia_a_sm.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,156
+dstep_tree_acacia_b_sm.schem,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,185
+dstep_tree_acacia_c_sm.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,221
+dstep_tree_acacia_d_md.schem,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,223
+dstep_tree_acacia_e_md.schem,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,27
+dstep_tree_acacia_f_lg.schem,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,13
+dstep_tree_acacia_g_lg.schem,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,23
+lrfc_tree_banyan_a_lg.schem,0,0,13,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,1246
+lrfc_tree_banyan_b_lg.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,1868
+lrfc_tree_banyan_c_lg.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,1342
+lrfc_tree_banyan_d_lg.schematic,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,2221
+lrfc_tree_breadfruit_a_sm.schem,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,369
+lrfc_tree_breadfruit_b_lg.schem,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,338
+lrfc_tree_gfig_a_lg.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,1238
+lrfc_tree_gfig_b_lg.schematic,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,1243
+lrfc_tree_gfig_c_lg.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,778
+lrfc_tree_gfig_d_lg.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,826
+lrfc_tree_gfig_e_lg.schematic,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,1331
+lrfc_tree_gfig_f_lg.schematic,0,0,10,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,497
+lrfc_tree_hardwood_a_sm.schem,0,0,14,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,426
+lrfc_tree_hardwood_b_sm.schem,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,274
+lrfc_tree_hardwood_c_sm.schem,0,0,34,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,995
+lrfc_tree_hardwood_d_md.schem,0,0,28,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,1743
+lrfc_tree_hardwood_e_md.schem,0,0,17,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,1428
+lrfc_tree_hardwood_f_lg.schem,0,0,24,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,1374
+lrfc_tree_hardwood_g_lg.schem,0,0,12,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,783
+lrfc_tree_mpalm_a_sm.schematic,0,0,5,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,16
+lrfc_tree_mpalm_b_sm.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,51
+lrfc_tree_mpalm_c_md.schematic,0,0,0,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,25
+lrfc_tree_mpalm_d_md.schematic,0,0,0,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,17
+lrfc_tree_mpalm_e_lg.schematic,0,0,0,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,20
+lrfc_tree_rfpalm_a_sm.schematic,0,0,11,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,104
+lrfc_tree_rfpalm_b_sm.schematic,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,99
+lrfc_tree_rfpalm_c_sm.schematic,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,147
+lrfc_tree_rfpalm_d_md.schematic,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,232
+lrfc_tree_rfpalm_e_md.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,202
+lrfc_tree_rfpalm_f_md.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,55
+lrfc_tree_rfpalm_g_lg.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,113
+lrfc_tree_rfpalm_h_lg.schematic,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,129
+mangr_tree_bmang_a_sm.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,977
+mangr_tree_bmang_b_lg.schematic,0,0,0,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,1142
+mangr_tree_mangsm_a_sm.schematic,0,0,0,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,281
+mangr_tree_mangsm_b_sm.schematic,0,0,0,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,161
+mangr_tree_mangsm_c_sm.schematic,0,0,0,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,182
+mangr_tree_mangsm_d_sm.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,186
+mangr_tree_mangsm_e_sm.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,175
+mangr_tree_mangsm_f_sm.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,424
+mangr_tree_mangsm_g_sm.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,776
+mangr_tree_mroot_a_sm.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,24
+mangr_tree_mroot_b_sm.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,30
+mangr_tree_mroot_c_sm.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,31
+mangr_tree_mroot_d_sm.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,27
+mangr_tree_mroot_e_sm.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,51
+mangr_tree_mroot_f_md.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,58
+mangr_tree_mroot_g_md.schematic,0,0,0,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,66
+mangr_tree_mroot_h_md.schematic,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,14
+mangr_tree_mroot_i_md.schematic,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,16
+mangr_tree_mroot_j_md.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,11
+mangr_tree_mroot_k_lg.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,11
+mangr_tree_mroot_l_lg.schematic,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,12
+mangr_tree_mroot_m_lg.schematic,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,10
+mangr_tree_rmang_a_sm.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,233
+mangr_tree_rmang_b_lg.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,1974
+mangr_tree_rmangsm_a_sm.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,476
+mangr_tree_rmangsm_b_sm.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,636
+mangr_tree_wmang_a_sm.schematic,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,124
+maquis_tree_apine_a_sm.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,97
+maquis_tree_apine_b_sm.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,55
+maquis_tree_apine_c_md.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,49
+maquis_tree_apine_d_lg.schem,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,205
+maquis_tree_carob_a_sm.schem,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,289
+maquis_tree_carob_b_lg.schem,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,288
+maquis_tree_hoak_a_sm.schem,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,652
+maquis_tree_hoak_b_md.schem,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,607
+maquis_tree_hoak_c_lg.schem,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,1232
+maquis_tree_olive_a_sm.schem,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,735
+maquis_tree_olive_b_md.schem,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,829
+maquis_tree_olive_c_lg.schem,0,0,10,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,730
+rfc_tree_cpalm_a_sm.schematic,0,0,5,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,35
+rfc_tree_cpalm_b_sm.schematic,0,0,10,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,36
+rfc_tree_cpalm_c_md.schematic,0,0,4,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,37
+rfc_tree_cpalm_d_md.schematic,0,0,5,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,37
+rfc_tree_cpalm_e_lg.schematic,0,0,13,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,45
+rfc_tree_kapok_a_lg.schematic,2,2,7,marker_below_trunk,False,"marker blocks at Y0–Y1, trunk starts Y2. sink 2 blocks.",classic,304
+rfc_tree_teak_a_sm.schematic,0,0,14,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,207
+rfc_tree_teak_b_sm.schem,0,0,18,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,72
+rfc_tree_teak_c_md.schem,0,0,19,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,73
+rfc_tree_teak_d_lg.schem,0,0,17,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,68
+rfc_tree_tfig_a_sm.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,677
+rfc_tree_tfig_b_lg.schem,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,1078
+ripar_dead_willow_a_sm.schematic,0,0,0,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,234
+ripar_tree_alder_a_sm.schem,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,506
+ripar_tree_alder_b_sm.schem,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,593
+ripar_tree_alder_c_md.schem,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,358
+ripar_tree_alder_d_md.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,101
+ripar_tree_alder_e_lg.schem,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,105
+ripar_tree_alder_f_lg.schem,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,1002
+ripar_tree_cwillow_a_sm.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,219
+ripar_tree_cwillow_b_sm.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,746
+ripar_tree_cwillow_c_sm.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,658
+ripar_tree_cwillow_d_md.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,794
+ripar_tree_cwillow_e_md.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,626
+ripar_tree_cwillow_f_md.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,464
+ripar_tree_cwillow_g_lg.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,420
+ripar_tree_cwillow_h_lg.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,489
+ripar_tree_poplar_a_sm.schem,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,924
+ripar_tree_poplar_b_md.schem,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,1086
+ripar_tree_poplar_c_lg.schem,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,514
+ripar_tree_willow_a_sm.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,814
+ripar_tree_willow_b_sm.schematic,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,778
+ripar_tree_willow_c_sm.schematic,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,718
+ripar_tree_willow_d_md.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,442
+ripar_tree_willow_e_md.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,456
+ripar_tree_willow_f_lg.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,596
+ripar_tree_willow_g_lg.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,750
+ripar_tree_willow_h_lg.schem,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,1292
+ripar_tree_wwillow_a_sm.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,1531
+ripar_tree_wwillow_b_lg.schematic,0,0,0,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,1742
+sarid_tree_juniper_a_sm.schem,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,94
+sarid_tree_juniper_b_sm.schem,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,174
+sarid_tree_juniper_c_sm.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,84
+sarid_tree_juniper_d_md.schem,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,84
+sarid_tree_juniper_e_md.schem,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,50
+sarid_tree_juniper_f_lg.schem,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,57
+sarid_tree_juniper_g_lg.schem,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,64
+sarid_tree_pinon_a_sm.schem,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,92
+sarid_tree_pinon_b_sm.schem,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,128
+sarid_tree_pinon_c_md.schem,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,107
+sarid_tree_pinon_d_md.schem,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,104
+sarid_tree_pinon_e_lg.schem,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,164
+sarid_tree_pinon_f_lg.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,47
+sbtaiga_tree_kfir_a_sm.schematic,0,0,1,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,22
+sbtaiga_tree_kfir_b_sm.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,16
+sbtaiga_tree_kfir_c_sm.schematic,0,0,1,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,17
+sbtaiga_tree_kfir_d_sm.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,10
+sbtaiga_tree_kfir_e_sm.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,15
+sbtaiga_tree_kfir_f_sm.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,20
+sbtaiga_tree_kfir_g_sm.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,22
+sbtaiga_tree_kspruce_a_sm.schematic,0,0,1,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,23
+sbtaiga_tree_kspruce_b_sm.schematic,0,0,1,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,33
+sbtaiga_tree_kspruce_c_sm.schematic,0,0,1,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,47
+sbtaiga_tree_salfir_a_sm.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,176
+sbtaiga_tree_salfir_b_sm.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,102
+sbtaiga_tree_salfir_c_sm.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,226
+sbtaiga_tree_salfir_d_sm.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,43
+sbtaiga_tree_salfir_e_sm.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,75
+sbtaiga_tree_salfir_f_sm.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,171
+sbtaiga_tree_salfir_g_md.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,61
+sbtaiga_tree_salfir_h_md.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,191
+sbtaiga_tree_salfir_i_md.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,156
+sbtaiga_tree_salfir_j_md.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,958
+sbtaiga_tree_salfir_k_md.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,226
+sbtaiga_tree_salfir_l_md.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,133
+sbtaiga_tree_salfir_m_lg.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,79
+sbtaiga_tree_salfir_n_lg.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,263
+sbtaiga_tree_salfir_o_lg.schematic,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,127
+sbtaiga_tree_salfir_p_lg.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,43
+sbtaiga_tree_spruce_a_sm.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,863
+sbtaiga_tree_spruce_b_md.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,614
+sbtaiga_tree_spruce_c_lg.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,193
+tdec_dead_oak_a_sm.schematic,0,0,12,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,117
+tdec_dead_oak_b_sm.schematic,0,0,10,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,114
+tdec_dead_oak_c_md.schematic,0,0,19,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,309
+tdec_dead_oak_d_lg.schematic,0,0,12,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,132
+tdec_tree_ash_a_sm.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,469
+tdec_tree_ash_b_sm.schem,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,382
+tdec_tree_ash_c_md.schem,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,480
+tdec_tree_ash_d_lg.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,216
+tdec_tree_beech_a_sm.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,383
+tdec_tree_cherry_a_sm.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,98
+tdec_tree_cherry_b_lg.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,305
+tdec_tree_eoak_a_sm.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,397
+tdec_tree_hornbeam_a_sm.schematic,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,241
+tdec_tree_lime_a_sm.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,266
+tdec_tree_lime_b_md.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,137
+tdec_tree_lime_c_lg.schematic,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,195
+tjf_tree_cfig_a_sm.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,936
+tjf_tree_cfig_b_lg.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,1390
+train_tree_cedar_a_sm.schem,0,0,12,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,239
+train_tree_cedar_b_sm.schem,0,0,12,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,178
+train_tree_cedar_c_sm.schematic,0,0,8,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,52
+train_tree_cedar_d_md.schem,0,0,3,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,275
+train_tree_cedar_e_md.schematic,0,0,6,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,36
+train_tree_cedar_f_md.schem,0,0,1,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,220
+train_tree_cedar_g_lg.schematic,0,0,9,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,45
+train_tree_cedar_h_lg.schematic,0,0,5,no_trunk_lowest_solid,False,no log blocks found — likely bush/dead. anchor=lowest block.,classic,43
+train_tree_dfir_a_sm.schematic,0,0,14,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,189
+train_tree_dfir_b_sm.schematic,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,190
+train_tree_dfir_c_md.schematic,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,184
+train_tree_dfir_d_lg.schematic,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,136
+train_tree_hemlock_a_sm.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,185
+train_tree_hemlock_b_sm.schem,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,267
+train_tree_hemlock_c_sm.schem,0,0,4,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,244
+train_tree_hemlock_d_sm.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,230
+train_tree_hemlock_e_md.schem,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,270
+train_tree_hemlock_f_md.schem,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,286
+train_tree_hemlock_g_md.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,141
+train_tree_hemlock_h_lg.schem,0,0,2,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,121
+train_tree_hemlock_i_lg.schem,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,310
+train_tree_maple_a_sm.schematic,0,0,6,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,584
+train_tree_maple_b_sm.schem,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,744
+train_tree_maple_c_md.schem,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,563
+train_tree_maple_d_lg.schem,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,sponge_v2,551
+train_tree_sitka_a_sm.schematic,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,120
+train_tree_sitka_b_sm.schematic,0,0,7,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,110
+train_tree_sitka_c_sm.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,117
+train_tree_sitka_d_sm.schematic,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,224
+train_tree_sitka_e_sm.schematic,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,137
+train_tree_sitka_f_md.schematic,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,129
+train_tree_sitka_g_md.schematic,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,79
+train_tree_sitka_h_md.schematic,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,86
+train_tree_sitka_i_md.schematic,0,0,5,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,88
+train_tree_sitka_j_lg.schematic,0,0,12,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,151
+train_tree_sitka_k_lg.schematic,0,0,9,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,88
+train_tree_sitka_l_lg.schematic,0,0,8,trunk_at_bottom,False,trunk starts at Y0 with nothing below — place flush.,classic,89

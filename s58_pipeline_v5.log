@@ -1,0 +1,48 @@
+[pipeline] Pipeline start: 2 tiles, 4 workers, dry_run=False
+[pipeline]   config:      C:\Users\nicho\minecraft-worldgen\.claude\worktrees\competent-dijkstra\config\thresholds.json
+[pipeline]   masks:       C:\Users\nicho\minecraft-worldgen\masks
+[pipeline]   schem_index: C:\Users\nicho\minecraft-worldgen\schematic_index.json
+[pipeline]   output:      C:\Users\nicho\minecraft-worldgen\output_s58
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+{"type": "tile_start", "tile_x": 25, "tile_y": 80}
+[pipeline] tile (25,80) ERROR: MemoryError: Unable to allocate 2.00 MiB for an array with shape (512, 512) and data type float64
+[pipeline] concurrent.futures.process._RemoteTraceback: 
+"""
+Traceback (most recent call last):
+  File "C:\Users\nicho\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\process.py", line 254, in _process_worker
+    r = call_item.fn(*call_item.args, **call_item.kwargs)
+  File "C:\Users\nicho\minecraft-worldgen\.claude\worktrees\competent-dijkstra\run_pipeline.py", line 330, in _process_tile
+    surface_blk, sub_blk, ground_cover = core_decorator.decorate_surface(
+                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        surface_y    = surface_y,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<16 lines>...
+        biome_grid_padded = biome_grid_padded,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nicho\minecraft-worldgen\.claude\worktrees\competent-dijkstra\core\surface_decorator.py", line 843, in decorate_surface
+    noise_b2 = _noise_tile(den_gen, H, W, px_off + 31337, py_off + 71193,
+                           scale=bm_cfg["noise_scale"], octaves=2)
+  File "C:\Users\nicho\minecraft-worldgen\.claude\worktrees\competent-dijkstra\core\surface_decorator.py", line 560, in _noise_tile
+    accumulated += raw * amplitude
+                   ~~~~^~~~~~~~~~~
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 2.00 MiB for an array with shape (512, 512) and data type float64
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\nicho\minecraft-worldgen\.claude\worktrees\competent-dijkstra\run_pipeline.py", line 599, in main
+    result = future.result()
+  File "C:\Users\nicho\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\_base.py", line 443, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nicho\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\_base.py", line 395, in __get_result
+    raise self._exception
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 2.00 MiB for an array with shape (512, 512) and data type float64
+
+{"type": "tile_error", "tile_x": 25, "tile_y": 80, "error": "MemoryError: Unable to allocate 2.00 MiB for an array with shape (512, 512) and data type float64"}

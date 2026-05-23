@@ -46,7 +46,7 @@ from core.eco_gradients import compute_cliff_deg
 
 # ── Constants (locked) ────────────────────────────────────────────────────────
 MC_Y_MIN   = -64
-MC_Y_MAX   = 448
+MC_Y_MAX   = 704   # S84: 448 -> 704 (768-block world, 48 sections)
 SEA_LEVEL  = 63
 BEDROCK_Y  = MC_Y_MIN  # -64
 
@@ -74,8 +74,9 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
         ("snow_block",  "dirt",        "altitude"),
     ],
     "SNOWY_BOREAL_TAIGA": [
+        # S84: powder_snow removed (pest block) — both variants snow_block now
         ("snow_block",  "dirt",        "base"),
-        ("powder_snow", "dirt",        "noise"),
+        ("snow_block",  "dirt",        "noise"),
     ],
     # "ALPINE_MEADOW" retired S56 — zone inherits nearest non-alpine biome
     "ARCTIC_TUNDRA": [
@@ -84,9 +85,12 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
         ("gravel",      "stone",       "noise"),
     ],
     "FROZEN_FLATS": [
-        ("snow_block",  "dirt",        "base"),
+        # S85: base swapped snow_block -> coarse_dirt so foliage can survive.
+        # Snow visual now via _apply_snow_carpet (snow[layers=1]) on GC layer.
+        # Sparse ice patches retained for bleached-tundra variety.
+        ("coarse_dirt", "dirt",        "base"),
         ("ice",         "dirt",        "moisture"),
-        ("powder_snow", "dirt",        "noise"),
+        ("packed_mud",  "dirt",        "noise"),
     ],
     "TEMPERATE_DECIDUOUS": [
         ("grass_block", "dirt",        "base"),
@@ -792,28 +796,47 @@ import numpy as np
 
 # These constants must match column_generator.py
 MC_Y_MIN   = -64
-MC_Y_MAX   =  448
+MC_Y_MAX   =  704   # S84: 448 -> 704 (768-block world, 48 sections)
 SEA_LEVEL  =   63
 BEDROCK_Y  =  -64
-Y_RANGE    =  512   # MC_Y_MAX - MC_Y_MIN + 1  = 512... wait 448-(-64)+1=513
-# Actually Y_RANGE = 448 - (-64) + 1 = 513, but chunk_writer uses 512
+Y_RANGE    =  768   # S84: was 512; MC_Y_MAX - MC_Y_MIN = 768
+# 48 chunk sections (Y_RANGE / 16 = 48), matches chunk_writer.N_SECTIONS
 # Check column_generator constants:
-_Y_RANGE   = MC_Y_MAX - MC_Y_MIN  # = 512  (exclusive top)
+_Y_RANGE   = MC_Y_MAX - MC_Y_MIN  # S84: = 768 (exclusive top)
+
+
+_DEFAULT_GAEA_IN  = [0, 17050, 45000, 65496]
+_DEFAULT_MC_Y_OUT = [-64,   63,   200,   448]
 
 
 def _build_lut_vectorized() -> np.ndarray:
     """
     Build a 65536-entry LUT mapping raw 16-bit Gaea height → MC Y.
     Normal polarity (confirmed Session 13): HIGH raw = HIGH terrain.
-    Breakpoints (ascending gaea → ascending mc_y):
-        Gaea     0 → MC Y  -64  (ocean floor)
-        Gaea 17050 → MC Y   63  (sea level — MUST equal SEA_LEVEL exactly)
-        Gaea 45000 → MC Y  200
-        Gaea 65496 → MC Y  448  (peak terrain)
-    These values match config/thresholds.json terrain_spline and all display tools.
+
+    Reads terrain_spline from config/thresholds.json at module load time so
+    edits in config propagate to actual terrain heights. Falls back to the
+    legacy hardcoded breakpoints if the config file can't be read.
+
+    Pre-S84: spline was hardcoded here ([0, 17050, 45000, 65496] →
+    [-64, 63, 200, 448]) and ignored the config — terrain edits in config
+    had zero effect on rendered terrain. Fixed by reading the active spline.
     """
-    gaea_in  = np.array([0, 17050, 45000, 65496], dtype=np.float64)
-    mc_y_out = np.array([-64,   63,   200,   448], dtype=np.float64)
+    gaea_in_list, mc_y_out_list = _DEFAULT_GAEA_IN, _DEFAULT_MC_Y_OUT
+    try:
+        import json
+        from pathlib import Path
+        cfg_path = Path(__file__).resolve().parent.parent / "config" / "thresholds.json"
+        if cfg_path.exists():
+            with open(cfg_path) as _f:
+                _cfg = json.load(_f)
+            _sp = _cfg.get("terrain_spline", {})
+            gaea_in_list = _sp.get("gaea_in", _DEFAULT_GAEA_IN)
+            mc_y_out_list = _sp.get("mc_y_out", _DEFAULT_MC_Y_OUT)
+    except Exception:
+        pass
+    gaea_in  = np.array(gaea_in_list,  dtype=np.float64)
+    mc_y_out = np.array(mc_y_out_list, dtype=np.float64)
     lut = np.interp(np.arange(65536, dtype=np.float64), gaea_in, mc_y_out)
     return np.clip(lut, MC_Y_MIN + 4, MC_Y_MAX - 1).astype(np.int16)
 

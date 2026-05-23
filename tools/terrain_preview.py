@@ -63,15 +63,33 @@ CANVAS_SIZE  = DISPLAY_SIZE * GRID_N   # 768×768
 # ---------------------------------------------------------------------------
 # Height LUT  (Gaea 16-bit → MC Y)
 # ---------------------------------------------------------------------------
+_DEFAULT_GAEA_IN  = [0, 17050, 45000, 65496]
+_DEFAULT_MC_Y_OUT = [-64,   63,   200,   448]
+
+
 def _build_lut() -> np.ndarray:
     # NORMAL polarity: LOW raw = deep ocean, HIGH raw = high terrain.
-    # Confirmed Session 13: ocean pixels have low raw values (<17050), so the
-    # previously-used inverted curve (raw 0 → Y 448) made ocean appear as
-    # mountain peaks in the cross-section.  Matches step0_output.json spline.
-    gaea_in  = np.array([0,   17050, 45000, 65496], dtype=np.float64)
-    mc_y_out = np.array([-64,    63,   200,   448], dtype=np.float64)
+    # Reads terrain_spline from config/thresholds.json at module load so the
+    # cross-section panel reflects the current spline (matches the pipeline's
+    # column_generator behavior post-S84). Falls back to legacy hardcoded
+    # values if config can't be read.
+    gaea_in_list, mc_y_out_list = _DEFAULT_GAEA_IN, _DEFAULT_MC_Y_OUT
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+        cfg_path = _Path(__file__).resolve().parent.parent / "config" / "thresholds.json"
+        if cfg_path.exists():
+            with open(cfg_path) as _f:
+                _cfg = _json.load(_f)
+            _sp = _cfg.get("terrain_spline", {})
+            gaea_in_list  = _sp.get("gaea_in",  _DEFAULT_GAEA_IN)
+            mc_y_out_list = _sp.get("mc_y_out", _DEFAULT_MC_Y_OUT)
+    except Exception:
+        pass
+    gaea_in  = np.array(gaea_in_list,  dtype=np.float64)
+    mc_y_out = np.array(mc_y_out_list, dtype=np.float64)
     lut = np.interp(np.arange(65536, dtype=np.float64), gaea_in, mc_y_out)
-    return np.clip(lut, -64, 448).astype(np.int16)
+    return np.clip(lut, -64, 703).astype(np.int16)
 
 _LUT = _build_lut()
 
@@ -105,8 +123,8 @@ def _surface_height_rgba(surface_y: np.ndarray) -> np.ndarray:
     y = surface_y.astype(np.float32)
     # Below sea level: Y in [-64, 63] → norm in [0.0, 0.22]
     ocean_norm = np.clip((y - (-64.0)) / (63.0 - (-64.0)), 0.0, 1.0) * 0.22
-    # Above sea level: Y in [63, 448] → norm in [0.22, 1.0]
-    land_norm  = 0.22 + np.clip((y - 63.0) / (448.0 - 63.0), 0.0, 1.0) * 0.78
+    # Above sea level: Y in [63, 703] → norm in [0.22, 1.0]
+    land_norm  = 0.22 + np.clip((y - 63.0) / (703.0 - 63.0), 0.0, 1.0) * 0.78
     norm = np.where(y < 63.0, ocean_norm, land_norm)
     rgba = (cm.terrain(norm) * 255).astype(np.uint8)
     return rgba  # (H, W, 4)
@@ -587,7 +605,7 @@ class CrossSectionPanel(QWidget):
         ax = self._ax
         ax.set_facecolor("#0a2040")
         ax.set_xlim(0, 511)
-        ax.set_ylim(-64, 448)
+        ax.set_ylim(-64, 703)
         ax.tick_params(colors="#6688aa", labelsize=8)
         for spine in ax.spines.values():
             spine.set_edgecolor("#1a5276")
@@ -739,7 +757,7 @@ class SplineEditorWidget(QWidget):
         ax.cla()
         ax.set_facecolor("#0a1a2e")
         ax.set_xlim(0, 65535)
-        ax.set_ylim(-64, 448)
+        ax.set_ylim(-64, 703)
         ax.tick_params(colors="#6688aa", labelsize=7)
         for spine in ax.spines.values():
             spine.set_edgecolor("#1a3a5c")
@@ -753,7 +771,7 @@ class SplineEditorWidget(QWidget):
             gs = [p[0] for p in self._pts]
             ys = [p[1] for p in self._pts]
             xs_dense = np.linspace(0, 65535, 600)
-            ys_dense = np.clip(PchipInterpolator(gs, ys)(xs_dense), -64, 448)
+            ys_dense = np.clip(PchipInterpolator(gs, ys)(xs_dense), -64, 703)
             ax.plot(xs_dense, ys_dense, color="#4488cc", linewidth=1.5, zorder=3)
 
         # Sea level reference lines
@@ -827,7 +845,7 @@ class SplineEditorWidget(QWidget):
                 # Add new point at cursor
                 if event.xdata is not None and event.ydata is not None:
                     new_g = int(np.clip(event.xdata, 1, 65534))
-                    new_y = int(np.clip(event.ydata, -64, 448))
+                    new_y = int(np.clip(event.ydata, -64, 703))
                     # Insert maintaining sorted order by gaea raw
                     insert_at = len(self._pts)
                     for i, (g, _) in enumerate(self._pts):
@@ -844,7 +862,7 @@ class SplineEditorWidget(QWidget):
                 from scipy.interpolate import PchipInterpolator
                 gs = [p[0] for p in self._pts]
                 ys = [p[1] for p in self._pts]
-                mc_y = float(np.clip(PchipInterpolator(gs, ys)(event.xdata), -64, 448))
+                mc_y = float(np.clip(PchipInterpolator(gs, ys)(event.xdata), -64, 703))
                 self._hover_vline.set_xdata([event.xdata])
                 self._hover_hline.set_ydata([mc_y])
                 self._hover_vline.set_alpha(0.45)
@@ -866,7 +884,7 @@ class SplineEditorWidget(QWidget):
         x_max = (gs[idx + 1] - 1) if idx < len(self._pts) - 1 else 65535
 
         new_g = int(np.clip(event.xdata, x_min, x_max))
-        new_y = int(np.clip(event.ydata, -64, 448))
+        new_y = int(np.clip(event.ydata, -64, 703))
 
         # Lock X for first and last points
         if idx == 0:
@@ -1922,7 +1940,7 @@ class ControlPanel(QWidget):
                 np.array(gaea_in,  dtype=np.float64),
                 np.array(mc_y_out, dtype=np.float64),
             ),
-            -64, 448,
+            -64, 703,
         ).astype(np.int16)
         if self.on_ocean_changed:
             # Reuse the ocean callback to trigger a cross-section refresh

@@ -2985,66 +2985,6 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_cpalm_a_sm.schematic",
-      "type": "tree",
-      "species": "cpalm",
-      "variant": "a",
-      "size": "sm",
-      "weight": 3,
-      "anchor_y": 0,
-      "inset_depth": 0,
-      "lowest_leaf_y": 5,
-      "anchor_review": false
-    },
-    {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_cpalm_b_sm.schematic",
-      "type": "tree",
-      "species": "cpalm",
-      "variant": "b",
-      "size": "sm",
-      "weight": 3,
-      "anchor_y": 0,
-      "inset_depth": 0,
-      "lowest_leaf_y": 10,
-      "anchor_review": false
-    },
-    {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_cpalm_c_md.schematic",
-      "type": "tree",
-      "species": "cpalm",
-      "variant": "c",
-      "size": "md",
-      "weight": 2,
-      "anchor_y": 0,
-      "inset_depth": 0,
-      "lowest_leaf_y": 4,
-      "anchor_review": false
-    },
-    {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_cpalm_d_md.schematic",
-      "type": "tree",
-      "species": "cpalm",
-      "variant": "d",
-      "size": "md",
-      "weight": 2,
-      "anchor_y": 0,
-      "inset_depth": 0,
-      "lowest_leaf_y": 5,
-      "anchor_review": false
-    },
-    {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_cpalm_e_lg.schematic",
-      "type": "tree",
-      "species": "cpalm",
-      "variant": "e",
-      "size": "lg",
-      "weight": 1,
-      "anchor_y": 0,
-      "inset_depth": 0,
-      "lowest_leaf_y": 13,
-      "anchor_review": false
-    },
-    {
       "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_kapok_a_lg.schematic",
       "type": "tree",
       "species": "kapok",

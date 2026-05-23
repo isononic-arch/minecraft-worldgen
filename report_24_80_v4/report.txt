@@ -1,0 +1,25 @@
+============================================================
+  Vandir Step 13 — Test Tile Validation Report
+  Tile (24, 80)  |  elapsed: 285431 ms
+============================================================
+  PASS: 8  FAIL: 0  WARN: 2  SKIP: 0
+
+  ✅ [biome] biome_coverage: 2 biomes, land=100.0%, ocean=0.0%
+       detail: SAND_DUNE_DESERT:183388, SNOWY_BOREAL_TAIGA:78756
+  ✅ [terrain] surface_y_range: range [132, 252] within [-64, 448]
+  ⚠️ [hydrology] river_meta_consistency: No river pixels in this tile (river_meta all zero)
+  ✅ [surface_decoration] no_bare_dirt_surface: No bare dirt surface blocks on land
+  ✅ [surface_decoration] surface_block_variety: 9 distinct surface block types
+  ⚠️ [vegetation] schematic_placements: No schematic placements in this tile
+  ✅ [terrain] bedrock_layer: All Y=-64 pixels are bedrock
+  ✅ [terrain] water_fill: No sub-sea pixels in this tile (all above sea level)
+  ✅ [terrain] no_void_columns: 100-sample stone layer check passed
+  ✅ [terrain] column_profile: Bedrock=✓, surface=sand @ Y=180, stone present
+
+============================================================
+  Biome distribution:
+    SAND_DUNE_DESERT                     221839 px  (84.6%)
+    SNOWY_BOREAL_TAIGA                    40305 px  (15.4%)
+
+  Visual outputs written to: C:\Users\nicho\minecraft-worldgen\report_24_80_v4
+============================================================

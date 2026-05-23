@@ -57,19 +57,33 @@
   "terrain_spline": {
     "gaea_in": [
       0,
-      11602,
-      26921,
-      35435,
-      43437,
+      5000,
+      12000,
+      17050,
+      18000,
+      21000,
+      26000,
+      30000,
+      35000,
+      42000,
+      50000,
+      58000,
       65496
     ],
     "mc_y_out": [
       -64,
+      -45,
+      25,
       63,
-      120,
-      278,
-      398,
-      448
+      64,
+      78,
+      110,
+      145,
+      180,
+      360,
+      490,
+      610,
+      700
     ]
   },
   "ocean": {
@@ -448,7 +462,7 @@
     "ramp_blocks": 30
   },
   "sand_dune_smoothing": {
-    "_comment": "S69: Reverted to S67 intensity — the S68 crank (sigma=16 passes=6 buffer=36) was needed only to hide sharp Gaea dune geometry, which the new dune_flatten pass now handles at the source. Mountain interiors adjacent to biome boundaries no longer get smeared 36 blocks deep.",
+    "_comment": "S69: Reverted to S67 intensity \u00e2\u20ac\u201d the S68 crank (sigma=16 passes=6 buffer=36) was needed only to hide sharp Gaea dune geometry, which the new dune_flatten pass now handles at the source. Mountain interiors adjacent to biome boundaries no longer get smeared 36 blocks deep.",
     "enabled": true,
     "buffer_blocks": 24,
     "sigma": 8.0,
@@ -467,7 +481,7 @@
     "mask_dilation_blocks": 4
   },
   "sbt_mountaincap": {
-    "_comment": "S68: unified SBT dither — one decision drives both snow carpet AND biome tag. Pixels below min_y OR with noise<threshold in [min_y,max_y] get remapped to BOREAL_ALPINE (no snow, plains tag). Above max_y always SBT (snow, snowy_taiga tag).",
+    "_comment": "S68: unified SBT dither \u00e2\u20ac\u201d one decision drives both snow carpet AND biome tag. Pixels below min_y OR with noise<threshold in [min_y,max_y] get remapped to BOREAL_ALPINE (no snow, plains tag). Above max_y always SBT (snow, snowy_taiga tag).",
     "enabled": true,
     "min_y": 200,
     "max_y": 250,
@@ -3667,15 +3681,24 @@
           "smooth_basalt",
           "cobbled_deepslate"
         ],
-        "description": "Arid/semi-arid mafic \u2014 dune + steppe + karst margins. S60 renamed from 'sedimentary'."
+        "description": "Arid/semi-arid mafic \u2014 dune + steppe + karst margins. S60 renamed from sedimentary."
       },
       "temperate_basaltic": {
         "id": 3,
         "palette": [
-          "blackstone",
-          "coal_block"
+          "deepslate",
+          "deepslate",
+          "deepslate",
+          "deepslate",
+          "cobbled_deepslate",
+          "cobbled_deepslate",
+          "cobbled_deepslate",
+          "basalt",
+          "basalt",
+          "basalt",
+          "deepslate_coal_ore"
         ],
-        "description": "Extrusive mafic \u2014 coastal headlands, peaks. S60 renamed from 'basaltic'."
+        "description": "S84: dark metamorphic mix \u2014 deepslate-heavy (~36%) + cobbled_deepslate (~27%) + basalt (~27%) + rare deepslate_coal_ore (~9%). Coastal headland / temperate peak feel."
       },
       "limestone": {
         "id": 4,
@@ -3755,53 +3778,54 @@
     "_comment": "Phase 0.75 shadow_mode: smoke test (output discarded). Phase 2.0 feature_flag_enabled: when true, runs temperate cliff/talus/fluting layers and merges into surface_blocks. Legacy path preserved as fallback for unclaimed pixels."
   },
   "treelines": {
-    "_default": {
-      "y_top": 310,
-      "fade_blocks": 30
-    },
-    "BOREAL_TAIGA": {
-      "y_top": 280,
-      "fade_blocks": 30
-    },
-    "SNOWY_BOREAL_TAIGA": {
-      "y_top": 260,
-      "fade_blocks": 25
-    },
-    "BOREAL_ALPINE": {
-      "y_top": 250,
-      "fade_blocks": 25
-    },
-    "TEMPERATE_RAINFOREST": {
-      "y_top": 280,
-      "fade_blocks": 30
-    },
-    "MIXED_FOREST": {
-      "y_top": 280,
-      "fade_blocks": 30
-    },
-    "TEMPERATE_DECIDUOUS": {
-      "y_top": 270,
-      "fade_blocks": 30
-    },
-    "BIRCH_FOREST": {
-      "y_top": 270,
-      "fade_blocks": 30
-    },
+    "_comment": "S85: full rescale for 768-height world. Old values targeted 448-height. Proportional bump preserves S58 ecological ordering (BT/SBT highest mountain forest, BA krummholz/treeline, ARC_TUN scrub, FROZEN_FLATS sparsest).",
     "ARCTIC_TUNDRA": {
-      "y_top": 180,
-      "fade_blocks": 15
+      "y_top": 310,
+      "fade_blocks": 100
     },
     "FROZEN_FLATS": {
-      "y_top": 160,
-      "fade_blocks": 10
+      "y_top": 280,
+      "fade_blocks": 100
+    },
+    "BOREAL_ALPINE": {
+      "y_top": 430,
+      "fade_blocks": 100
+    },
+    "BOREAL_TAIGA": {
+      "y_top": 600,
+      "fade_blocks": 100
+    },
+    "SNOWY_BOREAL_TAIGA": {
+      "y_top": 600,
+      "fade_blocks": 100
+    },
+    "BIRCH_FOREST": {
+      "y_top": 460,
+      "fade_blocks": 100
+    },
+    "MIXED_FOREST": {
+      "y_top": 480,
+      "fade_blocks": 100
+    },
+    "TEMPERATE_DECIDUOUS": {
+      "y_top": 460,
+      "fade_blocks": 100
+    },
+    "TEMPERATE_RAINFOREST": {
+      "y_top": 480,
+      "fade_blocks": 100
     },
     "RIPARIAN_WOODLAND": {
-      "y_top": 210,
-      "fade_blocks": 25
+      "y_top": 360,
+      "fade_blocks": 100
     },
     "SAND_DUNE_DESERT": {
-      "y_top": 280,
-      "fade_blocks": 20
+      "y_top": 350,
+      "fade_blocks": 100
+    },
+    "_default": {
+      "y_top": 530,
+      "fade_blocks": 100
     }
   },
   "gaea_gaps": {
@@ -3822,5 +3846,38 @@
     "dusting_threshold_noise_seed": 44,
     "seed": 42,
     "blue_noise_size": 512
+  },
+  "_spline_revert_concavity": {
+    "note": "pre-concavity-tweak; restore by copying these into terrain_spline",
+    "gaea_in": [
+      0,
+      5000,
+      12000,
+      17050,
+      18000,
+      21000,
+      26000,
+      30000,
+      35000,
+      42000,
+      50000,
+      58000,
+      65496
+    ],
+    "mc_y_out": [
+      -64,
+      -45,
+      25,
+      63,
+      64,
+      78,
+      110,
+      145,
+      220,
+      360,
+      490,
+      610,
+      700
+    ]
   }
 }

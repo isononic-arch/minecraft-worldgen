@@ -1,0 +1,7 @@
+[pipeline] Pipeline start: 1 tiles, 1 workers, dry_run=False
+[pipeline]   config:      C:\Users\nicho\minecraft-worldgen\.claude\worktrees\competent-dijkstra\config\thresholds.json
+[pipeline]   masks:       C:\Users\nicho\minecraft-worldgen\masks
+[pipeline]   schem_index: C:\Users\nicho\minecraft-worldgen\schematic_index.json
+[pipeline]   output:      C:\Users\nicho\minecraft-worldgen\output_s58
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)

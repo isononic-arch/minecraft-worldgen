@@ -1,0 +1,44 @@
+{
+  "tile_x": 24,
+  "tile_z": 80,
+  "line": [
+    50,
+    50,
+    460,
+    460
+  ],
+  "y_range": [
+    97,
+    240
+  ],
+  "image_size": [
+    671,
+    317
+  ],
+  "blocks_seen": [
+    "andesite",
+    "bush",
+    "coarse_dirt",
+    "cobbled_deepslate",
+    "cornflower",
+    "dead_bush",
+    "deepslate",
+    "dirt",
+    "grass_block",
+    "gravel",
+    "orange_terracotta",
+    "red_sandstone",
+    "sand",
+    "sandstone",
+    "short_grass",
+    "smooth_sandstone",
+    "stone",
+    "terracotta",
+    "tuff"
+  ],
+  "pipeline_ms": 153121,
+  "total_seconds": 162.3,
+  "geology_enabled": true,
+  "phase": "1.75b",
+  "stub": false
+}

@@ -1,0 +1,15 @@
+[pipeline] Pipeline start: 2 tiles, 1 workers, dry_run=False
+[pipeline]   config:      C:\Users\nicho\minecraft-worldgen\.claude\worktrees\competent-dijkstra\config\thresholds.json
+[pipeline]   masks:       C:\Users\nicho\minecraft-worldgen\masks
+[pipeline]   schem_index: C:\Users\nicho\minecraft-worldgen\schematic_index.json
+[pipeline]   output:      C:\Users\nicho\minecraft-worldgen\output_s58
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+[chunk_writer] All chunks OK for r.24.80.mca
+{"type": "tile_start", "tile_x": 24, "tile_y": 80}
+{"type": "tile_complete", "tile_x": 24, "tile_y": 80, "biomes": ["SAND_DUNE_DESERT", "SNOWY_BOREAL_TAIGA"], "elapsed_ms": 529404}
+[chunk_writer] All chunks OK for r.25.80.mca
+{"type": "tile_start", "tile_x": 25, "tile_y": 80}
+{"type": "tile_complete", "tile_x": 25, "tile_y": 80, "biomes": ["ARCTIC_TUNDRA", "SNOWY_BOREAL_TAIGA"], "elapsed_ms": 634298}
+{"type": "pipeline_complete", "total_tiles": 2, "completed": 2, "errors": 0, "elapsed_s": 1165.0}
+[pipeline] Done: 2/2 tiles OK, 0 errors, 1165.0s

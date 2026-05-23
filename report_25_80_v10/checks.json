@@ -1,0 +1,70 @@
+{
+  "tile_x": 25,
+  "tile_z": 80,
+  "elapsed_ms": 596632,
+  "pass": 8,
+  "fail": 0,
+  "warn": 2,
+  "checks": [
+    {
+      "name": "biome_coverage",
+      "category": "biome",
+      "result": "PASS",
+      "message": "2 biomes, land=100.0%, ocean=0.0%"
+    },
+    {
+      "name": "surface_y_range",
+      "category": "terrain",
+      "result": "PASS",
+      "message": "range [159, 315] within [-64, 448]"
+    },
+    {
+      "name": "river_meta_consistency",
+      "category": "hydrology",
+      "result": "WARN",
+      "message": "No river pixels in this tile (river_meta all zero)"
+    },
+    {
+      "name": "no_bare_dirt_surface",
+      "category": "surface_decoration",
+      "result": "PASS",
+      "message": "No bare dirt surface blocks on land"
+    },
+    {
+      "name": "surface_block_variety",
+      "category": "surface_decoration",
+      "result": "PASS",
+      "message": "12 distinct surface block types"
+    },
+    {
+      "name": "schematic_placements",
+      "category": "vegetation",
+      "result": "WARN",
+      "message": "No schematic placements in this tile"
+    },
+    {
+      "name": "bedrock_layer",
+      "category": "terrain",
+      "result": "PASS",
+      "message": "All Y=-64 pixels are bedrock"
+    },
+    {
+      "name": "water_fill",
+      "category": "terrain",
+      "result": "PASS",
+      "message": "No sub-sea pixels in this tile (all above sea level)"
+    },
+    {
+      "name": "no_void_columns",
+      "category": "terrain",
+      "result": "PASS",
+      "message": "100-sample stone layer check passed"
+    },
+    {
+      "name": "column_profile",
+      "category": "terrain",
+      "result": "PASS",
+      "message": "Bedrock=\u2713, surface=podzol @ Y=278, stone present"
+    }
+  ]
+}

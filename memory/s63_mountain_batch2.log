@@ -1,0 +1,26 @@
+[pipeline] Pipeline start: 5 tiles, 2 workers, dry_run=False
+[pipeline]   config:      C:\Users\nicho\minecraft-worldgen\config\thresholds.json
+[pipeline]   masks:       C:\Users\nicho\minecraft-worldgen\masks
+[pipeline]   schem_index: C:\Users\nicho\minecraft-worldgen\schematic_index.json
+[pipeline]   output:      C:\Users\nicho\minecraft-worldgen\output
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+[chunk_writer] All chunks OK for r.21.46.mca
+{"type": "tile_start", "tile_x": 21, "tile_y": 46}
+{"type": "tile_complete", "tile_x": 21, "tile_y": 46, "biomes": ["BOREAL_ALPINE", "BOREAL_TAIGA", "MIXED_FOREST", "SNOWY_BOREAL_TAIGA", "TEMPERATE_DECIDUOUS"], "elapsed_ms": 712244}
+[chunk_writer] All chunks OK for r.87.73.mca
+{"type": "tile_start", "tile_x": 87, "tile_y": 73}
+{"type": "tile_complete", "tile_x": 87, "tile_y": 73, "biomes": ["_OCEAN"], "elapsed_ms": 140786}
+[chunk_writer] All chunks OK for r.37.22.mca
+{"type": "tile_start", "tile_x": 37, "tile_y": 22}
+{"type": "tile_complete", "tile_x": 37, "tile_y": 22, "biomes": ["BOREAL_TAIGA", "CONTINENTAL_STEPPE", "KARST_BARRENS", "MIXED_FOREST", "SNOWY_BOREAL_TAIGA"], "elapsed_ms": 885446}
+[chunk_writer] All chunks OK for r.18.45.mca
+{"type": "tile_start", "tile_x": 18, "tile_y": 45}
+{"type": "tile_complete", "tile_x": 18, "tile_y": 45, "biomes": ["BOREAL_ALPINE", "BOREAL_TAIGA", "MIXED_FOREST", "SNOWY_BOREAL_TAIGA", "TEMPERATE_RAINFOREST"], "elapsed_ms": 809665}
+[chunk_writer] All chunks OK for r.84.84.mca
+{"type": "tile_start", "tile_x": 84, "tile_y": 84}
+{"type": "tile_complete", "tile_x": 84, "tile_y": 84, "biomes": ["CONTINENTAL_STEPPE", "MIXED_FOREST", "RAINFOREST_COAST", "SAND_DUNE_DESERT", "SCRUBBY_HEATHLAND", "_OCEAN"], "elapsed_ms": 908797}
+{"type": "pipeline_complete", "total_tiles": 5, "completed": 5, "errors": 0, "elapsed_s": 1796.3}
+[pipeline] Done: 5/5 tiles OK, 0 errors, 1796.3s

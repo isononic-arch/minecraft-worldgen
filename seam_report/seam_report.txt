@@ -1,0 +1,36 @@
+========================================================================
+TILE SEAM CHECKER — VANDIR
+Height threshold : 4 blocks
+Seams checked    : 52
+ABOVE threshold  : 2
+below threshold  : 50
+Tile errors      : 0
+Elapsed          : 114.9s
+========================================================================
+
+── SEAMS ABOVE THRESHOLD (worst first) ─────────────────────────
+  Z-seam at tile ( 49, 46)  max=  11  mean=  5.55  biome_mismatch=0.0%
+  Z-seam at tile ( 57, 46)  max=   6  mean=  1.88  biome_mismatch=0.0%
+
+── Seams below threshold ─────────────────────────────────────
+  X-seam at tile ( 47, 45)  max=   1  mean=  0.13
+  X-seam at tile ( 47, 46)  max=   1  mean=  0.03
+  X-seam at tile ( 47, 47)  max=   1  mean=  0.08
+  X-seam at tile ( 48, 45)  max=   1  mean=  0.04
+  X-seam at tile ( 48, 46)  max=   1  mean=  0.01
+  X-seam at tile ( 48, 47)  max=   4  mean=  0.26
+  X-seam at tile ( 49, 45)  max=   1  mean=  0.04
+  X-seam at tile ( 49, 46)  max=   1  mean=  0.04
+  X-seam at tile ( 49, 47)  max=   1  mean=  0.01
+  X-seam at tile ( 50, 45)  max=   1  mean=  0.00
+  X-seam at tile ( 50, 46)  max=   1  mean=  0.01
+  X-seam at tile ( 50, 47)  max=   1  mean=  0.02
+  X-seam at tile ( 51, 45)  max=   1  mean=  0.01
+  X-seam at tile ( 51, 46)  max=   1  mean=  0.01
+  X-seam at tile ( 51, 47)  max=   1  mean=  0.02
+  X-seam at tile ( 52, 45)  max=   1  mean=  0.06
+  X-seam at tile ( 52, 46)  max=   1  mean=  0.02
+  X-seam at tile ( 52, 47)  max=   1  mean=  0.02
+  X-seam at tile ( 53, 45)  max=   1  mean=  0.08
+  X-seam at tile ( 53, 46)  max=   1  mean=  0.03
+  ... and 30 more

@@ -1,0 +1,120 @@
+[validate_3x3] Center (24, 80) | running 9 tile(s): [(23, 79), (24, 79), (25, 79), (23, 80), (24, 80), (25, 80), (23, 81), (24, 81), (25, 81)]
+[validate_3x3] → tile (23, 79)
+/sessions/inspiring-sweet-clarke/.local/lib/python3.10/site-packages/rasterio/__init__.py:356: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, **kwargs)
+[validate_3x3] → tile (24, 79)
+[validate_3x3] → tile (25, 79)
+[validate_3x3] → tile (23, 80)
+[validate_3x3] → tile (24, 80)
+[validate_3x3] → tile (25, 80)
+[validate_3x3] → tile (23, 81)
+[validate_3x3] → tile (24, 81)
+[validate_3x3] → tile (25, 81)
+
+================================================================
+  Vandir 3×3 Pre-MCA Validation
+  Center (24, 80) | 9 tile(s) | 867.5s
+================================================================
+  PASS: 71  FAIL: 1  WARN: 12
+
+  Tile (23, 79)  [58659 ms]
+    ✅ [biome] biome_coverage: 1 biomes, land=100.0%, ocean=0.0%
+    ✅ [terrain] surface_y_range: range [116, 140] within [-64, 448]
+    ⚠️ [hydrology] river_meta_consistency: No river pixels in this tile (river_meta all zero)
+    ✅ [surface_decoration] no_bare_dirt_surface: No bare dirt surface blocks on land
+    ✅ [surface_decoration] surface_block_variety: 2 distinct surface block types (OK for single-biome tile)
+    ✅ [terrain] bedrock_layer: All Y=-64 pixels are bedrock
+    ✅ [terrain] water_fill: No sub-sea pixels in this tile (all above sea level)
+    ✅ [terrain] no_void_columns: 100-sample stone layer check passed
+    ✅ [terrain] column_profile: Bedrock=✓, surface=sand @ Y=127, stone present
+  Tile (24, 79)  [97069 ms]
+    ✅ [biome] biome_coverage: 2 biomes, land=100.0%, ocean=0.0%
+    ✅ [terrain] surface_y_range: range [123, 167] within [-64, 448]
+    ⚠️ [hydrology] river_meta_consistency: No river pixels in this tile (river_meta all zero)
+    ✅ [surface_decoration] no_bare_dirt_surface: No bare dirt surface blocks on land
+    ✅ [surface_decoration] surface_block_variety: 8 distinct surface block types
+    ✅ [terrain] bedrock_layer: All Y=-64 pixels are bedrock
+    ✅ [terrain] water_fill: No sub-sea pixels in this tile (all above sea level)
+    ✅ [terrain] no_void_columns: 100-sample stone layer check passed
+    ✅ [terrain] column_profile: Bedrock=✓, surface=sand @ Y=141, stone present
+  Tile (25, 79)  [90501 ms]
+    ✅ [biome] biome_coverage: 2 biomes, land=100.0%, ocean=0.0%
+    ✅ [terrain] surface_y_range: range [146, 261] within [-64, 448]
+    ⚠️ [hydrology] river_meta_consistency: No river pixels in this tile (river_meta all zero)
+    ✅ [surface_decoration] no_bare_dirt_surface: No bare dirt surface blocks on land
+    ✅ [surface_decoration] surface_block_variety: 8 distinct surface block types
+    ✅ [terrain] bedrock_layer: All Y=-64 pixels are bedrock
+    ✅ [terrain] water_fill: No sub-sea pixels in this tile (all above sea level)
+    ✅ [terrain] no_void_columns: 100-sample stone layer check passed
+    ✅ [terrain] column_profile: Bedrock=✓, surface=grass_block @ Y=171, stone present
+  Tile (23, 80)  [60192 ms]
+    ✅ [biome] biome_coverage: 1 biomes, land=100.0%, ocean=0.0%
+    ✅ [terrain] surface_y_range: range [122, 167] within [-64, 448]
+    ⚠️ [hydrology] river_meta_consistency: No river pixels in this tile (river_meta all zero)
+    ✅ [surface_decoration] no_bare_dirt_surface: No bare dirt surface blocks on land
+    ✅ [surface_decoration] surface_block_variety: 3 distinct surface block types
+    ✅ [terrain] bedrock_layer: All Y=-64 pixels are bedrock
+    ✅ [terrain] water_fill: No sub-sea pixels in this tile (all above sea level)
+    ✅ [terrain] no_void_columns: 100-sample stone layer check passed
+    ✅ [terrain] column_profile: Bedrock=✓, surface=sandstone @ Y=138, stone present
+  Tile (24, 80)  [94149 ms]
+    ✅ [biome] biome_coverage: 2 biomes, land=100.0%, ocean=0.0%
+    ✅ [terrain] surface_y_range: range [132, 252] within [-64, 448]
+    ⚠️ [hydrology] river_meta_consistency: No river pixels in this tile (river_meta all zero)
+    ✅ [surface_decoration] no_bare_dirt_surface: No bare dirt surface blocks on land
+    ✅ [surface_decoration] surface_block_variety: 8 distinct surface block types
+    ✅ [terrain] bedrock_layer: All Y=-64 pixels are bedrock
+    ✅ [terrain] water_fill: No sub-sea pixels in this tile (all above sea level)
+    ✅ [terrain] no_void_columns: 100-sample stone layer check passed
+    ✅ [terrain] column_profile: Bedrock=✓, surface=sandstone @ Y=180, stone present
+  Tile (25, 80)  [129882 ms]
+    ✅ [biome] biome_coverage: 3 biomes, land=100.0%, ocean=0.0%
+    ✅ [terrain] surface_y_range: range [159, 315] within [-64, 448]
+    ⚠️ [hydrology] river_meta_consistency: No river pixels in this tile (river_meta all zero)
+    ✅ [surface_decoration] no_bare_dirt_surface: No bare dirt surface blocks on land
+    ✅ [surface_decoration] surface_block_variety: 2 distinct surface block types (OK for single-biome tile)
+    ✅ [terrain] bedrock_layer: All Y=-64 pixels are bedrock
+    ✅ [terrain] water_fill: No sub-sea pixels in this tile (all above sea level)
+    ✅ [terrain] no_void_columns: 100-sample stone layer check passed
+    ✅ [terrain] column_profile: Bedrock=✓, surface=grass_block @ Y=278, stone present
+  Tile (23, 81)  [92338 ms]
+    ✅ [biome] biome_coverage: 2 biomes, land=100.0%, ocean=0.0%
+    ✅ [terrain] surface_y_range: range [137, 186] within [-64, 448]
+    ⚠️ [hydrology] river_meta_consistency: No river pixels in this tile (river_meta all zero)
+    ✅ [surface_decoration] no_bare_dirt_surface: No bare dirt surface blocks on land
+    ✅ [surface_decoration] surface_block_variety: 8 distinct surface block types
+    ✅ [terrain] bedrock_layer: All Y=-64 pixels are bedrock
+    ✅ [terrain] water_fill: No sub-sea pixels in this tile (all above sea level)
+    ✅ [terrain] no_void_columns: 100-sample stone layer check passed
+    ✅ [terrain] column_profile: Bedrock=✓, surface=sand @ Y=173, stone present
+  Tile (24, 81)  [110095 ms]
+    ✅ [biome] biome_coverage: 3 biomes, land=100.0%, ocean=0.0%
+    ✅ [terrain] surface_y_range: range [165, 197] within [-64, 448]
+    ⚠️ [hydrology] river_meta_consistency: No river pixels in this tile (river_meta all zero)
+    ✅ [surface_decoration] no_bare_dirt_surface: No bare dirt surface blocks on land
+    ✅ [surface_decoration] surface_block_variety: 4 distinct surface block types
+    ✅ [terrain] bedrock_layer: All Y=-64 pixels are bedrock
+    ✅ [terrain] water_fill: No sub-sea pixels in this tile (all above sea level)
+    ✅ [terrain] no_void_columns: 100-sample stone layer check passed
+    ✅ [terrain] column_profile: Bedrock=✓, surface=grass_block @ Y=182, stone present
+  Tile (25, 81)  [128631 ms]
+    ✅ [biome] biome_coverage: 3 biomes, land=100.0%, ocean=0.0%
+    ✅ [terrain] surface_y_range: range [177, 295] within [-64, 448]
+    ⚠️ [hydrology] river_meta_consistency: No river pixels in this tile (river_meta all zero)
+    ✅ [surface_decoration] no_bare_dirt_surface: No bare dirt surface blocks on land
+    ⚠️ [surface_decoration] surface_block_variety: Only 1 distinct surface block type(s): ['grass_block']
+    ✅ [terrain] bedrock_layer: All Y=-64 pixels are bedrock
+    ✅ [terrain] water_fill: No sub-sea pixels in this tile (all above sea level)
+    ✅ [terrain] no_void_columns: 100-sample stone layer check passed
+    ✅ [terrain] column_profile: Bedrock=✓, surface=podzol @ Y=233, stone present
+
+  Seam checks (stitched 3×3):
+    ❌ [seam] biome_seam_continuity: Biome seams 10.25× interior transition rate (likely real seam)
+    ⚠️ [seam] block_palette_seam_continuity: Block palette seams 1.82× interior — watch
+        detail: seam=683, interior=376, ratio=1.82
+    ⚠️ [seam] surface_y_seam_step: surface_y seam step=10 (budget 4, tolerated)
+        detail: max_step=10, over_budget_px=40
+
+================================================================
+  Report dir: validation_report_3x3_24_80
+================================================================

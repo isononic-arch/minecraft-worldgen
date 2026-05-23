@@ -1,0 +1,102 @@
+[pipeline] Pipeline start: 10 tiles, 4 workers, dry_run=False
+[pipeline]   config:      C:\Users\nicho\minecraft-worldgen\config\thresholds.json
+[pipeline]   masks:       C:\Users\nicho\minecraft-worldgen\masks
+[pipeline]   schem_index: C:\Users\nicho\minecraft-worldgen\schematic_index.json
+[pipeline]   output:      C:\Users\nicho\minecraft-worldgen\output
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+[chunk_writer] All chunks OK for r.34.93.mca
+{"type": "tile_start", "tile_x": 34, "tile_y": 93}
+{"type": "tile_complete", "tile_x": 34, "tile_y": 93, "biomes": ["_OCEAN"], "elapsed_ms": 506818}
+[chunk_writer] All chunks OK for r.49.35.mca
+{"type": "tile_start", "tile_x": 49, "tile_y": 35}
+{"type": "tile_complete", "tile_x": 49, "tile_y": 35, "biomes": ["BOREAL_TAIGA", "CONTINENTAL_STEPPE", "_OCEAN"], "elapsed_ms": 824093}
+[chunk_writer] All chunks OK for r.20.53.mca
+{"type": "tile_start", "tile_x": 20, "tile_y": 53}
+{"type": "tile_complete", "tile_x": 20, "tile_y": 53, "biomes": ["BIRCH_FOREST", "BOREAL_ALPINE", "DRY_OAK_SAVANNA", "MIXED_FOREST", "SEMI_ARID_SHRUBLAND", "TEMPERATE_DECIDUOUS", "_OCEAN"], "elapsed_ms": 1080997}
+[chunk_writer] All chunks OK for r.32.7.mca
+{"type": "tile_start", "tile_x": 32, "tile_y": 7}
+{"type": "tile_complete", "tile_x": 32, "tile_y": 7, "biomes": ["ARCTIC_TUNDRA", "COASTAL_HEATH", "FROZEN_FLATS", "KARST_BARRENS"], "elapsed_ms": 1090050}
+[chunk_writer] All chunks OK for r.11.77.mca
+{"type": "tile_start", "tile_x": 11, "tile_y": 77}
+{"type": "tile_complete", "tile_x": 11, "tile_y": 77, "biomes": ["BOREAL_ALPINE", "DESERT_STEPPE_TRANSITION", "LUSH_RAINFOREST_COAST", "SAND_DUNE_DESERT", "SNOWY_BOREAL_TAIGA"], "elapsed_ms": 1164485}
+[chunk_writer] All chunks OK for r.84.67.mca
+{"type": "tile_start", "tile_x": 84, "tile_y": 67}
+{"type": "tile_complete", "tile_x": 84, "tile_y": 67, "biomes": ["CONTINENTAL_STEPPE", "DRY_PINE_BARRENS", "RIPARIAN_WOODLAND"], "elapsed_ms": 696982}
+{"type": "tile_start", "tile_x": 84, "tile_y": 84}
+[pipeline] tile (84,84) ERROR: MemoryError: Unable to allocate 128. MiB for an array with shape (512, 512, 512) and data type bool
+[pipeline] concurrent.futures.process._RemoteTraceback: 
+"""
+Traceback (most recent call last):
+  File "C:\Users\nicho\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\process.py", line 254, in _process_worker
+    r = call_item.fn(*call_item.args, **call_item.kwargs)
+  File "C:\Users\nicho\minecraft-worldgen\run_pipeline.py", line 491, in _process_tile
+    core_chunk.write_tile(
+    ~~~~~~~~~~~~~~~~~~~~~^
+        surface_y    = surface_y,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<12 lines>...
+        flow_tile    = masks["flow"],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nicho\minecraft-worldgen\core\chunk_writer.py", line 1613, in write_tile
+    vol, pal = build_column_array(
+               ~~~~~~~~~~~~~~~~~~^
+        surface_y, surface_blk, sub_blk, ground_cover,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+        cfg            = cfg if _use_geo else None,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nicho\minecraft-worldgen\core\chunk_writer.py", line 576, in build_column_array
+    _fill_geology_layers(
+    ~~~~~~~~~~~~~~~~~~~~^
+        vol, pal, stone_mask, abs_y, surface_y, lithology_tile,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        tile_world_x=tile_world_x, tile_world_z=tile_world_z,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nicho\minecraft-worldgen\core\chunk_writer.py", line 458, in _fill_geology_layers
+    basement_mask = stone_mask & (abs_y > bedrock_band_top_y) & (abs_y < sed_bot_y[None, :, :])
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 128. MiB for an array with shape (512, 512, 512) and data type bool
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\nicho\minecraft-worldgen\run_pipeline.py", line 620, in main
+    result = future.result()
+  File "C:\Users\nicho\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\_base.py", line 443, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nicho\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\_base.py", line 395, in __get_result
+    raise self._exception
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 128. MiB for an array with shape (512, 512, 512) and data type bool
+
+{"type": "tile_error", "tile_x": 84, "tile_y": 84, "error": "MemoryError: Unable to allocate 128. MiB for an array with shape (512, 512, 512) and data type bool"}
+[chunk_writer] All chunks OK for r.8.73.mca
+{"type": "tile_start", "tile_x": 8, "tile_y": 73}
+{"type": "tile_complete", "tile_x": 8, "tile_y": 73, "biomes": ["BOREAL_TAIGA", "FRESHWATER_FEN", "LUSH_RAINFOREST_COAST", "TEMPERATE_RAINFOREST"], "elapsed_ms": 926010}
+[chunk_writer] All chunks OK for r.30.88.mca
+{"type": "tile_start", "tile_x": 30, "tile_y": 88}
+{"type": "tile_complete", "tile_x": 30, "tile_y": 88, "biomes": ["SAND_DUNE_DESERT", "_OCEAN"], "elapsed_ms": 638873}
+[chunk_writer] All chunks OK for r.25.80.mca
+{"type": "tile_start", "tile_x": 25, "tile_y": 80}
+{"type": "tile_complete", "tile_x": 25, "tile_y": 80, "biomes": ["ARCTIC_TUNDRA", "BOREAL_ALPINE", "SNOWY_BOREAL_TAIGA"], "elapsed_ms": 773315}
+{"type": "pipeline_complete", "total_tiles": 10, "completed": 9, "errors": 1, "elapsed_s": 2562.1}
+[pipeline] Done: 9/10 tiles OK, 1 errors, 2562.1s

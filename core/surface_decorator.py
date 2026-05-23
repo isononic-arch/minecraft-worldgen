@@ -378,7 +378,10 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     "ARCTIC_TUNDRA": [
         ("dead_bush", 0.01), ("short_dry_grass", 0.06), ("short_grass", 0.04),
     ],
-    "FROZEN_FLATS": [],
+    "FROZEN_FLATS": [
+        # S85: was empty — bleached steppe look with rare dry tufts
+        ("short_dry_grass", 0.04), ("dead_bush", 0.015),
+    ],
     # ── Temperate Forests ────────────────────────────────────────────────
     "TEMPERATE_DECIDUOUS": [
         ("leaf_litter", 0.35), ("short_grass", 0.30), ("tall_grass", 0.08),
@@ -1584,14 +1587,21 @@ def decorate_surface(
             # Gaea dusting mask drives gap==7. All snow pixels get snow_block.
             # Dither edges are baked into the mask at 50k by rebuild_gaea_gaps.py
             # (blue-noise dither), so no per-pixel probability ramp needed here.
+            # S85: SNOWY_BOREAL_TAIGA + FROZEN_FLATS exempted — their native
+            # surface (podzol / coarse_dirt) supports foliage. Snow visual still
+            # delivered via `_apply_snow_carpet` (vanilla snow[layers=1]) on top.
             snow_px = _gap == 7
             if snow_px.any():
+                _snow_exempt = (
+                    (biome_grid == "SNOWY_BOREAL_TAIGA") |
+                    (biome_grid == "FROZEN_FLATS")
+                )
+                snow_px = snow_px & ~_snow_exempt
+            if snow_px.any():
                 surface_blocks[snow_px] = "snow_block"
-                # Rare powder_snow in concavities (deep snow pockets)
-                if eco_grads is not None and hasattr(eco_grads, 'concavity_norm'):
-                    _powder = snow_px & (eco_grads.concavity_norm > 0.6) & (_gap_rand < 0.15)
-                    surface_blocks[_powder] = "powder_snow"
-                    del _powder
+                # S84: powder_snow generation removed — was placed in concavities
+                # but powder_snow is a hazard ("pest block") that traps players.
+                # All snow now renders as snow_block.
 
             # ── Sand dunes (gap==8): pure sand ───────────────────────────
             sand_px = _gap == 8
@@ -1844,8 +1854,10 @@ def decorate_surface(
     # (which fires on slope) by handling the flat-but-high case — alpine
     # plateaus shouldn't read as grass even if slope is modest. Also kills
     # ground cover above the full-fade band so bare rock stays bare.
-    _FADE_Y_START = 230   # 0% fade below this
-    _FADE_Y_FULL  = 280   # 100% fade above this
+    # S84: bumped from 230-280 for 768-height world. Y 480-580 matches
+    # real-world bare-rock altitude (~3500-4500m) in our compressed scale.
+    _FADE_Y_START = 480   # 0% fade below this
+    _FADE_Y_FULL  = 580   # 100% fade above this
     _GRASS_FAMILY = frozenset({
         "grass_block", "podzol", "coarse_dirt", "packed_mud",
         "rooted_dirt", "moss_block", "dirt", "mycelium",
@@ -2134,6 +2146,9 @@ def decorate_surface(
     # Single source of truth: if biome_grid stays SBT, both carpet + snowy_taiga
     # tag apply.  If remapped to BA, neither applies.
     _apply_sbt_mountaincap_remap(biome_grid, surface_y, tile_x, tile_y, cfg)
+
+    # S85: ARCTIC_TUNDRA → SBT below Y 500 remap REMOVED.  User-painted
+    # ARC_TUN in override.tif now appears as ARC_TUN regardless of altitude.
 
     # ──────────────────────────────────────────────────────────────────
     # S64: SNOW CARPET PASS

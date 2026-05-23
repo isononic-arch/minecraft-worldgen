@@ -1,0 +1,475 @@
+{
+  "threshold": 4,
+  "elapsed_s": 114.9,
+  "tile_errors": [],
+  "seams": [
+    {
+      "axis": "X",
+      "tx": 47,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.13,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 47,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.03,
+      "biome_fraction": 0.037,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 47,
+      "tz": 47,
+      "max_diff": 1,
+      "mean_diff": 0.08,
+      "biome_fraction": 0.029,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 48,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.04,
+      "biome_fraction": 0.021,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 48,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.01,
+      "biome_fraction": 0.037,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 48,
+      "tz": 47,
+      "max_diff": 4,
+      "mean_diff": 0.26,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 49,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.04,
+      "biome_fraction": 0.018,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 49,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.04,
+      "biome_fraction": 0.031,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 49,
+      "tz": 47,
+      "max_diff": 1,
+      "mean_diff": 0.01,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 50,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.0,
+      "biome_fraction": 0.014,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 50,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.01,
+      "biome_fraction": 0.023,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 50,
+      "tz": 47,
+      "max_diff": 1,
+      "mean_diff": 0.02,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 51,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.01,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 51,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.01,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 51,
+      "tz": 47,
+      "max_diff": 1,
+      "mean_diff": 0.02,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 52,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.06,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 52,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.02,
+      "biome_fraction": 0.119,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 52,
+      "tz": 47,
+      "max_diff": 1,
+      "mean_diff": 0.02,
+      "biome_fraction": 0.059,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 53,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.08,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 53,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.03,
+      "biome_fraction": 0.02,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 53,
+      "tz": 47,
+      "max_diff": 1,
+      "mean_diff": 0.02,
+      "biome_fraction": 0.018,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 54,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.1,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 54,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.1,
+      "biome_fraction": 0.029,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 54,
+      "tz": 47,
+      "max_diff": 1,
+      "mean_diff": 0.04,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 55,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.1,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 55,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.08,
+      "biome_fraction": 0.174,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 55,
+      "tz": 47,
+      "max_diff": 1,
+      "mean_diff": 0.11,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 56,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.08,
+      "biome_fraction": 0.01,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 56,
+      "tz": 46,
+      "max_diff": 2,
+      "mean_diff": 0.22,
+      "biome_fraction": 0.027,
+      "over_threshold": false
+    },
+    {
+      "axis": "X",
+      "tx": 56,
+      "tz": 47,
+      "max_diff": 1,
+      "mean_diff": 0.13,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 47,
+      "tz": 45,
+      "max_diff": 2,
+      "mean_diff": 0.51,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 47,
+      "tz": 46,
+      "max_diff": 2,
+      "mean_diff": 0.31,
+      "biome_fraction": 0.012,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 48,
+      "tz": 45,
+      "max_diff": 2,
+      "mean_diff": 0.16,
+      "biome_fraction": 0.01,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 48,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.27,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 49,
+      "tz": 45,
+      "max_diff": 0,
+      "mean_diff": 0.0,
+      "biome_fraction": 0.174,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 49,
+      "tz": 46,
+      "max_diff": 11,
+      "mean_diff": 5.55,
+      "biome_fraction": 0.0,
+      "over_threshold": true
+    },
+    {
+      "axis": "Z",
+      "tx": 50,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.02,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 50,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.04,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 51,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.01,
+      "biome_fraction": 0.014,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 51,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.14,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 52,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.02,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 52,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.06,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 53,
+      "tz": 45,
+      "max_diff": 1,
+      "mean_diff": 0.13,
+      "biome_fraction": 0.025,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 53,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.07,
+      "biome_fraction": 0.027,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 54,
+      "tz": 45,
+      "max_diff": 2,
+      "mean_diff": 0.65,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 54,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.09,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 55,
+      "tz": 45,
+      "max_diff": 2,
+      "mean_diff": 0.33,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 55,
+      "tz": 46,
+      "max_diff": 1,
+      "mean_diff": 0.3,
+      "biome_fraction": 0.01,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 56,
+      "tz": 45,
+      "max_diff": 2,
+      "mean_diff": 0.93,
+      "biome_fraction": 0.0,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 56,
+      "tz": 46,
+      "max_diff": 3,
+      "mean_diff": 0.84,
+      "biome_fraction": 0.027,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 57,
+      "tz": 45,
+      "max_diff": 2,
+      "mean_diff": 0.73,
+      "biome_fraction": 0.07,
+      "over_threshold": false
+    },
+    {
+      "axis": "Z",
+      "tx": 57,
+      "tz": 46,
+      "max_diff": 6,
+      "mean_diff": 1.88,
+      "biome_fraction": 0.0,
+      "over_threshold": true
+    }
+  ]
+}

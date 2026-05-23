@@ -1,0 +1,69 @@
+[pipeline] Pipeline start: 5 tiles, 4 workers, dry_run=False
+[pipeline]   config:      C:\Users\nicho\minecraft-worldgen\config\thresholds.json
+[pipeline]   masks:       C:\Users\nicho\minecraft-worldgen\masks
+[pipeline]   schem_index: C:\Users\nicho\minecraft-worldgen\schematic_index.json
+[pipeline]   output:      C:\Users\nicho\minecraft-worldgen\output
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+C:\Users\nicho\AppData\Roaming\Python\Python314\site-packages\rasterio\__init__.py:379: NotGeoreferencedWarning: Dataset has no geotransform, gcps, or rpcs. The identity matrix will be returned.
+  dataset = DatasetReader(path, driver=driver, sharing=sharing, thread_safe=thread_safe, **kwargs)
+{"type": "tile_start", "tile_x": 87, "tile_y": 73}
+[pipeline] tile (87,73) ERROR: MemoryError: Unable to allocate 128. MiB for an array with shape (512, 512, 512) and data type bool
+[pipeline] concurrent.futures.process._RemoteTraceback: 
+"""
+Traceback (most recent call last):
+  File "C:\Users\nicho\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\process.py", line 254, in _process_worker
+    r = call_item.fn(*call_item.args, **call_item.kwargs)
+  File "C:\Users\nicho\minecraft-worldgen\run_pipeline.py", line 491, in _process_tile
+    core_chunk.write_tile(
+    ~~~~~~~~~~~~~~~~~~~~~^
+        surface_y    = surface_y,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<12 lines>...
+        flow_tile    = masks["flow"],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nicho\minecraft-worldgen\core\chunk_writer.py", line 1613, in write_tile
+    vol, pal = build_column_array(
+               ~~~~~~~~~~~~~~~~~~^
+        surface_y, surface_blk, sub_blk, ground_cover,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+        cfg            = cfg if _use_geo else None,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nicho\minecraft-worldgen\core\chunk_writer.py", line 576, in build_column_array
+    _fill_geology_layers(
+    ~~~~~~~~~~~~~~~~~~~~^
+        vol, pal, stone_mask, abs_y, surface_y, lithology_tile,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        tile_world_x=tile_world_x, tile_world_z=tile_world_z,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nicho\minecraft-worldgen\core\chunk_writer.py", line 458, in _fill_geology_layers
+    basement_mask = stone_mask & (abs_y > bedrock_band_top_y) & (abs_y < sed_bot_y[None, :, :])
+                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 128. MiB for an array with shape (512, 512, 512) and data type bool
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\nicho\minecraft-worldgen\run_pipeline.py", line 620, in main
+    result = future.result()
+  File "C:\Users\nicho\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\_base.py", line 443, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nicho\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\_base.py", line 395, in __get_result
+    raise self._exception
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 128. MiB for an array with shape (512, 512, 512) and data type bool
+
+{"type": "tile_error", "tile_x": 87, "tile_y": 73, "error": "MemoryError: Unable to allocate 128. MiB for an array with shape (512, 512, 512) and data type bool"}

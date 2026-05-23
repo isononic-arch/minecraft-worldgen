@@ -653,9 +653,11 @@ def compute_eco_gradients(
             # S55 v8 tuning: flip core:dither ratio — tiny always-sand core
             # at the waterline, huge dither zone for visible mixing.
             # Total width similar to v7 but dominated by the mix band.
+            # S84: bumped base widths by +1 each for wider beaches —
+            # makes coastal sand bands more visible and natural.
             _base_width = np.where(
-                _full_bch, np.float32(4.0),    # v7=11; thin solid sand at waterline
-                np.where(_shallow_bch, np.float32(2.0), np.float32(0.0)),
+                _full_bch, np.float32(5.0),    # was 4.0 (v7=11); solid sand at waterline
+                np.where(_shallow_bch, np.float32(3.0), np.float32(0.0)),  # was 2.0
             ).astype(np.float32)
             _amp = np.where(
                 _full_bch, np.float32(2.0),    # v7=6; small width jitter — core is tight

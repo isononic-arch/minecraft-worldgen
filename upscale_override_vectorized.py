@@ -49,7 +49,7 @@ POST_JITTER_SEED   = 137  # different seed from pre-jitter for independent noise
 # Median at intermediate (16384) with kernel 17 ≈ same smoothing as kernel 51 at 50k,
 # but runs in ~30 seconds instead of ~100 minutes.
 INTERMEDIATE_RES  = 16384   # intermediate resolution for median filter
-MEDIAN_KERNEL     = 17      # kernel at intermediate res (17 @ 16k ≈ 51 @ 50k)
+MEDIAN_KERNEL     = 9       # S70: dropped 17→9 to reduce centroid drift on thin painted rings (oasis offset fix)
 
 # Contour smoothing — applied at source resolution before jitter/upscale.
 CONTOUR_SMOOTH    = False   # DISABLED — median filter at 50k is more effective
@@ -58,7 +58,7 @@ CONTOUR_MIN_PTS   = 20
 
 # Alignment (from override_aligner.py interactive session)
 FLIP_Z        = False   # toggled Session 25 — contour smooth pass corrected orientation
-ALIGN_SCALE   = 1.01    # override covers 1% more world space; pre-crops source to 8192/1.01 px
+ALIGN_SCALE   = 1.00    # S70: was 1.01 — caused painted features to drift up to 500 blocks at world edges relative to lake/height which are 1:1 mapped
 
 # Valid zone codes from OVERRIDE_BIOME_MAP
 VALID_ZONES = [
@@ -355,6 +355,88 @@ def main():
         for r0 in range(0, TARGET, CHUNK_H):
             r1 = min(r0 + CHUNK_H, TARGET)
             full[r0:r1] = lut[full[r0:r1]]
+
+    # ── Phase 4.5: Ocean-Y prune (S70) ──────────────────────────────────────
+    # Set zone codes to 0 wherever height < SEA_LEVEL.  Painted biome zones
+    # in ocean-Y pixels (e.g. EASTERN_TEMPERATE_COAST tile (72,92) had its
+    # painted zone underwater) get cleared so chunk_writer renders them as
+    # ocean.  Lithology not affected — build_lithology overlays
+    # lithology_region.png AFTER biome-derived lookup, painted lithology
+    # wins regardless.
+    SEA_LEVEL_RAW = 17050  # raw 16-bit threshold (= MC Y 63 per CLAUDE.md)
+    HEIGHT_PATH = Path(r"C:\Users\nicho\minecraft-worldgen\masks\height.tif")
+    if HEIGHT_PATH.exists():
+        print(f"Phase 4.5: Pruning ocean-Y zones to 0 (SEA_LEVEL_RAW={SEA_LEVEL_RAW})...")
+        cleared_total = 0
+        with rasterio.open(HEIGHT_PATH) as hsrc:
+            for r0 in range(0, TARGET, CHUNK_H):
+                r1 = min(r0 + CHUNK_H, TARGET)
+                win = Window(col_off=0, row_off=r0, width=TARGET, height=r1-r0)
+                h = hsrc.read(1, window=win)
+                ocean_mask = h < SEA_LEVEL_RAW
+                ocean_with_zone = ocean_mask & (full[r0:r1] != 0)
+                cleared_total += int(ocean_with_zone.sum())
+                full[r0:r1][ocean_mask] = 0
+        print(f"  cleared {cleared_total:,} ocean-Y pixels with painted zones -> 0")
+    else:
+        print(f"Phase 4.5: SKIPPED — height.tif not found at {HEIGHT_PATH}")
+
+    # ── Phase 4.6: Coastal-zone repaint (S70) ───────────────────────────────
+    # Override Studio's land-clamp can leave a 1-3 block coastal sliver
+    # holding leftover old paint that the user's recent paint didn't
+    # overwrite.  Repaint those slivers with the dominant zone of nearby
+    # inland pixels via a strip-based distance-transform fill.
+    # Coastal biomes (mangrove, beach edges, etc.) are preserved as-is.
+    print(f"Phase 4.6: Coastal-zone repaint (24-block band)...")
+    from scipy.ndimage import binary_erosion, distance_transform_edt
+
+    COASTAL_WIDTH = 32  # blocks at 50k = 1:1 scale
+    # Zone codes that should NOT be repainted because they're legitimately
+    # coastal biomes:
+    # 10  COASTAL_HEATH
+    # 70  RAINFOREST_COAST
+    # 115 EASTERN_TEMPERATE_COAST
+    # 160 LUSH_RAINFOREST_COAST
+    # 220 TIDAL_JUNGLE_FRINGE
+    # 230 MANGROVE_COAST
+    COASTAL_PRESERVE_ZONES = np.array([10, 70, 115, 160, 220, 230],
+                                       dtype=np.uint8)
+
+    STRIP_H_COAST = 1000  # narrow strips to keep DT alloc under ~500MB peak
+    overlap_coast = COASTAL_WIDTH + 8  # safety margin
+    repainted_total = 0
+    for strip_y0 in range(0, TARGET, STRIP_H_COAST):
+        strip_y1 = min(TARGET, strip_y0 + STRIP_H_COAST)
+        ext_y0 = max(0, strip_y0 - overlap_coast)
+        ext_y1 = min(TARGET, strip_y1 + overlap_coast)
+        strip = full[ext_y0:ext_y1].copy()
+
+        strip_land = strip > 0
+        if not strip_land.any():
+            continue
+        strip_eroded = binary_erosion(strip_land, iterations=COASTAL_WIDTH)
+        strip_preserve = np.isin(strip, COASTAL_PRESERVE_ZONES)
+        strip_filled = strip_eroded | strip_preserve
+        strip_repaint = strip_land & ~strip_filled
+        if not strip_repaint.any():
+            continue
+
+        # Distance-transform: for each non-filled pixel, find the (y,x) of
+        # the nearest filled pixel and copy that pixel's zone.
+        _, (iy, ix) = distance_transform_edt(~strip_filled, return_indices=True)
+        strip[strip_repaint] = strip[iy[strip_repaint], ix[strip_repaint]]
+
+        # Write back only the non-overlap core
+        write_y0 = strip_y0 - ext_y0
+        write_y1 = write_y0 + (strip_y1 - strip_y0)
+        new_core = strip[write_y0:write_y1]
+        diff = int((new_core != full[strip_y0:strip_y1]).sum())
+        repainted_total += diff
+        full[strip_y0:strip_y1] = new_core
+        print(f"  strip {strip_y0:>5}-{strip_y1:>5}: {diff:>9,} px repainted")
+        del strip, strip_land, strip_eroded, strip_preserve, strip_filled, strip_repaint, iy, ix
+        import gc as _gc; _gc.collect()
+    print(f"  total coastal repaint: {repainted_total:,} pixels")
 
     # ── Phase 5: Write to BigTIFF ────────────────────────────────────────────
     print("Phase 5: Writing BigTIFF...")

@@ -1,0 +1,2046 @@
+{
+  "birch_tree_dbirch_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "birch_tree_dbirch_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "birch_tree_dbirch_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "birch_tree_dbirch_d_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "birch_tree_dbirch_e_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "birch_tree_dbirch_f_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "birch_tree_dbirch_g_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "birch_tree_rowan_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "birch_tree_rowan_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "birch_tree_rowan_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "birch_tree_sbirch_a_sm.schematic": {
+    "anchor_y": 2,
+    "inset_depth": 2,
+    "lowest_leaf_y": 4,
+    "method": "marker_below_trunk",
+    "review": false
+  },
+  "birch_tree_sbirch_b_sm.schematic": {
+    "anchor_y": 3,
+    "inset_depth": 3,
+    "lowest_leaf_y": 5,
+    "method": "marker_below_trunk",
+    "review": false
+  },
+  "birch_tree_sbirch_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "birch_tree_sbirch_d_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "birch_tree_sbirch_e_sm.schematic": {
+    "anchor_y": 2,
+    "inset_depth": 2,
+    "lowest_leaf_y": 7,
+    "method": "marker_below_trunk",
+    "review": false
+  },
+  "birch_tree_sbirch_f_md.schematic": {
+    "anchor_y": 3,
+    "inset_depth": 3,
+    "lowest_leaf_y": 8,
+    "method": "marker_below_trunk",
+    "review": false
+  },
+  "birch_tree_sbirch_g_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 10,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "birch_tree_sbirch_h_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 12,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "birch_tree_sbirch_i_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "birch_tree_sbirch_j_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 11,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "birch_tree_sbirch_k_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 13,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "birch_tree_sbirch_l_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 14,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "birch_tree_sbirch_m_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 15,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_balfir_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_bspruce_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_bspruce_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_bspruce_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_bspruce_d_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_bspruce_e_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_bspruce_f_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_bspruce_g_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_bspruce_h_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_bspruce_i_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_bspruce_j_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_bspruce_k_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_bspruce_l_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_jpine_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_tamarack_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "btaiga_tree_wspruce_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "btaiga_tree_wspruce_b_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "bush_generic_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "bush_generic_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "bush_generic_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "bush_generic_d_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "bush_generic_e_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "bush_generic_f_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "bush_generic_g_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "bush_generic_h_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "bush_generic_i_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "cstep_tree_steppep_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "cstep_tree_steppep_b_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "cstep_tree_steppep_c_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dosav_tree_soak_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dosav_tree_soak_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dosav_tree_soak_c_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dosav_tree_soak_d_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dosav_tree_soak_e_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dosav_tree_soak_f_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_dead_pine_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 15,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_dead_pine_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_dead_pine_c_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_dead_pine_d_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 20,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_dead_pine_e_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 17,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_pitchp_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_pitchp_b_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_ppine_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_ppine_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_ppine_c_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_ppine_d_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 12,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_ppine_e_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 13,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_ppine_f_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_ppine_g_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_scotsp_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_scotsp_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_scotsp_c_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_scotsp_d_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dpine_tree_scotsp_e_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dstep_tree_acacia_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dstep_tree_acacia_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dstep_tree_acacia_c_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dstep_tree_acacia_d_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dstep_tree_acacia_e_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dstep_tree_acacia_f_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "dstep_tree_acacia_g_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_banyan_a_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 13,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_banyan_b_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_banyan_c_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_banyan_d_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_breadfruit_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_breadfruit_b_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_gfig_a_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_gfig_b_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_gfig_c_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_gfig_d_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_gfig_e_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_gfig_f_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 10,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_hardwood_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 14,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_hardwood_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_hardwood_c_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 34,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_hardwood_d_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 28,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_hardwood_e_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 17,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_hardwood_f_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 24,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_hardwood_g_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 12,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_mpalm_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "lrfc_tree_mpalm_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_mpalm_c_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "lrfc_tree_mpalm_d_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "lrfc_tree_mpalm_e_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "lrfc_tree_rfpalm_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 11,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_rfpalm_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_rfpalm_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_rfpalm_d_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_rfpalm_e_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_rfpalm_f_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_rfpalm_g_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "lrfc_tree_rfpalm_h_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_bmang_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_bmang_b_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mangsm_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mangsm_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mangsm_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mangsm_d_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mangsm_e_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mangsm_f_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mangsm_g_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_d_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_e_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_f_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_g_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_h_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_i_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_j_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_k_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_l_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_mroot_m_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_rmang_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_rmang_b_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_rmangsm_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_rmangsm_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "mangr_tree_wmang_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "maquis_tree_apine_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "maquis_tree_apine_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "maquis_tree_apine_c_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "maquis_tree_apine_d_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "maquis_tree_carob_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "maquis_tree_carob_b_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "maquis_tree_hoak_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "maquis_tree_hoak_b_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "maquis_tree_hoak_c_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "maquis_tree_olive_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "maquis_tree_olive_b_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "maquis_tree_olive_c_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 10,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "rfc_tree_cpalm_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "rfc_tree_cpalm_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 10,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "rfc_tree_cpalm_c_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "rfc_tree_cpalm_d_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "rfc_tree_cpalm_e_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 13,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "rfc_tree_kapok_a_lg.schematic": {
+    "anchor_y": 2,
+    "inset_depth": 2,
+    "lowest_leaf_y": 7,
+    "method": "marker_below_trunk",
+    "review": false
+  },
+  "rfc_tree_teak_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 14,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "rfc_tree_teak_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 18,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "rfc_tree_teak_c_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 19,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "rfc_tree_teak_d_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 17,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "rfc_tree_tfig_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "rfc_tree_tfig_b_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_dead_willow_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_alder_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_alder_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_alder_c_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_alder_d_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_alder_e_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_alder_f_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_cwillow_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_cwillow_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_cwillow_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_cwillow_d_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_cwillow_e_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_cwillow_f_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_cwillow_g_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_cwillow_h_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_poplar_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_poplar_b_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_poplar_c_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_willow_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_willow_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_willow_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_willow_d_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_willow_e_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_willow_f_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_willow_g_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_willow_h_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_wwillow_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "ripar_tree_wwillow_b_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 0,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_juniper_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_juniper_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_juniper_c_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_juniper_d_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_juniper_e_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_juniper_f_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_juniper_g_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_pinon_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_pinon_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_pinon_c_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_pinon_d_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_pinon_e_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sarid_tree_pinon_f_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_kfir_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "sbtaiga_tree_kfir_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_kfir_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "sbtaiga_tree_kfir_d_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_kfir_e_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_kfir_f_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_kfir_g_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_kspruce_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "sbtaiga_tree_kspruce_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "sbtaiga_tree_kspruce_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_d_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_e_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_f_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_g_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_h_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_i_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_j_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_k_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_l_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_m_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_n_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_o_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_salfir_p_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_spruce_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_spruce_b_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "sbtaiga_tree_spruce_c_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_dead_oak_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 12,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_dead_oak_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 10,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_dead_oak_c_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 19,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_dead_oak_d_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 12,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_tree_ash_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_tree_ash_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_tree_ash_c_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_tree_ash_d_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_tree_beech_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_tree_cherry_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_tree_cherry_b_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_tree_eoak_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_tree_hornbeam_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_tree_lime_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_tree_lime_b_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tdec_tree_lime_c_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tjf_tree_cfig_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "tjf_tree_cfig_b_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_cedar_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 12,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_cedar_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 12,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_cedar_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "train_tree_cedar_d_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 3,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_cedar_e_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "train_tree_cedar_f_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 1,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_cedar_g_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "train_tree_cedar_h_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "no_trunk_lowest_solid",
+    "review": false
+  },
+  "train_tree_dfir_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 14,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_dfir_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_dfir_c_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_dfir_d_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_hemlock_a_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_hemlock_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_hemlock_c_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 4,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_hemlock_d_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_hemlock_e_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_hemlock_f_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_hemlock_g_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_hemlock_h_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 2,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_hemlock_i_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_maple_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 6,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_maple_b_sm.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_maple_c_md.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_maple_d_lg.schem": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_sitka_a_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_sitka_b_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 7,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_sitka_c_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_sitka_d_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_sitka_e_sm.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_sitka_f_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_sitka_g_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_sitka_h_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_sitka_i_md.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 5,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_sitka_j_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 12,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_sitka_k_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 9,
+    "method": "trunk_at_bottom",
+    "review": false
+  },
+  "train_tree_sitka_l_lg.schematic": {
+    "anchor_y": 0,
+    "inset_depth": 0,
+    "lowest_leaf_y": 8,
+    "method": "trunk_at_bottom",
+    "review": false
+  }
+}

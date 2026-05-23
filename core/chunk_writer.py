@@ -12,7 +12,7 @@ Responsibilities:
 
 World constants (Higher Heights datapack):
   Y_MIN    = -64   (bedrock layer)
-  Y_MAX    = 448   (build height)
+  Y_MAX    = 704   (build height, S84: 512-block world -> 768-block world)
   SEA_Y    = 63    (MC sea level — water fill mandatory below this)
   SECTION_H = 16   (blocks per ChunkSection)
 
@@ -31,23 +31,24 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+from scipy.ndimage import binary_dilation as _bin_dilation
 
 # ---------------------------------------------------------------------------
 # WORLD CONSTANTS (Higher Heights datapack — locked)
 # ---------------------------------------------------------------------------
 Y_MIN     = -64
-Y_MAX     = 448
+Y_MAX     = 704   # S84: bumped 448 -> 704 for 768-block world height
 SEA_Y     = 63
 SECTION_H = 16
-Y_RANGE   = Y_MAX - Y_MIN          # 512
-N_SECTIONS = Y_RANGE // SECTION_H  # 32
+Y_RANGE   = Y_MAX - Y_MIN          # 768 (S84: was 512)
+N_SECTIONS = Y_RANGE // SECTION_H  # 48 (S84: was 32)
 
 # MC 1.20.1 biome name → internal string (subset used in Vandir)
 # Full MC biome IDs assigned by amulet via string name — no numeric IDs needed.
 BIOME_TO_MC: dict[str, str] = {
     "COASTAL_HEATH":           "minecraft:plains",
     "TEMPERATE_RAINFOREST":    "minecraft:dark_forest",
-    "BOREAL_TAIGA":            "minecraft:old_growth_birch_forest",
+    "BOREAL_TAIGA":            "minecraft:meadow",  # S85: was old_growth_birch_forest; user swapped to meadow + dropped altitude remap
     "BOREAL_ALPINE":           "minecraft:plains",  # S64: wholesale plains — dual-layer approach abandoned, snow never falls
     "SNOWY_BOREAL_TAIGA":      "minecraft:snowy_taiga",
     "ARCTIC_TUNDRA":           "minecraft:frozen_peaks",
@@ -98,39 +99,12 @@ BIOME_TO_MC_SKY: dict[str, str] = {
     # future biomes that need the dual-layer approach.
 }
 
-# S67: altitude-based biome remap.  User's rule:
-# "if there is another NON snowy biome at a higher value than snowy, we
-# should swap out snowy taiga for its non snowy option."
-#
-# Interpretation: BOREAL_TAIGA (snow-at-altitude) should ALWAYS become
-# BOREAL_ALPINE (plains = no snow) — the NON-snowy variant is aesthetically
-# equivalent at ground level (same palette + schematic routing) and never
-# snows.  Unconditional remap (threshold=-64) keeps the entire biome
-# snow-free.  For SNOWY_BOREAL_TAIGA (intentionally snowy), a dither zone
-# 200-250 controls snow coverage: pixels in that band with noise > 0.5 get
-# the snow, others do not.  Above 250: snowy.  Below 200: no snow unless
-# noise hit.  Creates mountaincap look.
-BIOME_ALTITUDE_REMAPS: list[dict] = [
-    {
-        # BOREAL_TAIGA gets mapped to BOREAL_ALPINE unconditionally — MC tag
-        # becomes minecraft:plains, no weather snow.  Ground palette stays
-        # BOREAL_TAIGA via surface_decorator (since biome_grid passed in
-        # the surface pass is unchanged from assign_biomes).
-        "source":    "BOREAL_TAIGA",
-        "target":    "BOREAL_ALPINE",
-        "threshold": -100,  # effectively always-on
-    },
-    {
-        "source":    "BIRCH_FOREST",
-        "target":    "BOREAL_ALPINE",
-        "threshold": 220,
-    },
-    {
-        "source":    "MIXED_FOREST",
-        "target":    "BOREAL_ALPINE",
-        "threshold": 220,
-    },
-]
+# S85: BIOME_ALTITUDE_REMAPS removed entirely.
+# Historical: this list let high-altitude pixels of source biome get the MC
+# tag of target biome (BIRCH/MIXED → BOREAL_ALPINE, BT → BA).  Intent was to
+# stop weather snow above treeline.  Per user S85: confusing and unwanted —
+# MC biome tag now follows the Vandir biome exactly (via BIOME_TO_MC).
+BIOME_ALTITUDE_REMAPS: list[dict] = []
 
 # S67: SNOWY_BOREAL_TAIGA mountaincap dither.  Pixels with surface_y in
 # [200, 250] get probabilistic snowy biome based on a coarse simplex noise:
@@ -736,14 +710,21 @@ def build_column_array(
     ) & (surface_y + 1 > SEA_Y)
     if _kill_short.any():
         ground_cover[_kill_short] = ""
-    # S70: Kill terrestrial ground cover at coast edges where surface_y <= SEA_Y.
-    # Prevents grass/tall_grass/ferns etc. from poking out over ocean water
-    # when a land-biome pixel sits exactly at sea level next to an ocean cell.
+    # S84: Narrow the S70 coast-edge veg cleanup. Previously this killed
+    # terrestrial ground cover EVERYWHERE surface_y <= SEA_Y — bald-ifying
+    # vast coastal bands (every land cell at Y=63 lost its grass/flowers).
+    # Now requires the cell to be literally adjacent (within 1 block) to a
+    # cell whose surface is BELOW sea level (i.e., an actual water-bearing
+    # cell). Preserves inland-but-low coastal vegetation; still kills the
+    # literal beach edge that's flush with ocean.
     _water_plants = ("seagrass", "tall_seagrass", "kelp", "sea_pickle")
+    _below_sea = surface_y < SEA_Y
+    _adj_to_water = _bin_dilation(_below_sea, iterations=1)
     _kill_terrestrial = (
         (ground_cover != "")
         & ~np.isin(ground_cover, _water_plants)
         & (surface_y <= SEA_Y)
+        & _adj_to_water
     )
     if _kill_terrestrial.any():
         ground_cover[_kill_terrestrial] = ""
@@ -1459,10 +1440,10 @@ import traceback as _traceback
 
 _CHUNK_DATA_VERSION = 4556   # Java 1.21.10
 _SECTION_Y_MIN      = -4     # Y_MIN // 16 = -64 // 16
-_N_SECTIONS         = 32     # (448 - (-64)) // 16
+_N_SECTIONS         = 48     # S84: (704 - (-64)) // 16 = 48 (was 32 for 512-block world)
 _SECTOR_SZ          = 4096   # Anvil .mca sector size
 
-_TEST_SECTION_Y_MAX = None   # Full Higher Heights range: sections -4 to 27 (Y -64 to 447)
+_TEST_SECTION_Y_MAX = None   # Full Higher Heights range: sections -4 to 43 (Y -64 to 703)
 
 
 def _pack_indices(indices: np.ndarray, palette_size: int, min_bits: int = 4) -> np.ndarray:
@@ -1561,9 +1542,13 @@ def _build_heightmaps_nbt(chunk_vol: np.ndarray) -> "nbtlib.Compound":
         return highest.astype(np.int64)          # stored = yi = MC_Y - Y_MIN
 
     def _pack_hm(values: np.ndarray) -> "nbtlib.LongArray":
-        bpe     = 9
-        vpl     = 64 // bpe                      # 7 values per long
-        n_longs = _math.ceil(len(values) / vpl)  # 37
+        # S84: bits_per_entry derived from world height. 9 bits maxes at 511
+        # (was correct for 512-block world), but 768-block world needs 10
+        # bits (max 1023). MC computes bits per heightmap as
+        # ceil(log2(world_height + 1)) — matches our derivation.
+        bpe     = _math.ceil(_math.log2(Y_RANGE + 1))
+        vpl     = 64 // bpe                      # 7 values/long @ 9bpe; 6 @ 10bpe
+        n_longs = _math.ceil(len(values) / vpl)  # 37 @ 9bpe; 43 @ 10bpe
         pad     = n_longs * vpl - len(values)
         padded  = np.concatenate([values, np.zeros(pad, dtype=np.int64)])
         reshaped    = padded.reshape(n_longs, vpl)
