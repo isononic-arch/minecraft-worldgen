@@ -1,0 +1,62 @@
+# Vandir S85 Validation Tile Set (36 unique tiles)
+#
+# Format: tile_x tile_z biome_or_purpose tp_command
+# Render via: python run_pipeline.py ... --tile-x0 X --tile-x1 X+1 --tile-z0 Z --tile-z1 Z+1
+# Or feed to cloud_bake/plan_render.py --tiles "x1,z1 x2,z2 ..."
+#
+# Estimated render time on 1× CCX63 (48 vCPU): ~12-15 min, ~$0.14
+# Estimated render time on 4× CCX63: ~10-12 min, ~$0.57 (memory-safer)
+# Each tile = ~10 min single-threaded compute.
+
+# ──────────────────────────────────────────────────────────────────────────
+# Biome reference tiles (27)
+# ──────────────────────────────────────────────────────────────────────────
+36 7    COASTAL_HEATH_100pct                /tp @s 18688 90 3840
+19 23   TEMPERATE_RAINFOREST_100pct         /tp @s 9984 180 12032
+26 10   BOREAL_TAIGA_100pct                 /tp @s 13568 200 5376
+32 10   SNOWY_BOREAL_TAIGA_91pct            /tp @s 16640 180 5376
+89 57   BOREAL_ALPINE_100pct                /tp @s 45824 200 29440
+33 13   ARCTIC_TUNDRA_high_100pct           /tp @s 17152 200 6912
+31 5    ARCTIC_TUNDRA_lowland_94pct         /tp @s 16128 200 2816
+31 3    FROZEN_FLATS_84pct                  /tp @s 16128 160 1792
+33 6    FROZEN_FLATS_Tundra_Valley_primary  /tp @s 17152 100 3328
+41 35   TEMPERATE_DECIDUOUS_100pct          /tp @s 21248 180 18176
+14 50   RAINFOREST_COAST_99pct              /tp @s 7424 90 25856
+80 50   RIPARIAN_WOODLAND_49pct             /tp @s 41216 100 25856
+33 49   DRY_OAK_SAVANNA_100pct              /tp @s 17152 130 25344
+34 9    KARST_BARRENS_100pct                /tp @s 17664 160 4864
+20 36   BIRCH_FOREST_100pct                 /tp @s 10496 180 18688
+72 92   EASTERN_TEMPERATE_COAST_50pct       /tp @s 37120 90 47360
+50 48   MIXED_FOREST_100pct                 /tp @s 25856 200 24832
+38 11   CONTINENTAL_STEPPE_100pct           /tp @s 19712 140 5888
+92 50   DRY_PINE_BARRENS_100pct             /tp @s 47360 140 25856
+86 78   SCRUBBY_HEATHLAND_100pct            /tp @s 44288 140 40192
+11 64   LUSH_RAINFOREST_COAST_100pct        /tp @s 5888 90 33024
+17 66   SAND_DUNE_DESERT_100pct             /tp @s 8960 120 34048
+18 62   DESERT_STEPPE_TRANSITION_100pct     /tp @s 9472 120 32000
+86 75   SEMI_ARID_SHRUBLAND_100pct          /tp @s 44288 140 38656
+36 75   DRY_WOODLAND_MAQUIS_100pct          /tp @s 18688 140 38656
+43 89   TIDAL_JUNGLE_FRINGE_100pct          /tp @s 22272 90 45824
+32 89   MANGROVE_COAST_55pct                /tp @s 16640 80 45824
+8 73    FRESHWATER_FEN_51pct                /tp @s 4352 100 37376
+
+# ──────────────────────────────────────────────────────────────────────────
+# River deltas (2)
+# ──────────────────────────────────────────────────────────────────────────
+28 7    cold_BOREAL_ALPINE_delta            /tp @s 14592 100 3840
+17 41   COASTAL_HEATH_BIRCH_delta_near_16_40 /tp @s 8960 100 21248
+
+# ──────────────────────────────────────────────────────────────────────────
+# Rock exposure per lithology palette (6)
+# ──────────────────────────────────────────────────────────────────────────
+15 61   granitic_rock_92pct_MIXED          /tp @s 7936 200 31488
+38 15   arid_basaltic_rock_92pct_SCRUBBY   /tp @s 19712 200 7936
+71 91   temperate_basaltic_rock_54pct_ETC  /tp @s 36608 200 46848
+40 28   limestone_rock_77pct_KARST         /tp @s 20736 200 14592
+89 52   deepslate_metamorphic_rock_93pct   /tp @s 45824 200 26880
+10 77   mossy_temperate_rock_91pct_LUSH    /tp @s 5376 200 39680
+
+# ──────────────────────────────────────────────────────────────────────────
+# CLI helper (Bash): convert this file to space-separated tile pairs
+# ──────────────────────────────────────────────────────────────────────────
+# awk '!/^#/ && NF{print $1","$2}' cloud_bake/validation_tiles.txt | xargs
