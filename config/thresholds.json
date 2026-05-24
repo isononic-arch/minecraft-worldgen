@@ -3658,11 +3658,20 @@
         "id": 1,
         "palette": [
           "granite",
+          "granite",
+          "granite",
+          "dripstone_block",
+          "dripstone_block",
           "dripstone_block",
           "packed_mud",
-          "rooted_dirt"
+          "packed_mud",
+          "packed_mud",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "raw_iron_block"
         ],
-        "description": "Intrusive igneous basement \u2014 default temperate highland. S60 palette."
+        "description": "Intrusive igneous basement \u2014 default temperate highland. S60 palette. S85: weighted distribution (~23% each granite/dripstone/packed_mud/rooted_dirt + ~8% raw_iron_block as rare accent)."
       },
       "arid_basaltic": {
         "id": 2,
@@ -3693,23 +3702,30 @@
       "limestone": {
         "id": 4,
         "palette": [
-          "sandstone",
-          "smooth_sandstone",
-          "suspicious_sand"
+          "calcite",
+          "calcite",
+          "calcite",
+          "calcite",
+          "calcite",
+          "diorite",
+          "diorite",
+          "diorite",
+          "diorite",
+          "dead_horn_coral_block",
+          "light_gray_concrete_powder"
         ],
-        "description": "Karst barrens + cave-prone carbonate. S66 added smooth_sandstone. S67 removed end_stone per user."
+        "description": "S85: full repaint — calcite (~45%) dominant + diorite (~36%) slightly less, dead_horn_coral_block (~9%) + light_gray_concrete_powder (~9%) as rare accents. Karst barrens + cave-prone carbonate."
       },
       "deepslate_metamorphic": {
         "id": 5,
         "palette": [
-          "tuff",
           "dead_fire_coral_block",
           "andesite",
           "stone",
           "cobblestone",
           "suspicious_gravel"
         ],
-        "description": "High-alpine / arctic basement. S60 palette."
+        "description": "High-alpine / arctic basement. S60 palette. S85: removed tuff per user (was 16.7%, now redistributed to remaining 5 blocks at 20% each)."
       },
       "mossy_temperate": {
         "id": 6,
