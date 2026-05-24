@@ -2532,10 +2532,13 @@ def _apply_ecotone_dither(
     # harsh after the width 40 -> 100 / swap_cap 0.75 -> 0.85 widening because the
     # ramp was dropping to 0 at 100 blocks deep, not staying at the cap.
     swap_prob = np.clip(_swap_cap * (1.0 - t), 0.15, _swap_cap)
-    # Light ±20% modulation by noise_b for additional spatial variation in
-    # the swap probability ramp itself (subtler than the per-pixel decision).
-    noise_at = noise_b[has_neighbour]
-    swap_prob = swap_prob * (0.8 + 0.4 * noise_at)
+    # S85: REMOVED ±20% noise_b modulation. `noise_b` is a simplex/fBm noise
+    # field (spatially correlated, scale ~10-50 blocks). Multiplying swap_prob
+    # by it created visible GAUSSIAN BLOBS at the boundary — high-swap and
+    # low-swap regions clustered into ~20-block blobs instead of clean
+    # per-pixel salt-and-pepper. Anti-pattern called out in CLAUDE.md hard
+    # rules. User noticed blobs in 33,6 at width=100. Pure plateau-clamp +
+    # per-pixel rand_field decision is the NOISE_PATTERNS.md §4 spec.
 
     # Stochastic swap: if rand < swap_prob, adopt neighbour's block
     do_swap = rand_field[has_neighbour] < swap_prob
@@ -2672,8 +2675,11 @@ def _compute_ecotone_swap_fields(
     # pixels from being 100% swapped.
     t = dist_inside / width_px
     swap_prob_grid = np.clip(swap_cap * (1.0 - t), 0.15, swap_cap).astype(np.float32)
-    if noise_b is not None:
-        swap_prob_grid = (swap_prob_grid * (0.8 + 0.4 * noise_b)).astype(np.float32)
+    # S85: REMOVED ±20% noise_b multiplicative modulation. noise_b is a simplex/fBm
+    # field (spatially correlated, scale ~10-50 blocks). Multiplying swap_prob by it
+    # created visible gaussian blobs at boundaries — same anti-pattern as the
+    # gaussian-coin removal in S58. Anti-pattern called out in CLAUDE.md hard rules.
+    # NOISE_PATTERNS.md §4 spec is pure plateau-clamp + per-pixel rand decision.
     # Outside the has_neighbour zone (no nearby boundary), zero out so
     # interior pixels stay at biome's own palette.
     swap_prob_grid = np.where(has_neighbour, swap_prob_grid, 0.0).astype(np.float32)
