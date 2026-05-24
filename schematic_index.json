@@ -1,7 +1,7 @@
 {
   "birch": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -15,7 +15,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -29,7 +29,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -43,7 +43,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -57,7 +57,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -71,7 +71,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -85,7 +85,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -99,7 +99,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -113,7 +113,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -127,7 +127,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_a_sm.schematic",
+      "path": "Vegetation/birch_tree_dbirch_a_sm.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "a",
@@ -139,7 +139,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_b_sm.schematic",
+      "path": "Vegetation/birch_tree_dbirch_b_sm.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "b",
@@ -151,7 +151,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_c_sm.schematic",
+      "path": "Vegetation/birch_tree_dbirch_c_sm.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "c",
@@ -163,7 +163,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_d_md.schematic",
+      "path": "Vegetation/birch_tree_dbirch_d_md.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "d",
@@ -175,7 +175,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_e_md.schematic",
+      "path": "Vegetation/birch_tree_dbirch_e_md.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "e",
@@ -187,7 +187,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_f_lg.schematic",
+      "path": "Vegetation/birch_tree_dbirch_f_lg.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "f",
@@ -199,7 +199,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_g_lg.schematic",
+      "path": "Vegetation/birch_tree_dbirch_g_lg.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "g",
@@ -211,7 +211,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_rowan_a_sm.schematic",
+      "path": "Vegetation/birch_tree_rowan_a_sm.schematic",
       "type": "tree",
       "species": "rowan",
       "variant": "a",
@@ -223,7 +223,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_rowan_b_sm.schematic",
+      "path": "Vegetation/birch_tree_rowan_b_sm.schematic",
       "type": "tree",
       "species": "rowan",
       "variant": "b",
@@ -235,7 +235,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_rowan_c_sm.schematic",
+      "path": "Vegetation/birch_tree_rowan_c_sm.schematic",
       "type": "tree",
       "species": "rowan",
       "variant": "c",
@@ -247,7 +247,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_a_sm.schematic",
+      "path": "Vegetation/birch_tree_sbirch_a_sm.schematic",
       "type": "tree",
       "species": "sbirch",
       "variant": "a",
@@ -259,7 +259,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_b_sm.schematic",
+      "path": "Vegetation/birch_tree_sbirch_b_sm.schematic",
       "type": "tree",
       "species": "sbirch",
       "variant": "b",
@@ -271,7 +271,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_c_sm.schematic",
+      "path": "Vegetation/birch_tree_sbirch_c_sm.schematic",
       "type": "tree",
       "species": "sbirch",
       "variant": "c",
@@ -283,7 +283,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_d_sm.schem",
+      "path": "Vegetation/birch_tree_sbirch_d_sm.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "d",
@@ -295,7 +295,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_e_sm.schematic",
+      "path": "Vegetation/birch_tree_sbirch_e_sm.schematic",
       "type": "tree",
       "species": "sbirch",
       "variant": "e",
@@ -307,7 +307,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_f_md.schematic",
+      "path": "Vegetation/birch_tree_sbirch_f_md.schematic",
       "type": "tree",
       "species": "sbirch",
       "variant": "f",
@@ -319,7 +319,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_g_md.schem",
+      "path": "Vegetation/birch_tree_sbirch_g_md.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "g",
@@ -331,7 +331,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_h_md.schem",
+      "path": "Vegetation/birch_tree_sbirch_h_md.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "h",
@@ -343,7 +343,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_i_md.schem",
+      "path": "Vegetation/birch_tree_sbirch_i_md.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "i",
@@ -355,7 +355,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_j_md.schem",
+      "path": "Vegetation/birch_tree_sbirch_j_md.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "j",
@@ -367,7 +367,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_k_lg.schem",
+      "path": "Vegetation/birch_tree_sbirch_k_lg.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "k",
@@ -379,7 +379,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_l_lg.schem",
+      "path": "Vegetation/birch_tree_sbirch_l_lg.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "l",
@@ -391,7 +391,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_m_lg.schem",
+      "path": "Vegetation/birch_tree_sbirch_m_lg.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "m",
@@ -405,7 +405,7 @@
   ],
   "btaiga": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -419,7 +419,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -433,7 +433,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -447,7 +447,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -461,7 +461,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -475,7 +475,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -489,7 +489,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -503,7 +503,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -517,7 +517,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -531,7 +531,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_balfir_a_sm.schematic",
+      "path": "Vegetation/btaiga_tree_balfir_a_sm.schematic",
       "type": "tree",
       "species": "balfir",
       "variant": "a",
@@ -543,7 +543,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_bspruce_a_sm.schematic",
+      "path": "Vegetation/btaiga_tree_bspruce_a_sm.schematic",
       "type": "tree",
       "species": "bspruce",
       "variant": "a",
@@ -555,7 +555,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_bspruce_b_sm.schematic",
+      "path": "Vegetation/btaiga_tree_bspruce_b_sm.schematic",
       "type": "tree",
       "species": "bspruce",
       "variant": "b",
@@ -567,7 +567,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_bspruce_c_sm.schematic",
+      "path": "Vegetation/btaiga_tree_bspruce_c_sm.schematic",
       "type": "tree",
       "species": "bspruce",
       "variant": "c",
@@ -579,7 +579,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_bspruce_d_sm.schematic",
+      "path": "Vegetation/btaiga_tree_bspruce_d_sm.schematic",
       "type": "tree",
       "species": "bspruce",
       "variant": "d",
@@ -591,7 +591,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_bspruce_e_sm.schematic",
+      "path": "Vegetation/btaiga_tree_bspruce_e_sm.schematic",
       "type": "tree",
       "species": "bspruce",
       "variant": "e",
@@ -603,7 +603,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_bspruce_f_md.schematic",
+      "path": "Vegetation/btaiga_tree_bspruce_f_md.schematic",
       "type": "tree",
       "species": "bspruce",
       "variant": "f",
@@ -615,7 +615,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_bspruce_g_md.schematic",
+      "path": "Vegetation/btaiga_tree_bspruce_g_md.schematic",
       "type": "tree",
       "species": "bspruce",
       "variant": "g",
@@ -627,7 +627,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_bspruce_h_md.schematic",
+      "path": "Vegetation/btaiga_tree_bspruce_h_md.schematic",
       "type": "tree",
       "species": "bspruce",
       "variant": "h",
@@ -639,7 +639,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_bspruce_i_md.schematic",
+      "path": "Vegetation/btaiga_tree_bspruce_i_md.schematic",
       "type": "tree",
       "species": "bspruce",
       "variant": "i",
@@ -651,7 +651,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_bspruce_j_lg.schematic",
+      "path": "Vegetation/btaiga_tree_bspruce_j_lg.schematic",
       "type": "tree",
       "species": "bspruce",
       "variant": "j",
@@ -663,7 +663,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_bspruce_k_lg.schematic",
+      "path": "Vegetation/btaiga_tree_bspruce_k_lg.schematic",
       "type": "tree",
       "species": "bspruce",
       "variant": "k",
@@ -675,7 +675,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_bspruce_l_lg.schematic",
+      "path": "Vegetation/btaiga_tree_bspruce_l_lg.schematic",
       "type": "tree",
       "species": "bspruce",
       "variant": "l",
@@ -687,7 +687,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_jpine_a_sm.schematic",
+      "path": "Vegetation/btaiga_tree_jpine_a_sm.schematic",
       "type": "tree",
       "species": "jpine",
       "variant": "a",
@@ -699,7 +699,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_tamarack_a_sm.schematic",
+      "path": "Vegetation/btaiga_tree_tamarack_a_sm.schematic",
       "type": "tree",
       "species": "tamarack",
       "variant": "a",
@@ -711,7 +711,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_wspruce_a_sm.schematic",
+      "path": "Vegetation/btaiga_tree_wspruce_a_sm.schematic",
       "type": "tree",
       "species": "wspruce",
       "variant": "a",
@@ -723,7 +723,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_wspruce_b_lg.schematic",
+      "path": "Vegetation/btaiga_tree_wspruce_b_lg.schematic",
       "type": "tree",
       "species": "wspruce",
       "variant": "b",
@@ -737,7 +737,7 @@
   ],
   "generic": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -749,7 +749,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -761,7 +761,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -773,7 +773,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -785,7 +785,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -797,7 +797,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -809,7 +809,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -821,7 +821,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -833,7 +833,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -847,7 +847,7 @@
   ],
   "cstep": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -861,7 +861,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -875,7 +875,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -889,7 +889,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -903,7 +903,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -917,7 +917,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -931,7 +931,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -945,7 +945,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -959,7 +959,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -973,7 +973,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\cstep_tree_steppep_a_sm.schem",
+      "path": "Vegetation/cstep_tree_steppep_a_sm.schem",
       "type": "tree",
       "species": "steppep",
       "variant": "a",
@@ -985,7 +985,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\cstep_tree_steppep_b_md.schem",
+      "path": "Vegetation/cstep_tree_steppep_b_md.schem",
       "type": "tree",
       "species": "steppep",
       "variant": "b",
@@ -997,7 +997,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\cstep_tree_steppep_c_lg.schem",
+      "path": "Vegetation/cstep_tree_steppep_c_lg.schem",
       "type": "tree",
       "species": "steppep",
       "variant": "c",
@@ -1011,7 +1011,7 @@
   ],
   "dosav": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -1025,7 +1025,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -1039,7 +1039,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -1053,7 +1053,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -1067,7 +1067,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -1081,7 +1081,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -1095,7 +1095,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -1109,7 +1109,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -1123,7 +1123,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -1137,7 +1137,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dosav_tree_soak_a_sm.schem",
+      "path": "Vegetation/dosav_tree_soak_a_sm.schem",
       "type": "tree",
       "species": "soak",
       "variant": "a",
@@ -1149,7 +1149,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dosav_tree_soak_b_sm.schem",
+      "path": "Vegetation/dosav_tree_soak_b_sm.schem",
       "type": "tree",
       "species": "soak",
       "variant": "b",
@@ -1161,7 +1161,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dosav_tree_soak_c_md.schem",
+      "path": "Vegetation/dosav_tree_soak_c_md.schem",
       "type": "tree",
       "species": "soak",
       "variant": "c",
@@ -1173,7 +1173,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dosav_tree_soak_d_md.schem",
+      "path": "Vegetation/dosav_tree_soak_d_md.schem",
       "type": "tree",
       "species": "soak",
       "variant": "d",
@@ -1185,7 +1185,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dosav_tree_soak_e_lg.schem",
+      "path": "Vegetation/dosav_tree_soak_e_lg.schem",
       "type": "tree",
       "species": "soak",
       "variant": "e",
@@ -1197,7 +1197,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dosav_tree_soak_f_lg.schem",
+      "path": "Vegetation/dosav_tree_soak_f_lg.schem",
       "type": "tree",
       "species": "soak",
       "variant": "f",
@@ -1211,7 +1211,7 @@
   ],
   "dpine": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -1225,7 +1225,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -1239,7 +1239,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -1253,7 +1253,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -1267,7 +1267,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -1281,7 +1281,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -1295,7 +1295,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -1309,7 +1309,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -1323,7 +1323,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -1337,7 +1337,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_dead_pine_a_sm.schematic",
+      "path": "Vegetation/dpine_dead_pine_a_sm.schematic",
       "type": "dead",
       "species": "pine",
       "variant": "a",
@@ -1349,7 +1349,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_dead_pine_b_sm.schematic",
+      "path": "Vegetation/dpine_dead_pine_b_sm.schematic",
       "type": "dead",
       "species": "pine",
       "variant": "b",
@@ -1361,7 +1361,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_dead_pine_c_md.schematic",
+      "path": "Vegetation/dpine_dead_pine_c_md.schematic",
       "type": "dead",
       "species": "pine",
       "variant": "c",
@@ -1373,7 +1373,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_dead_pine_d_md.schematic",
+      "path": "Vegetation/dpine_dead_pine_d_md.schematic",
       "type": "dead",
       "species": "pine",
       "variant": "d",
@@ -1385,7 +1385,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_dead_pine_e_lg.schematic",
+      "path": "Vegetation/dpine_dead_pine_e_lg.schematic",
       "type": "dead",
       "species": "pine",
       "variant": "e",
@@ -1397,7 +1397,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_pitchp_a_sm.schem",
+      "path": "Vegetation/dpine_tree_pitchp_a_sm.schem",
       "type": "tree",
       "species": "pitchp",
       "variant": "a",
@@ -1409,7 +1409,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_pitchp_b_lg.schem",
+      "path": "Vegetation/dpine_tree_pitchp_b_lg.schem",
       "type": "tree",
       "species": "pitchp",
       "variant": "b",
@@ -1421,7 +1421,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_ppine_a_sm.schem",
+      "path": "Vegetation/dpine_tree_ppine_a_sm.schem",
       "type": "tree",
       "species": "ppine",
       "variant": "a",
@@ -1433,7 +1433,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_ppine_b_sm.schem",
+      "path": "Vegetation/dpine_tree_ppine_b_sm.schem",
       "type": "tree",
       "species": "ppine",
       "variant": "b",
@@ -1445,7 +1445,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_ppine_c_sm.schem",
+      "path": "Vegetation/dpine_tree_ppine_c_sm.schem",
       "type": "tree",
       "species": "ppine",
       "variant": "c",
@@ -1457,7 +1457,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_ppine_d_md.schem",
+      "path": "Vegetation/dpine_tree_ppine_d_md.schem",
       "type": "tree",
       "species": "ppine",
       "variant": "d",
@@ -1469,7 +1469,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_ppine_e_md.schem",
+      "path": "Vegetation/dpine_tree_ppine_e_md.schem",
       "type": "tree",
       "species": "ppine",
       "variant": "e",
@@ -1481,7 +1481,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_ppine_f_lg.schem",
+      "path": "Vegetation/dpine_tree_ppine_f_lg.schem",
       "type": "tree",
       "species": "ppine",
       "variant": "f",
@@ -1493,7 +1493,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_ppine_g_lg.schem",
+      "path": "Vegetation/dpine_tree_ppine_g_lg.schem",
       "type": "tree",
       "species": "ppine",
       "variant": "g",
@@ -1505,7 +1505,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_scotsp_a_sm.schem",
+      "path": "Vegetation/dpine_tree_scotsp_a_sm.schem",
       "type": "tree",
       "species": "scotsp",
       "variant": "a",
@@ -1517,7 +1517,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_scotsp_b_sm.schem",
+      "path": "Vegetation/dpine_tree_scotsp_b_sm.schem",
       "type": "tree",
       "species": "scotsp",
       "variant": "b",
@@ -1529,7 +1529,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_scotsp_c_md.schem",
+      "path": "Vegetation/dpine_tree_scotsp_c_md.schem",
       "type": "tree",
       "species": "scotsp",
       "variant": "c",
@@ -1541,7 +1541,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_scotsp_d_md.schem",
+      "path": "Vegetation/dpine_tree_scotsp_d_md.schem",
       "type": "tree",
       "species": "scotsp",
       "variant": "d",
@@ -1553,7 +1553,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_scotsp_e_lg.schem",
+      "path": "Vegetation/dpine_tree_scotsp_e_lg.schem",
       "type": "tree",
       "species": "scotsp",
       "variant": "e",
@@ -1567,7 +1567,7 @@
   ],
   "dstep": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -1581,7 +1581,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -1595,7 +1595,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -1609,7 +1609,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -1623,7 +1623,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -1637,7 +1637,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -1651,7 +1651,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -1665,7 +1665,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -1679,7 +1679,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -1693,7 +1693,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dstep_tree_acacia_a_sm.schem",
+      "path": "Vegetation/dstep_tree_acacia_a_sm.schem",
       "type": "tree",
       "species": "acacia",
       "variant": "a",
@@ -1705,7 +1705,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dstep_tree_acacia_b_sm.schem",
+      "path": "Vegetation/dstep_tree_acacia_b_sm.schem",
       "type": "tree",
       "species": "acacia",
       "variant": "b",
@@ -1717,7 +1717,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dstep_tree_acacia_c_sm.schem",
+      "path": "Vegetation/dstep_tree_acacia_c_sm.schem",
       "type": "tree",
       "species": "acacia",
       "variant": "c",
@@ -1729,7 +1729,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dstep_tree_acacia_d_md.schem",
+      "path": "Vegetation/dstep_tree_acacia_d_md.schem",
       "type": "tree",
       "species": "acacia",
       "variant": "d",
@@ -1741,7 +1741,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dstep_tree_acacia_e_md.schem",
+      "path": "Vegetation/dstep_tree_acacia_e_md.schem",
       "type": "tree",
       "species": "acacia",
       "variant": "e",
@@ -1753,7 +1753,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dstep_tree_acacia_f_lg.schem",
+      "path": "Vegetation/dstep_tree_acacia_f_lg.schem",
       "type": "tree",
       "species": "acacia",
       "variant": "f",
@@ -1765,7 +1765,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dstep_tree_acacia_g_lg.schem",
+      "path": "Vegetation/dstep_tree_acacia_g_lg.schem",
       "type": "tree",
       "species": "acacia",
       "variant": "g",
@@ -1779,7 +1779,7 @@
   ],
   "lrfc": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -1793,7 +1793,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -1807,7 +1807,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -1821,7 +1821,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -1835,7 +1835,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -1849,7 +1849,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -1863,7 +1863,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -1877,7 +1877,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -1891,7 +1891,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -1905,7 +1905,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_banyan_b_lg.schematic",
+      "path": "Vegetation/lrfc_tree_banyan_b_lg.schematic",
       "type": "tree",
       "species": "banyan",
       "variant": "b",
@@ -1917,7 +1917,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_banyan_c_lg.schematic",
+      "path": "Vegetation/lrfc_tree_banyan_c_lg.schematic",
       "type": "tree",
       "species": "banyan",
       "variant": "c",
@@ -1929,7 +1929,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_banyan_d_lg.schematic",
+      "path": "Vegetation/lrfc_tree_banyan_d_lg.schematic",
       "type": "tree",
       "species": "banyan",
       "variant": "d",
@@ -1941,7 +1941,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_breadfruit_a_sm.schem",
+      "path": "Vegetation/lrfc_tree_breadfruit_a_sm.schem",
       "type": "tree",
       "species": "breadfruit",
       "variant": "a",
@@ -1953,7 +1953,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_breadfruit_b_lg.schem",
+      "path": "Vegetation/lrfc_tree_breadfruit_b_lg.schem",
       "type": "tree",
       "species": "breadfruit",
       "variant": "b",
@@ -1965,7 +1965,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_gfig_b_lg.schematic",
+      "path": "Vegetation/lrfc_tree_gfig_b_lg.schematic",
       "type": "tree",
       "species": "gfig",
       "variant": "b",
@@ -1977,7 +1977,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_gfig_c_lg.schematic",
+      "path": "Vegetation/lrfc_tree_gfig_c_lg.schematic",
       "type": "tree",
       "species": "gfig",
       "variant": "c",
@@ -1989,7 +1989,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_gfig_d_lg.schematic",
+      "path": "Vegetation/lrfc_tree_gfig_d_lg.schematic",
       "type": "tree",
       "species": "gfig",
       "variant": "d",
@@ -2001,7 +2001,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_gfig_e_lg.schematic",
+      "path": "Vegetation/lrfc_tree_gfig_e_lg.schematic",
       "type": "tree",
       "species": "gfig",
       "variant": "e",
@@ -2013,7 +2013,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_gfig_f_lg.schematic",
+      "path": "Vegetation/lrfc_tree_gfig_f_lg.schematic",
       "type": "tree",
       "species": "gfig",
       "variant": "f",
@@ -2025,7 +2025,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_mpalm_b_sm.schematic",
+      "path": "Vegetation/lrfc_tree_mpalm_b_sm.schematic",
       "type": "tree",
       "species": "mpalm",
       "variant": "b",
@@ -2037,7 +2037,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_rfpalm_a_sm.schematic",
+      "path": "Vegetation/lrfc_tree_rfpalm_a_sm.schematic",
       "type": "tree",
       "species": "rfpalm",
       "variant": "a",
@@ -2049,7 +2049,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_rfpalm_b_sm.schematic",
+      "path": "Vegetation/lrfc_tree_rfpalm_b_sm.schematic",
       "type": "tree",
       "species": "rfpalm",
       "variant": "b",
@@ -2061,7 +2061,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_rfpalm_c_sm.schematic",
+      "path": "Vegetation/lrfc_tree_rfpalm_c_sm.schematic",
       "type": "tree",
       "species": "rfpalm",
       "variant": "c",
@@ -2073,7 +2073,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_rfpalm_d_md.schematic",
+      "path": "Vegetation/lrfc_tree_rfpalm_d_md.schematic",
       "type": "tree",
       "species": "rfpalm",
       "variant": "d",
@@ -2085,7 +2085,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_rfpalm_e_md.schematic",
+      "path": "Vegetation/lrfc_tree_rfpalm_e_md.schematic",
       "type": "tree",
       "species": "rfpalm",
       "variant": "e",
@@ -2097,7 +2097,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_rfpalm_f_md.schematic",
+      "path": "Vegetation/lrfc_tree_rfpalm_f_md.schematic",
       "type": "tree",
       "species": "rfpalm",
       "variant": "f",
@@ -2109,7 +2109,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_rfpalm_g_lg.schematic",
+      "path": "Vegetation/lrfc_tree_rfpalm_g_lg.schematic",
       "type": "tree",
       "species": "rfpalm",
       "variant": "g",
@@ -2121,7 +2121,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\lrfc_tree_rfpalm_h_lg.schematic",
+      "path": "Vegetation/lrfc_tree_rfpalm_h_lg.schematic",
       "type": "tree",
       "species": "rfpalm",
       "variant": "h",
@@ -2135,7 +2135,7 @@
   ],
   "mangr": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -2149,7 +2149,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -2163,7 +2163,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -2177,7 +2177,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -2191,7 +2191,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -2205,7 +2205,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -2219,7 +2219,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -2233,7 +2233,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -2247,7 +2247,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -2261,7 +2261,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_bmang_a_sm.schematic",
+      "path": "Vegetation/mangr_tree_bmang_a_sm.schematic",
       "type": "tree",
       "species": "bmang",
       "variant": "a",
@@ -2273,7 +2273,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_bmang_b_lg.schematic",
+      "path": "Vegetation/mangr_tree_bmang_b_lg.schematic",
       "type": "tree",
       "species": "bmang",
       "variant": "b",
@@ -2285,7 +2285,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mangsm_a_sm.schematic",
+      "path": "Vegetation/mangr_tree_mangsm_a_sm.schematic",
       "type": "tree",
       "species": "mangsm",
       "variant": "a",
@@ -2297,7 +2297,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mangsm_b_sm.schematic",
+      "path": "Vegetation/mangr_tree_mangsm_b_sm.schematic",
       "type": "tree",
       "species": "mangsm",
       "variant": "b",
@@ -2309,7 +2309,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mangsm_c_sm.schematic",
+      "path": "Vegetation/mangr_tree_mangsm_c_sm.schematic",
       "type": "tree",
       "species": "mangsm",
       "variant": "c",
@@ -2321,7 +2321,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mangsm_d_sm.schematic",
+      "path": "Vegetation/mangr_tree_mangsm_d_sm.schematic",
       "type": "tree",
       "species": "mangsm",
       "variant": "d",
@@ -2333,7 +2333,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mangsm_e_sm.schematic",
+      "path": "Vegetation/mangr_tree_mangsm_e_sm.schematic",
       "type": "tree",
       "species": "mangsm",
       "variant": "e",
@@ -2345,7 +2345,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mangsm_f_sm.schematic",
+      "path": "Vegetation/mangr_tree_mangsm_f_sm.schematic",
       "type": "tree",
       "species": "mangsm",
       "variant": "f",
@@ -2357,7 +2357,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mangsm_g_sm.schematic",
+      "path": "Vegetation/mangr_tree_mangsm_g_sm.schematic",
       "type": "tree",
       "species": "mangsm",
       "variant": "g",
@@ -2369,7 +2369,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_a_sm.schematic",
+      "path": "Vegetation/mangr_tree_mroot_a_sm.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "a",
@@ -2381,7 +2381,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_b_sm.schematic",
+      "path": "Vegetation/mangr_tree_mroot_b_sm.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "b",
@@ -2393,7 +2393,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_c_sm.schematic",
+      "path": "Vegetation/mangr_tree_mroot_c_sm.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "c",
@@ -2405,7 +2405,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_d_sm.schematic",
+      "path": "Vegetation/mangr_tree_mroot_d_sm.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "d",
@@ -2417,7 +2417,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_e_sm.schematic",
+      "path": "Vegetation/mangr_tree_mroot_e_sm.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "e",
@@ -2429,7 +2429,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_f_md.schematic",
+      "path": "Vegetation/mangr_tree_mroot_f_md.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "f",
@@ -2441,7 +2441,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_g_md.schematic",
+      "path": "Vegetation/mangr_tree_mroot_g_md.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "g",
@@ -2453,7 +2453,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_h_md.schematic",
+      "path": "Vegetation/mangr_tree_mroot_h_md.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "h",
@@ -2465,7 +2465,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_i_md.schematic",
+      "path": "Vegetation/mangr_tree_mroot_i_md.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "i",
@@ -2477,7 +2477,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_j_md.schematic",
+      "path": "Vegetation/mangr_tree_mroot_j_md.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "j",
@@ -2489,7 +2489,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_k_lg.schematic",
+      "path": "Vegetation/mangr_tree_mroot_k_lg.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "k",
@@ -2501,7 +2501,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_l_lg.schematic",
+      "path": "Vegetation/mangr_tree_mroot_l_lg.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "l",
@@ -2513,7 +2513,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_mroot_m_lg.schematic",
+      "path": "Vegetation/mangr_tree_mroot_m_lg.schematic",
       "type": "tree",
       "species": "mroot",
       "variant": "m",
@@ -2525,7 +2525,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_rmang_a_sm.schematic",
+      "path": "Vegetation/mangr_tree_rmang_a_sm.schematic",
       "type": "tree",
       "species": "rmang",
       "variant": "a",
@@ -2537,7 +2537,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_rmang_b_lg.schematic",
+      "path": "Vegetation/mangr_tree_rmang_b_lg.schematic",
       "type": "tree",
       "species": "rmang",
       "variant": "b",
@@ -2549,7 +2549,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_rmangsm_a_sm.schematic",
+      "path": "Vegetation/mangr_tree_rmangsm_a_sm.schematic",
       "type": "tree",
       "species": "rmangsm",
       "variant": "a",
@@ -2561,7 +2561,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_rmangsm_b_sm.schematic",
+      "path": "Vegetation/mangr_tree_rmangsm_b_sm.schematic",
       "type": "tree",
       "species": "rmangsm",
       "variant": "b",
@@ -2573,7 +2573,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\mangr_tree_wmang_a_sm.schematic",
+      "path": "Vegetation/mangr_tree_wmang_a_sm.schematic",
       "type": "tree",
       "species": "wmang",
       "variant": "a",
@@ -2587,7 +2587,7 @@
   ],
   "maquis": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -2601,7 +2601,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -2615,7 +2615,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -2629,7 +2629,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -2643,7 +2643,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -2657,7 +2657,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -2671,7 +2671,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -2685,7 +2685,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -2699,7 +2699,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -2713,7 +2713,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\maquis_tree_apine_a_sm.schem",
+      "path": "Vegetation/maquis_tree_apine_a_sm.schem",
       "type": "tree",
       "species": "apine",
       "variant": "a",
@@ -2725,7 +2725,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\maquis_tree_apine_b_sm.schem",
+      "path": "Vegetation/maquis_tree_apine_b_sm.schem",
       "type": "tree",
       "species": "apine",
       "variant": "b",
@@ -2737,7 +2737,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\maquis_tree_apine_c_md.schem",
+      "path": "Vegetation/maquis_tree_apine_c_md.schem",
       "type": "tree",
       "species": "apine",
       "variant": "c",
@@ -2749,7 +2749,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\maquis_tree_apine_d_lg.schem",
+      "path": "Vegetation/maquis_tree_apine_d_lg.schem",
       "type": "tree",
       "species": "apine",
       "variant": "d",
@@ -2761,7 +2761,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\maquis_tree_carob_a_sm.schem",
+      "path": "Vegetation/maquis_tree_carob_a_sm.schem",
       "type": "tree",
       "species": "carob",
       "variant": "a",
@@ -2773,7 +2773,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\maquis_tree_carob_b_lg.schem",
+      "path": "Vegetation/maquis_tree_carob_b_lg.schem",
       "type": "tree",
       "species": "carob",
       "variant": "b",
@@ -2785,7 +2785,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\maquis_tree_hoak_a_sm.schem",
+      "path": "Vegetation/maquis_tree_hoak_a_sm.schem",
       "type": "tree",
       "species": "hoak",
       "variant": "a",
@@ -2797,7 +2797,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\maquis_tree_hoak_b_md.schem",
+      "path": "Vegetation/maquis_tree_hoak_b_md.schem",
       "type": "tree",
       "species": "hoak",
       "variant": "b",
@@ -2809,7 +2809,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\maquis_tree_hoak_c_lg.schem",
+      "path": "Vegetation/maquis_tree_hoak_c_lg.schem",
       "type": "tree",
       "species": "hoak",
       "variant": "c",
@@ -2821,7 +2821,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\maquis_tree_olive_a_sm.schem",
+      "path": "Vegetation/maquis_tree_olive_a_sm.schem",
       "type": "tree",
       "species": "olive",
       "variant": "a",
@@ -2833,7 +2833,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\maquis_tree_olive_b_md.schem",
+      "path": "Vegetation/maquis_tree_olive_b_md.schem",
       "type": "tree",
       "species": "olive",
       "variant": "b",
@@ -2845,7 +2845,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\maquis_tree_olive_c_lg.schem",
+      "path": "Vegetation/maquis_tree_olive_c_lg.schem",
       "type": "tree",
       "species": "olive",
       "variant": "c",
@@ -2859,7 +2859,7 @@
   ],
   "rfc": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -2873,7 +2873,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -2887,7 +2887,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -2901,7 +2901,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -2915,7 +2915,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -2929,7 +2929,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -2943,7 +2943,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -2957,7 +2957,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -2971,7 +2971,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -2985,7 +2985,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_kapok_a_lg.schematic",
+      "path": "Vegetation/rfc_tree_kapok_a_lg.schematic",
       "type": "tree",
       "species": "kapok",
       "variant": "a",
@@ -2997,7 +2997,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_teak_a_sm.schematic",
+      "path": "Vegetation/rfc_tree_teak_a_sm.schematic",
       "type": "tree",
       "species": "teak",
       "variant": "a",
@@ -3009,7 +3009,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_teak_b_sm.schem",
+      "path": "Vegetation/rfc_tree_teak_b_sm.schem",
       "type": "tree",
       "species": "teak",
       "variant": "b",
@@ -3021,7 +3021,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_teak_c_md.schem",
+      "path": "Vegetation/rfc_tree_teak_c_md.schem",
       "type": "tree",
       "species": "teak",
       "variant": "c",
@@ -3033,7 +3033,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_teak_d_lg.schem",
+      "path": "Vegetation/rfc_tree_teak_d_lg.schem",
       "type": "tree",
       "species": "teak",
       "variant": "d",
@@ -3045,7 +3045,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_tfig_a_sm.schematic",
+      "path": "Vegetation/rfc_tree_tfig_a_sm.schematic",
       "type": "tree",
       "species": "tfig",
       "variant": "a",
@@ -3057,7 +3057,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\rfc_tree_tfig_b_lg.schem",
+      "path": "Vegetation/rfc_tree_tfig_b_lg.schem",
       "type": "tree",
       "species": "tfig",
       "variant": "b",
@@ -3071,7 +3071,7 @@
   ],
   "ripar": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -3085,7 +3085,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -3099,7 +3099,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -3113,7 +3113,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -3127,7 +3127,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -3141,7 +3141,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -3155,7 +3155,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -3169,7 +3169,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -3183,7 +3183,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -3197,7 +3197,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_dead_willow_a_sm.schematic",
+      "path": "Vegetation/ripar_dead_willow_a_sm.schematic",
       "type": "dead",
       "species": "willow",
       "variant": "a",
@@ -3209,7 +3209,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_alder_a_sm.schem",
+      "path": "Vegetation/ripar_tree_alder_a_sm.schem",
       "type": "tree",
       "species": "alder",
       "variant": "a",
@@ -3221,7 +3221,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_alder_b_sm.schem",
+      "path": "Vegetation/ripar_tree_alder_b_sm.schem",
       "type": "tree",
       "species": "alder",
       "variant": "b",
@@ -3233,7 +3233,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_alder_c_md.schem",
+      "path": "Vegetation/ripar_tree_alder_c_md.schem",
       "type": "tree",
       "species": "alder",
       "variant": "c",
@@ -3245,7 +3245,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_alder_d_md.schem",
+      "path": "Vegetation/ripar_tree_alder_d_md.schem",
       "type": "tree",
       "species": "alder",
       "variant": "d",
@@ -3257,7 +3257,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_alder_e_lg.schem",
+      "path": "Vegetation/ripar_tree_alder_e_lg.schem",
       "type": "tree",
       "species": "alder",
       "variant": "e",
@@ -3269,7 +3269,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_alder_f_lg.schem",
+      "path": "Vegetation/ripar_tree_alder_f_lg.schem",
       "type": "tree",
       "species": "alder",
       "variant": "f",
@@ -3281,7 +3281,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_a_sm.schem",
+      "path": "Vegetation/ripar_tree_cwillow_a_sm.schem",
       "type": "tree",
       "species": "cwillow",
       "variant": "a",
@@ -3293,7 +3293,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_b_sm.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_b_sm.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "b",
@@ -3305,7 +3305,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_c_sm.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_c_sm.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "c",
@@ -3317,7 +3317,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_d_md.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_d_md.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "d",
@@ -3329,7 +3329,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_e_md.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_e_md.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "e",
@@ -3341,7 +3341,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_f_md.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_f_md.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "f",
@@ -3353,7 +3353,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_g_lg.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_g_lg.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "g",
@@ -3365,7 +3365,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_h_lg.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_h_lg.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "h",
@@ -3377,7 +3377,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_poplar_a_sm.schem",
+      "path": "Vegetation/ripar_tree_poplar_a_sm.schem",
       "type": "tree",
       "species": "poplar",
       "variant": "a",
@@ -3389,7 +3389,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_poplar_b_md.schem",
+      "path": "Vegetation/ripar_tree_poplar_b_md.schem",
       "type": "tree",
       "species": "poplar",
       "variant": "b",
@@ -3401,7 +3401,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_poplar_c_lg.schem",
+      "path": "Vegetation/ripar_tree_poplar_c_lg.schem",
       "type": "tree",
       "species": "poplar",
       "variant": "c",
@@ -3413,7 +3413,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_willow_a_sm.schematic",
+      "path": "Vegetation/ripar_tree_willow_a_sm.schematic",
       "type": "tree",
       "species": "willow",
       "variant": "a",
@@ -3425,7 +3425,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_willow_b_sm.schematic",
+      "path": "Vegetation/ripar_tree_willow_b_sm.schematic",
       "type": "tree",
       "species": "willow",
       "variant": "b",
@@ -3437,7 +3437,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_willow_c_sm.schematic",
+      "path": "Vegetation/ripar_tree_willow_c_sm.schematic",
       "type": "tree",
       "species": "willow",
       "variant": "c",
@@ -3449,7 +3449,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_willow_d_md.schematic",
+      "path": "Vegetation/ripar_tree_willow_d_md.schematic",
       "type": "tree",
       "species": "willow",
       "variant": "d",
@@ -3461,7 +3461,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_willow_e_md.schematic",
+      "path": "Vegetation/ripar_tree_willow_e_md.schematic",
       "type": "tree",
       "species": "willow",
       "variant": "e",
@@ -3473,7 +3473,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_willow_f_lg.schematic",
+      "path": "Vegetation/ripar_tree_willow_f_lg.schematic",
       "type": "tree",
       "species": "willow",
       "variant": "f",
@@ -3485,7 +3485,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_willow_g_lg.schematic",
+      "path": "Vegetation/ripar_tree_willow_g_lg.schematic",
       "type": "tree",
       "species": "willow",
       "variant": "g",
@@ -3497,7 +3497,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_willow_h_lg.schem",
+      "path": "Vegetation/ripar_tree_willow_h_lg.schem",
       "type": "tree",
       "species": "willow",
       "variant": "h",
@@ -3509,7 +3509,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_wwillow_a_sm.schematic",
+      "path": "Vegetation/ripar_tree_wwillow_a_sm.schematic",
       "type": "tree",
       "species": "wwillow",
       "variant": "a",
@@ -3521,7 +3521,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_wwillow_b_lg.schematic",
+      "path": "Vegetation/ripar_tree_wwillow_b_lg.schematic",
       "type": "tree",
       "species": "wwillow",
       "variant": "b",
@@ -3535,7 +3535,7 @@
   ],
   "sarid": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -3549,7 +3549,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -3563,7 +3563,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -3577,7 +3577,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -3591,7 +3591,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -3605,7 +3605,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -3619,7 +3619,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -3633,7 +3633,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -3647,7 +3647,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -3661,7 +3661,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_juniper_a_sm.schem",
+      "path": "Vegetation/sarid_tree_juniper_a_sm.schem",
       "type": "tree",
       "species": "juniper",
       "variant": "a",
@@ -3673,7 +3673,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_juniper_b_sm.schem",
+      "path": "Vegetation/sarid_tree_juniper_b_sm.schem",
       "type": "tree",
       "species": "juniper",
       "variant": "b",
@@ -3685,7 +3685,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_juniper_c_sm.schem",
+      "path": "Vegetation/sarid_tree_juniper_c_sm.schem",
       "type": "tree",
       "species": "juniper",
       "variant": "c",
@@ -3697,7 +3697,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_juniper_d_md.schem",
+      "path": "Vegetation/sarid_tree_juniper_d_md.schem",
       "type": "tree",
       "species": "juniper",
       "variant": "d",
@@ -3709,7 +3709,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_juniper_e_md.schem",
+      "path": "Vegetation/sarid_tree_juniper_e_md.schem",
       "type": "tree",
       "species": "juniper",
       "variant": "e",
@@ -3721,7 +3721,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_juniper_f_lg.schem",
+      "path": "Vegetation/sarid_tree_juniper_f_lg.schem",
       "type": "tree",
       "species": "juniper",
       "variant": "f",
@@ -3733,7 +3733,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_juniper_g_lg.schem",
+      "path": "Vegetation/sarid_tree_juniper_g_lg.schem",
       "type": "tree",
       "species": "juniper",
       "variant": "g",
@@ -3745,7 +3745,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_pinon_a_sm.schem",
+      "path": "Vegetation/sarid_tree_pinon_a_sm.schem",
       "type": "tree",
       "species": "pinon",
       "variant": "a",
@@ -3757,7 +3757,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_pinon_b_sm.schem",
+      "path": "Vegetation/sarid_tree_pinon_b_sm.schem",
       "type": "tree",
       "species": "pinon",
       "variant": "b",
@@ -3769,7 +3769,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_pinon_c_md.schem",
+      "path": "Vegetation/sarid_tree_pinon_c_md.schem",
       "type": "tree",
       "species": "pinon",
       "variant": "c",
@@ -3781,7 +3781,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_pinon_d_md.schem",
+      "path": "Vegetation/sarid_tree_pinon_d_md.schem",
       "type": "tree",
       "species": "pinon",
       "variant": "d",
@@ -3793,7 +3793,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_pinon_e_lg.schem",
+      "path": "Vegetation/sarid_tree_pinon_e_lg.schem",
       "type": "tree",
       "species": "pinon",
       "variant": "e",
@@ -3805,7 +3805,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sarid_tree_pinon_f_lg.schem",
+      "path": "Vegetation/sarid_tree_pinon_f_lg.schem",
       "type": "tree",
       "species": "pinon",
       "variant": "f",
@@ -3819,7 +3819,7 @@
   ],
   "sbtaiga": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -3833,7 +3833,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -3847,7 +3847,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -3861,7 +3861,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -3875,7 +3875,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -3889,7 +3889,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -3903,7 +3903,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -3917,7 +3917,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -3931,7 +3931,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -3945,7 +3945,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_kfir_a_sm.schematic",
+      "path": "Vegetation/sbtaiga_tree_kfir_a_sm.schematic",
       "type": "tree",
       "species": "kfir",
       "variant": "a",
@@ -3957,7 +3957,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_kfir_b_sm.schem",
+      "path": "Vegetation/sbtaiga_tree_kfir_b_sm.schem",
       "type": "tree",
       "species": "kfir",
       "variant": "b",
@@ -3969,7 +3969,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_kfir_c_sm.schematic",
+      "path": "Vegetation/sbtaiga_tree_kfir_c_sm.schematic",
       "type": "tree",
       "species": "kfir",
       "variant": "c",
@@ -3981,7 +3981,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_kfir_d_sm.schem",
+      "path": "Vegetation/sbtaiga_tree_kfir_d_sm.schem",
       "type": "tree",
       "species": "kfir",
       "variant": "d",
@@ -3993,7 +3993,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_kfir_e_sm.schem",
+      "path": "Vegetation/sbtaiga_tree_kfir_e_sm.schem",
       "type": "tree",
       "species": "kfir",
       "variant": "e",
@@ -4005,7 +4005,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_kfir_f_sm.schem",
+      "path": "Vegetation/sbtaiga_tree_kfir_f_sm.schem",
       "type": "tree",
       "species": "kfir",
       "variant": "f",
@@ -4017,7 +4017,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_kfir_g_sm.schem",
+      "path": "Vegetation/sbtaiga_tree_kfir_g_sm.schem",
       "type": "tree",
       "species": "kfir",
       "variant": "g",
@@ -4029,7 +4029,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_kspruce_a_sm.schematic",
+      "path": "Vegetation/sbtaiga_tree_kspruce_a_sm.schematic",
       "type": "tree",
       "species": "kspruce",
       "variant": "a",
@@ -4041,7 +4041,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_kspruce_b_sm.schematic",
+      "path": "Vegetation/sbtaiga_tree_kspruce_b_sm.schematic",
       "type": "tree",
       "species": "kspruce",
       "variant": "b",
@@ -4053,7 +4053,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_kspruce_c_sm.schematic",
+      "path": "Vegetation/sbtaiga_tree_kspruce_c_sm.schematic",
       "type": "tree",
       "species": "kspruce",
       "variant": "c",
@@ -4065,7 +4065,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_a_sm.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_a_sm.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "a",
@@ -4077,7 +4077,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_b_sm.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_b_sm.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "b",
@@ -4089,7 +4089,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_c_sm.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_c_sm.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "c",
@@ -4101,7 +4101,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_d_sm.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_d_sm.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "d",
@@ -4113,7 +4113,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_e_sm.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_e_sm.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "e",
@@ -4125,7 +4125,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_f_sm.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_f_sm.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "f",
@@ -4137,7 +4137,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_g_md.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_g_md.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "g",
@@ -4149,7 +4149,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_h_md.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_h_md.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "h",
@@ -4161,7 +4161,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_i_md.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_i_md.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "i",
@@ -4173,7 +4173,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_j_md.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_j_md.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "j",
@@ -4185,7 +4185,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_k_md.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_k_md.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "k",
@@ -4197,7 +4197,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_l_md.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_l_md.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "l",
@@ -4209,7 +4209,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_m_lg.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_m_lg.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "m",
@@ -4221,7 +4221,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_n_lg.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_n_lg.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "n",
@@ -4233,7 +4233,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_o_lg.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_o_lg.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "o",
@@ -4245,7 +4245,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_salfir_p_lg.schematic",
+      "path": "Vegetation/sbtaiga_tree_salfir_p_lg.schematic",
       "type": "tree",
       "species": "salfir",
       "variant": "p",
@@ -4257,7 +4257,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_spruce_a_sm.schematic",
+      "path": "Vegetation/sbtaiga_tree_spruce_a_sm.schematic",
       "type": "tree",
       "species": "spruce",
       "variant": "a",
@@ -4269,7 +4269,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_spruce_b_md.schematic",
+      "path": "Vegetation/sbtaiga_tree_spruce_b_md.schematic",
       "type": "tree",
       "species": "spruce",
       "variant": "b",
@@ -4281,7 +4281,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\sbtaiga_tree_spruce_c_lg.schematic",
+      "path": "Vegetation/sbtaiga_tree_spruce_c_lg.schematic",
       "type": "tree",
       "species": "spruce",
       "variant": "c",
@@ -4295,7 +4295,7 @@
   ],
   "tdec": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -4309,7 +4309,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -4323,7 +4323,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -4337,7 +4337,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -4351,7 +4351,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -4365,7 +4365,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -4379,7 +4379,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -4393,7 +4393,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -4407,7 +4407,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -4421,7 +4421,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_dead_oak_a_sm.schematic",
+      "path": "Vegetation/tdec_dead_oak_a_sm.schematic",
       "type": "dead",
       "species": "oak",
       "variant": "a",
@@ -4433,7 +4433,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_dead_oak_b_sm.schematic",
+      "path": "Vegetation/tdec_dead_oak_b_sm.schematic",
       "type": "dead",
       "species": "oak",
       "variant": "b",
@@ -4445,7 +4445,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_dead_oak_c_md.schematic",
+      "path": "Vegetation/tdec_dead_oak_c_md.schematic",
       "type": "dead",
       "species": "oak",
       "variant": "c",
@@ -4457,7 +4457,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_dead_oak_d_lg.schematic",
+      "path": "Vegetation/tdec_dead_oak_d_lg.schematic",
       "type": "dead",
       "species": "oak",
       "variant": "d",
@@ -4469,7 +4469,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_ash_a_sm.schematic",
+      "path": "Vegetation/tdec_tree_ash_a_sm.schematic",
       "type": "tree",
       "species": "ash",
       "variant": "a",
@@ -4481,7 +4481,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_ash_b_sm.schem",
+      "path": "Vegetation/tdec_tree_ash_b_sm.schem",
       "type": "tree",
       "species": "ash",
       "variant": "b",
@@ -4493,7 +4493,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_ash_c_md.schem",
+      "path": "Vegetation/tdec_tree_ash_c_md.schem",
       "type": "tree",
       "species": "ash",
       "variant": "c",
@@ -4505,7 +4505,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_ash_d_lg.schem",
+      "path": "Vegetation/tdec_tree_ash_d_lg.schem",
       "type": "tree",
       "species": "ash",
       "variant": "d",
@@ -4517,7 +4517,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_beech_a_sm.schematic",
+      "path": "Vegetation/tdec_tree_beech_a_sm.schematic",
       "type": "tree",
       "species": "beech",
       "variant": "a",
@@ -4529,7 +4529,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_cherry_a_sm.schematic",
+      "path": "Vegetation/tdec_tree_cherry_a_sm.schematic",
       "type": "tree",
       "species": "cherry",
       "variant": "a",
@@ -4541,7 +4541,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_cherry_b_lg.schematic",
+      "path": "Vegetation/tdec_tree_cherry_b_lg.schematic",
       "type": "tree",
       "species": "cherry",
       "variant": "b",
@@ -4553,7 +4553,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_eoak_a_sm.schematic",
+      "path": "Vegetation/tdec_tree_eoak_a_sm.schematic",
       "type": "tree",
       "species": "eoak",
       "variant": "a",
@@ -4565,7 +4565,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_hornbeam_a_sm.schematic",
+      "path": "Vegetation/tdec_tree_hornbeam_a_sm.schematic",
       "type": "tree",
       "species": "hornbeam",
       "variant": "a",
@@ -4577,7 +4577,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_lime_a_sm.schematic",
+      "path": "Vegetation/tdec_tree_lime_a_sm.schematic",
       "type": "tree",
       "species": "lime",
       "variant": "a",
@@ -4589,7 +4589,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_lime_b_md.schematic",
+      "path": "Vegetation/tdec_tree_lime_b_md.schematic",
       "type": "tree",
       "species": "lime",
       "variant": "b",
@@ -4601,7 +4601,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_lime_c_lg.schematic",
+      "path": "Vegetation/tdec_tree_lime_c_lg.schematic",
       "type": "tree",
       "species": "lime",
       "variant": "c",
@@ -4615,7 +4615,7 @@
   ],
   "tjf": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -4629,7 +4629,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -4643,7 +4643,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -4657,7 +4657,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -4671,7 +4671,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -4685,7 +4685,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -4699,7 +4699,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -4713,7 +4713,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -4727,7 +4727,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -4741,7 +4741,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tjf_tree_cfig_a_sm.schematic",
+      "path": "Vegetation/tjf_tree_cfig_a_sm.schematic",
       "type": "tree",
       "species": "cfig",
       "variant": "a",
@@ -4753,7 +4753,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tjf_tree_cfig_b_lg.schematic",
+      "path": "Vegetation/tjf_tree_cfig_b_lg.schematic",
       "type": "tree",
       "species": "cfig",
       "variant": "b",
@@ -4767,7 +4767,7 @@
   ],
   "train": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -4781,7 +4781,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -4795,7 +4795,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -4809,7 +4809,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -4823,7 +4823,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -4837,7 +4837,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -4851,7 +4851,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -4865,7 +4865,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -4879,7 +4879,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -4893,7 +4893,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_cedar_a_sm.schem",
+      "path": "Vegetation/train_tree_cedar_a_sm.schem",
       "type": "tree",
       "species": "cedar",
       "variant": "a",
@@ -4905,7 +4905,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_cedar_b_sm.schem",
+      "path": "Vegetation/train_tree_cedar_b_sm.schem",
       "type": "tree",
       "species": "cedar",
       "variant": "b",
@@ -4917,7 +4917,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_cedar_c_sm.schematic",
+      "path": "Vegetation/train_tree_cedar_c_sm.schematic",
       "type": "tree",
       "species": "cedar",
       "variant": "c",
@@ -4929,7 +4929,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_cedar_d_md.schem",
+      "path": "Vegetation/train_tree_cedar_d_md.schem",
       "type": "tree",
       "species": "cedar",
       "variant": "d",
@@ -4941,7 +4941,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_cedar_e_md.schematic",
+      "path": "Vegetation/train_tree_cedar_e_md.schematic",
       "type": "tree",
       "species": "cedar",
       "variant": "e",
@@ -4953,7 +4953,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_cedar_f_md.schem",
+      "path": "Vegetation/train_tree_cedar_f_md.schem",
       "type": "tree",
       "species": "cedar",
       "variant": "f",
@@ -4965,7 +4965,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_cedar_g_lg.schematic",
+      "path": "Vegetation/train_tree_cedar_g_lg.schematic",
       "type": "tree",
       "species": "cedar",
       "variant": "g",
@@ -4977,7 +4977,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_cedar_h_lg.schematic",
+      "path": "Vegetation/train_tree_cedar_h_lg.schematic",
       "type": "tree",
       "species": "cedar",
       "variant": "h",
@@ -4989,7 +4989,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_dfir_a_sm.schematic",
+      "path": "Vegetation/train_tree_dfir_a_sm.schematic",
       "type": "tree",
       "species": "dfir",
       "variant": "a",
@@ -5001,7 +5001,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_dfir_b_sm.schematic",
+      "path": "Vegetation/train_tree_dfir_b_sm.schematic",
       "type": "tree",
       "species": "dfir",
       "variant": "b",
@@ -5013,7 +5013,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_dfir_c_md.schematic",
+      "path": "Vegetation/train_tree_dfir_c_md.schematic",
       "type": "tree",
       "species": "dfir",
       "variant": "c",
@@ -5025,7 +5025,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_dfir_d_lg.schematic",
+      "path": "Vegetation/train_tree_dfir_d_lg.schematic",
       "type": "tree",
       "species": "dfir",
       "variant": "d",
@@ -5037,7 +5037,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_hemlock_a_sm.schem",
+      "path": "Vegetation/train_tree_hemlock_a_sm.schem",
       "type": "tree",
       "species": "hemlock",
       "variant": "a",
@@ -5049,7 +5049,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_hemlock_b_sm.schem",
+      "path": "Vegetation/train_tree_hemlock_b_sm.schem",
       "type": "tree",
       "species": "hemlock",
       "variant": "b",
@@ -5061,7 +5061,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_hemlock_c_sm.schem",
+      "path": "Vegetation/train_tree_hemlock_c_sm.schem",
       "type": "tree",
       "species": "hemlock",
       "variant": "c",
@@ -5073,7 +5073,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_hemlock_d_sm.schem",
+      "path": "Vegetation/train_tree_hemlock_d_sm.schem",
       "type": "tree",
       "species": "hemlock",
       "variant": "d",
@@ -5085,7 +5085,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_hemlock_e_md.schem",
+      "path": "Vegetation/train_tree_hemlock_e_md.schem",
       "type": "tree",
       "species": "hemlock",
       "variant": "e",
@@ -5097,7 +5097,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_hemlock_f_md.schem",
+      "path": "Vegetation/train_tree_hemlock_f_md.schem",
       "type": "tree",
       "species": "hemlock",
       "variant": "f",
@@ -5109,7 +5109,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_hemlock_g_md.schem",
+      "path": "Vegetation/train_tree_hemlock_g_md.schem",
       "type": "tree",
       "species": "hemlock",
       "variant": "g",
@@ -5121,7 +5121,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_hemlock_h_lg.schem",
+      "path": "Vegetation/train_tree_hemlock_h_lg.schem",
       "type": "tree",
       "species": "hemlock",
       "variant": "h",
@@ -5133,7 +5133,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_hemlock_i_lg.schem",
+      "path": "Vegetation/train_tree_hemlock_i_lg.schem",
       "type": "tree",
       "species": "hemlock",
       "variant": "i",
@@ -5145,7 +5145,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_maple_a_sm.schematic",
+      "path": "Vegetation/train_tree_maple_a_sm.schematic",
       "type": "tree",
       "species": "maple",
       "variant": "a",
@@ -5157,7 +5157,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_maple_b_sm.schem",
+      "path": "Vegetation/train_tree_maple_b_sm.schem",
       "type": "tree",
       "species": "maple",
       "variant": "b",
@@ -5169,7 +5169,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_maple_c_md.schem",
+      "path": "Vegetation/train_tree_maple_c_md.schem",
       "type": "tree",
       "species": "maple",
       "variant": "c",
@@ -5181,7 +5181,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_maple_d_lg.schem",
+      "path": "Vegetation/train_tree_maple_d_lg.schem",
       "type": "tree",
       "species": "maple",
       "variant": "d",
@@ -5193,7 +5193,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_sitka_a_sm.schematic",
+      "path": "Vegetation/train_tree_sitka_a_sm.schematic",
       "type": "tree",
       "species": "sitka",
       "variant": "a",
@@ -5205,7 +5205,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_sitka_b_sm.schematic",
+      "path": "Vegetation/train_tree_sitka_b_sm.schematic",
       "type": "tree",
       "species": "sitka",
       "variant": "b",
@@ -5217,7 +5217,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_sitka_c_sm.schematic",
+      "path": "Vegetation/train_tree_sitka_c_sm.schematic",
       "type": "tree",
       "species": "sitka",
       "variant": "c",
@@ -5229,7 +5229,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_sitka_d_sm.schematic",
+      "path": "Vegetation/train_tree_sitka_d_sm.schematic",
       "type": "tree",
       "species": "sitka",
       "variant": "d",
@@ -5241,7 +5241,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_sitka_e_sm.schematic",
+      "path": "Vegetation/train_tree_sitka_e_sm.schematic",
       "type": "tree",
       "species": "sitka",
       "variant": "e",
@@ -5253,7 +5253,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_sitka_f_md.schematic",
+      "path": "Vegetation/train_tree_sitka_f_md.schematic",
       "type": "tree",
       "species": "sitka",
       "variant": "f",
@@ -5265,7 +5265,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_sitka_g_md.schematic",
+      "path": "Vegetation/train_tree_sitka_g_md.schematic",
       "type": "tree",
       "species": "sitka",
       "variant": "g",
@@ -5277,7 +5277,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_sitka_h_md.schematic",
+      "path": "Vegetation/train_tree_sitka_h_md.schematic",
       "type": "tree",
       "species": "sitka",
       "variant": "h",
@@ -5289,7 +5289,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_sitka_i_md.schematic",
+      "path": "Vegetation/train_tree_sitka_i_md.schematic",
       "type": "tree",
       "species": "sitka",
       "variant": "i",
@@ -5301,7 +5301,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_sitka_j_lg.schematic",
+      "path": "Vegetation/train_tree_sitka_j_lg.schematic",
       "type": "tree",
       "species": "sitka",
       "variant": "j",
@@ -5313,7 +5313,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_sitka_k_lg.schematic",
+      "path": "Vegetation/train_tree_sitka_k_lg.schematic",
       "type": "tree",
       "species": "sitka",
       "variant": "k",
@@ -5325,7 +5325,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\train_tree_sitka_l_lg.schematic",
+      "path": "Vegetation/train_tree_sitka_l_lg.schematic",
       "type": "tree",
       "species": "sitka",
       "variant": "l",
@@ -5339,7 +5339,7 @@
   ],
   "mixed": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -5353,7 +5353,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -5367,7 +5367,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -5381,7 +5381,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -5395,7 +5395,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -5409,7 +5409,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -5423,7 +5423,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -5437,7 +5437,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -5451,7 +5451,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -5465,7 +5465,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_a_sm.schematic",
+      "path": "Vegetation/birch_tree_dbirch_a_sm.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "a",
@@ -5479,7 +5479,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_b_sm.schematic",
+      "path": "Vegetation/birch_tree_dbirch_b_sm.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "b",
@@ -5493,7 +5493,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_c_sm.schematic",
+      "path": "Vegetation/birch_tree_dbirch_c_sm.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "c",
@@ -5507,7 +5507,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_d_md.schematic",
+      "path": "Vegetation/birch_tree_dbirch_d_md.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "d",
@@ -5521,7 +5521,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_e_md.schematic",
+      "path": "Vegetation/birch_tree_dbirch_e_md.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "e",
@@ -5535,7 +5535,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_f_lg.schematic",
+      "path": "Vegetation/birch_tree_dbirch_f_lg.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "f",
@@ -5549,7 +5549,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_dbirch_g_lg.schematic",
+      "path": "Vegetation/birch_tree_dbirch_g_lg.schematic",
       "type": "tree",
       "species": "dbirch",
       "variant": "g",
@@ -5563,7 +5563,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_eoak_a_sm.schematic",
+      "path": "Vegetation/tdec_tree_eoak_a_sm.schematic",
       "type": "tree",
       "species": "eoak",
       "variant": "a",
@@ -5577,7 +5577,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_lime_a_sm.schematic",
+      "path": "Vegetation/tdec_tree_lime_a_sm.schematic",
       "type": "tree",
       "species": "lime",
       "variant": "a",
@@ -5591,7 +5591,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_lime_b_md.schematic",
+      "path": "Vegetation/tdec_tree_lime_b_md.schematic",
       "type": "tree",
       "species": "lime",
       "variant": "b",
@@ -5605,7 +5605,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_lime_c_lg.schematic",
+      "path": "Vegetation/tdec_tree_lime_c_lg.schematic",
       "type": "tree",
       "species": "lime",
       "variant": "c",
@@ -5619,7 +5619,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_a_sm.schematic",
+      "path": "Vegetation/birch_tree_sbirch_a_sm.schematic",
       "type": "tree",
       "species": "sbirch",
       "variant": "a",
@@ -5633,7 +5633,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_b_sm.schematic",
+      "path": "Vegetation/birch_tree_sbirch_b_sm.schematic",
       "type": "tree",
       "species": "sbirch",
       "variant": "b",
@@ -5647,7 +5647,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_c_sm.schematic",
+      "path": "Vegetation/birch_tree_sbirch_c_sm.schematic",
       "type": "tree",
       "species": "sbirch",
       "variant": "c",
@@ -5661,7 +5661,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_d_sm.schem",
+      "path": "Vegetation/birch_tree_sbirch_d_sm.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "d",
@@ -5675,7 +5675,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_e_sm.schematic",
+      "path": "Vegetation/birch_tree_sbirch_e_sm.schematic",
       "type": "tree",
       "species": "sbirch",
       "variant": "e",
@@ -5689,7 +5689,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_f_md.schematic",
+      "path": "Vegetation/birch_tree_sbirch_f_md.schematic",
       "type": "tree",
       "species": "sbirch",
       "variant": "f",
@@ -5703,7 +5703,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_g_md.schem",
+      "path": "Vegetation/birch_tree_sbirch_g_md.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "g",
@@ -5717,7 +5717,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_h_md.schem",
+      "path": "Vegetation/birch_tree_sbirch_h_md.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "h",
@@ -5731,7 +5731,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_i_md.schem",
+      "path": "Vegetation/birch_tree_sbirch_i_md.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "i",
@@ -5745,7 +5745,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_j_md.schem",
+      "path": "Vegetation/birch_tree_sbirch_j_md.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "j",
@@ -5759,7 +5759,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_k_lg.schem",
+      "path": "Vegetation/birch_tree_sbirch_k_lg.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "k",
@@ -5773,7 +5773,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_l_lg.schem",
+      "path": "Vegetation/birch_tree_sbirch_l_lg.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "l",
@@ -5787,7 +5787,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\birch_tree_sbirch_m_lg.schem",
+      "path": "Vegetation/birch_tree_sbirch_m_lg.schem",
       "type": "tree",
       "species": "sbirch",
       "variant": "m",
@@ -5801,7 +5801,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_scotsp_a_sm.schem",
+      "path": "Vegetation/dpine_tree_scotsp_a_sm.schem",
       "type": "tree",
       "species": "scotsp",
       "variant": "a",
@@ -5815,7 +5815,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_scotsp_b_sm.schem",
+      "path": "Vegetation/dpine_tree_scotsp_b_sm.schem",
       "type": "tree",
       "species": "scotsp",
       "variant": "b",
@@ -5829,7 +5829,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_scotsp_c_md.schem",
+      "path": "Vegetation/dpine_tree_scotsp_c_md.schem",
       "type": "tree",
       "species": "scotsp",
       "variant": "c",
@@ -5843,7 +5843,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_scotsp_d_md.schem",
+      "path": "Vegetation/dpine_tree_scotsp_d_md.schem",
       "type": "tree",
       "species": "scotsp",
       "variant": "d",
@@ -5857,7 +5857,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\dpine_tree_scotsp_e_lg.schem",
+      "path": "Vegetation/dpine_tree_scotsp_e_lg.schem",
       "type": "tree",
       "species": "scotsp",
       "variant": "e",
@@ -5871,7 +5871,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_wspruce_a_sm.schematic",
+      "path": "Vegetation/btaiga_tree_wspruce_a_sm.schematic",
       "type": "tree",
       "species": "wspruce",
       "variant": "a",
@@ -5885,7 +5885,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\btaiga_tree_wspruce_b_lg.schematic",
+      "path": "Vegetation/btaiga_tree_wspruce_b_lg.schematic",
       "type": "tree",
       "species": "wspruce",
       "variant": "b",
@@ -5901,7 +5901,7 @@
   ],
   "fen": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -5915,7 +5915,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -5929,7 +5929,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -5943,7 +5943,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -5957,7 +5957,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -5971,7 +5971,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -5985,7 +5985,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -5999,7 +5999,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -6013,7 +6013,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -6027,7 +6027,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_alder_a_sm.schem",
+      "path": "Vegetation/ripar_tree_alder_a_sm.schem",
       "type": "tree",
       "species": "alder",
       "variant": "a",
@@ -6041,7 +6041,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_alder_b_sm.schem",
+      "path": "Vegetation/ripar_tree_alder_b_sm.schem",
       "type": "tree",
       "species": "alder",
       "variant": "b",
@@ -6055,7 +6055,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_alder_c_md.schem",
+      "path": "Vegetation/ripar_tree_alder_c_md.schem",
       "type": "tree",
       "species": "alder",
       "variant": "c",
@@ -6069,7 +6069,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_alder_d_md.schem",
+      "path": "Vegetation/ripar_tree_alder_d_md.schem",
       "type": "tree",
       "species": "alder",
       "variant": "d",
@@ -6083,7 +6083,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_alder_e_lg.schem",
+      "path": "Vegetation/ripar_tree_alder_e_lg.schem",
       "type": "tree",
       "species": "alder",
       "variant": "e",
@@ -6097,7 +6097,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_alder_f_lg.schem",
+      "path": "Vegetation/ripar_tree_alder_f_lg.schem",
       "type": "tree",
       "species": "alder",
       "variant": "f",
@@ -6111,7 +6111,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_a_sm.schem",
+      "path": "Vegetation/ripar_tree_cwillow_a_sm.schem",
       "type": "tree",
       "species": "cwillow",
       "variant": "a",
@@ -6125,7 +6125,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_b_sm.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_b_sm.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "b",
@@ -6139,7 +6139,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_c_sm.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_c_sm.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "c",
@@ -6153,7 +6153,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_d_md.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_d_md.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "d",
@@ -6167,7 +6167,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_e_md.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_e_md.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "e",
@@ -6181,7 +6181,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_f_md.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_f_md.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "f",
@@ -6195,7 +6195,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_g_lg.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_g_lg.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "g",
@@ -6209,7 +6209,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\ripar_tree_cwillow_h_lg.schematic",
+      "path": "Vegetation/ripar_tree_cwillow_h_lg.schematic",
       "type": "tree",
       "species": "cwillow",
       "variant": "h",
@@ -6223,7 +6223,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\tdec_tree_eoak_a_sm.schematic",
+      "path": "Vegetation/tdec_tree_eoak_a_sm.schematic",
       "type": "tree",
       "species": "eoak",
       "variant": "a",
@@ -6239,7 +6239,7 @@
   ],
   "etcoast": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -6253,7 +6253,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -6267,7 +6267,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -6281,7 +6281,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -6295,7 +6295,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -6309,7 +6309,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -6323,7 +6323,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -6337,7 +6337,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -6351,7 +6351,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -6367,7 +6367,7 @@
   ],
   "heath": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -6381,7 +6381,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -6395,7 +6395,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -6409,7 +6409,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -6423,7 +6423,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -6437,7 +6437,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -6451,7 +6451,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -6465,7 +6465,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -6479,7 +6479,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -6495,7 +6495,7 @@
   ],
   "karst": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -6509,7 +6509,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -6523,7 +6523,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -6537,7 +6537,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -6551,7 +6551,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -6565,7 +6565,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -6579,7 +6579,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -6593,7 +6593,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -6607,7 +6607,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -6623,7 +6623,7 @@
   ],
   "cheath": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -6637,7 +6637,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -6651,7 +6651,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -6665,7 +6665,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -6679,7 +6679,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -6693,7 +6693,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -6707,7 +6707,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -6721,7 +6721,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -6735,7 +6735,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
@@ -6751,7 +6751,7 @@
   ],
   "alpine": [
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_a_sm.schematic",
+      "path": "Vegetation/bush_generic_a_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "a",
@@ -6765,7 +6765,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_b_sm.schematic",
+      "path": "Vegetation/bush_generic_b_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "b",
@@ -6779,7 +6779,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_c_sm.schematic",
+      "path": "Vegetation/bush_generic_c_sm.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "c",
@@ -6793,7 +6793,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_d_md.schematic",
+      "path": "Vegetation/bush_generic_d_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "d",
@@ -6807,7 +6807,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_e_md.schematic",
+      "path": "Vegetation/bush_generic_e_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "e",
@@ -6821,7 +6821,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_f_md.schematic",
+      "path": "Vegetation/bush_generic_f_md.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "f",
@@ -6835,7 +6835,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_g_lg.schematic",
+      "path": "Vegetation/bush_generic_g_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "g",
@@ -6849,7 +6849,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_h_lg.schematic",
+      "path": "Vegetation/bush_generic_h_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "h",
@@ -6863,7 +6863,7 @@
       "anchor_review": false
     },
     {
-      "path": "C:\\Users\\nicho\\minecraft-worldgen\\Vegetation\\bush_generic_i_lg.schematic",
+      "path": "Vegetation/bush_generic_i_lg.schematic",
       "type": "bush",
       "species": "generic",
       "variant": "i",
