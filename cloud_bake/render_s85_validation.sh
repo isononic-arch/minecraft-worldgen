@@ -87,10 +87,12 @@ step "STEP 4/10  Pulling branch '$BRANCH' on all 4 boxes"
 for IP in "${IPS[@]}"; do
   echo "  --- $IP ---"
   ssh root@"$IP" "cd /root/minecraft-worldgen && \
-    rm -f masks/hydro_region.png masks/hydro_region.png.bak masks/lithology_region.png masks/lithology_region.png.bak masks/override.tif.bak_s84_pre_lrfc_north_strip 2>/dev/null; \
+    rm -f masks/hydro_region.png.bak masks/lithology_region.png.bak masks/override.tif.bak_s84_pre_lrfc_north_strip 2>/dev/null; \
     git fetch && \
     (git checkout $BRANCH 2>/dev/null || git checkout -t origin/$BRANCH) && \
     git pull && \
+    git checkout HEAD -- masks/hydro_region.png masks/lithology_region.png masks/hydro_region.png.bak masks/lithology_region.png.bak masks/override.tif.bak_s84_pre_lrfc_north_strip 2>/dev/null; \
+    ls masks/hydro_region.png masks/lithology_region.png 2>&1 | head -2; \
     git log --oneline -1"
 done
 
