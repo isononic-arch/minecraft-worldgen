@@ -2,7 +2,14 @@
 
 *Broad project memory. Consolidates 40+ scattered memory entries into one widely-useful reference. Read this when CLAUDE.md doesn't have enough context. Updated after major milestones.*
 
-**Last updated:** 2026-04-14 (Session 54)
+**Last updated:** 2026-05-24 (Session 85)
+
+## RECENT SESSIONS
+
+- **S85 (2026-05-22/24)**: Reconciliation + biome polish. Pulled S70-S84 from origin/master onto local master (was 32 behind). 16 commits on branch `s85-cherry-picks` (tip `7f1ea25`). Highlights: per-pixel RNG soften (no blob islands), Option A ecotone shadow lookup (preserves rare-block clustering), per-lithology-group wash palettes, BT MC tag → meadow, BIOME_ALTITUDE_REMAPS deleted, fluid ticks skipped on above-sea rivers, FF tree height filter, plateau-clamp surface ecotone (width 100, swap_cap 0.85), full treeline rescale for 768-height world. Cloud-bake automation (`cloud_bake/render_s85_validation.sh`) — 4× CCX63 Hetzner, ~22 min wall, ~$2. See [memory/S85_handoff.md](memory/S85_handoff.md) + [memory/S85_to_S86_handoff_prompt.md](memory/S85_to_S86_handoff_prompt.md).
+- **S80-S84 (2026-04-30/05-22)**: Painted rivers as sole source. WP-style guardrails carve. Lake-bowl geomorph. Tanh depth + coast taper. World height 768. bbox-cull perf. S83 cloud bake "it's perfect" verdict.
+- **S70-S79 (2026-04-25/04-30)**: FF/AT swap (Tundra Valley). Lithology source-of-truth. Ecotone plateau-clamp. Biome polish. Schematic placement tuning. Folded into master via S85 reconciliation.
+- **S69 (2026-04-22)**: Override Studio + overlay-layer pipeline. Painted rivers + lithology + hydro overlays. Last "stable master" before S70-S84 lineage diverged.
 
 ---
 

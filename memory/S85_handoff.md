@@ -1,120 +1,101 @@
-# S85 Handoff — 2026-05-22/23
+# S85 Handoff — 2026-05-22/24
 
 ## Tldr
 
-S85 was a **reconciliation session**. Local master had been stuck at S69 while origin/master quietly advanced through S70-S84 over the course of weeks. Hand-merging had introduced a Frankenstein state in the working tree (S69 base + selective S84 patches like the terrain spline) that nobody could fully audit. Today's work: surfaced the divergence, picked which S70-S84 work to bring in (most of it), layered surgical S85 edits on top, and scaled all stale world-height thresholds for the 768-block world.
+**S85 was a reconciliation + biome-polish session.** Pulled the missing S70-S84 work from origin/master onto local master (was 32 commits behind), layered S85 surgical edits on top, fixed 3 inherited bugs, refactored ecotone + wash to be config-driven, automated cloud-render workflow. Ended with successful 36-tile validation render on 4× CCX63 Hetzner (~22 min wall, ~$2). Branch `s85-cherry-picks` ready to merge to master after final in-world validation.
 
-Final state lives on branch `s85-cherry-picks` (not yet merged to master, awaiting in-world validation render).
+## What landed (16 commits on s85-cherry-picks)
 
-## What was wrong before S85
-
-- Local master: `5d13727` (S69)
-- `origin/master`: `c86334c` (S84) — **32 commits ahead**
-- A previous Claude instance had hand-applied select S84 patches into the local working tree (terrain_spline, Y_MAX 704, scipy import in chunk_writer) but never `git pull`-ed.
-- Today's CLAUDE.md handoff claimed master was at S84 but actual `git log` showed S69. Misleading.
-- The S83 cloud bake was actually run from `origin/master`, which had all the S70-S79 biome work + S80-S83 river polish. So the "it's perfect" bake state was real — but our local edits were against S69, drifting from canonical.
-
-## What S85 landed
-
-### Cherry-picks from S70-S84 (via `git checkout origin/master -- <file>`)
-
-| ID | Item | Origin |
+| Commit | Type | Summary |
 |---|---|---|
-| A1 | bbox-cull spline polygons in `_rasterize_river_edges_tile` | S84 perf — 3.3× speedup on land tiles |
-| A2 | `vandir_height.zip` auto-install in `run_pipeline.py` | S74 |
-| A3 | AT high-elev stone-fade EXEMPTION + fade band 500-580 (S85 bumped from S84's 480) | S71 + S85 |
-| A4 | AT GC palette: `dead_bush` → `tall_dry_grass` | S70 follow-up |
-| A5 | `tools/diag_mca_biomes.py` + `tools/diag_mca_surface.py` | S71 |
-| B1 | FROZEN_FLATS Tundra Valley redesign (grass_block surface, badlands MC, scattered snow_carpet, sparse pines) | S71-3 |
-| B2 | Lithology mask as source-of-truth for cliff stone + high-elev fade (per-biome `zone_to_group` is FALLBACK) | S71 |
-| B3 | Ecotone plateau-clamp dither — S85 widened to width 100, swap_cap 0.85 (was 40/0.75 in S71) | S71 + S85 widening |
-| B4 | Schematic placement `BASE_DENSITY` full retune | S70-S81 walks |
-| B5 | Leaf-column blacklist (4 schematics globally rejected) | S71 |
-| B6 | SARID juniper-only filter (acacia variants excluded) | S71 |
-| B7 | BIRCH clumping fix | S70-f6 |
-| B8 | Floodplain skip for RIPARIAN_WOODLAND, FRESHWATER_FEN, LUSH_RAINFOREST_COAST, SAND_DUNE_DESERT | S70 |
-| B9 | AT + FF added to `_NO_SWAP_BIOMES` (no neighbor big-tree leak) | S71 |
-| (river) | S71-S83 river overhaul: WP-style guardrails carve, tanh depth, coast taper, lake-bowl geomorph | S71-S83 |
-| (cache) | Disk-pickle bed cache for multi-worker memory headroom | S83 v18 |
+| `a738fb4` | wip | S85 working tree pre-pull checkpoint |
+| `9c6241b` | merge | Cherry-pick S70-S84 work + S85 surgical edits + world-height threshold scaling |
+| `f992f2c` | docs | CLAUDE.md current-state header + S85 handoff + validation tile list |
+| `e1f25df` | infra | gitignore mask cache files |
+| `b8c025d` | fix | restore missing `core/region_overlay_smoothing.py` (river carving broken) |
+| `ff42fc3` | fix | normalize `schematic_index.json` paths to relative (cloud-compatible) |
+| `d93bfc5` | fix | plateau-clamp on surface ecotone (clip [0.15, cap]) |
+| `2ecd2c8` | fix | remove `noise_b` multiplicative modulation in ecotone dither |
+| `2551021` | tune | lithology palette tweaks (calcite limestone, raw_iron granitic, no tuff in deepslate_metamorphic) |
+| `6381370` | tune | exception tall sm-mislabeled trees out of FF mirror (max 11 blocks in FF) |
+| `eb79531` | feat | per-pixel RNG soften_biome_boundaries (no blob islands) |
+| `2be0857` | feat | per-lithology-group wash palettes (replaces hardcoded sand/sandstone) |
+| `5552c26` | feat | Option A ecotone dither — per-pixel shadow lookup preserves blob structure |
+| `e0794dd` | fix | skip fluid ticks for above-sea river water (no chunk-load river settling) |
+| `a964b8b` | infra | one-shot render script + README |
+| `7f1ea25` | fix | render script restores painted PNGs after checkout (was deleting them) |
 
-### S85 surgical edits (re-applied on top)
+## Validation state
 
-- **BOREAL_TAIGA** MC tag `stony_shore` → `minecraft:meadow` (user override of S71 decision — meadow temp=0.5 keeps it snow-free and reads cleaner than stony_shore which had temp=0.2 freeze-risk)
-- **`BIOME_ALTITUDE_REMAPS = []`** — deleted the remaining BIRCH/MIXED → BOREAL_ALPINE entries at threshold=220. User direction: "i dont like those remaps. they dont make any sense to me. DELET". Runtime code at chunk_writer.py:~1607 short-circuits cleanly on empty list.
-- **Snow gap==7 surface override exemption** for SBT + FROZEN_FLATS — surface_decorator.py:1690 now skips snow_block override for those two biomes. SBT keeps native podzol (snow_carpet via `_apply_snow_carpet` provides snowy visual); FROZEN_FLATS keeps Tundra Valley grass_block.
-- **ARCTIC_TUNDRA → SBT below Y 500 remap DELETED** — surface_decorator.py:~2326. Painted intent is canonical. Unlocks lowland ARC_TUN tiles like (31,5).
-- **A3 fade band start** bumped 480 → 500 per user direction (keeps mid-mountain forests green longer).
-- **B3 ecotone wider** — config/thresholds.json `eco_ground_cover.ecotone_width_px` 40 → 100, `ecotone_swap_cap` 0.75 → 0.85. User: "incredibly wide … biomes almost become each other."
-- **Treeline rescale** for 768-height world (full table in CLAUDE.md and `config/thresholds.json:treelines`).
+**LOCAL renders verified working:** (33,6), (49,53), v5 render of (33,6) with all S85 fixes — user verdict "looks great".
 
-### World-height threshold scaling for 768-block world
+**CLOUD render:** First run had a script bug (deleted tracked PNG overlays); user reported "rivers broken, fluting blobs everywhere". Fixed in `7f1ea25`. Re-render in progress at session end — should produce correct output for all 36 validation tiles.
 
-These were stale at 448-era values even in origin/master S84. S85 scaled them:
+## S85 cherry-pick checklist (all approved by user)
 
-| Constant | Was | Now | File |
-|---|---|---|---|
-| SNOW_Y_FLOOR | 250 | 430 | core/eco_gradients.py:498 |
-| SNOW_Y_CEIL | 275 | 475 | core/eco_gradients.py:499 |
-| GRASS_Y_FLOOR | 325 | 460 | core/surface_decorator.py:1415 |
-| GRASS_Y_CEIL | 350 | 500 | core/surface_decorator.py:1416 |
-| EXPOSED_MIN_Y | 180 | 310 | core/layers/pass2_surface/weathered_top.py:41 |
-| `_default` treeline fallback y_top | 230 | 530 | core/schematic_placement.py |
-| preview_renderer normalize range | 448 | 704 | core/preview_renderer.py:138, 180 |
-| Stale comments (chunk_writer) | "32 sections / Y 447" | "48 sections / Y 703" | core/chunk_writer.py:1520, 1814 |
+- A1: bbox-cull perf
+- A2: vandir_height.zip auto-install (assets→output/datapacks)
+- A3: AT high-elev stone-fade exemption + fade band Y 500-580
+- A4: AT GC palette (dead_bush → tall_dry_grass)
+- A5: tools/diag_mca_biomes.py + tools/diag_mca_surface.py
+- B1: FROZEN_FLATS Tundra Valley palette (grass_block surface + scattered snow_carpet + small pines + badlands MC tag)
+- B2: lithology mask as source-of-truth for cliff + high-elev fade
+- B3: ecotone plateau-clamp + width 40→100, swap_cap 0.75→0.85
+- B4: schematic placement density tuning per S70-S81 walks
+- B5: leaf-column blacklist (4 schematics globally rejected)
+- B6: SARID juniper-only filter
+- B7: BIRCH clumping fix
+- B8: floodplain skip for RIPARIAN/FRESHWATER_FEN/LUSH/SAND_DUNE_DESERT
+- B9: AT + FF in `_NO_SWAP_BIOMES`
+- S71-S84 river overhaul: WP-style carve + tanh depth + coast taper + lake-bowl geomorph + bed cache
 
-Plus the full per-biome treeline rescale in `config/thresholds.json:treelines`.
+## S85 NEW design changes (not cherry-picks, original this session)
 
-### Datapack rename
+- BT MC tag → `minecraft:meadow` (was stony_shore in S71)
+- `BIOME_ALTITUDE_REMAPS = []` (deleted BIRCH/MIXED → BA entries)
+- Snow gap==7 surface exemption for SBT + FROZEN_FLATS
+- ARCTIC_TUNDRA → SBT below Y 500 remap DELETED
+- Full treeline rescale for 768-height world
+- World-height threshold scaling (SNOW_Y 250→430, GRASS_Y 325→460, EXPOSED_MIN_Y 180→310, etc.)
+- A3 fade band start 480→500
+- B3 ecotone widened: width 40→100, swap_cap 0.75→0.85
+- Per-pixel RNG soften (replaces simplex)
+- Per-lithology-group wash palettes (granitic = warm earth, arid_basaltic = dark gravel + rare sand, etc.)
+- Option A ecotone shadow lookup (preserves rare-block simplex blobs)
+- Skip fluid ticks for above-sea rivers
+- FF tree filter: exclude 6 mature-pine variants from FF mirror
 
-`assets/vandir_height.zip` (the older 512-block-height version) → renamed to expose `vandir_world_v17_S84_height768.zip` as the new `vandir_height.zip`. The S74 auto-install in `run_pipeline.py` references `vandir_height.zip` by hardcoded name, so this rename activates the 768-block datapack. Old datapack preserved at `.claude/S85_preserved/vandir_height.zip` for rollback.
+## Cloud render workflow (working)
 
-## What was NOT brought in
+```bash
+cd /c/Users/nicho/minecraft-worldgen
+bash cloud_bake/render_s85_validation.sh IP1 IP2 IP3 IP4
+```
 
-- Connectivity layer (S75-S79 archived behind `_CONNECTIVITY_ENABLED = False` — needs ground-up rebuild)
-- S70-S71 `BIOME_TO_MC` remaps for biomes other than BOREAL_TAIGA (BT was user-overridden to meadow; the rest came in unchanged)
+Spin 4× CCX63 from snapshot `vandir-baked-s85-validated` (or `-veg` if user saved that one) in Falkenstein. Script handles bootstrap → branch checkout → cache clear → Vegetation upload → rsync → tmux dispatch → monitor → collect → install. ~22 min wall, ~$2 cost.
 
-## Validation render plan
+## Backlog (in priority order)
 
-36-tile validation set at [cloud_bake/validation_tiles.txt](../cloud_bake/validation_tiles.txt). Estimated 12-15 min wall on 1× CCX63 (~$0.14) or 4× CCX63 for memory safety (~$0.57).
+1. **Full world render** (9,409 tiles, 8× CCX63, ~3-4h, ~$15) — gated on validation render passing
+2. **Override.tif repaint for BT** — BT currently sits in Highlands (median Y 296) but real-world boreal taiga is lowland/midland (0-1200m = Y 75-200). User flagged this in the elevation-bands analysis. Needs Override Studio session.
+3. **`render_full_world.sh`** — adapt `render_s85_validation.sh` for 8 boxes + 9,409 tiles via plan_render.py z-stripe
+4. **Schematic index needs `Vegetation/` synced to snapshot** — Box 1 has it now; next snapshot includes it; future renders skip the 3-min upload
+5. **`_BIOME_CLIFF_STONE` in chunk_writer.py is hardcoded** — doesn't read from config lithology palette. User said "probably dead code from old system" — confirm + delete or wire up.
 
-See user-facing snapshot-refresh + render procedure in CLAUDE.md (end of session). Snapshot the staging box AFTER pulling s85-cherry-picks branch + smoke-testing (51,53), then spin workers from the new snapshot.
+## Open issues / known gaps
 
-## Carry-forward to S86
+- **biome_reference_tiles.csv stale** — script trusts CSV that has (86,78) labeled SCRUBBY_HEATHLAND but real override has 99.8% ocean there. Other tile labels possibly wrong. Should regen from current override.
+- **column_generator.py subsurface lithology** — `lithology_tile` plumbed in but flagged as "pass-through only". Subsurface uses hardcoded biome palettes, not lithology. Likely dead code carryover.
+- **soften_biome_boundaries amp/scale** — currently default amplitude_px=48 with per-pixel RNG. May want to make per-biome-pair (e.g., FF/forest = wide blend, ocean/FF = narrow).
 
-1. **Validate the 36 tiles in-world.** Walk each. The wider ecotone (100 blocks) is the biggest cosmetic risk — if it looks excessive, drop to 60-80 and re-render.
-2. **Merge `s85-cherry-picks` → master** after validation passes.
-3. **Refresh cloud snapshot** as `vandir-baked-s85` so future renders pull from this state.
-4. **Connectivity layer rebuild** — S79 archived this. Still TOP PRIORITY for proper river connectivity in dry biomes per the S77+S78+S79 commit message.
-5. **A2 datapack name hygiene:** consider unifying on a single, dated zip name (e.g. `vandir_height_h768_v1.zip`) and updating the S74 auto-install path to read whichever file matches `vandir_height*.zip` rather than hardcoded name. Easy follow-up.
-6. **B3 width** is currently 100. If "transitional biomes" reads great, leave it. If overdone, dial down. If user wants even bigger (the original ask was "incredibly wide"), bump to 150-200.
+## Key files
 
-## Files touched
-
-- `assets/vandir_height.zip` — renamed in
-- `cloud_bake/validation_tiles.txt` — new
-- `config/thresholds.json` — treelines rescale, ecotone widen
-- `core/chunk_writer.py` — BT MC tag, REMAPS=[], stale comments
-- `core/column_generator.py` — origin/master version
-- `core/eco_gradients.py` — origin/master + SNOW_Y rescale + floodplain skips
-- `core/hydro_region_overlay.py` — origin/master (incl. bbox-cull)
-- `core/hydrology_precompute.py` — origin/master
-- `core/layers/pass2_surface/weathered_top.py` — EXPOSED_MIN_Y rescale
-- `core/preview_renderer.py` — Y range 448→704
-- `core/river_carver_v2.py` — origin/master
-- `core/schematic_placement.py` — origin/master + treeline default rescale
-- `core/surface_decorator.py` — origin/master + S85 surgical edits + GRASS_Y rescale + A3 fade band
-- `run_pipeline.py` — origin/master (incl. datapack auto-install)
-- `tools/diag_mca_biomes.py` — new
-- `tools/diag_mca_surface.py` — new
-- `memory/S85_handoff.md` — this file
-- `CLAUDE.md` — current-state header rewrite
-
-## Commits
-
-- `a738fb4` S85 WIP: snapshot before bringing in S70-S84 cherry-picks
-- `8dca21b` S85: cherry-pick S70-S84 work + S85 surgical edits + world-height threshold scaling
-
-## Reference
-
-- `.claude/S85_pre_pull_diff.patch` — full patch of S69 → Frankenstein state, for rollback / archaeology
-- `.claude/S85_preserved/` — backups of conflicting untracked files (old vandir_height.zip etc.)
+- `core/region_overlay_smoothing.py` — painted river overlay smoothing (restored S85)
+- `core/surface_decorator.py` — gap==5 wash palette + Option A ecotone + plateau-clamp
+- `core/biome_assignment.py` — per-pixel RNG soften
+- `core/chunk_writer.py` — fluid tick skip for above-sea
+- `core/schematic_placement.py` — FF tree height filter
+- `config/thresholds.json` — all 6 lithology groups have `palette` + `wash_palette` + `description`
+- `cloud_bake/render_s85_validation.sh` — one-shot 36-tile render
+- `cloud_bake/validation_tiles.txt` — 36-tile list + TP commands
+- `memory/S85_to_S86_handoff_prompt.md` — comprehensive next-session prompt
