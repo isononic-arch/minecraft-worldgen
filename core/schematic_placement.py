@@ -314,12 +314,36 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
     # (smallest pines).  AT uses these very-very sparsely (×0.05 tree mult);
     # FF uses them sparsely as the "tundra valley" backdrop.  Bushes come
     # from the generic-bush merge (separate path) for both biomes.
+    #
+    # S85: FF excludes 6 of the 17 size=sm SBT trees that are mature/tall
+    # variants mis-labeled as "sm" — actual heights up to 36 blocks (spruce_a)
+    # and 19-26 blocks (salfir a-c, e, f).  These read as mature mountain
+    # forest trees, NOT tundra-valley krummholz.  After filter FF gets 11
+    # entries, all ≤11 blocks tall: kspruce a/b/c + kfir a/c + salfir_d
+    # (krummholz) + kfir b/g (saplings) + kfir d/e/f (dwarf saplings).
+    # AT keeps the full 17-entry set since its mountain-snowy context can
+    # support occasional tall trees + ×0.05 mult makes them rare regardless.
     if "SNOWY_BOREAL_TAIGA" in grouped:
-        _smallest_pines_src = [
+        _all_sm_pines = [
             e for e in grouped["SNOWY_BOREAL_TAIGA"]
             if e.size == "sm" and e.schem_type == "tree"
         ]
-        for _target in ("ARCTIC_TUNDRA", "FROZEN_FLATS"):
+        _FF_HEIGHT_REJECT = (
+            "sbtaiga_tree_spruce_a_sm",   # 36 blocks — mis-labeled outlier
+            "sbtaiga_tree_salfir_a_sm",   # 26 blocks
+            "sbtaiga_tree_salfir_b_sm",   # 23 blocks
+            "sbtaiga_tree_salfir_c_sm",   # 19 blocks
+            "sbtaiga_tree_salfir_e_sm",   # 21 blocks
+            "sbtaiga_tree_salfir_f_sm",   # 21 blocks
+        )
+        _ff_pines = [
+            e for e in _all_sm_pines
+            if not any(rej in e.path for rej in _FF_HEIGHT_REJECT)
+        ]
+        for _target, _src in (
+            ("ARCTIC_TUNDRA", _all_sm_pines),
+            ("FROZEN_FLATS",  _ff_pines),
+        ):
             _mirrored = [
                 _SchematicEntry(
                     path=e.path, biome=_target, size=e.size,
@@ -328,7 +352,7 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
                     method=e.method, weight=e.weight, anchor_review=False,
                     species=e.species,
                 )
-                for e in _smallest_pines_src
+                for e in _src
             ]
             grouped.setdefault(_target, []).extend(_mirrored)
 
