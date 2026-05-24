@@ -400,20 +400,43 @@ def soften_biome_boundaries(
         return biome_grid.copy()
 
     # Stack: perturbed_dists[i, r, c] = distance from (r,c) to biome[i]
-    # plus an independent low-freq noise offset.
+    # plus an independent noise offset.
+    #
+    # S85: per-pixel uniform RNG noise replaces simplex noise.  Original
+    # design used spatially-correlated simplex (scale=200 default) which
+    # carved blob-shaped islands of one biome into another at the seam —
+    # the wobbled distance maps had spatially-coherent regions where one
+    # biome's perturbed distance was consistently lower, so whole patches
+    # got reassigned together.  User reported visible blob structure at
+    # FROZEN_FLATS boundaries in (33,6) walks.  Per-pixel uniform RNG has
+    # NO spatial correlation, so reassignment becomes per-pixel salt-and-
+    # pepper instead of blob-carving.  `scale` and `octaves` args are now
+    # ignored (kept for back-compat).  `amplitude_px` controls the width
+    # of the spray-paint zone — pixels within ~2*amplitude_px of a boundary
+    # have nonzero swap probability; falloff is roughly quadratic-triangular
+    # (50% right at the boundary, ~12.5% at amplitude_px in, ~0% at
+    # 2*amplitude_px in).  World-seamless via splitmix64-style hash of
+    # (biome_id, world_x, world_y) — adjacent tiles see identical noise
+    # at shared boundary pixels.
+    import zlib as _zlib
     perturbed = np.full((len(biomes), H, W), np.inf, dtype=np.float32)
+    _xs_world = (np.arange(W, dtype=np.int64) + int(px_off)).astype(np.uint64)
+    _ys_world = (np.arange(H, dtype=np.int64) + int(py_off)).astype(np.uint64)
+    _xx, _yy = np.meshgrid(_xs_world, _ys_world)
     for i, b in enumerate(biomes):
         is_b = (biome_grid == b)
         if not is_b.any():
             continue
         dist_to_b = _edt(~is_b).astype(np.float32)  # 0 inside b, positive outside
-        # Per-biome noise field, world-coord seamless.
-        noise_field = _noise_tile_simple(
-            _soften_gen_for_biome(str(b)),
-            H, W, px_off, py_off,
-            scale=scale, octaves=octaves,
-        )
-        # Remap [0,1] → [-1,1] then scale to amplitude.
+        # splitmix64 hash: (biome_seed, world_x, world_y) -> uniform float32 in [0, 1)
+        _biome_seed = np.uint64(_zlib.crc32(str(b).encode()))
+        _h = _xx ^ (_yy * np.uint64(0x9E3779B97F4A7C15)) ^ _biome_seed
+        _h = (_h * np.uint64(0xBF58476D1CE4E5B9))
+        _h ^= _h >> 30
+        _h = (_h * np.uint64(0x94D049BB133111EB))
+        _h ^= _h >> 27
+        noise_field = (_h.astype(np.float64) / np.float64(2**64)).astype(np.float32)
+        # Remap [0,1] -> [-1,1] then scale to amplitude.
         noise_signed = (noise_field - 0.5) * 2.0
         perturbed[i] = dist_to_b + noise_signed * amplitude_px
 
