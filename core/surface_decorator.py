@@ -824,6 +824,76 @@ def _gen_layer_noise(noise_type: str, scale: float, seed: int,
         return rng.random((H, W)).astype(np.float32)
 
 
+def _shadow_blocks_for_biome(
+    biome_name:        str,
+    boundary_mask:     np.ndarray,   # (H, W) bool — pixels to compute for
+    noise_layers:      dict,         # noise_layers_biome from thresholds.json
+    H: int, W: int,
+    px_off: int, py_off: int,
+    noise_cache:       dict | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """S85: compute (surface, subsurface) blocks AS IF every boundary pixel
+    were `biome_name`. Other pixels are filled with empty-string sentinel.
+
+    Used by `_apply_ecotone_dither` (Option A) to compute "what would biome X
+    have placed at this exact pixel" without random sampling. Preserves biome
+    X's natural simplex blob structure when used as the seam-swap target.
+
+    Returns (surface, subsurface) — both (H, W) object arrays, only
+    `boundary_mask` pixels are populated; others are "" (empty).
+
+    Falls back to empty arrays if biome has no noise_layers config.
+    """
+    surface = np.full((H, W), "", dtype=object)
+    subsurface = np.full((H, W), "", dtype=object)
+    if not boundary_mask.any():
+        return surface, subsurface
+
+    layers = noise_layers.get(biome_name)
+    if not layers:
+        return surface, subsurface  # caller will fall back to random sample
+
+    # Find base layer
+    base_blk = "grass_block"
+    base_sub = "dirt"
+    for layer in layers:
+        if layer.get("is_base") and layer.get("enabled", True):
+            base_blk = layer["block"]
+            base_sub = layer.get("sub", "dirt")
+            break
+
+    surface[boundary_mask] = base_blk
+    subsurface[boundary_mask] = base_sub
+
+    if noise_cache is None:
+        noise_cache = {}
+
+    # Apply non-base layers (highest index = lowest priority, lowest index = top)
+    for i in range(len(layers) - 1, -1, -1):
+        layer = layers[i]
+        if not layer.get("enabled", True) or layer.get("is_base"):
+            continue
+        noise_type = layer.get("noise", "simplex_fbm")
+        scale      = layer.get("scale", 60)
+        seed       = layer.get("seed", 42 + i)
+        coverage   = layer.get("coverage", 0.5)
+        block      = layer["block"]
+        sub        = layer.get("sub", "dirt")
+        threshold  = 1.0 - coverage
+        cache_key = (noise_type, scale, seed)
+        if cache_key in noise_cache:
+            field = noise_cache[cache_key]
+        else:
+            field = _gen_layer_noise(noise_type, scale, seed,
+                                     H, W, px_off, py_off)
+            noise_cache[cache_key] = field
+        apply = boundary_mask & (field >= threshold)
+        if apply.any():
+            surface[apply]    = block
+            subsurface[apply] = sub
+    return surface, subsurface
+
+
 def _apply_noise_layers(
     surface_blocks:    np.ndarray,   # (H, W) object — modified in-place
     subsurface_blocks: np.ndarray,   # (H, W) object — modified in-place
@@ -2619,35 +2689,75 @@ def _apply_ecotone_dither(
     if len(swap_r) == 0:
         return
 
-    # For each swap pixel, find the nearest pixel of the neighbour biome
-    # and copy its surface/subsurface blocks.
-    # Group by neighbour biome for efficiency
+    # S85 Option A: PER-PIXEL SHADOW LOOKUP (instead of random sample).
+    # Previously each swap pixel grabbed a random pixel from anywhere in the
+    # neighbour biome's region — losing the simplex blob structure of the
+    # neighbour's rare blocks (sand pockets, podzol clumps, etc.) and making
+    # rare blocks visually over-represented as isolated specks at the seam.
+    #
+    # Now we pre-compute "what would biome X have placed at THIS exact pixel"
+    # by running noise_layers_biome for each unique neighbour biome on the
+    # boundary mask only. At swap time, look up the same world-coord block
+    # from the neighbour biome's shadow grid — preserves spatial blob
+    # structure across the seam (Photoshop alpha-blend analogue).
+    #
+    # Fallback: biomes without a noise_layers config use the legacy random
+    # sample path (mostly relevant for cold/snow biomes whose surface is
+    # palette-driven, not layer-driven).
     nb_at_swap = neighbour_biome[swap_r, swap_c]
+    _noise_layers_cfg = cfg.get("noise_layers_biome", {}) if isinstance(cfg, dict) else {}
+    _shadow_blocks: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    _shadow_noise_cache: dict = {}
+    _unique_nbs = {str(nb) for nb in np.unique(nb_at_swap) if nb}
+    for _nb in _unique_nbs:
+        if _nb in _noise_layers_cfg:
+            _shadow_surf, _shadow_sub = _shadow_blocks_for_biome(
+                _nb, has_neighbour, _noise_layers_cfg,
+                H, W, tile_x * W, tile_y * H,
+                noise_cache=_shadow_noise_cache,
+            )
+            _shadow_blocks[_nb] = (_shadow_surf, _shadow_sub)
+
     for bname in biome_names:
         bname_mask = nb_at_swap == bname
         if not bname_mask.any():
             continue
 
-        # Find pixels that ARE this biome (to sample blocks from)
-        biome_mask = biome_grid == bname
-        biome_pixels_r, biome_pixels_c = np.where(biome_mask)
-        if len(biome_pixels_r) == 0:
-            continue
-
-        # For each swap pixel targeting this biome, pick a random pixel
-        # from the biome and copy its block (captures the biome's full
-        # palette diversity including noise scatter)
-        n_swap = int(bname_mask.sum())
-        sample_idx = rng.integers(0, len(biome_pixels_r), size=n_swap)
-        sampled_r = biome_pixels_r[sample_idx]
-        sampled_c = biome_pixels_c[sample_idx]
-
         target_r = swap_r[bname_mask]
         target_c = swap_c[bname_mask]
 
-        surface_blocks[target_r, target_c]    = surface_blocks[sampled_r, sampled_c]
-        if not use_new_geology:
-            subsurface_blocks[target_r, target_c] = subsurface_blocks[sampled_r, sampled_c]
+        if bname in _shadow_blocks:
+            # Option A path: per-pixel shadow lookup (preserves simplex blobs)
+            _shadow_surf, _shadow_sub = _shadow_blocks[bname]
+            _surf_at_swap = _shadow_surf[target_r, target_c].copy()
+            _sub_at_swap  = _shadow_sub[target_r, target_c].copy()
+            # Defensive fallback for any pixel where shadow returned empty
+            # (shouldn't happen since we built shadow on has_neighbour mask,
+            # but be safe)
+            _empty = _surf_at_swap == ""
+            if _empty.any():
+                _biome_mask = biome_grid == bname
+                _biome_pr, _biome_pc = np.where(_biome_mask)
+                if len(_biome_pr) > 0:
+                    _fb_idx = rng.integers(0, len(_biome_pr), size=int(_empty.sum()))
+                    _surf_at_swap[_empty] = surface_blocks[_biome_pr[_fb_idx], _biome_pc[_fb_idx]]
+                    _sub_at_swap[_empty]  = subsurface_blocks[_biome_pr[_fb_idx], _biome_pc[_fb_idx]]
+            surface_blocks[target_r, target_c] = _surf_at_swap
+            if not use_new_geology:
+                subsurface_blocks[target_r, target_c] = _sub_at_swap
+        else:
+            # Legacy random-sample fallback for biomes without noise_layers
+            _biome_mask = biome_grid == bname
+            _biome_pr, _biome_pc = np.where(_biome_mask)
+            if len(_biome_pr) == 0:
+                continue
+            n_swap = int(bname_mask.sum())
+            sample_idx = rng.integers(0, len(_biome_pr), size=n_swap)
+            sampled_r = _biome_pr[sample_idx]
+            sampled_c = _biome_pc[sample_idx]
+            surface_blocks[target_r, target_c] = surface_blocks[sampled_r, sampled_c]
+            if not use_new_geology:
+                subsurface_blocks[target_r, target_c] = subsurface_blocks[sampled_r, sampled_c]
 
 
 def _compute_ecotone_swap_fields(
