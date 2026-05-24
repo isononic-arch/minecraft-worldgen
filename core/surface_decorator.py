@@ -1673,14 +1673,75 @@ def decorate_surface(
                                 surface_blocks[_band] = _blk
                         subsurface_blocks[_bm] = _pal[0]
 
-                # Flow-driven wash channels (subtle sand in drainage paths) — global,
-                # independent of lithology (water erodes everything).
+                # Flow-driven wash channels — per-lithology-group wash palette.
+                # S85: was hardcoded sand+sandstone universally; now each lithology
+                # group has its own `wash_palette` in config (matching its biome
+                # family's geological/color feel).  granitic = warm earth browns,
+                # arid_basaltic = dark gravel + rare sand, temperate_basaltic = wet
+                # brown sediment, limestone = chalky pale, deepslate_metamorphic =
+                # dry alpine scree (no snow), mossy_temperate = mossy stream debris.
+                # Same flow threshold gates as before (0.005 / 0.020) — controls
+                # where wash appears, not which blocks.
                 if flow_tile is not None:
-                    _wash = rock_px & (flow_tile > 0.005)
-                    if _wash.any():
-                        surface_blocks[_wash] = "sand"
-                        surface_blocks[rock_px & (flow_tile > 0.020)] = "sandstone"
-                    del _wash
+                    _wash_zone = rock_px & (flow_tile > 0.005)
+                    if _wash_zone.any():
+                        _DEFAULT_WASH_PAL = ["gravel", "coarse_dirt", "sand"]
+                        _wash_rng = np.random.default_rng(
+                            tile_x * 48271 ^ tile_y * 31337 ^ 0x4A5E)
+                        # Build group-id -> wash_palette LUT from config.
+                        _gid_to_wash: dict[int, list] = {}
+                        for _gname, _gdata in _groups.items():
+                            _gid = int(_gdata.get("id", 0))
+                            _wp = _gdata.get("wash_palette") or _DEFAULT_WASH_PAL
+                            _gid_to_wash[_gid] = _wp
+
+                        def _wash_palette_for_biome(biome_name: str) -> list:
+                            g = _zone_to_group.get(biome_name)
+                            if g and g in _groups:
+                                wp = _groups[g].get("wash_palette")
+                                if wp:
+                                    return wp
+                            return _DEFAULT_WASH_PAL
+
+                        # Per-pixel wash group lookup: lithology mask first,
+                        # biome fallback for unpainted pixels (matches the rock
+                        # surface palette path above).
+                        if _litho_at_res is not None:
+                            for _gid in np.unique(_litho_at_res[_wash_zone]):
+                                _gid = int(_gid)
+                                _bm_w = _wash_zone & (_litho_at_res == _gid)
+                                if not _bm_w.any():
+                                    continue
+                                if _gid == 0:
+                                    # Unpainted - per-biome
+                                    for _bname in np.unique(biome_grid[_bm_w]):
+                                        _bm_wfb = _bm_w & (biome_grid == _bname)
+                                        if not _bm_wfb.any():
+                                            continue
+                                        _wp = _wash_palette_for_biome(str(_bname))
+                                        _n_pix = int(_bm_wfb.sum())
+                                        _wp_arr = np.asarray(_wp, dtype=object)
+                                        _idx = _wash_rng.integers(0, len(_wp), size=_n_pix)
+                                        surface_blocks[_bm_wfb] = _wp_arr[_idx]
+                                else:
+                                    _wp = _gid_to_wash.get(_gid, _DEFAULT_WASH_PAL)
+                                    _n_pix = int(_bm_w.sum())
+                                    _wp_arr = np.asarray(_wp, dtype=object)
+                                    _idx = _wash_rng.integers(0, len(_wp), size=_n_pix)
+                                    surface_blocks[_bm_w] = _wp_arr[_idx]
+                        else:
+                            # No lithology mask - per-biome only
+                            for _bname in np.unique(biome_grid[_wash_zone]):
+                                _bm_w = _wash_zone & (biome_grid == _bname)
+                                if not _bm_w.any():
+                                    continue
+                                _wp = _wash_palette_for_biome(str(_bname))
+                                _n_pix = int(_bm_w.sum())
+                                _wp_arr = np.asarray(_wp, dtype=object)
+                                _idx = _wash_rng.integers(0, len(_wp), size=_n_pix)
+                                surface_blocks[_bm_w] = _wp_arr[_idx]
+                        del _wash_rng
+                    del _wash_zone
 
                 del _rng, _scatter
 

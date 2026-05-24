@@ -3671,6 +3671,15 @@
           "rooted_dirt",
           "raw_iron_block"
         ],
+        "wash_palette": [
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "coarse_dirt",
+          "coarse_dirt",
+          "gravel",
+          "gravel",
+          "packed_mud"
+        ],
         "description": "Intrusive igneous basement \u2014 default temperate highland. S60 palette. S85: weighted distribution (~23% each granite/dripstone/packed_mud/rooted_dirt + ~8% raw_iron_block as rare accent)."
       },
       "arid_basaltic": {
@@ -3679,6 +3688,16 @@
           "basalt",
           "smooth_basalt",
           "cobbled_deepslate"
+        ],
+        "wash_palette": [
+          "gravel",
+          "gravel",
+          "gravel",
+          "gravel",
+          "gray_concrete_powder",
+          "gray_concrete_powder",
+          "sand",
+          "coarse_dirt"
         ],
         "description": "Arid/semi-arid mafic \u2014 dune + steppe + karst margins. S60 renamed from sedimentary."
       },
@@ -3697,6 +3716,15 @@
           "basalt",
           "deepslate_coal_ore"
         ],
+        "wash_palette": [
+          "mud",
+          "mud",
+          "packed_mud",
+          "packed_mud",
+          "gravel",
+          "gravel",
+          "brown_concrete_powder"
+        ],
         "description": "S84: dark metamorphic mix \u2014 deepslate-heavy (~36%) + cobbled_deepslate (~27%) + basalt (~27%) + rare deepslate_coal_ore (~9%). Coastal headland / temperate peak feel."
       },
       "limestone": {
@@ -3714,6 +3742,15 @@
           "dead_horn_coral_block",
           "light_gray_concrete_powder"
         ],
+        "wash_palette": [
+          "light_gray_concrete_powder",
+          "light_gray_concrete_powder",
+          "light_gray_concrete_powder",
+          "white_concrete_powder",
+          "white_concrete_powder",
+          "gravel",
+          "sand"
+        ],
         "description": "S85: full repaint — calcite (~45%) dominant + diorite (~36%) slightly less, dead_horn_coral_block (~9%) + light_gray_concrete_powder (~9%) as rare accents. Karst barrens + cave-prone carbonate."
       },
       "deepslate_metamorphic": {
@@ -3725,6 +3762,15 @@
           "cobblestone",
           "suspicious_gravel"
         ],
+        "wash_palette": [
+          "gravel",
+          "gravel",
+          "gravel",
+          "gravel",
+          "coarse_dirt",
+          "coarse_dirt",
+          "cobblestone"
+        ],
         "description": "High-alpine / arctic basement. S60 palette. S85: removed tuff per user (was 16.7%, now redistributed to remaining 5 blocks at 20% each)."
       },
       "mossy_temperate": {
@@ -3734,6 +3780,15 @@
           "mossy_cobblestone",
           "tuff",
           "dead_horn_coral_block"
+        ],
+        "wash_palette": [
+          "mud",
+          "mud",
+          "mud",
+          "gravel",
+          "gravel",
+          "packed_mud",
+          "brown_concrete_powder"
         ],
         "description": "Wet temperate rainforest regolith. S60 palette."
       }
