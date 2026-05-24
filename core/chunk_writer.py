@@ -1846,13 +1846,25 @@ def _chunk_to_nbt_bytes(
 
     def _add_water_ticks(edge_vol, lx_fixed, lz_fixed):
         """edge_vol: (Y_RANGE, 16) slice. lx_fixed/lz_fixed: scalar or None (other axis varies).
-        Only ticks the topmost water block per column — interior water is stable and never needs ticking."""
+        Only ticks the topmost water block per column — interior water is stable and never needs ticking.
+
+        S85: tick OCEAN ONLY (topmost water at or below SEA_Y).  Above-sea
+        river water gets NO fluid tick — the carved river_water_y is a stable
+        source block and ticking it on chunk load makes MC flow it sideways
+        into adjacent air pockets (the carved trough), destroying the
+        carver's water state visually.  User reported "rivers look uglier
+        when you fly into the chunk" — this gate fixes it.
+        Ocean (Y <= SEA_Y) still gets the tick so MC stitches tile seams
+        cleanly at the shoreline."""
         for other in range(edge_vol.shape[1]):
             col = edge_vol[:, other]
             water_ys = np.where(col == "water")[0]
             if len(water_ys) == 0:
                 continue
             yi = int(water_ys[-1])  # topmost water block only
+            world_y = yi + Y_MIN
+            if world_y > SEA_Y:
+                continue  # S85: above-sea river water — do NOT tick
             lx = lx_fixed if lx_fixed is not None else other
             lz = lz_fixed if lz_fixed is not None else other
             fluid_tick_list.append(nbtlib.Compound({
