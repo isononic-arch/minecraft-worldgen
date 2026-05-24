@@ -2524,8 +2524,14 @@ def _apply_ecotone_dither(
     if _swap_cap <= 0.0:
         return  # dither disabled
     t = dist_inside_effective[has_neighbour] / width_px  # 0=boundary, 1=width_px deep
-    # Linear ramp: cap at boundary → 0 at width_px.
-    swap_prob = np.clip(_swap_cap * (1.0 - t), 0.0, _swap_cap)
+    # S85: align with NOISE_PATTERNS.md §4 plateau-clamp pattern (S71 fix that was
+    # only applied to _compute_ecotone_swap_fields, not here).  Clip floor at 0.15
+    # so deep-inside cells still get 15% swap chance — gives visible salt-and-pepper
+    # across the FULL width_px transition zone instead of a near-hard cutoff where
+    # the linear ramp approaches zero.  User: surface block boundaries still looked
+    # harsh after the width 40 -> 100 / swap_cap 0.75 -> 0.85 widening because the
+    # ramp was dropping to 0 at 100 blocks deep, not staying at the cap.
+    swap_prob = np.clip(_swap_cap * (1.0 - t), 0.15, _swap_cap)
     # Light ±20% modulation by noise_b for additional spatial variation in
     # the swap probability ramp itself (subtler than the per-pixel decision).
     noise_at = noise_b[has_neighbour]
