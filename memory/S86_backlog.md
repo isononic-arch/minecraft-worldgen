@@ -395,6 +395,36 @@ are CONFIRMED for S87 action with user-direction corrections folded in.
 
 ---
 
+## S87 walk #4 feedback
+
+### S87 walk #4 batch (post 36,15 single-tile)
+
+- **(36,75) maquis bush bump DID NOTHING.**  BUSH_DENSITY_MULT 1.8 → 3.0 had
+  no visible effect.  Investigate why — possibly bush placement is capped
+  elsewhere (canopy exclusion radius?), or the bush_exclusion grid drops
+  most candidates before density mult applies.
+- **(13,82) RFC veg palette swap.**  Copy MIXED_FOREST GROUND_COVER_PALETTES
+  entries entirely (same blocks + same densities) into RFC.
+- **(50,48) still blank.**  MIXED_FOREST tile produced empty/missing chunks
+  across multiple renders.  REAL BUG, not transient.  Need investigation
+  into pipeline failure mode for this specific tile coordinates.
+- **(27,13) SBT density not enough.**  Current 0.70 didn't read as "way
+  higher intensity".  Push to 0.95 or even 1.0.
+- **MANGROVE noise scale change didn't work.**  Subsurface coral reefs
+  remain flat-painted.  KILL coral reefs entirely from ocean surface painter
+  for mangrove biome.
+
+### (26,10) BT density rebalance:
+- Way, way MORE tree density (BT BASE_DENSITY 0.95 still not enough?)
+- Way fewer bushes
+- Bushes either: (a) made rare via BUSH_DENSITY_MULT < 1.0 for BT, OR
+  (b) generate without needing a column anchor (use GC `bush` block at the
+  ground_cover layer instead of bush schematic placement).
+- Option (b) means BT's bushes come from GROUND_COVER_PALETTES "bush" entry,
+  not from schematic_placement's bush pass.  Removes column dependency.
+
+---
+
 ## S87 walk #3 (post walk-bundle render, 2026-05-25)
 
 ### NEW regressions / bugs (high priority)

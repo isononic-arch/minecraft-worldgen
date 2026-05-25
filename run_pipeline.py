@@ -380,19 +380,25 @@ def _process_tile(args: dict) -> dict:
             (cliff_deg - _fade_start) / max(0.1, _slope_full - _fade_start),
             0.0, 1.0,
         ).astype(_np_crunch.float32)
-        # S87 walk #3 (36,15): river-aware fade.  Distance-to-nearest-river-pixel
-        # in blocks; multiply amp by clip(dist / river_fade_blocks, 0, 1) so
-        # river/bank/wall pixels (dist=0) get NO noise, and pixels beyond
-        # `river_fade_blocks` (default 8) get full noise.  Smoothed fade
-        # preserves carved river geometry while letting nearby slopes crunch.
+        # S87 walk #4 (36,15): river-aware fade.  river_meta only marks
+        # WATER cells, but the carver also lowered terrain around the water
+        # to form banks/walls; those bank pixels are NOT in river_meta but
+        # are visually part of the river feature.  DILATE river_meta by a
+        # bank radius first so the no-noise zone spans water+banks+walls.
+        # Then apply distance-fade beyond that.
+        # User: "exception river zones from noise with a smoothed faded end
+        # into it OUTSIDE of the bounds of the river, bank, and walls."
         if river_meta is not None and (river_meta > 0).any():
             from scipy.ndimage import distance_transform_edt as _dt_river
-            _river_dist = _dt_river(river_meta == 0).astype(_np_crunch.float32)
+            from scipy.ndimage import binary_dilation as _bd_river
+            _bank_radius = int(_crunch_cfg.get("river_bank_blocks", 5))
+            _river_zone = _bd_river(river_meta > 0, iterations=_bank_radius)
+            _river_dist = _dt_river(~_river_zone).astype(_np_crunch.float32)
             _river_fade = _np_crunch.clip(
                 _river_dist / max(0.5, _river_fade_blocks), 0.0, 1.0
             )
             _amp_scale = _amp_scale * _river_fade
-            del _river_dist, _river_fade
+            del _river_dist, _river_fade, _river_zone
         # S87 walk #3 (36,15): wash-aware fade.  Washes are flow-driven sediment
         # on rock_gap (gap==5 + flow > min_flow).  Should be SMOOTH (no crunch
         # noise), with a small 3-block fade back into full noise outside the
@@ -423,15 +429,29 @@ def _process_tile(args: dict) -> dict:
             _hh = _hh ^ (_hh >> _np_crunch.uint64(31))
             _u01 = (_hh.astype(_np_crunch.float64)
                     / _np_crunch.float64(_np_crunch.iinfo(_np_crunch.uint64).max)).astype(_np_crunch.float32)
-            # Signed displacement in [-amp, +amp] scaled by slope intensity.
-            _disp = ((_u01 - 0.5) * 2.0 * _crunch_amp * _amp_scale)
-            _disp_int = _np_crunch.round(_disp).astype(_np_crunch.int16)
-            # Only displace land above sea level (raw 17050 corresponds to Y63).
-            # Surface_y is already MC-Y here so just guard against going below
-            # SEA_Y on a pixel that's barely above water (rare).
+            # S87 walk #4: PROBABILISTIC displacement -- amp_scale is the
+            # PROBABILITY a pixel gets full +/-crunch_amp, not a multiplier
+            # on amplitude.  Previously _disp = amp_scale * amp rounded to
+            # 0 at low amp_scale (~slope < 40deg), producing a sharp
+            # "noise -> smooth" cliff at ~40deg even though amp_scale was
+            # smoothly fading.  User: "noise boundary to smooth land
+            # boundary is also still there".  Probabilistic approach gives
+            # SPARSE noise at low slope (e.g. 30deg: 25% of pixels +/-amp,
+            # 75% unchanged) tapering to DENSE noise at high slope.
+            # Second hash for the bit that decides apply-or-not.
+            _hh2 = (_wx * _np_crunch.uint64(0xD1B54A32D192ED03)
+                    + _wz * _np_crunch.uint64(0xA24BAED4963EE407))
+            _hh2 = (_hh2 ^ (_hh2 >> _np_crunch.uint64(31))) * _np_crunch.uint64(0x9E3779B97F4A7C15)
+            _hh2 = _hh2 ^ (_hh2 >> _np_crunch.uint64(32))
+            _u_apply = (_hh2.astype(_np_crunch.float64)
+                        / _np_crunch.float64(_np_crunch.iinfo(_np_crunch.uint64).max)).astype(_np_crunch.float32)
+            # Probability check + signed full displacement.
+            _apply = _u_apply < _amp_scale
+            _signed = _np_crunch.where(_u01 < 0.5, -_crunch_amp, _crunch_amp).astype(_np_crunch.int16)
+            _disp_int = _np_crunch.where(_apply, _signed, 0).astype(_np_crunch.int16)
             _new_y = surface_y.astype(_np_crunch.int16) + _disp_int
             _land = surface_y > 63
-            _displace_mask = _land & (_amp_scale > 0)
+            _displace_mask = _land & _apply
             surface_y = _np_crunch.where(
                 _displace_mask,
                 _new_y, surface_y.astype(_np_crunch.int16)
@@ -440,7 +460,8 @@ def _process_tile(args: dict) -> dict:
             # pixels must show this SAME Y (matching schematic anchors).
             _crunch_lock_y = surface_y.copy()
             _crunch_rock_mask = _displace_mask.copy()
-            del _wx, _wz, _hh, _u01, _disp, _disp_int, _new_y, _land, _displace_mask
+            del _wx, _wz, _hh, _hh2, _u01, _u_apply, _apply, _signed
+            del _disp_int, _new_y, _land, _displace_mask
         del _amp_scale
 
     # ---- Step 7: Surface decoration ----

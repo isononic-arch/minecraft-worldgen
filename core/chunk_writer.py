@@ -698,35 +698,14 @@ def build_column_array(
             surface_blk = surface_blk.copy()
             surface_blk[_underwater_grass_like] = "dirt"
 
-    # S87 walk #3 (36,15): at very steep slopes (>= 55deg), surface should
-    # be exposed lithology rock, not grass.  Cliff tops on karst should show
-    # calcite, not grass_block.  User: "would those areas realistically have
-    # surface block capped tops?" (i.e. no).
-    if use_new_geology and lithology_tile is not None and cfg is not None:
-        from core.eco_gradients import compute_cliff_deg
-        _ccd = compute_cliff_deg(surface_y)
-        _steep_cliff = _ccd >= 55.0
-        if _steep_cliff.any():
-            _lith_at_res = lithology_tile
-            if _lith_at_res.shape != (H, W):
-                from scipy.ndimage import zoom as _z
-                _lith_at_res = _z(lithology_tile,
-                                  (H / lithology_tile.shape[0],
-                                   W / lithology_tile.shape[1]),
-                                  order=0)
-            _groups = cfg.get("lithology", {}).get("groups", {})
-            # Build group_id -> first-palette-block lookup
-            _gid_to_surf: dict[int, str] = {}
-            for _gdata in _groups.values():
-                _gid = int(_gdata.get("id", 0))
-                _p = _gdata.get("palette") or ["stone"]
-                _gid_to_surf[_gid] = _p[0]
-            surface_blk = surface_blk.copy()
-            for _gid, _blk in _gid_to_surf.items():
-                _m = _steep_cliff & (_lith_at_res == _gid)
-                if _m.any():
-                    surface_blk[_m] = _blk
-            del _ccd, _steep_cliff, _lith_at_res
+    # S87 walk #4 REVERTED: steep-cliff lithology-surface override.
+    # The change replaced only surface_blk at slope>=55deg with the lithology
+    # palette[0] -- but left sub_blk and the column below as their normal
+    # values, producing a "frosting" effect: calcite surface, stone subsurface,
+    # mixed below.  User: "replaced exclusively the surface block but KEPT
+    # the stone".  Proper fix requires ALSO setting sub_blk at cliff pixels
+    # to the lithology palette so the cliff is uniform lithology all the way
+    # down.  Deferred to a focused S88 session.
 
     # Convert string arrays to palette indices
     surf_idx_flat = pal.indices(surface_blk).ravel()
