@@ -66,11 +66,17 @@ for IP in "${IPS[@]}"; do
 done
 wait
 
-step "STEP 3/8  Clear caches"
-for IP in "${IPS[@]}"; do
-  (ssh root@"$IP" "rm -f /root/minecraft-worldgen/masks/_bed_cache_v17.pkl /root/minecraft-worldgen/masks/_spline_cache.pkl /root/minecraft-worldgen/masks/_bed_v17_cache.pkl 2>/dev/null" && echo "  $IP cleared") &
-done
-wait
+# S87: SKIP_CACHE_CLEAR=1 env var skips cache wipe for code-only renders.
+SKIP_CACHE_CLEAR="${SKIP_CACHE_CLEAR:-0}"
+if [ "$SKIP_CACHE_CLEAR" = "1" ]; then
+  step "STEP 3/8  Cache clear SKIPPED (SKIP_CACHE_CLEAR=1)"
+else
+  step "STEP 3/8  Clear caches"
+  for IP in "${IPS[@]}"; do
+    (ssh root@"$IP" "rm -f /root/minecraft-worldgen/masks/_bed_cache_v17.pkl /root/minecraft-worldgen/masks/_spline_cache.pkl /root/minecraft-worldgen/masks/_bed_v17_cache.pkl 2>/dev/null" && echo "  $IP cleared") &
+  done
+  wait
+fi
 
 step "STEP 4/8  Upload override + lithology"
 for IP in "${IPS[@]}"; do

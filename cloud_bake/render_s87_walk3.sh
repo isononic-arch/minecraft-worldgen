@@ -70,11 +70,20 @@ for IP in "${IPS[@]}"; do
 done
 wait
 
-step "STEP 3/9  Clear caches"
-for IP in "${IPS[@]}"; do
-  (ssh root@"$IP" "rm -f /root/minecraft-worldgen/masks/_bed_cache_v17.pkl /root/minecraft-worldgen/masks/_spline_cache.pkl /root/minecraft-worldgen/masks/_bed_v17_cache.pkl 2>/dev/null" && echo "  $IP cleared") &
-done
-wait
+# S87: skip cache clear for code-only iterations to save ~10 min cache regen.
+# Caches (_bed_cache_v17.pkl, _spline_cache.pkl) are masks-derived only -
+# safe to keep when only Python or config-non-spline files changed.
+# Invoke with `SKIP_CACHE_CLEAR=1 bash ...` to skip.
+SKIP_CACHE_CLEAR="${SKIP_CACHE_CLEAR:-0}"
+if [ "$SKIP_CACHE_CLEAR" = "1" ]; then
+  step "STEP 3/9  Cache clear SKIPPED (SKIP_CACHE_CLEAR=1)"
+else
+  step "STEP 3/9  Clear caches"
+  for IP in "${IPS[@]}"; do
+    (ssh root@"$IP" "rm -f /root/minecraft-worldgen/masks/_bed_cache_v17.pkl /root/minecraft-worldgen/masks/_spline_cache.pkl /root/minecraft-worldgen/masks/_bed_v17_cache.pkl 2>/dev/null" && echo "  $IP cleared") &
+  done
+  wait
+fi
 
 step "STEP 4/9  Upload override + lithology"
 for IP in "${IPS[@]}"; do
