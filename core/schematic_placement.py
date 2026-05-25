@@ -323,6 +323,180 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
             if not any(rej in e.path for rej in _SARID_REJECT)
         ]
 
+    # S87: per-biome tree weighting from cross-section walk.
+    # Heights are from tools/diag_tree_cross_section.py output (Y dim of bbox).
+    # Each section below: drop list + path-stem -> weight overrides.
+    # Default weight for unlisted entries within an affected biome stays at
+    # SIZE_VARIATION default; only listed stems get overridden.
+
+    # --- BIRCH_FOREST ---
+    # dbirch 18-24 dominant; rowan slightly less; sbirch generally less,
+    # sbirch_c_sm + largest sbirch (28 blocks) very very rare.
+    if "BIRCH_FOREST" in grouped:
+        _BIRCH_WEIGHTS = {
+            # dbirch 18-24: dominant
+            "dbirch_a_sm": 50, "dbirch_b_sm": 50, "dbirch_c_sm": 50,
+            "dbirch_d_md": 50, "dbirch_e_md": 50, "dbirch_f_lg": 50,
+            "dbirch_g_lg": 50,
+            # rowan: slightly less
+            "rowan_a_sm": 25, "rowan_b_sm": 25, "rowan_c_sm": 25,
+            # sbirch in range: less common
+            "sbirch_a_sm": 10, "sbirch_d_sm": 10, "sbirch_g_md": 10,
+            "sbirch_h_md": 10, "sbirch_i_md": 10, "sbirch_j_md": 10,
+            # sbirch > 24: rare
+            "sbirch_e_sm": 5, "sbirch_k_lg": 5,
+            # sbirch 28 + sbirch_c_sm: very very rare
+            "sbirch_b_sm": 1, "sbirch_c_sm": 1, "sbirch_f_md": 1,
+            "sbirch_l_lg": 1, "sbirch_m_lg": 1,
+        }
+        for e in grouped["BIRCH_FOREST"]:
+            for stem, w in _BIRCH_WEIGHTS.items():
+                if stem in e.path:
+                    e.weight = w
+                    break
+
+    # --- BOREAL_TAIGA ---
+    # Bell curve centered 22-26.  bspruce_b_sm explicitly rare per user.
+    if "BOREAL_TAIGA" in grouped:
+        _BTAIGA_WEIGHTS = {
+            # 22-26 bell-center: common
+            "bspruce_c_sm": 30, "bspruce_d_sm": 30, "bspruce_e_sm": 30,
+            "bspruce_i_md": 30, "bspruce_j_lg": 30, "bspruce_k_lg": 30,
+            "bspruce_l_lg": 30,
+            # bspruce_b_sm: pretty rare per user
+            "bspruce_b_sm": 3,
+            # bell-edge low (12-21): rarer
+            "balfir_a_sm": 10, "tamarack_a_sm": 5,
+            # outer-high (30-35): rare
+            "bspruce_a_sm": 5, "bspruce_f_md": 5, "bspruce_g_md": 5,
+            "bspruce_h_md": 5, "wspruce_a_sm": 5, "wspruce_b_lg": 5,
+            # extreme outlier (40): very rare
+            "jpine_a_sm": 1,
+        }
+        for e in grouped["BOREAL_TAIGA"]:
+            for stem, w in _BTAIGA_WEIGHTS.items():
+                if stem in e.path:
+                    e.weight = w
+                    break
+
+    # --- SNOWY_BOREAL_TAIGA ---
+    # User: currently too tall.  Apply same bell-curve concept as BT but
+    # centered LOWER (17-22) to keep "higher = smaller trees" rule.
+    if "SNOWY_BOREAL_TAIGA" in grouped:
+        _SBTAIGA_WEIGHTS = {
+            # 13-22 sweet spot
+            "salfir_d_sm": 30, "salfir_l_md": 30, "salfir_m_lg": 30,
+            "salfir_p_lg": 30, "salfir_h_md": 30, "salfir_k_md": 30,
+            "salfir_o_lg": 30, "spruce_c_lg": 30,
+            # 19-22 next-sweet
+            "salfir_c_sm": 25, "salfir_g_md": 25, "salfir_i_md": 25,
+            "salfir_e_sm": 25, "salfir_f_sm": 25,
+            # krummholz 3-11: present but sparse
+            "kfir_a_sm": 10, "kfir_b_sm": 10, "kfir_c_sm": 10,
+            "kfir_d_sm": 10, "kfir_e_sm": 10, "kfir_f_sm": 10,
+            "kfir_g_sm": 10,
+            "kspruce_a_sm": 10, "kspruce_b_sm": 10, "kspruce_c_sm": 10,
+            # 23-26: less
+            "salfir_b_sm": 10,
+            # 27 outlier: rare
+            "salfir_a_sm": 3, "salfir_j_md": 3, "salfir_n_lg": 3,
+            "spruce_b_md": 3,
+            # 36 extreme: very rare
+            "spruce_a_sm": 1,
+        }
+        for e in grouped["SNOWY_BOREAL_TAIGA"]:
+            for stem, w in _SBTAIGA_WEIGHTS.items():
+                if stem in e.path:
+                    e.weight = w
+                    break
+
+    # --- RAINFOREST_COAST ---
+    # User: teak_b/c/d are palms (artifact look) — DROP.  Bias toward teak_a.
+    if "RAINFOREST_COAST" in grouped:
+        _RFC_DROP = ("teak_b_sm", "teak_c_md", "teak_d_lg")
+        grouped["RAINFOREST_COAST"] = [
+            e for e in grouped["RAINFOREST_COAST"]
+            if not any(rej in e.path for rej in _RFC_DROP)
+        ]
+        _RFC_WEIGHTS = {
+            "teak_a_sm": 30,    # most common
+            "kapok_a_lg": 10,
+            "tfig_a_sm": 10,
+            "tfig_b_lg": 10,
+        }
+        for e in grouped["RAINFOREST_COAST"]:
+            for stem, w in _RFC_WEIGHTS.items():
+                if stem in e.path:
+                    e.weight = w
+                    break
+
+    # --- FRESHWATER_FEN (judgment-based) ---
+    # Real fen: alder + cherry willow dominant on waterlogged ground.
+    # Heights 13-22 dominant; tiny saplings + oak interloper rare.
+    if "FRESHWATER_FEN" in grouped:
+        _FEN_WEIGHTS = {
+            # alder dominants
+            "alder_a_sm": 30, "alder_b_sm": 30, "alder_c_md": 30,
+            # cwillow dominants
+            "cwillow_b_sm": 30, "cwillow_c_sm": 30, "cwillow_d_md": 30,
+            "cwillow_e_md": 30, "cwillow_f_md": 30,
+            # alder edge sizes
+            "alder_d_md": 10, "alder_e_lg": 10, "alder_f_lg": 10,
+            # cwillow large bank trees
+            "cwillow_g_lg": 10, "cwillow_h_lg": 10,
+            # rare: sapling + interloper
+            "cwillow_a_sm": 5,
+            "tdec_eoak_a_sm": 5,
+        }
+        for e in grouped["FRESHWATER_FEN"]:
+            for stem, w in _FEN_WEIGHTS.items():
+                if stem in e.path:
+                    e.weight = w
+                    break
+
+    # --- DRY_WOODLAND_MAQUIS (judgment-based) ---
+    # Real Mediterranean maquis is SHORT (4-8m IRL).  All our trees are tall
+    # for the biome.  Push toward smallest; kill the giant hoak_c_lg.
+    if "DRY_WOODLAND_MAQUIS" in grouped:
+        _MAQUIS_WEIGHTS = {
+            # shortest (12-13): dominant
+            "carob_a_sm": 30, "apine_a_sm": 30,
+            "carob_b_lg": 20,
+            # olive (17-18): medium
+            "olive_a_sm": 20, "olive_b_md": 20, "olive_c_lg": 20,
+            # hoak (20-21): less
+            "hoak_a_sm": 15, "hoak_b_md": 15,
+            # hoak_c_lg (29): way too tall for maquis
+            "hoak_c_lg": 3,
+        }
+        for e in grouped["DRY_WOODLAND_MAQUIS"]:
+            for stem, w in _MAQUIS_WEIGHTS.items():
+                if stem in e.path:
+                    e.weight = w
+                    break
+
+    # --- MIXED_FOREST (judgment-based) ---
+    # Out-of-scale btaiga mirrors (bspruce/wspruce/jpine 30-40 blocks)
+    # downplayed.  Birch/lime/eoak at 16-26 are core mixed-temperate.
+    if "MIXED_FOREST" in grouped:
+        _MIXED_WEIGHTS = {
+            # core mixed-temperate trees
+            "lime_a_sm": 30, "lime_b_md": 30, "lime_c_lg": 30,
+            "eoak_a_sm": 30,
+            "sbirch_g_md": 30, "sbirch_h_md": 30, "sbirch_i_md": 30,
+            "sbirch_j_md": 30, "sbirch_k_lg": 30, "sbirch_d_sm": 30,
+            # outer-high: rare in mixed forest
+            "bspruce_a_sm": 5, "bspruce_g_md": 5, "bspruce_h_md": 5,
+            "wspruce_a_sm": 5, "wspruce_b_lg": 5,
+            # extreme: very rare
+            "jpine_a_sm": 1,
+        }
+        for e in grouped["MIXED_FOREST"]:
+            for stem, w in _MIXED_WEIGHTS.items():
+                if stem in e.path:
+                    e.weight = w
+                    break
+
     # S87: DRY_PINE_BARRENS height-weighted tree palette per user walk.
     # User wants trees 15-26 blocks tall to dominate, smaller + outlier-tall
     # trees much rarer.  scotsp_c_md (27 blocks) explicitly removed.
