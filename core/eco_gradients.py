@@ -543,17 +543,27 @@ def compute_eco_gradients(
             gap_mask[rock_avail & _rg & (_rock_coin < _slope_prob)] = 5
             del _rg, _slope_prob, _wx, _wz, _h, _rock_coin, rock_avail
 
-            # S87 #11: sub-slope flat-detect exemption per user (38,11):
-            # "the little flat surface areas within the macro sloped area
-            # to be their usual topsoil".  A pixel can fire rock_gap at
-            # 40 deg even though its 5x5 neighbourhood averages 25 deg
-            # (mostly flat ledge with one steep cell).  Restore those as
-            # topsoil.
-            from scipy.ndimage import uniform_filter as _uf_rock
-            _local_mean = _uf_rock(cliff_deg.astype(np.float32), size=5)
-            _flat_micro = (gap_mask == 5) & (_local_mean < 28.0)
+            # S87 #11 (walk #2 + walk #3): sub-slope flat-detect exemption.
+            # ORIGINAL spec (38,11): "the little flat surface areas within the
+            # macro sloped area to be their usual topsoil".
+            # WALK #3 corrections:
+            #   - (34,9) "mountain faces almost entirely gone, may be too
+            #     aggressive": switch from 5x5 mean<28 to local MINIMUM<18.
+            #     Only exempts when a GENUINE flat patch (single low cell)
+            #     exists in the neighbourhood -- not just on average.  Mountain
+            #     faces with a uniformly-40deg neighbourhood now stay rock.
+            #   - (38,11) "wash being eaten by flat detect": washes (gap==5
+            #     with flow > wash_min_flow) MUST stay rock.  Add flow check.
+            from scipy.ndimage import minimum_filter as _mf_rock
+            _local_min = _mf_rock(cliff_deg.astype(np.float32), size=5)
+            _flat_micro = (gap_mask == 5) & (_local_min < 18.0)
+            # Spare washes (high flow on rock_gap) from the flat-detect.
+            if flow_f is not None:
+                _wash_pix = flow_f > 0.002  # matches config.washes.min_flow default
+                _flat_micro = _flat_micro & ~_wash_pix
+                del _wash_pix
             gap_mask[_flat_micro] = 0
-            del _local_mean, _flat_micro
+            del _local_min, _flat_micro
 
         # ── Snow gap with peak detector + ridge bias + height fade ──
         if snow_gap is not None:

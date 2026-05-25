@@ -98,31 +98,31 @@ CANOPY_RADIUS: dict[str, int] = {
 # Base placement density per biome (probability a candidate pixel is attempted)
 # Tuned conservatively — final density also multiplied by decoration noise
 BASE_DENSITY: dict[str, float] = {
-    "COASTAL_HEATH":           0.25,   # S86 was 0.10 — user: 2x plants per walk
+    "COASTAL_HEATH":           0.25,
     "TEMPERATE_RAINFOREST":    0.26,
-    "BOREAL_TAIGA":            0.75,   # S86 was 0.55 — user: significantly more (26,10)
-    "SNOWY_BOREAL_TAIGA":      0.42,   # S86 was 0.22 — user: match BT bump (32,10)
-    "BOREAL_ALPINE":           0.28,   # S86 was 0.16 — user: up density (89,57)
-    "ARCTIC_TUNDRA":           0.04,   # S71-3 swap: FF-clone palette retained
-    "FROZEN_FLATS":            0.04,   # FF "tundra valley" permafrost meadow
+    "BOREAL_TAIGA":            0.95,   # S87w3 was 0.75 — user: closer to TRF density
+    "SNOWY_BOREAL_TAIGA":      0.70,   # S87w3 was 0.42 — user: way higher intensity
+    "BOREAL_ALPINE":           0.55,   # S87w3 was 0.28 — user: match TRF
+    "ARCTIC_TUNDRA":           0.04,
+    "FROZEN_FLATS":            0.04,
     "TEMPERATE_DECIDUOUS":     0.22,
-    "RAINFOREST_COAST":        0.24,
+    "RAINFOREST_COAST":        0.32,   # S87w3 was 0.24 — user: slightly up
     "RIPARIAN_WOODLAND":       0.18,
-    "DRY_OAK_SAVANNA":         0.15,   # S86 was 0.09 — user: up density (33,49)
-    "KARST_BARRENS":           0.35,   # S70-f2 — clustering still applies
-    "BIRCH_FOREST":            0.50,   # S86 was 0.36 — user: up density (17,41)
+    "DRY_OAK_SAVANNA":         0.15,
+    "KARST_BARRENS":           0.35,
+    "BIRCH_FOREST":            0.65,   # S87w3 was 0.50 — user: closer to TRF
     "EASTERN_TEMPERATE_COAST": 0.06,
-    "MIXED_FOREST":            0.32,   # S86 was 0.22 — user: up density (50,48)
-    "CONTINENTAL_STEPPE":      0.0005, # S71-3 — user: almost zero trees, intense grassland
-    "DRY_PINE_BARRENS":        0.21,   # S86 was 0.14 — user: +50% (28,7)
+    "MIXED_FOREST":            0.32,
+    "CONTINENTAL_STEPPE":      0.0005,
+    "DRY_PINE_BARRENS":        0.40,   # S87w3 was 0.21 — user: much more close to TRF
     "SCRUBBY_HEATHLAND":       0.06,
-    "LUSH_RAINFOREST_COAST":   0.36,   # S70-f4 — denser tropical canopy
-    "SAND_DUNE_DESERT":        0.020,  # S70-f5 — rareish bush look
-    "DESERT_STEPPE_TRANSITION":0.015,  # S71 — sparser trees
-    "SEMI_ARID_SHRUBLAND":     0.0008, # S71-3 — spruce-leaf trees only via load-time filter
-    "DRY_WOODLAND_MAQUIS":     0.015,  # S86 was 0.02 — user: REDUCE slightly (36,75)
+    "LUSH_RAINFOREST_COAST":   0.36,
+    "SAND_DUNE_DESERT":        0.020,
+    "DESERT_STEPPE_TRANSITION":0.015,
+    "SEMI_ARID_SHRUBLAND":     0.0008,
+    "DRY_WOODLAND_MAQUIS":     0.015,
     "TIDAL_JUNGLE_FRINGE":     0.15,
-    "MANGROVE_COAST":          0.14,  # S87 was 0.08 — user: density up a bit on trees
+    "MANGROVE_COAST":          0.14,
     "FRESHWATER_FEN":          0.12,
 }
 
@@ -133,7 +133,7 @@ BASE_DENSITY: dict[str, float] = {
 # of tree density (e.g. KARST should have way more bushes per user feedback).
 BUSH_DENSITY_MULT: dict[str, float] = {
     "KARST_BARRENS":           2.5,    # user: way way way more bushes (34,9)
-    "DRY_WOODLAND_MAQUIS":     1.8,    # user: more bushes (36,75)
+    "DRY_WOODLAND_MAQUIS":     3.0,    # S87w3 was 1.8 — user: MASSIVELY (36,75)
     "DESERT_STEPPE_TRANSITION":1.5,    # user: more short veg + bushes
     "ARCTIC_TUNDRA":           0.5,    # user: sparse bushes but present (33,13)
     "BOREAL_ALPINE":           1.3,    # user: differentiate BA from BT/SBT
@@ -358,11 +358,15 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
     # --- BOREAL_TAIGA ---
     # Bell curve centered 22-26.  bspruce_b_sm explicitly rare per user.
     if "BOREAL_TAIGA" in grouped:
+        # S87 walk #3: tighten BT tree range toward SBT (smaller bias).
+        # 20-25 block trees down-weighted 30 -> 15 so BT canopy reads as
+        # more mid-sized, closer to SBT's "all kept under 20" range but
+        # not identical.
         _BTAIGA_WEIGHTS = {
-            # 22-26 bell-center: common
-            "bspruce_c_sm": 30, "bspruce_d_sm": 30, "bspruce_e_sm": 30,
-            "bspruce_i_md": 30, "bspruce_j_lg": 30, "bspruce_k_lg": 30,
-            "bspruce_l_lg": 30,
+            # 22-26 bell-center: walk#3 down-weighted 30 -> 15
+            "bspruce_c_sm": 15, "bspruce_d_sm": 15, "bspruce_e_sm": 15,
+            "bspruce_i_md": 15, "bspruce_j_lg": 15, "bspruce_k_lg": 15,
+            "bspruce_l_lg": 15,
             # bspruce_b_sm: pretty rare per user
             "bspruce_b_sm": 3,
             # bell-edge low (12-21): rarer
@@ -1343,6 +1347,9 @@ def place_schematics(
                     entry = rng.choices(entries, weights=alt_weights, k=1)[0]
 
             # Canopy exclusion check
+            # S87 walk #1 #2 (26,10): bush placements must respect TREE
+            # exclusion grid in addition to bush exclusion, so bushes don't
+            # land inside tree footprints and overwrite tree blocks.
             radius = CANOPY_RADIUS.get(entry.size, 4)
             if pass_type == "tree":
                 if not exclusion.is_clear(row, col, radius):
@@ -1350,6 +1357,9 @@ def place_schematics(
             else:
                 bush_r = max(1, radius // 2)
                 if not bush_exclusion.is_clear(row, col, bush_r):
+                    continue
+                # Cross-check: don't place a bush where a tree was placed.
+                if not exclusion.is_clear(row, col, bush_r):
                     continue
 
             # Position jitter: ±3 blocks to break grid regularity (S71-3 was ±2)

@@ -356,14 +356,17 @@ def _process_tile(args: dict) -> dict:
     # Deterministic world-coord hash so adjacent tiles share the same value
     # at shared pixels (no tile seams).
     _crunch_cfg = cfg.get("peak_crunch", {}) if isinstance(cfg, dict) else {}
-    # S87-fix-19/20: DEFAULT OFF.  surface_y displacement at Step 6e creates a
-    # mismatch with chunk_writer's surface_y after Step 9 water/lake fixes and
-    # gaussian smoothing, causing trees to float and trunk extension (max 6
-    # blocks) to fire at full extent looking for ground.  Proper design needs
-    # the noise applied at chunk-emission time in chunk_writer (cosmetic only,
-    # no surface_y mutation).  Deferred to S88.  Set enabled=true in config
-    # to opt-in for visual testing.
-    _crunch_enabled = bool(_crunch_cfg.get("enabled", False))
+    # S87 walk #3 Phase 2A proper: RE-ENABLED with post-Step9 lock.
+    # The earlier disable (S87-fix-19/20) was because Step 9 water/lake
+    # fixes + gaussian smoothing partially un-did the displacement after
+    # schematic placement saw the displaced Y.  Fix: save the displaced
+    # surface_y snapshot here and re-apply it at rock pixels AFTER Step 9
+    # finishes (just before chunk_writer.write_tile).  Schematics anchor
+    # at the displaced Y; chunk_writer emits columns at the SAME displaced
+    # Y.  Trees no longer float; trunk_extension doesn't hit max 6 blocks.
+    _crunch_enabled = bool(_crunch_cfg.get("enabled", True))
+    _crunch_lock_y: "np.ndarray | None" = None
+    _crunch_rock_mask: "np.ndarray | None" = None
     if (_crunch_enabled and eco_grads is not None
             and cliff_deg is not None):
         _crunch_amp = int(_crunch_cfg.get("amplitude_blocks", 1))
@@ -395,11 +398,16 @@ def _process_tile(args: dict) -> dict:
             # SEA_Y on a pixel that's barely above water (rare).
             _new_y = surface_y.astype(_np_crunch.int16) + _disp_int
             _land = surface_y > 63
+            _displace_mask = _land & (_amp_scale > 0)
             surface_y = _np_crunch.where(
-                _land & (_amp_scale > 0),
+                _displace_mask,
                 _new_y, surface_y.astype(_np_crunch.int16)
             ).astype(surface_y.dtype)
-            del _wx, _wz, _hh, _u01, _disp, _disp_int, _new_y, _land
+            # Snapshot for post-Step-9 re-lock: at chunk_writer time, rock
+            # pixels must show this SAME Y (matching schematic anchors).
+            _crunch_lock_y = surface_y.copy()
+            _crunch_rock_mask = _displace_mask.copy()
+            del _wx, _wz, _hh, _u01, _disp, _disp_int, _new_y, _land, _displace_mask
         del _amp_scale
 
     # ---- Step 7: Surface decoration ----
@@ -1025,6 +1033,14 @@ def _process_tile(args: dict) -> dict:
         # ── Crop padded results back to inner tile ──
         surface_y[:, :] = _surface_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W]
         river_water_y[:, :] = _river_water_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W]
+
+        # S87 walk #3 Phase 2A re-lock: restore rock-pixel Y to the displaced
+        # snapshot from Step 6e.  Step 9's gaussian smoothing + water/lake
+        # fixes can perturb surface_y at rock pixels; the lock ensures the
+        # final Y matches what schematic placement (Step 8) saw.  Without
+        # this, trees float and trunk extension fires to MAX_TRUNK_EXT=6.
+        if _crunch_lock_y is not None and _crunch_rock_mask is not None:
+            surface_y[_crunch_rock_mask] = _crunch_lock_y[_crunch_rock_mask]
 
         core_chunk.write_tile(
             surface_y    = surface_y,

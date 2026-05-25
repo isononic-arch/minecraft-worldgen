@@ -393,6 +393,58 @@ are CONFIRMED for S87 action with user-direction corrections folded in.
 
 (User still walking — more items pending.)
 
+---
+
+## S87 walk #3 (post walk-bundle render, 2026-05-25)
+
+### NEW regressions / bugs (high priority)
+- **100% veg strips in transition zones** (26,10 / 80,50 / 28,7 / 59,44) —
+  ecotone GC swap from 1F-full nearest-pixel collapses many swap pixels onto
+  a small set of densely-vegetated neighbor pixels → uniform full coverage.
+  Fix: keep nearest-pixel for SURFACE blocks (coherent palettes), revert GC
+  swap to random-sample (variety preserved).
+
+- **(26,10) floodplain showing FOREST GC** — floodplain biome's GC swapped
+  to neighbor via ecotone.  Add gap==4 to GC swap reject mask.
+
+- **(38,11) washes eaten by flat-detect** — #11 exempts pixels in macro-slope
+  with low local mean.  But wash pixels (gap==5 + flow > min_flow) should
+  ALWAYS stay rock-gap.  Add `flow_tile > min_flow` to flat-detect skip.
+
+- **(34,9) mountain faces almost gone** — #11 flat-detect too aggressive.
+  Switch criterion from 5x5 mean<28 to local 5x5 minimum<18.  Only exempts
+  when a genuine flat patch exists in the neighborhood.
+
+- **(34,9) slope cutoff too forgiving** — #1 bump 30→38 / 45→55 let trees
+  creep up real mountain faces.  Back off to 35/50.
+
+### Density bumps (closer to TRF look)
+- BA 0.28 → 0.55, BT 0.75 → 0.95, SBT 0.42 → 0.70
+- BIRCH 0.50 → 0.65, PINE_BARRENS 0.21 → 0.40, RFC 0.24 → 0.32
+- BT tree weights for 20-25 range: 30 → 15 (closer to SBT range)
+
+### Per-biome small fixes
+- **(30,86) MANGROVE coral reef flat** — remove coral entries from ocean
+  surface painter at mangrove.  Noise pass deferred to S88.
+- **(36,75) MAQUIS bush** — BUSH_DENSITY_MULT 1.8 → 3.0 (massive bump).
+- **(13,82) RFC palette restructure** — copy MIXED_FOREST `noise_layers_biome`
+  proportions/structure but with RFC blocks (moss/podzol/mud/grass).  Reduce
+  mud coverage.  GC across-the-board bump.
+- **(8,73) "tall tree (teak)" density up** — FEN has no teak.  PENDING user
+  clarification on which species (alder_b_sm 22 blocks? alder_f_lg 23?).
+
+### Deferred / investigate-only
+- **(50,48) tile didn't upload** — MIXED_FOREST.  Check render log + size.
+  Re-render single tile if MCA corrupt/missing.
+- **(13,82) RFC missing river chunks** (user S87 walk #3) — 1-2 chunks of
+  river missing from the tile.  Same family as the 51,53 + 33,7 river
+  regressions.  Investigate as a class.
+- **(80,50) RIPARIAN "non-swapped zone" remnant** — may be stale chunk
+  from pre-wipe Vandirtest10.  Verify in fresh world load before code fix.
+- **(59,44) softer-slope noise** — user wants visual slope noise on
+  sub-35° slopes too.  Requires proper chunk_writer cosmetic Phase 2A
+  implementation (S88).
+
 ### Clarifications received
 
 **Birch removal scope:** Only birch species that were added to BA/BT/SBT today

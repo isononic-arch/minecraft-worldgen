@@ -135,7 +135,8 @@ def render_tile(
 
     if mode == "height":
         # Greyscale: normalize surface_y to [0,255]
-        norm = np.clip((surface_y.astype(np.float32) - (-64)) / (704 - (-64))  # S85: 768-height world; was (448 - (-64)) for 448-era, 0, 1)
+        # S85: 768-height world; was (448 - (-64)) for 448-era
+        norm = np.clip((surface_y.astype(np.float32) - (-64)) / (704 - (-64)), 0, 1)
         grey = (norm * 255).astype(np.uint8)
         rgba[:, :, 0] = grey
         rgba[:, :, 1] = grey

@@ -497,10 +497,11 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
         ("short_grass", 0.10), ("flowering_azalea", 0.02),
         ("short_dry_grass", 0.04),
     ],
+    # S87 walk #3: bumped across the board per user (13,82) walk.
     "RAINFOREST_COAST": [
-        ("fern", 0.35), ("large_fern", 0.10), ("tall_grass", 0.06),
-        ("bush", 0.10), ("short_grass", 0.08), ("moss_carpet", 0.10),
-        ("leaf_litter", 0.12),
+        ("fern", 0.60), ("large_fern", 0.22), ("tall_grass", 0.10),
+        ("bush", 0.18), ("short_grass", 0.20), ("moss_carpet", 0.28),
+        ("leaf_litter", 0.25),
         # S60 damp-woodland flowers (very rare)
         ("azure_bluet", 0.005), ("lily_of_the_valley", 0.005),
     ],
@@ -2948,6 +2949,12 @@ def _apply_ecotone_dither_ground_cover(
     rand_field = rng.random((H, W)).astype(np.float32)
 
     do_swap_grid = rand_field < swap_prob_grid
+    # S87 (walk #3): floodplain pixels (gap==4) opt OUT of GC ecotone swap.
+    # Floodplain has its own grass/mud palette via gap==4 surface decoration;
+    # swapping to neighbour forest GC produced "forest groundcover in
+    # floodplain" report at (26,10).
+    if gap_mask is not None:
+        do_swap_grid = do_swap_grid & (gap_mask != 4)
     if not do_swap_grid.any():
         return
 
@@ -2955,25 +2962,30 @@ def _apply_ecotone_dither_ground_cover(
     if len(swap_r) == 0:
         return
 
-    # S86 Item 1F (full): same nearest-pixel sampling as the surface ecotone
-    # path. Preserves spatial structure of neighbor biome's GC blobs across
-    # the boundary instead of random-sampling from anywhere.
-    from scipy.ndimage import distance_transform_edt as _gc_dt
+    # S87 (walk #3): RANDOM-SAMPLE for GC swap (not nearest-pixel).
+    # 1F-full nearest-pixel sampling collapsed many swap pixels onto a small
+    # set of densely-vegetated neighbor cells near the boundary, producing
+    # "100% vegetation strips" at transition zones (user reported 26,10 /
+    # 80,50 / 28,7 / 59,44).  Random sampling restores the natural per-pixel
+    # variation in GC density across the swap zone.  Surface blocks still
+    # use nearest-pixel (coherent palettes there look good).
     nb_at_swap = neighbour_biome[swap_r, swap_c]
     for bname in biome_names:
         bname_mask = nb_at_swap == bname
         if not bname_mask.any():
             continue
         biome_mask = biome_grid == bname
-        if not biome_mask.any():
+        biome_pixels_r, biome_pixels_c = np.where(biome_mask)
+        if len(biome_pixels_r) == 0:
             continue
 
         target_r = swap_r[bname_mask]
         target_c = swap_c[bname_mask]
 
-        _, (iy, ix) = _gc_dt(~biome_mask, return_indices=True)
-        sampled_r = iy[target_r, target_c]
-        sampled_c = ix[target_r, target_c]
+        n_swap = int(bname_mask.sum())
+        sample_idx = rng.integers(0, len(biome_pixels_r), size=n_swap)
+        sampled_r = biome_pixels_r[sample_idx]
+        sampled_c = biome_pixels_c[sample_idx]
 
         ground_cover[target_r, target_c] = ground_cover[sampled_r, sampled_c]
 

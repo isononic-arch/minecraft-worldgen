@@ -1452,7 +1452,7 @@
     ],
     "RAINFOREST_COAST": [
       {
-        "name": "moss_block",
+        "name": "moss_block (base)",
         "noise": "simplex_fbm",
         "enabled": true,
         "block": "moss_block",
@@ -1463,69 +1463,58 @@
         "is_base": true
       },
       {
-        "name": "mud (moisture)",
-        "noise": "simplex_fbm",
-        "enabled": true,
-        "block": "mud",
-        "sub": "mud",
-        "coverage": 0.26,
-        "scale": 12,
-        "seed": 44,
-        "is_base": false
-      },
-      {
-        "name": "mud (moisture2)",
-        "noise": "simplex_fbm",
+        "name": "mud (large)",
+        "noise": "white",
         "enabled": true,
         "block": "mud",
         "sub": "clay",
         "coverage": 0.25,
-        "scale": 54,
-        "seed": 444,
-        "is_base": false
-      },
-      {
-        "name": "podzol (erosion)",
-        "noise": "simplex_fbm",
-        "enabled": true,
-        "block": "podzol",
-        "sub": "rooted_dirt",
-        "coverage": 0.39,
-        "scale": 36,
+        "scale": 55,
         "seed": 43,
         "is_base": false
       },
       {
-        "name": "grass_block (noise)",
-        "noise": "simplex_fbm",
+        "name": "podzol (fine)",
+        "noise": "white",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "rooted_dirt",
+        "coverage": 0.3,
+        "scale": 9,
+        "seed": 44,
+        "is_base": false
+      },
+      {
+        "name": "grass_block",
+        "noise": "white",
         "enabled": true,
         "block": "grass_block",
         "sub": "rooted_dirt",
-        "coverage": 0.46,
-        "scale": 39,
-        "seed": 42,
+        "coverage": 0.28,
+        "scale": 32,
+        "seed": 45,
         "is_base": false
       },
       {
-        "name": "mossy_cobblestone (noise2)",
-        "noise": "simplex_fbm",
-        "enabled": true,
-        "block": "grass_block",
-        "sub": "stone",
-        "coverage": 0.36,
-        "scale": 16,
-        "seed": 355,
-        "is_base": false
-      },
-      {
-        "name": "rooted_dirt (noise3)",
-        "noise": "simplex_fbm",
+        "name": "rooted_dirt",
+        "noise": "white",
         "enabled": true,
         "block": "rooted_dirt",
         "sub": "dirt",
-        "coverage": 0.43,
-        "scale": 37,
-        "seed": 1041,
+        "coverage": 0.22,
+        "scale": 48,
+        "seed": 46,
+        "is_base": false
+      },
+      {
+        "name": "mossy_cobblestone (trace)",
+        "noise": "white",
+        "enabled": true,
+        "block": "mossy_cobblestone",
+        "sub": "stone",
+        "coverage": 0.08,
+        "scale": 10,
+        "seed": 47,
         "is_base": false
       }
     ],
@@ -2333,9 +2322,10 @@
       1.5
     ],
     "_comment_s87": "S87: bumped slope penalty thresholds 30->38 and 45->55 per user (59,44) walk - trees should grow on STEEPER slopes, not be killed at 30-45deg.",
-    "slope_penalty_start_deg": 38,
-    "slope_penalty_full_deg": 55,
-    "habitat_score_floor": 0.05
+    "slope_penalty_start_deg": 35,
+    "slope_penalty_full_deg": 50,
+    "habitat_score_floor": 0.05,
+    "_comment_s87w3": "S87 walk #3 back-off: 38/55 was too forgiving and let trees creep up real mountain faces (34,9 walk). Back off to 35/50."
   },
   "species_habitats": {
     "_doc": "Per-species habitat curves. Each gradient: [center, width] for sigmoid. cliff_deg_max: hard slope cutoff.",
