@@ -323,6 +323,44 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
             if not any(rej in e.path for rej in _SARID_REJECT)
         ]
 
+    # S87: DRY_PINE_BARRENS height-weighted tree palette per user walk.
+    # User wants trees 15-26 blocks tall to dominate, smaller + outlier-tall
+    # trees much rarer.  scotsp_c_md (27 blocks) explicitly removed.
+    # Heights are from tools/diag_tree_cross_section.py output.
+    if "DRY_PINE_BARRENS" in grouped:
+        _DPINE_DROP = ("scotsp_c_md",)  # removed entirely
+        # path-stem -> weight override.  Sweet-spot 15-26 = 30,
+        # small (<15) = 5, outlier (>26) = 2.
+        _DPINE_WEIGHTS = {
+            # SWEET SPOT (heights 15-26) — common
+            "ppine_a_sm":   30,  # 16 blocks
+            "ppine_b_sm":   30,  # 26 blocks
+            "scotsp_b_sm":  30,  # 23 blocks
+            "scotsp_d_md":  30,  # 15 blocks
+            "scotsp_e_lg":  30,  # 23 blocks
+            # SMALL (<15) — rarer
+            "pitchp_a_sm":   5,  # 12 blocks
+            "pitchp_b_lg":   5,  # 9 blocks
+            "ppine_c_sm":    5,  # 11 blocks
+            "ppine_g_lg":    5,  # 6 blocks
+            "scotsp_a_sm":   5,  # 5 blocks
+            # OUTLIER large (>26) — very rare
+            "ppine_d_md":    2,  # 45 blocks
+            "ppine_e_md":    2,  # 38 blocks
+            "ppine_f_lg":    2,  # 34 blocks
+        }
+        # Drop scotsp_c_md
+        grouped["DRY_PINE_BARRENS"] = [
+            e for e in grouped["DRY_PINE_BARRENS"]
+            if not any(rej in e.path for rej in _DPINE_DROP)
+        ]
+        # Apply per-species weight overrides
+        for e in grouped["DRY_PINE_BARRENS"]:
+            for stem, w in _DPINE_WEIGHTS.items():
+                if stem in e.path:
+                    e.weight = w
+                    break
+
     # S86 Item 3E: DRY_WOODLAND_MAQUIS pine-leaf rarefaction.
     # User feedback (36,75): "For the trees with pine leaves, make them
     # exceedingly rare in this biome".  Maquis currently has 4 apine
