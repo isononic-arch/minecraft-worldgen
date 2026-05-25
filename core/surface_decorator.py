@@ -583,11 +583,12 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # S60: up all, add short_grass (was 0.02, now 0.12) + tall_dry_grass per user.
     # S66: way more bushes per user — scrubland feel.  bush 0.05 → 0.30.
     # S70: more short_grass, less dry/dead grass per user.
-    # S86: bumped short_dry_grass per user (34,9) - more "lived in" look.
-    # Bush schematic density 2.5x is in BUSH_DENSITY_MULT.
+    # S87 REVERT: user (34,9) said "MORE SHORT grass, NOT short_dry_grass".
+    # Previously bumped short_dry_grass; that was my misread.  Bump
+    # short_grass instead and drop short_dry_grass back near original.
     "KARST_BARRENS": [
-        ("dead_bush", 0.02), ("short_dry_grass", 0.18), ("bush", 0.30),
-        ("short_grass", 0.55), ("tall_dry_grass", 0.10),
+        ("dead_bush", 0.02), ("short_dry_grass", 0.05), ("bush", 0.30),
+        ("short_grass", 0.75), ("tall_dry_grass", 0.05),
     ],
     # ── Wetland / Riparian ───────────────────────────────────────────────
     # S60: removed duplicate bush entry. Otherwise unchanged per user.
@@ -603,9 +604,13 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
         ("fern", 0.12), ("moss_carpet", 0.15), ("bush", 0.22),
         ("blue_orchid", 0.05), ("lilac", 0.005),
     ],
+    # S87: WAY way more vegetation per user (30,86 walk).  All entries bumped
+    # significantly; moss_carpet bumped (wet substrate); added fern as another
+    # mangrove-floor staple.
     "MANGROVE_COAST": [
-        ("tall_grass", 0.10), ("sugar_cane", 0.08), ("short_grass", 0.05),
-        ("bush", 0.04), ("short_dry_grass", 0.05), ("moss_carpet", 0.03),
+        ("tall_grass", 0.32), ("sugar_cane", 0.22), ("short_grass", 0.35),
+        ("bush", 0.10), ("short_dry_grass", 0.05), ("moss_carpet", 0.18),
+        ("fern", 0.20), ("large_fern", 0.05),
     ],
     "TIDAL_JUNGLE_FRINGE": [
         ("tall_grass", 0.12), ("fern", 0.22), ("large_fern", 0.06),

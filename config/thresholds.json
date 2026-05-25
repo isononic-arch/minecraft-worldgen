@@ -792,58 +792,58 @@
     ],
     "BOREAL_TAIGA": [
       {
-        "name": "podzol (base)",
+        "name": "snow_block",
         "noise": "simplex_fbm",
         "enabled": true,
         "block": "podzol",
-        "sub": "rooted_dirt",
+        "sub": "podzol",
         "coverage": 1.0,
         "scale": 60,
         "seed": 42,
         "is_base": true
       },
       {
-        "name": "coarse_dirt (large)",
-        "noise": "white",
+        "name": "coarse_dirt (noise2)",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "coarse_dirt",
-        "sub": "dirt",
+        "sub": "gravel",
+        "coverage": 0.28,
+        "scale": 12,
+        "seed": 355,
+        "is_base": false
+      },
+      {
+        "name": "gravel (erosion)",
+        "noise": "simplex_fbm",
+        "enabled": true,
+        "block": "podzol",
+        "sub": "stone",
         "coverage": 0.35,
-        "scale": 40,
+        "scale": 6,
         "seed": 43,
         "is_base": false
       },
       {
-        "name": "coarse_dirt (fine)",
-        "noise": "white",
+        "name": "podzol (noise)",
+        "noise": "simplex_fbm",
         "enabled": true,
-        "block": "coarse_dirt",
-        "sub": "dirt",
-        "coverage": 0.18,
-        "scale": 9,
-        "seed": 44,
+        "block": "podzol",
+        "sub": "coarse_dirt",
+        "coverage": 0.46,
+        "scale": 60,
+        "seed": 42,
         "is_base": false
       },
       {
-        "name": "moss_block",
-        "noise": "white",
-        "enabled": true,
-        "block": "moss_block",
-        "sub": "rooted_dirt",
-        "coverage": 0.22,
-        "scale": 28,
-        "seed": 45,
-        "is_base": false
-      },
-      {
-        "name": "grass_block (trace)",
-        "noise": "white",
+        "name": "snow_block (moisture)",
+        "noise": "simplex_fbm",
         "enabled": true,
         "block": "grass_block",
-        "sub": "dirt",
-        "coverage": 0.06,
-        "scale": 10,
-        "seed": 46,
+        "sub": "coarse_dirt",
+        "coverage": 0.72,
+        "scale": 116,
+        "seed": 44,
         "is_base": false
       }
     ],
@@ -1322,7 +1322,7 @@
         "block": "mud",
         "sub": "mud",
         "coverage": 1.0,
-        "scale": 60,
+        "scale": 30,
         "seed": 42,
         "is_base": true
       },
@@ -1333,7 +1333,7 @@
         "block": "clay",
         "sub": "mud",
         "coverage": 0.19,
-        "scale": 29,
+        "scale": 14,
         "seed": 44,
         "is_base": false
       },
@@ -1344,7 +1344,7 @@
         "block": "mud",
         "sub": "clay",
         "coverage": 0.33,
-        "scale": 12,
+        "scale": 6,
         "seed": 444,
         "is_base": false
       },
@@ -1355,7 +1355,7 @@
         "block": "moss_block",
         "sub": "mud",
         "coverage": 0.38,
-        "scale": 60,
+        "scale": 30,
         "seed": 42,
         "is_base": false
       },
@@ -1366,7 +1366,7 @@
         "block": "rooted_dirt",
         "sub": "mud",
         "coverage": 0.39,
-        "scale": 12,
+        "scale": 6,
         "seed": 355,
         "is_base": false
       },
@@ -1377,7 +1377,7 @@
         "block": "sand",
         "sub": "clay",
         "coverage": 0.28,
-        "scale": 28,
+        "scale": 14,
         "seed": 1041,
         "is_base": false
       }
@@ -2332,8 +2332,9 @@
       0.5,
       1.5
     ],
-    "slope_penalty_start_deg": 30,
-    "slope_penalty_full_deg": 45,
+    "_comment_s87": "S87: bumped slope penalty thresholds 30->38 and 45->55 per user (59,44) walk - trees should grow on STEEPER slopes, not be killed at 30-45deg.",
+    "slope_penalty_start_deg": 38,
+    "slope_penalty_full_deg": 55,
     "habitat_score_floor": 0.05
   },
   "species_habitats": {
@@ -3751,7 +3752,7 @@
           "gravel",
           "sand"
         ],
-        "description": "S85: full repaint — calcite (~45%) dominant + diorite (~36%) slightly less, dead_horn_coral_block (~9%) + light_gray_concrete_powder (~9%) as rare accents. Karst barrens + cave-prone carbonate."
+        "description": "S85: full repaint \u00e2\u20ac\u201d calcite (~45%) dominant + diorite (~36%) slightly less, dead_horn_coral_block (~9%) + light_gray_concrete_powder (~9%) as rare accents. Karst barrens + cave-prone carbonate."
       },
       "deepslate_metamorphic": {
         "id": 5,

@@ -122,7 +122,7 @@ BASE_DENSITY: dict[str, float] = {
     "SEMI_ARID_SHRUBLAND":     0.0008, # S71-3 — spruce-leaf trees only via load-time filter
     "DRY_WOODLAND_MAQUIS":     0.015,  # S86 was 0.02 — user: REDUCE slightly (36,75)
     "TIDAL_JUNGLE_FRINGE":     0.15,
-    "MANGROVE_COAST":          0.08,
+    "MANGROVE_COAST":          0.14,  # S87 was 0.08 — user: density up a bit on trees
     "FRESHWATER_FEN":          0.12,
 }
 
@@ -378,6 +378,47 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
                 if stem in e.path:
                     e.weight = w
                     break
+
+    # --- S87 #12 BT/SBT HEIGHT CULL ---
+    # User: "higher = smaller trees" rule via explicit height drops.
+    # BT drops trees > 25 blocks tall.  SBT drops trees > 20 blocks tall.
+    # Heights from tools/diag_tree_cross_section.py output.  Done as a
+    # path-stem reject list because schematic_index has no height metadata.
+    _BTAIGA_OVER_25_REJECT = (
+        "bspruce_a_sm",   # 35 blocks
+        "bspruce_b_sm",   # 35 blocks
+        "bspruce_c_sm",   # 26 blocks
+        "bspruce_e_sm",   # 26 blocks
+        "bspruce_f_md",   # 31 blocks
+        "bspruce_g_md",   # 33 blocks
+        "bspruce_h_md",   # 30 blocks
+        "jpine_a_sm",     # 40 blocks
+        "wspruce_a_sm",   # 35 blocks
+        "wspruce_b_lg",   # 34 blocks
+    )
+    _SBTAIGA_OVER_20_REJECT = (
+        "salfir_a_sm",    # 26 blocks
+        "salfir_b_sm",    # 23 blocks
+        "salfir_e_sm",    # 21 blocks
+        "salfir_f_sm",    # 21 blocks
+        "salfir_g_md",    # 21 blocks
+        "salfir_i_md",    # 22 blocks
+        "salfir_j_md",    # 27 blocks
+        "salfir_n_lg",    # 27 blocks
+        "spruce_a_sm",    # 36 blocks
+        "spruce_b_md",    # 27 blocks
+        "spruce_c_lg",    # 21 blocks
+    )
+    if "BOREAL_TAIGA" in grouped:
+        grouped["BOREAL_TAIGA"] = [
+            e for e in grouped["BOREAL_TAIGA"]
+            if not any(rej in e.path for rej in _BTAIGA_OVER_25_REJECT)
+        ]
+    if "SNOWY_BOREAL_TAIGA" in grouped:
+        grouped["SNOWY_BOREAL_TAIGA"] = [
+            e for e in grouped["SNOWY_BOREAL_TAIGA"]
+            if not any(rej in e.path for rej in _SBTAIGA_OVER_20_REJECT)
+        ]
 
     # --- SNOWY_BOREAL_TAIGA ---
     # User: currently too tall.  Apply same bell-curve concept as BT but
@@ -1140,7 +1181,12 @@ def place_schematics(
             # wants ONLY smallest pines on FF, but adjacent COASTAL_HEATH (and
             # other neighbors) can have md/lg trees that leak in via the swap.
             # Same for ARCTIC_TUNDRA (mountain-snowy, very-very-sparse).
-            _NO_SWAP_BIOMES = frozenset({"FROZEN_FLATS", "ARCTIC_TUNDRA"})
+            # S87 user (80,50): RIPARIAN_WOODLAND added.  Trees were not
+            # surviving near rivers because the ecotone swap routed RIPARIAN
+            # pixels into neighbour biomes that reject placement on floodplain
+            # / water-adjacent cells.  Opting RIPARIAN out of swap entirely
+            # preserves its tree population at the river's edge.
+            _NO_SWAP_BIOMES = frozenset({"FROZEN_FLATS", "ARCTIC_TUNDRA", "RIPARIAN_WOODLAND"})
             swap_active = False
             if (_seam_swap_grid is not None and _seam_swap_grid[row, col]
                     and biome_str not in _NO_SWAP_BIOMES):

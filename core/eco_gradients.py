@@ -543,6 +543,18 @@ def compute_eco_gradients(
             gap_mask[rock_avail & _rg & (_rock_coin < _slope_prob)] = 5
             del _rg, _slope_prob, _wx, _wz, _h, _rock_coin, rock_avail
 
+            # S87 #11: sub-slope flat-detect exemption per user (38,11):
+            # "the little flat surface areas within the macro sloped area
+            # to be their usual topsoil".  A pixel can fire rock_gap at
+            # 40 deg even though its 5x5 neighbourhood averages 25 deg
+            # (mostly flat ledge with one steep cell).  Restore those as
+            # topsoil.
+            from scipy.ndimage import uniform_filter as _uf_rock
+            _local_mean = _uf_rock(cliff_deg.astype(np.float32), size=5)
+            _flat_micro = (gap_mask == 5) & (_local_mean < 28.0)
+            gap_mask[_flat_micro] = 0
+            del _local_mean, _flat_micro
+
         # ── Snow gap with peak detector + ridge bias + height fade ──
         if snow_gap is not None:
             _sg = snow_gap > 0.001
