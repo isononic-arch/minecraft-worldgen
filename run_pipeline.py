@@ -372,6 +372,7 @@ def _process_tile(args: dict) -> dict:
         _crunch_amp = int(_crunch_cfg.get("amplitude_blocks", 1))
         _fade_start = float(_crunch_cfg.get("slope_fade_start_deg", 35.0))
         _slope_full = float(_crunch_cfg.get("slope_full_deg", 45.0))
+        _river_fade_blocks = float(_crunch_cfg.get("river_fade_blocks", 8.0))
         import numpy as _np_crunch
         _H, _W = surface_y.shape
         # Amplitude scalar per pixel: 0 below fade_start, 1 above slope_full.
@@ -379,6 +380,38 @@ def _process_tile(args: dict) -> dict:
             (cliff_deg - _fade_start) / max(0.1, _slope_full - _fade_start),
             0.0, 1.0,
         ).astype(_np_crunch.float32)
+        # S87 walk #3 (36,15): river-aware fade.  Distance-to-nearest-river-pixel
+        # in blocks; multiply amp by clip(dist / river_fade_blocks, 0, 1) so
+        # river/bank/wall pixels (dist=0) get NO noise, and pixels beyond
+        # `river_fade_blocks` (default 8) get full noise.  Smoothed fade
+        # preserves carved river geometry while letting nearby slopes crunch.
+        if river_meta is not None and (river_meta > 0).any():
+            from scipy.ndimage import distance_transform_edt as _dt_river
+            _river_dist = _dt_river(river_meta == 0).astype(_np_crunch.float32)
+            _river_fade = _np_crunch.clip(
+                _river_dist / max(0.5, _river_fade_blocks), 0.0, 1.0
+            )
+            _amp_scale = _amp_scale * _river_fade
+            del _river_dist, _river_fade
+        # S87 walk #3 (36,15): wash-aware fade.  Washes are flow-driven sediment
+        # on rock_gap (gap==5 + flow > min_flow).  Should be SMOOTH (no crunch
+        # noise), with a small 3-block fade back into full noise outside the
+        # wash bounds.  User: "harsh seam border from noisy area -> noise off
+        # across the lithological palette".
+        if eco_grads is not None and hasattr(eco_grads, "gap_mask"):
+            _gap = eco_grads.gap_mask
+            _flow = masks.get("flow") if isinstance(masks, dict) else None
+            if _flow is not None:
+                _wash_mask = (_gap == 5) & (_flow > 0.002)
+                if _wash_mask.any():
+                    from scipy.ndimage import distance_transform_edt as _dt_wash
+                    _wash_fade_blocks = float(_crunch_cfg.get("wash_fade_blocks", 3.0))
+                    _wash_dist = _dt_wash(~_wash_mask).astype(_np_crunch.float32)
+                    _wash_fade = _np_crunch.clip(
+                        _wash_dist / max(0.5, _wash_fade_blocks), 0.0, 1.0
+                    )
+                    _amp_scale = _amp_scale * _wash_fade
+                    del _wash_dist, _wash_fade, _wash_mask
         if (_amp_scale > 0).any():
             # splitmix64 hash on world (x, z) -> uniform [0, 1)
             _wx = (tile_x * _W + _np_crunch.arange(_W, dtype=_np_crunch.uint64))[None, :]

@@ -2759,42 +2759,32 @@ def _apply_ecotone_dither(
     if len(swap_r) == 0:
         return
 
-    # S86 Item 1F (full): ecotone block-swap uses NEAREST-PIXEL sampling
-    # from the neighbor biome's real painted blocks.
-    #
-    # Evolution:
-    #   S85 Option A: lookup from noise_layers_biome config — used PRE-S55
-    #     artifact tags, produced "weird giant sand blobs".
-    #   S86 1F-lite: random sample from neighbor biome's painted pixels —
-    #     colors correct but lost spatial structure (sand blobs in desert
-    #     no longer cluster as blobs at the boundary).
-    #   S86 1F (this): nearest-pixel sample via distance_transform_edt. For
-    #     each swap pixel, find the closest pixel of the neighbor biome and
-    #     copy its block. Colors AND blob structure preserved — if you're
-    #     near a sand patch in the desert, you get sand; near a stone patch,
-    #     you get stone; the boundary blends through whatever the neighbor
-    #     biome was actually rendering at that locale.
-    from scipy.ndimage import distance_transform_edt as _ec_dt
+    # S87 walk #3 (36,15): ecotone block-swap uses RANDOM-SAMPLE.
+    # Nearest-pixel sampling produced LONG LINEAR STRIPES of materials at
+    # transition zones (e.g. podzol stripe across a KARST<->BT boundary).
+    # Same root cause as the GC strip bug: nearest-pixel collapses many
+    # swap pixels onto a small linear set of neighbor cells along the
+    # boundary - those cells happen to share blocks and produce a stripe
+    # parallel to the boundary.  Random sample restores per-pixel variation.
     nb_at_swap = neighbour_biome[swap_r, swap_c]
     for bname in biome_names:
         bname_mask = nb_at_swap == bname
         if not bname_mask.any():
             continue
 
+        _biome_mask = biome_grid == bname
+        biome_pixels_r, biome_pixels_c = np.where(_biome_mask)
+        if len(biome_pixels_r) == 0:
+            continue  # neighbor biome not present in this tile padded region
+
         target_r = swap_r[bname_mask]
         target_c = swap_c[bname_mask]
 
-        # For pixels OUTSIDE the neighbor biome, find the index of the nearest
-        # pixel INSIDE the neighbor biome.  Returned `(iy, ix)` are (H, W)
-        # arrays where each cell holds the (row, col) of the closest True
-        # cell of `_biome_mask`.
-        _biome_mask = biome_grid == bname
-        if not _biome_mask.any():
-            continue  # neighbor biome not present in this tile padded region
-        _, (iy, ix) = _ec_dt(~_biome_mask, return_indices=True)
+        n_swap = int(bname_mask.sum())
+        sample_idx = rng.integers(0, len(biome_pixels_r), size=n_swap)
+        sampled_r = biome_pixels_r[sample_idx]
+        sampled_c = biome_pixels_c[sample_idx]
 
-        sampled_r = iy[target_r, target_c]
-        sampled_c = ix[target_r, target_c]
         surface_blocks[target_r, target_c] = surface_blocks[sampled_r, sampled_c]
         if not use_new_geology:
             subsurface_blocks[target_r, target_c] = subsurface_blocks[sampled_r, sampled_c]
