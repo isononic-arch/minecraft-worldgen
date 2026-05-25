@@ -555,6 +555,23 @@ def compute_eco_gradients(
                 0.1, 1.0,
             )
 
+            # S87 (user walk #2 item #13): snow should NOT fall on intense
+            # slopes -- physically, snow can't stick to a near-vertical face
+            # and rock is exposed.  Mirror the rock_gap fade band:
+            #   < 35 deg:  full snow probability (no slope penalty)
+            #   35-45 deg: linear ramp 1 -> 0
+            #   >= 45 deg: ZERO snow (rock exposed)
+            # This pairs with the rock_gap floor so cliffs read as rock, not
+            # snow-covered rock.  Also: stops snow from burying tree footprints
+            # on steep slopes (S87 backlog #20).
+            SNOW_SLOPE_NOSNOW_DEG = 45.0
+            SNOW_SLOPE_FADE_START_DEG = 35.0
+            _no_snow_scale = np.clip(
+                1.0 - (cliff_deg - SNOW_SLOPE_FADE_START_DEG)
+                      / (SNOW_SLOPE_NOSNOW_DEG - SNOW_SLOPE_FADE_START_DEG),
+                0.0, 1.0,
+            ).astype(np.float32)
+
             # Peak detector: pixels whose surface_y exceeds the local mean
             # are local summits/peaks. These should get snow even though
             # they're flat (cliff_deg is low at the apex).
@@ -563,9 +580,11 @@ def compute_eco_gradients(
             _peak_factor = np.clip((_sy_f - _local_mean) / 10.0, 0.0, 1.0)
             del _local_mean
 
-            # Combined: peaks OR ridges — whichever scores higher
+            # Combined: peaks OR ridges — whichever scores higher.  Then
+            # multiplied by `_no_snow_scale` so steep faces are excluded
+            # regardless of how high they are.
             _terrain_factor = np.maximum(_peak_factor, _slope_factor)
-            _snow_prob = _snow_height * _terrain_factor
+            _snow_prob = _snow_height * _terrain_factor * _no_snow_scale
 
             _snow_rng = np.random.default_rng(tile_x * 73019 ^ tile_z * 58237)
             _snow_coin = _snow_rng.random((H, W)).astype(np.float32)
@@ -576,7 +595,7 @@ def compute_eco_gradients(
             # snow_in_arctic exception in `full_suppress` so sparse pines/bushes
             # can place on snowgap cells.
             gap_mask[snow_avail & _sg & (_snow_coin < _snow_prob)] = 7
-            del _sg, _snow_height, _slope_factor, _peak_factor, _terrain_factor
+            del _sg, _snow_height, _slope_factor, _peak_factor, _terrain_factor, _no_snow_scale
             del _snow_prob, _snow_rng, _snow_coin, snow_avail
         del water_mask_re
 
