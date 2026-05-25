@@ -356,7 +356,14 @@ def _process_tile(args: dict) -> dict:
     # Deterministic world-coord hash so adjacent tiles share the same value
     # at shared pixels (no tile seams).
     _crunch_cfg = cfg.get("peak_crunch", {}) if isinstance(cfg, dict) else {}
-    _crunch_enabled = bool(_crunch_cfg.get("enabled", True))
+    # S87-fix-19/20: DEFAULT OFF.  surface_y displacement at Step 6e creates a
+    # mismatch with chunk_writer's surface_y after Step 9 water/lake fixes and
+    # gaussian smoothing, causing trees to float and trunk extension (max 6
+    # blocks) to fire at full extent looking for ground.  Proper design needs
+    # the noise applied at chunk-emission time in chunk_writer (cosmetic only,
+    # no surface_y mutation).  Deferred to S88.  Set enabled=true in config
+    # to opt-in for visual testing.
+    _crunch_enabled = bool(_crunch_cfg.get("enabled", False))
     if (_crunch_enabled and eco_grads is not None
             and cliff_deg is not None):
         _crunch_amp = int(_crunch_cfg.get("amplitude_blocks", 1))
