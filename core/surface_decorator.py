@@ -2753,23 +2753,22 @@ def _apply_ecotone_dither(
     if len(swap_r) == 0:
         return
 
-    # S86 Item 1F: ecotone block-swap routed through REAL painted neighbor
-    # pixels (not noise_layers_biome artifact tags).
+    # S86 Item 1F (full): ecotone block-swap uses NEAREST-PIXEL sampling
+    # from the neighbor biome's real painted blocks.
     #
-    # Earlier (S85): Option A used `_shadow_blocks_for_biome()` which computed
-    # blocks from `noise_layers_biome[neighbor]` config — those entries are
-    # PRE-S55 ARTIFACT TAGS, not the actual surface paint pipeline (the live
-    # painter is gap_mask + lithology + palette). The shadow lookup produced
-    # "weird giant sand blobs" at boundaries because SAND_DUNE_DESERT's
-    # noise_layers_biome has base=sand, which got propagated into neighbor
-    # biomes regardless of what those biomes actually look like in-world.
-    #
-    # New (S86): always use the random-sample-from-painted-pixels path. We
-    # read from the ALREADY-PAINTED `surface_blocks` / `subsurface_blocks`
-    # arrays of the neighbor biome — those reflect the real gap+lithology
-    # decisions. Loses the simplex blob preservation Option A aimed for, but
-    # since the user reported the blobs themselves as the bug, that's the
-    # intended trade-off until a proper shadow refactor lands (S87 plan).
+    # Evolution:
+    #   S85 Option A: lookup from noise_layers_biome config — used PRE-S55
+    #     artifact tags, produced "weird giant sand blobs".
+    #   S86 1F-lite: random sample from neighbor biome's painted pixels —
+    #     colors correct but lost spatial structure (sand blobs in desert
+    #     no longer cluster as blobs at the boundary).
+    #   S86 1F (this): nearest-pixel sample via distance_transform_edt. For
+    #     each swap pixel, find the closest pixel of the neighbor biome and
+    #     copy its block. Colors AND blob structure preserved — if you're
+    #     near a sand patch in the desert, you get sand; near a stone patch,
+    #     you get stone; the boundary blends through whatever the neighbor
+    #     biome was actually rendering at that locale.
+    from scipy.ndimage import distance_transform_edt as _ec_dt
     nb_at_swap = neighbour_biome[swap_r, swap_c]
     for bname in biome_names:
         bname_mask = nb_at_swap == bname
@@ -2779,17 +2778,17 @@ def _apply_ecotone_dither(
         target_r = swap_r[bname_mask]
         target_c = swap_c[bname_mask]
 
-        # Sample from REAL painted pixels of the neighbor biome — these came
-        # through the live gap+lithology+palette pipeline, so colors match
-        # what the biome actually looks like in-world.
+        # For pixels OUTSIDE the neighbor biome, find the index of the nearest
+        # pixel INSIDE the neighbor biome.  Returned `(iy, ix)` are (H, W)
+        # arrays where each cell holds the (row, col) of the closest True
+        # cell of `_biome_mask`.
         _biome_mask = biome_grid == bname
-        _biome_pr, _biome_pc = np.where(_biome_mask)
-        if len(_biome_pr) == 0:
-            continue
-        n_swap = int(bname_mask.sum())
-        sample_idx = rng.integers(0, len(_biome_pr), size=n_swap)
-        sampled_r = _biome_pr[sample_idx]
-        sampled_c = _biome_pc[sample_idx]
+        if not _biome_mask.any():
+            continue  # neighbor biome not present in this tile padded region
+        _, (iy, ix) = _ec_dt(~_biome_mask, return_indices=True)
+
+        sampled_r = iy[target_r, target_c]
+        sampled_c = ix[target_r, target_c]
         surface_blocks[target_r, target_c] = surface_blocks[sampled_r, sampled_c]
         if not use_new_geology:
             subsurface_blocks[target_r, target_c] = subsurface_blocks[sampled_r, sampled_c]
@@ -2951,23 +2950,25 @@ def _apply_ecotone_dither_ground_cover(
     if len(swap_r) == 0:
         return
 
+    # S86 Item 1F (full): same nearest-pixel sampling as the surface ecotone
+    # path. Preserves spatial structure of neighbor biome's GC blobs across
+    # the boundary instead of random-sampling from anywhere.
+    from scipy.ndimage import distance_transform_edt as _gc_dt
     nb_at_swap = neighbour_biome[swap_r, swap_c]
     for bname in biome_names:
         bname_mask = nb_at_swap == bname
         if not bname_mask.any():
             continue
         biome_mask = biome_grid == bname
-        biome_pixels_r, biome_pixels_c = np.where(biome_mask)
-        if len(biome_pixels_r) == 0:
+        if not biome_mask.any():
             continue
-
-        n_swap = int(bname_mask.sum())
-        sample_idx = rng.integers(0, len(biome_pixels_r), size=n_swap)
-        sampled_r = biome_pixels_r[sample_idx]
-        sampled_c = biome_pixels_c[sample_idx]
 
         target_r = swap_r[bname_mask]
         target_c = swap_c[bname_mask]
+
+        _, (iy, ix) = _gc_dt(~biome_mask, return_indices=True)
+        sampled_r = iy[target_r, target_c]
+        sampled_c = ix[target_r, target_c]
 
         ground_cover[target_r, target_c] = ground_cover[sampled_r, sampled_c]
 
