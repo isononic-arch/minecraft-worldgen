@@ -345,6 +345,41 @@ def _process_tile(args: dict) -> dict:
         tile_x, tile_y, H=surface_y.shape[0], W=surface_y.shape[1]
     )
 
+    # ---- Step 6e: Rock-gap surface crunch (S87 Phase 2A) ----
+    # Displace surface_y by +/-1-2 blocks at rock_gap pixels (gap==5) via
+    # high-frequency low-amplitude per-pixel noise.  Makes rock faces look
+    # chunky/voxel-rough rather than polished.  Deterministic on world coords
+    # so adjacent tiles share the same displacement at shared pixels.
+    # User S87 priority: "rock gap noise will be huge".
+    _crunch_cfg = cfg.get("peak_crunch", {}) if isinstance(cfg, dict) else {}
+    _crunch_enabled = bool(_crunch_cfg.get("enabled", True))
+    if (_crunch_enabled and eco_grads is not None
+            and hasattr(eco_grads, "gap_mask")):
+        _crunch_amp = int(_crunch_cfg.get("amplitude_blocks", 2))
+        _gap = eco_grads.gap_mask
+        _rock_px = _gap == 5
+        if _rock_px.any():
+            import numpy as _np_crunch
+            _H, _W = surface_y.shape
+            # splitmix64 hash on world (x, z) -> uniform [0, 1)
+            _wx = (tile_x * _W + _np_crunch.arange(_W, dtype=_np_crunch.uint64))[None, :]
+            _wz = (tile_y * _H + _np_crunch.arange(_H, dtype=_np_crunch.uint64))[:, None]
+            _hh = (_wx * _np_crunch.uint64(0x9E3779B97F4A7C15)
+                   + _wz * _np_crunch.uint64(0xBF58476D1CE4E5B9))
+            _hh = (_hh ^ (_hh >> _np_crunch.uint64(30))) * _np_crunch.uint64(0xBF58476D1CE4E5B9)
+            _hh = (_hh ^ (_hh >> _np_crunch.uint64(27))) * _np_crunch.uint64(0x94D049BB133111EB)
+            _hh = _hh ^ (_hh >> _np_crunch.uint64(31))
+            _u01 = (_hh.astype(_np_crunch.float64)
+                    / _np_crunch.float64(_np_crunch.iinfo(_np_crunch.uint64).max))
+            # Map [0,1) -> integer displacement in [-amp, +amp]
+            _disp = _np_crunch.floor(_u01 * (2 * _crunch_amp + 1)).astype(_np_crunch.int16) - _crunch_amp
+            # Only displace at rock_gap; never below 0 (sea floor protection
+            # would be excessive since rock_gap requires steep slope which
+            # is always well above sea level).
+            _new_y = surface_y.astype(_np_crunch.int16) + _disp
+            surface_y = _np_crunch.where(_rock_px, _new_y, surface_y.astype(_np_crunch.int16)).astype(surface_y.dtype)
+            del _wx, _wz, _hh, _u01, _disp, _new_y, _rock_px
+
     # ---- Step 7: Surface decoration ----
     _use_geo = bool(cfg.get("lithology", {}).get("feature_flag_enabled", False))
     _use_sp  = bool(cfg.get("surface_pipeline", {}).get("feature_flag_enabled", False))
