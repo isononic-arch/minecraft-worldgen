@@ -198,3 +198,64 @@ tiles from the 36-tile validation set are actually OCEAN, not the labeled biome:
 28. **Stale references in CSV** — kill ocean tiles from validation set (covered by #2)
 
 User to confirm or re-order.
+
+---
+
+## S86 validation-render walk feedback (2026-05-24 stopping point)
+
+Render commit: `055b087` (had Phase 1A-I except 1F + Phase 3 + Phase 4 swap).
+NOT in render: 1F-lite (`ec79dc7`), seam-fix (`2c4bf43`).
+
+### Verified GOOD
+- **(27,9) BA lowland** — pure, looks good.
+
+### Per-tile new feedback
+
+**(59,44) BT pure** — Lots of slope where trees would still grow. Need to either lower
+tree slope cutoff OR raise `eco_placement.slope_penalty_start_deg` /
+`slope_penalty_full_deg`. User asked if (30347, 22959) was floodplain — **NO**,
+verified zero on hydro_floodplain + hydro_centerline + hydro_lake. Pure slope issue.
+
+**(27,13) SBT** — (no comment, presumed pending more walk).
+
+**(26,10) BT density** — Want MORE trees, FEWER bushes. **Bushes are overwriting trees?**
+User hypothesis. Likely cause: BUSH_DENSITY_MULT (Phase 3C) + bushes-after-trees
+stamp order in chunk_writer mean bushes can land on top of tree footprints.
+Investigation needed: bush placement does NOT respect tree exclusion grid (only
+its own bush_exclusion). Add cross-check.
+
+**(32,10) BT/SBT transition** — Want MORE TALL trees, FEWER tiny trees.
+Tree-size distribution within biome palette needs adjusting (favor lg/md over sm).
+Also user notes no moss visible — BA palette moss_carpet add (Phase 3D) may not
+be propagating to tile (32,10) because (32,10) is SBT/AT, not BA. The moss
+addition was BA-only.
+
+**(50,48) MIXED_FOREST** — (no comment, pending).
+
+**(29,76) DRY_OAK_SAVANNA** — **WORSE on duplicates** (Phase 1D rotation tracker
+failing). Possible causes:
+1. _rotation_grid is per-tile, not per-pass-merged. Trees stamp first then
+   bushes — bush rotation choice doesn't see tree rotations.
+2. 4x4 cell grid is too coarse (or too fine) at savanna's typical tree spacing.
+3. Two adjacent placements in same cell still get same rotation if the cell's
+   "_used" set fills slowly.
+Need diagnostic that prints per-cell rotation set after run.
+
+### Major regression
+- **River coming out as flat column.** Confirmed not from my chunk_writer Phase
+  1G change (that only affects fluid_ticks NBT, not block placement). Possible
+  causes: river_carver_v2 interaction with BT-banding override (unlikely),
+  hydro mask sync between tiles, OR a pre-existing carve bug exposed by the
+  re-render. Need to identify the affected tile coords + dump column to debug.
+  **Worktree answer for user:** rendered from local repo
+  `C:\Users\nicho\minecraft-worldgen` branch `s85-cherry-picks` at commit
+  `055b087`. The `.claude/worktrees/` directories are stale agent scratch dirs,
+  not in use.
+
+### Reminders
+- Check DRY_PINE_BARRENS (30,49) and (28,7) for plant rarity tuning.
+
+### Carry forward
+- 1F-lite (`ec79dc7`) and seam-fix (`2c4bf43`) commits exist but were AFTER
+  render dispatch. Next render will include them.
+- Phase 2A peak crunch still pending.
