@@ -507,21 +507,28 @@ def compute_eco_gradients(
         water_mask_re = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
         _sy_f = sy  # float32 surface_y, already computed above
 
-        # ── Rock gap — slope-only gate (S64: Y-fade removed per user) ──
+        # ── Rock gap — slope-gated with 35-45 deg fade band (S86) ──
+        # Per WorldPainter convention + user S86 feedback:
+        #   < 35 deg: NO rock_gap (foothills + plateaus get grass/soil)
+        #   35-45 deg: linear fade 0->1 probability (foothill blending)
+        #   >= 45 deg: SOLID rock_gap (true cliff/mountain faces)
+        # Rock-gap mask from Gaea still provides organic boundary dither
+        # WITHIN the slope-allowed band; we just gate which pixels are eligible.
         # ROCK_Y_FLOOR/CEIL constants retained above for reference but unused.
-        # Gaea's slope mask boundary dither provides the organic edges.
-        ROCK_SLOPE_FLOOR = 18.0  # degrees — no rock below this slope
+        ROCK_SLOPE_FADE_START = 35.0  # degrees — fade begins
+        ROCK_SLOPE_SOLID = 45.0       # degrees — solid rock at/above
         if rock_gap is not None:
             _rg = rock_gap > 0.001  # uint8 {0,1} normalized to {0, 1/255}
-            _steep_enough = cliff_deg >= ROCK_SLOPE_FLOOR
-            # S64: removed height fade — use unconditional prob=1.  Coin kept for
-            # future re-enable but currently never suppresses.
-            _rock_height_prob = np.ones_like(_sy_f, dtype=np.float32)
+            # Linear ramp from FADE_START -> SOLID gives probability in [0, 1]
+            _slope_prob = np.clip(
+                (cliff_deg - ROCK_SLOPE_FADE_START) / (ROCK_SLOPE_SOLID - ROCK_SLOPE_FADE_START),
+                0.0, 1.0,
+            ).astype(np.float32)
             _rock_rng = np.random.default_rng(tile_x * 91837 ^ tile_z * 47521)
             _rock_coin = _rock_rng.random((H, W)).astype(np.float32)
             rock_avail = land_mask & ~water_mask_re & (gap_mask == 0)
-            gap_mask[rock_avail & _rg & _steep_enough & (_rock_coin < _rock_height_prob)] = 5
-            del _rg, _steep_enough, _rock_height_prob, _rock_rng, _rock_coin, rock_avail
+            gap_mask[rock_avail & _rg & (_rock_coin < _slope_prob)] = 5
+            del _rg, _slope_prob, _rock_rng, _rock_coin, rock_avail
 
         # ── Snow gap with peak detector + ridge bias + height fade ──
         if snow_gap is not None:

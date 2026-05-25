@@ -91,8 +91,24 @@ def main() -> int:
                     best_tx, best_tz = tx, tz
 
         pct = 100.0 * best_count / (TILE * TILE)
-        world_x = best_tx * TILE + TILE // 2
-        world_z = best_tz * TILE + TILE // 2
+        # S86: TP to the BIOME CENTROID within the best tile, not the tile
+        # center. Tiles where the biome covers only part of the area (e.g.
+        # MANGROVE_COAST at 55% with ocean on the other side) used to TP into
+        # ocean. Centroid lands you reliably in the actual biome pixels.
+        y0 = best_tz * TILE
+        x0 = best_tx * TILE
+        tile_mask = mask[y0:y0 + TILE, x0:x0 + TILE]
+        ys, xs = np.where(tile_mask)
+        if len(ys):
+            # Median is more robust than mean against fringe pixels
+            local_y = int(np.median(ys))
+            local_x = int(np.median(xs))
+            world_x = x0 + local_x
+            world_z = y0 + local_y
+        else:
+            # Shouldn't happen since best_count > 0, but fall back to center
+            world_x = best_tx * TILE + TILE // 2
+            world_z = best_tz * TILE + TILE // 2
         y_tp = TP_Y_BY_BIOME.get(name, 200)
         tp = f"/tp @s {world_x} {y_tp} {world_z}"
         rows.append({

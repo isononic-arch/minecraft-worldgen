@@ -48,7 +48,7 @@ BIOME_TO_MC: dict[str, str] = {
     "COASTAL_HEATH":           "minecraft:savanna_plateau",  # S71: was plains
     "TEMPERATE_RAINFOREST":    "minecraft:dark_forest",
     "BOREAL_TAIGA":            "minecraft:meadow",  # S85: was stony_shore (S71). Meadow temp=0.5 keeps it snow-free + clean differentiation from BA plains
-    "BOREAL_ALPINE":           "minecraft:plains",  # S64: wholesale plains — dual-layer approach abandoned, snow never falls
+    "BOREAL_ALPINE":           "minecraft:meadow",   # S86: was plains. Meadow shares BT's MC tag — BA differentiation now lives in palette + ecology, not in MC sky biome. No freeze in lowland BA water.
     "SNOWY_BOREAL_TAIGA":      "minecraft:snowy_taiga",
     "ARCTIC_TUNDRA":           "minecraft:snowy_plains",  # S70: was frozen_peaks (jagged ice spikes); user wants flat snow scrubland
     "FROZEN_FLATS":            "minecraft:badlands",  # S71-3 was swamp — user changed to badlands tint
@@ -1848,32 +1848,44 @@ def _chunk_to_nbt_bytes(
         """edge_vol: (Y_RANGE, 16) slice. lx_fixed/lz_fixed: scalar or None (other axis varies).
         Only ticks the topmost water block per column — interior water is stable and never needs ticking.
 
-        S85: tick OCEAN ONLY (topmost water at or below SEA_Y).  Above-sea
-        river water gets NO fluid tick — the carved river_water_y is a stable
-        source block and ticking it on chunk load makes MC flow it sideways
-        into adjacent air pockets (the carved trough), destroying the
-        carver's water state visually.  User reported "rivers look uglier
-        when you fly into the chunk" — this gate fixes it.
-        Ocean (Y <= SEA_Y) still gets the tick so MC stitches tile seams
-        cleanly at the shoreline."""
+        S86: tick OCEAN ONLY by checking river_water_y per column.  Any column
+        that has river_water_y > 0 is RIVER (including river deltas at SEA_Y)
+        — never tick.  Otherwise it's ocean (or carved-out lake interior) —
+        tick the topmost water block to stitch seams.
+        Supersedes the S85 `world_y > SEA_Y` gate which leaked ticks at SEA_Y
+        river-delta cells (user S86 feedback: "rivers still updating less but
+        still happening").  River carver's water state is a stable source
+        block; MC fluid ticks would flow it sideways into the carved trough
+        and re-settle on chunk load."""
         for other in range(edge_vol.shape[1]):
             col = edge_vol[:, other]
             water_ys = np.where(col == "water")[0]
             if len(water_ys) == 0:
                 continue
             yi = int(water_ys[-1])  # topmost water block only
-            world_y = yi + Y_MIN
-            if world_y > SEA_Y:
-                continue  # S85: above-sea river water — do NOT tick
             lx = lx_fixed if lx_fixed is not None else other
             lz = lz_fixed if lz_fixed is not None else other
+            # Tile-local coords for river check.  cx,cz,tile_world_x/z and
+            # river_water_y are all in scope from the enclosing write_tile.
+            wx = cx * CHUNK_SZ + lx
+            wz = cz * CHUNK_SZ + lz
+            tile_col = wx - tile_world_x
+            tile_row = wz - tile_world_z
+            if (river_water_y is not None
+                    and 0 <= tile_row < river_water_y.shape[0]
+                    and 0 <= tile_col < river_water_y.shape[1]
+                    and int(river_water_y[tile_row, tile_col]) > 0):
+                continue  # S86: river column — never tick
+            world_y = yi + Y_MIN
+            if world_y > SEA_Y:
+                continue  # S85 fallback: above-sea water without river_water_y
             fluid_tick_list.append(nbtlib.Compound({
                 "i": nbtlib.String("minecraft:water"),
                 "t": nbtlib.Int(0),
                 "p": nbtlib.Int(0),
-                "x": nbtlib.Int(cx * CHUNK_SZ + lx),
+                "x": nbtlib.Int(wx),
                 "y": nbtlib.Int(int(yi) + Y_MIN),
-                "z": nbtlib.Int(cz * CHUNK_SZ + lz),
+                "z": nbtlib.Int(wz),
             }))
 
     if cx == cx0_tile:  # west edge — neighbour chunk (cx-1) is outside tile

@@ -98,32 +98,45 @@ CANOPY_RADIUS: dict[str, int] = {
 # Base placement density per biome (probability a candidate pixel is attempted)
 # Tuned conservatively — final density also multiplied by decoration noise
 BASE_DENSITY: dict[str, float] = {
-    "COASTAL_HEATH":           0.10,   # S70 was 0.05 — double for bush density per user
+    "COASTAL_HEATH":           0.25,   # S86 was 0.10 — user: 2x plants per walk
     "TEMPERATE_RAINFOREST":    0.26,
-    "BOREAL_TAIGA":            0.55,   # S71 was 0.40 — bumped for differentiation from BOREAL_ALPINE
-    "SNOWY_BOREAL_TAIGA":      0.22,   # S70 was 0.12 — taiga tree-density bump
-    "BOREAL_ALPINE":           0.16,   # S70 new entry — slight bump above SBT mirror baseline
-    "ARCTIC_TUNDRA":           0.04,   # S71-3 swap: FF-clone palette retained — visible bushes on plateaus, smallest pines via mirror + ×0.05 tree mult (very sparse)
-    "FROZEN_FLATS":            0.04,   # FF "tundra valley" permafrost meadow — visible bushes + smallest pines
+    "BOREAL_TAIGA":            0.75,   # S86 was 0.55 — user: significantly more (26,10)
+    "SNOWY_BOREAL_TAIGA":      0.42,   # S86 was 0.22 — user: match BT bump (32,10)
+    "BOREAL_ALPINE":           0.28,   # S86 was 0.16 — user: up density (89,57)
+    "ARCTIC_TUNDRA":           0.04,   # S71-3 swap: FF-clone palette retained
+    "FROZEN_FLATS":            0.04,   # FF "tundra valley" permafrost meadow
     "TEMPERATE_DECIDUOUS":     0.22,
     "RAINFOREST_COAST":        0.24,
     "RIPARIAN_WOODLAND":       0.18,
-    "DRY_OAK_SAVANNA":         0.09,
-    "KARST_BARRENS":           0.35,   # S70-f2 was 0.20 — user wants higher bush ratio post-walk; clustering still applies
-    "BIRCH_FOREST":            0.36,   # S81 v8.9: 0.30 → 0.36 — slightly denser per user walk
+    "DRY_OAK_SAVANNA":         0.15,   # S86 was 0.09 — user: up density (33,49)
+    "KARST_BARRENS":           0.35,   # S70-f2 — clustering still applies
+    "BIRCH_FOREST":            0.50,   # S86 was 0.36 — user: up density (17,41)
     "EASTERN_TEMPERATE_COAST": 0.06,
-    "MIXED_FOREST":            0.22,
-    "CONTINENTAL_STEPPE":      0.0005,  # S71-3 was 0.001 — user wants almost zero trees, intense grassland
-    "DRY_PINE_BARRENS":        0.14,
+    "MIXED_FOREST":            0.32,   # S86 was 0.22 — user: up density (50,48)
+    "CONTINENTAL_STEPPE":      0.0005, # S71-3 — user: almost zero trees, intense grassland
+    "DRY_PINE_BARRENS":        0.21,   # S86 was 0.14 — user: +50% (28,7)
     "SCRUBBY_HEATHLAND":       0.06,
-    "LUSH_RAINFOREST_COAST":   0.36,   # S70-f4 was 0.26 — denser tropical canopy per user
-    "SAND_DUNE_DESERT":        0.020,   # S70-f5 was 0.008 — bump bush schematic density 2.5x for "rareish bush" look
-    "DESERT_STEPPE_TRANSITION":0.015,  # S71 was 0.03 — sparser trees per user walk
-    "SEMI_ARID_SHRUBLAND":     0.0008, # S71-3 was 0.003 — user: way fewer; spruce-leaf trees only via load-time filter
-    "DRY_WOODLAND_MAQUIS":     0.02,   # S71-2 was 0.05 — user: short pines way more rare
+    "LUSH_RAINFOREST_COAST":   0.36,   # S70-f4 — denser tropical canopy
+    "SAND_DUNE_DESERT":        0.020,  # S70-f5 — rareish bush look
+    "DESERT_STEPPE_TRANSITION":0.015,  # S71 — sparser trees
+    "SEMI_ARID_SHRUBLAND":     0.0008, # S71-3 — spruce-leaf trees only via load-time filter
+    "DRY_WOODLAND_MAQUIS":     0.015,  # S86 was 0.02 — user: REDUCE slightly (36,75)
     "TIDAL_JUNGLE_FRINGE":     0.15,
     "MANGROVE_COAST":          0.08,
     "FRESHWATER_FEN":          0.12,
+}
+
+
+# S86 Item 3C: per-biome bush density multiplier.  Tree density above is the
+# base.  Bush density = tree density × 0.4 (line ~932) × BUSH_DENSITY_MULT.
+# Defaults to 1.0 if biome not listed.  Use to bump bush density independently
+# of tree density (e.g. KARST should have way more bushes per user feedback).
+BUSH_DENSITY_MULT: dict[str, float] = {
+    "KARST_BARRENS":           2.5,    # user: way way way more bushes (34,9)
+    "DRY_WOODLAND_MAQUIS":     1.8,    # user: more bushes (36,75)
+    "DESERT_STEPPE_TRANSITION":1.5,    # user: more short veg + bushes
+    "ARCTIC_TUNDRA":           0.5,    # user: sparse bushes but present (33,13)
+    "BOREAL_ALPINE":           1.3,    # user: differentiate BA from BT/SBT
 }
 
 
@@ -308,6 +321,24 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
         grouped["SEMI_ARID_SHRUBLAND"] = [
             e for e in grouped["SEMI_ARID_SHRUBLAND"]
             if not any(rej in e.path for rej in _SARID_REJECT)
+        ]
+
+    # S86 Item 3E: DRY_WOODLAND_MAQUIS pine-leaf rarefaction.
+    # User feedback (36,75): "For the trees with pine leaves, make them
+    # exceedingly rare in this biome".  Maquis currently has 4 apine
+    # entries (Aleppo pine) out of 12 tree entries (~33%).  Drop the 3
+    # larger sizes (b_sm, c_md, d_lg) and keep only apine_a_sm.  Result:
+    # ~8% pine-leaf coverage among maquis trees, dominantly broadleaf
+    # (carob/hoak/olive) per Mediterranean palette intent.
+    if "DRY_WOODLAND_MAQUIS" in grouped:
+        _MAQUIS_PINE_REJECT = (
+            "maquis_tree_apine_b_sm",
+            "maquis_tree_apine_c_md",
+            "maquis_tree_apine_d_lg",
+        )
+        grouped["DRY_WOODLAND_MAQUIS"] = [
+            e for e in grouped["DRY_WOODLAND_MAQUIS"]
+            if not any(rej in e.path for rej in _MAQUIS_PINE_REJECT)
         ]
 
     # S71-3 swap: ARCTIC_TUNDRA + FROZEN_FLATS both mirror SBT size=sm trees
@@ -564,8 +595,22 @@ def place_schematics(
         # mask in §S58 below catches that); only bushes survive in practice.
         sand_dune_in_desert = (gap == 8) & (biome_grid == "SAND_DUNE_DESERT")
         snow_in_arctic = (gap == 7) & (biome_grid == "ARCTIC_TUNDRA")
-        full_suppress = ((gap == 1) | (gap == 2) | (gap == 4) | (gap == 5)
-                        | (gap == 7) | (gap == 8)) & ~sand_dune_in_desert & ~snow_in_arctic
+        # S86: LUSH biomes survive on floodplain (gap==4).  Riparian woodland
+        # in particular is *defined* by flood-adjacency — suppressing schematics
+        # there breaks the biome's identity.  Verified at tile (80,50).
+        _FLOODPLAIN_OK_BIOMES = (
+            "LUSH_RAINFOREST_COAST",
+            "RIPARIAN_WOODLAND",
+            "FRESHWATER_FEN",
+            "TIDAL_JUNGLE_FRINGE",
+            "MANGROVE_COAST",
+        )
+        floodplain_ok = (gap == 4) & np.isin(biome_grid, list(_FLOODPLAIN_OK_BIOMES))
+        full_suppress = (
+            ((gap == 1) | (gap == 2) | (gap == 4) | (gap == 5)
+             | (gap == 7) | (gap == 8))
+            & ~sand_dune_in_desert & ~snow_in_arctic & ~floodplain_ok
+        )
         land_mask = land_mask & ~full_suppress
 
         # Alpine meadow (gap==6): allow sparse scattered krummholz trees
@@ -858,6 +903,12 @@ def place_schematics(
     def _filter_entries(entries, schem_type):
         return [e for e in entries if e.schem_type == schem_type]
 
+    # S86 Item 1D: per-pass rotation tracker keyed by (cell_row, cell_col)
+    # at 4-block grid resolution.  Used to enforce rotation variety among
+    # adjacent schematic placements (8-neighborhood).  Both trees and bushes
+    # share the same tracker so cross-type clusters also get varied rotations.
+    _rotation_grid: dict[tuple[int, int], list[int]] = {}
+
     for pass_type in ("tree", "bush"):
         # Bushes get their own exclusion grid (smaller radius, independent of trees)
         if pass_type == "bush":
@@ -867,7 +918,8 @@ def place_schematics(
             row = int(rows_arr[idx])
             col = int(cols_arr[idx])
 
-            biome_str = str(biome_grid[row, col])
+            orig_biome_str = str(biome_grid[row, col])
+            biome_str = orig_biome_str
             # S59: ecotone seam dither — swap to neighbour biome's entries list
             # at rolled pixels so species mix across biome boundaries.
             # S63: guarded by ECOTONE_DENY_PAIRS — don't swap across aesthetic
@@ -877,6 +929,7 @@ def place_schematics(
             # other neighbors) can have md/lg trees that leak in via the swap.
             # Same for ARCTIC_TUNDRA (mountain-snowy, very-very-sparse).
             _NO_SWAP_BIOMES = frozenset({"FROZEN_FLATS", "ARCTIC_TUNDRA"})
+            swap_active = False
             if (_seam_swap_grid is not None and _seam_swap_grid[row, col]
                     and biome_str not in _NO_SWAP_BIOMES):
                 _alt = str(_seam_nb[row, col])
@@ -884,6 +937,7 @@ def place_schematics(
                         and _alt not in _NO_SWAP_BIOMES
                         and frozenset({biome_str, _alt}) not in ECOTONE_DENY_PAIRS):
                     biome_str = _alt
+                    swap_active = True
             all_entries = index.get(biome_str)
             if not all_entries:
                 continue
@@ -897,16 +951,36 @@ def place_schematics(
             # fire within 32 blocks of water edge in both coastal-tropic
             # biomes.  Far from water, exclude palm species and fall through
             # to other tropics.
-            if (biome_str in ("LUSH_RAINFOREST_COAST", "RAINFOREST_COAST")
-                    and pass_type == "tree"):
-                if dist_to_water_blocks[row, col] >= 32.0:
+            # S86 Item 1H: ALSO filter palms when ORIGINAL biome (pre-swap)
+            # is not a palm-OK coastal biome.  Ecotone swap into LUSH from
+            # FRESHWATER_FEN was firing palms inland.  Original biome guards
+            # the swap from importing palms into non-coastal pixels.
+            _PALM_OK_BIOMES = ("LUSH_RAINFOREST_COAST", "RAINFOREST_COAST")
+            if pass_type == "tree":
+                _palm_blocked_by_dist = (
+                    biome_str in _PALM_OK_BIOMES
+                    and dist_to_water_blocks[row, col] >= 32.0
+                )
+                _palm_blocked_by_origin = (
+                    swap_active and orig_biome_str not in _PALM_OK_BIOMES
+                )
+                if _palm_blocked_by_dist or _palm_blocked_by_origin:
                     entries = [e for e in entries
                                if e.species not in ("rfpalm", "mpalm", "cpalm")]
                     if not entries:
                         continue
 
-            # Base density × noise
-            base_d = BASE_DENSITY.get(biome_str, 0.05)
+            # Base density × noise.
+            # S86 Item 1I: at swap pixels, blend source + neighbor densities so
+            # the transition reads as a gradient instead of a density spike
+            # caused by neighbor's higher BASE_DENSITY suddenly taking over.
+            if swap_active:
+                base_d = 0.5 * (
+                    BASE_DENSITY.get(orig_biome_str, 0.05)
+                    + BASE_DENSITY.get(biome_str, 0.05)
+                )
+            else:
+                base_d = BASE_DENSITY.get(biome_str, 0.05)
             final_d = base_d * float(density_mult[row, col])
 
             # Eco density modulation
@@ -918,6 +992,9 @@ def place_schematics(
                 final_d *= 0.4
                 if biome_str in SPARSE_BUSH_BIOMES:
                     final_d *= 0.5
+                # S86 Item 3C: per-biome bush multiplier on top of base.
+                # Allows tuning bush density independently of tree density.
+                final_d *= BUSH_DENSITY_MULT.get(biome_str, 1.0)
                 # S70 Item N: karst bush clustering — simplex modulation
                 # at scale 60 blocks creates grove patches rather than
                 # uniform sprinkle.  Multiplier ranges [0.3, 1.7], mean 1.0.
@@ -1053,8 +1130,31 @@ def place_schematics(
             )
             place_y    = base_y - extra
 
-            # Random rotation (0, 90, 180, 270 degrees)
-            rotation = rng.choice([0, 1, 2, 3])
+            # S86 Item 1D: adjacency-aware rotation selection.
+            # Random rotation (0=0deg, 1=90, 2=180, 3=270).  To prevent the
+            # "two identical trees next to each other facing the same way"
+            # artifact (user feedback on 20,36 / 33,49 / 18,62), track rotations
+            # used in nearby 4x4-cell neighborhoods and prefer a rotation that
+            # differs from neighbors.  Applies to *any* adjacent tree
+            # schematics (not just same species — user clarified).
+            _cell_r = jittered_row // 4
+            _cell_c = jittered_col // 4
+            _used = set()
+            for _dr in (-1, 0, 1):
+                for _dc in (-1, 0, 1):
+                    _used.update(_rotation_grid.get((_cell_r + _dr, _cell_c + _dc), ()))
+            _candidates = [r for r in (0, 1, 2, 3) if r not in _used]
+            if not _candidates:
+                # Saturated cell: pick the least-used rotation among neighbors
+                _counts = {r: 0 for r in (0, 1, 2, 3)}
+                for _dr in (-1, 0, 1):
+                    for _dc in (-1, 0, 1):
+                        for _r in _rotation_grid.get((_cell_r + _dr, _cell_c + _dc), ()):
+                            _counts[_r] += 1
+                _min = min(_counts.values())
+                _candidates = [r for r, c in _counts.items() if c == _min]
+            rotation = rng.choice(_candidates)
+            _rotation_grid.setdefault((_cell_r, _cell_c), []).append(rotation)
 
             world_x = px_off + jittered_col
             world_z = py_off + jittered_row

@@ -370,26 +370,36 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # S71: GC density ~1.4x bumped per user — differentiates from BOREAL_ALPINE
     # which has its own (sparser) palette.  MC biome also changed to
     # minecraft:stony_shore for visual differentiation.
+    # S86: bumped short_grass + fern.  No tall_grass added (user override).
+    # No new flowers.  Existing lily_of_the_valley / oxeye_daisy kept rare.
     "BOREAL_TAIGA": [
-        ("fern", 0.70), ("large_fern", 0.28), ("leaf_litter", 0.49),
+        ("fern", 0.85), ("large_fern", 0.35), ("leaf_litter", 0.49),
         ("moss_carpet", 0.35), ("pale_moss_carpet", 0.14), ("bush", 0.30),
-        ("sweet_berry_bush", 0.02), ("short_grass", 0.42),
+        ("sweet_berry_bush", 0.02), ("short_grass", 0.65),
         ("dead_bush", 0.005),
         ("lily_of_the_valley", 0.005), ("oxeye_daisy", 0.005),
     ],
+    # S86: bumped fern + short_grass.  No tall grass.
     "SNOWY_BOREAL_TAIGA": [
-        ("fern", 0.10), ("leaf_litter", 0.08), ("bush", 0.12),
-        ("short_grass", 0.20), ("short_dry_grass", 0.08),
+        ("fern", 0.22), ("leaf_litter", 0.08), ("bush", 0.12),
+        ("short_grass", 0.35), ("short_dry_grass", 0.08),
         ("tall_dry_grass", 0.07), ("dead_bush", 0.01),
     ],
+    # S86 Item 3D: BA differentiation from BT/SBT.
+    # Surface palette additions handled in the rock/lithology + noise blocks
+    # via per-biome adders below; GC palette gets a green_moss accent.
+    # Podzol blob scale reduction handled in noise_layers_biome config.
+    # Vegetation: bumped existing flowers modestly + short_grass + fern.
     "BOREAL_ALPINE": [
-        ("fern", 0.20), ("leaf_litter", 0.16), ("bush", 0.20),
-        ("short_grass", 0.22), ("dead_bush", 0.02),
+        ("fern", 0.28), ("leaf_litter", 0.16), ("bush", 0.20),
+        ("short_grass", 0.30), ("dead_bush", 0.02),
         # S60 dry grass for alpine wind-pruned look
-        ("short_dry_grass", 0.08), ("tall_dry_grass", 0.10),
-        # S60 alpine wildflowers — rare accent
-        ("poppy", 0.01), ("allium", 0.01),
-        ("cornflower", 0.008), ("oxeye_daisy", 0.008),
+        ("short_dry_grass", 0.10), ("tall_dry_grass", 0.10),
+        # S86: green moss accent for warmer look vs SBT
+        ("moss_carpet", 0.18),
+        # S60 alpine wildflowers — slightly bumped per S86 differentiation
+        ("poppy", 0.015), ("allium", 0.015),
+        ("cornflower", 0.012), ("oxeye_daisy", 0.012),
     ],
     # "ALPINE_MEADOW" retired S56
     # S70: scrubland — bumped dead_bush + short_dry_grass + bush so ground
@@ -400,9 +410,12 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # _SNOW_CAP_SPECIES multiplier (mostly zeros) → snow_carpet fallback fills
     # the snow look.  Result: peaks read snowy, plateaus read scrubby.
     # S71-3 follow-up: dead_bush → tall_dry_grass per user direction.
+    # S86: bumped short_grass + short_dry_grass per user (33,13) — too barren.
+    # Sparse bush via BUSH_DENSITY_MULT (0.5x). No flowers added.
     "ARCTIC_TUNDRA": [
-        ("tall_dry_grass", 0.10),  # S71-3 follow-up: replaces dead_bush 0.06 + tall_dry_grass 0.04
-        ("short_dry_grass", 0.06),
+        ("tall_dry_grass", 0.16),
+        ("short_dry_grass", 0.22),
+        ("short_grass", 0.18),
         ("bush", 0.05),
     ],
     # S71-3 swap: FROZEN_FLATS = "Tundra Valley" permafrost meadow.  Defining
@@ -456,8 +469,10 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # S60: up short_grass density, bush rare per user + rare coastal meadow flowers.
     # S70: flowers reduced ×0.2 (very sparse per user). Bush density
     # doubled in schematic_placement (Item K), not here.
+    # S86: short_grass bumped per user (36,7). NO tall_grass added.
+    # Plant schematic count 2x is handled by BASE_DENSITY bump (0.10 -> 0.25).
     "COASTAL_HEATH": [
-        ("short_grass", 0.48), ("short_dry_grass", 0.14), ("tall_grass", 0.02),
+        ("short_grass", 0.70), ("short_dry_grass", 0.20), ("tall_grass", 0.02),
         ("bush", 0.04), ("dead_bush", 0.01),
         ("cornflower", 0.002), ("allium", 0.002),
         ("oxeye_daisy", 0.002), ("dandelion", 0.0016),
@@ -539,9 +554,11 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     ],
     # S60: add bush infrequent, up short_dry_grass density per user (matches
     # scrubby pattern).
+    # S86: bumped short_dry_grass + short_grass per user (18,62) - more
+    # visible plant presence between trees.
     "DESERT_STEPPE_TRANSITION": [
-        ("short_dry_grass", 0.38), ("tall_dry_grass", 0.13),
-        ("dead_bush", 0.02), ("short_grass", 0.08), ("bush", 0.04),
+        ("short_dry_grass", 0.55), ("tall_dry_grass", 0.13),
+        ("dead_bush", 0.02), ("short_grass", 0.18), ("bush", 0.04),
         ("cactus", 0.005),
     ],
     "SEMI_ARID_SHRUBLAND": [
@@ -554,8 +571,10 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # S60: add tall_dry_grass, up short_grass, bush more infrequent per user.
     # Mediterranean-scrub flora — halved existing flowers per user's global rare-ify.
     # S71-2: torchflower removed per user — too saturated for dry biome.
+    # S86: bumped short_grass modestly per user (36,75) - paired with
+    # tree density REDUCTION (3A) and increased bush via BUSH_DENSITY_MULT.
     "DRY_WOODLAND_MAQUIS": [
-        ("short_grass", 0.43), ("short_dry_grass", 0.22), ("tall_dry_grass", 0.13),
+        ("short_grass", 0.58), ("short_dry_grass", 0.22), ("tall_dry_grass", 0.13),
         ("bush", 0.06), ("tall_grass", 0.02), ("leaf_litter", 0.06),
         ("dead_bush", 0.01),
         ("allium", 0.015), ("poppy", 0.02),
@@ -564,9 +583,11 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # S60: up all, add short_grass (was 0.02, now 0.12) + tall_dry_grass per user.
     # S66: way more bushes per user — scrubland feel.  bush 0.05 → 0.30.
     # S70: more short_grass, less dry/dead grass per user.
+    # S86: bumped short_dry_grass per user (34,9) - more "lived in" look.
+    # Bush schematic density 2.5x is in BUSH_DENSITY_MULT.
     "KARST_BARRENS": [
-        ("dead_bush", 0.02), ("short_dry_grass", 0.05), ("bush", 0.30),
-        ("short_grass", 0.45), ("tall_dry_grass", 0.05),
+        ("dead_bush", 0.02), ("short_dry_grass", 0.18), ("bush", 0.30),
+        ("short_grass", 0.55), ("tall_dry_grass", 0.10),
     ],
     # ── Wetland / Riparian ───────────────────────────────────────────────
     # S60: removed duplicate bush entry. Otherwise unchanged per user.
@@ -1745,15 +1766,47 @@ def decorate_surface(
 
                 # Flow-driven wash channels — per-lithology-group wash palette.
                 # S85: was hardcoded sand+sandstone universally; now each lithology
-                # group has its own `wash_palette` in config (matching its biome
-                # family's geological/color feel).  granitic = warm earth browns,
-                # arid_basaltic = dark gravel + rare sand, temperate_basaltic = wet
-                # brown sediment, limestone = chalky pale, deepslate_metamorphic =
-                # dry alpine scree (no snow), mossy_temperate = mossy stream debris.
-                # Same flow threshold gates as before (0.005 / 0.020) — controls
-                # where wash appears, not which blocks.
+                # group has its own `wash_palette` in config.
+                # S86 Item 1B: intensified per user feedback.
+                #   - Lower flow threshold (0.005 -> configurable, default 0.002):
+                #     wider trigger zone, more wash visible.
+                #   - Dilate wash zone (default 2 blocks): wider channels.
+                #   - Write to subsurface_blocks too: 2-block visible depth
+                #     instead of single block on top of underlying rock.
+                #   - 5-block linear fade at outer dilation edge so washes
+                #     blend into surrounding terrain instead of stopping at
+                #     a hard ring.
+                # Knobs in config.washes (defaults below if missing).
                 if flow_tile is not None:
-                    _wash_zone = rock_px & (flow_tile > 0.005)
+                    _wcfg = cfg.get("washes", {}) if isinstance(cfg, dict) else {}
+                    _wash_min_flow = float(_wcfg.get("min_flow", 0.002))
+                    _wash_dilation = int(_wcfg.get("dilation", 2))
+                    _wash_fade_blocks = int(_wcfg.get("fade_blocks", 5))
+                    _wash_zone_core = rock_px & (flow_tile > _wash_min_flow)
+                    if _wash_dilation > 0 and _wash_zone_core.any():
+                        from scipy.ndimage import binary_dilation as _bd
+                        _wash_zone = _bd(_wash_zone_core, iterations=_wash_dilation) & rock_px
+                    else:
+                        _wash_zone = _wash_zone_core
+                    # Fade: probability ramps from 1 at the core down to 0 over
+                    # _wash_fade_blocks at the outer rim of the dilation.
+                    _wash_fade_prob = None
+                    if _wash_fade_blocks > 0 and _wash_zone.any() and _wash_zone_core.any():
+                        from scipy.ndimage import distance_transform_edt as _dt
+                        # dist from edge of core: pixels in core have dist 0 inside core.
+                        # Actually we want: at core pixels prob=1, at outer edge prob=0.
+                        _dist_from_core = _dt(~_wash_zone_core).astype(np.float32)
+                        _wash_fade_prob = np.clip(
+                            1.0 - _dist_from_core / float(_wash_fade_blocks),
+                            0.0, 1.0,
+                        )
+                    # Apply fade by dropping pixels via coin vs fade probability.
+                    # Result: core stays solid, outer rim thins out gradually.
+                    if _wash_fade_prob is not None:
+                        _fade_rng = np.random.default_rng(
+                            tile_x * 17 ^ tile_y * 31 ^ 0xFADE)
+                        _fade_coin = _fade_rng.random((H, W)).astype(np.float32)
+                        _wash_zone = _wash_zone & (_fade_coin < _wash_fade_prob)
                     if _wash_zone.any():
                         _DEFAULT_WASH_PAL = ["gravel", "coarse_dirt", "sand"]
                         _wash_rng = np.random.default_rng(
@@ -1776,6 +1829,9 @@ def decorate_surface(
                         # Per-pixel wash group lookup: lithology mask first,
                         # biome fallback for unpainted pixels (matches the rock
                         # surface palette path above).
+                        # S86 Item 1B: ALSO write to subsurface_blocks so washes
+                        # appear 2 blocks deep instead of 1 (user feedback: single
+                        # block over each layer reveals rock on slopes).
                         if _litho_at_res is not None:
                             for _gid in np.unique(_litho_at_res[_wash_zone]):
                                 _gid = int(_gid)
@@ -1793,12 +1849,18 @@ def decorate_surface(
                                         _wp_arr = np.asarray(_wp, dtype=object)
                                         _idx = _wash_rng.integers(0, len(_wp), size=_n_pix)
                                         surface_blocks[_bm_wfb] = _wp_arr[_idx]
+                                        # Subsurface: independently sampled (less
+                                        # repetition on slopes) but same palette.
+                                        _idx_sub = _wash_rng.integers(0, len(_wp), size=_n_pix)
+                                        subsurface_blocks[_bm_wfb] = _wp_arr[_idx_sub]
                                 else:
                                     _wp = _gid_to_wash.get(_gid, _DEFAULT_WASH_PAL)
                                     _n_pix = int(_bm_w.sum())
                                     _wp_arr = np.asarray(_wp, dtype=object)
                                     _idx = _wash_rng.integers(0, len(_wp), size=_n_pix)
                                     surface_blocks[_bm_w] = _wp_arr[_idx]
+                                    _idx_sub = _wash_rng.integers(0, len(_wp), size=_n_pix)
+                                    subsurface_blocks[_bm_w] = _wp_arr[_idx_sub]
                         else:
                             # No lithology mask - per-biome only
                             for _bname in np.unique(biome_grid[_wash_zone]):
@@ -1810,6 +1872,8 @@ def decorate_surface(
                                 _wp_arr = np.asarray(_wp, dtype=object)
                                 _idx = _wash_rng.integers(0, len(_wp), size=_n_pix)
                                 surface_blocks[_bm_w] = _wp_arr[_idx]
+                                _idx_sub = _wash_rng.integers(0, len(_wp), size=_n_pix)
+                                subsurface_blocks[_bm_w] = _wp_arr[_idx_sub]
                         del _wash_rng
                     del _wash_zone
 
