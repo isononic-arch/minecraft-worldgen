@@ -524,11 +524,24 @@ def compute_eco_gradients(
                 (cliff_deg - ROCK_SLOPE_FADE_START) / (ROCK_SLOPE_SOLID - ROCK_SLOPE_FADE_START),
                 0.0, 1.0,
             ).astype(np.float32)
-            _rock_rng = np.random.default_rng(tile_x * 91837 ^ tile_z * 47521)
-            _rock_coin = _rock_rng.random((H, W)).astype(np.float32)
+            # S86 seam-fix: per-pixel deterministic hash on WORLD coords so
+            # adjacent tiles compute the same coin at shared seam pixels.
+            # Previous per-tile-seeded RNG produced visible seam lines because
+            # two pixels straddling a tile boundary got coin values from
+            # different RNG sequences (~50/50 chance of disagreeing rock
+            # decision in the fade band).  splitmix64 mix per pixel.
+            _wx = (tile_x * W + np.arange(W, dtype=np.uint64))[None, :]
+            _wz = (tile_z * H + np.arange(H, dtype=np.uint64))[:, None]
+            _h = (_wx * np.uint64(0x9E3779B97F4A7C15)
+                  + _wz * np.uint64(0xBF58476D1CE4E5B9))
+            _h = (_h ^ (_h >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+            _h = (_h ^ (_h >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+            _h = _h ^ (_h >> np.uint64(31))
+            _rock_coin = (_h.astype(np.float64)
+                          / np.float64(np.iinfo(np.uint64).max)).astype(np.float32)
             rock_avail = land_mask & ~water_mask_re & (gap_mask == 0)
             gap_mask[rock_avail & _rg & (_rock_coin < _slope_prob)] = 5
-            del _rg, _slope_prob, _rock_rng, _rock_coin, rock_avail
+            del _rg, _slope_prob, _wx, _wz, _h, _rock_coin, rock_avail
 
         # ── Snow gap with peak detector + ridge bias + height fade ──
         if snow_gap is not None:
