@@ -2753,35 +2753,24 @@ def _apply_ecotone_dither(
     if len(swap_r) == 0:
         return
 
-    # S85 Option A: PER-PIXEL SHADOW LOOKUP (instead of random sample).
-    # Previously each swap pixel grabbed a random pixel from anywhere in the
-    # neighbour biome's region — losing the simplex blob structure of the
-    # neighbour's rare blocks (sand pockets, podzol clumps, etc.) and making
-    # rare blocks visually over-represented as isolated specks at the seam.
+    # S86 Item 1F: ecotone block-swap routed through REAL painted neighbor
+    # pixels (not noise_layers_biome artifact tags).
     #
-    # Now we pre-compute "what would biome X have placed at THIS exact pixel"
-    # by running noise_layers_biome for each unique neighbour biome on the
-    # boundary mask only. At swap time, look up the same world-coord block
-    # from the neighbour biome's shadow grid — preserves spatial blob
-    # structure across the seam (Photoshop alpha-blend analogue).
+    # Earlier (S85): Option A used `_shadow_blocks_for_biome()` which computed
+    # blocks from `noise_layers_biome[neighbor]` config — those entries are
+    # PRE-S55 ARTIFACT TAGS, not the actual surface paint pipeline (the live
+    # painter is gap_mask + lithology + palette). The shadow lookup produced
+    # "weird giant sand blobs" at boundaries because SAND_DUNE_DESERT's
+    # noise_layers_biome has base=sand, which got propagated into neighbor
+    # biomes regardless of what those biomes actually look like in-world.
     #
-    # Fallback: biomes without a noise_layers config use the legacy random
-    # sample path (mostly relevant for cold/snow biomes whose surface is
-    # palette-driven, not layer-driven).
+    # New (S86): always use the random-sample-from-painted-pixels path. We
+    # read from the ALREADY-PAINTED `surface_blocks` / `subsurface_blocks`
+    # arrays of the neighbor biome — those reflect the real gap+lithology
+    # decisions. Loses the simplex blob preservation Option A aimed for, but
+    # since the user reported the blobs themselves as the bug, that's the
+    # intended trade-off until a proper shadow refactor lands (S87 plan).
     nb_at_swap = neighbour_biome[swap_r, swap_c]
-    _noise_layers_cfg = cfg.get("noise_layers_biome", {}) if isinstance(cfg, dict) else {}
-    _shadow_blocks: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-    _shadow_noise_cache: dict = {}
-    _unique_nbs = {str(nb) for nb in np.unique(nb_at_swap) if nb}
-    for _nb in _unique_nbs:
-        if _nb in _noise_layers_cfg:
-            _shadow_surf, _shadow_sub = _shadow_blocks_for_biome(
-                _nb, has_neighbour, _noise_layers_cfg,
-                H, W, tile_x * W, tile_y * H,
-                noise_cache=_shadow_noise_cache,
-            )
-            _shadow_blocks[_nb] = (_shadow_surf, _shadow_sub)
-
     for bname in biome_names:
         bname_mask = nb_at_swap == bname
         if not bname_mask.any():
@@ -2790,38 +2779,20 @@ def _apply_ecotone_dither(
         target_r = swap_r[bname_mask]
         target_c = swap_c[bname_mask]
 
-        if bname in _shadow_blocks:
-            # Option A path: per-pixel shadow lookup (preserves simplex blobs)
-            _shadow_surf, _shadow_sub = _shadow_blocks[bname]
-            _surf_at_swap = _shadow_surf[target_r, target_c].copy()
-            _sub_at_swap  = _shadow_sub[target_r, target_c].copy()
-            # Defensive fallback for any pixel where shadow returned empty
-            # (shouldn't happen since we built shadow on has_neighbour mask,
-            # but be safe)
-            _empty = _surf_at_swap == ""
-            if _empty.any():
-                _biome_mask = biome_grid == bname
-                _biome_pr, _biome_pc = np.where(_biome_mask)
-                if len(_biome_pr) > 0:
-                    _fb_idx = rng.integers(0, len(_biome_pr), size=int(_empty.sum()))
-                    _surf_at_swap[_empty] = surface_blocks[_biome_pr[_fb_idx], _biome_pc[_fb_idx]]
-                    _sub_at_swap[_empty]  = subsurface_blocks[_biome_pr[_fb_idx], _biome_pc[_fb_idx]]
-            surface_blocks[target_r, target_c] = _surf_at_swap
-            if not use_new_geology:
-                subsurface_blocks[target_r, target_c] = _sub_at_swap
-        else:
-            # Legacy random-sample fallback for biomes without noise_layers
-            _biome_mask = biome_grid == bname
-            _biome_pr, _biome_pc = np.where(_biome_mask)
-            if len(_biome_pr) == 0:
-                continue
-            n_swap = int(bname_mask.sum())
-            sample_idx = rng.integers(0, len(_biome_pr), size=n_swap)
-            sampled_r = _biome_pr[sample_idx]
-            sampled_c = _biome_pc[sample_idx]
-            surface_blocks[target_r, target_c] = surface_blocks[sampled_r, sampled_c]
-            if not use_new_geology:
-                subsurface_blocks[target_r, target_c] = subsurface_blocks[sampled_r, sampled_c]
+        # Sample from REAL painted pixels of the neighbor biome — these came
+        # through the live gap+lithology+palette pipeline, so colors match
+        # what the biome actually looks like in-world.
+        _biome_mask = biome_grid == bname
+        _biome_pr, _biome_pc = np.where(_biome_mask)
+        if len(_biome_pr) == 0:
+            continue
+        n_swap = int(bname_mask.sum())
+        sample_idx = rng.integers(0, len(_biome_pr), size=n_swap)
+        sampled_r = _biome_pr[sample_idx]
+        sampled_c = _biome_pc[sample_idx]
+        surface_blocks[target_r, target_c] = surface_blocks[sampled_r, sampled_c]
+        if not use_new_geology:
+            subsurface_blocks[target_r, target_c] = subsurface_blocks[sampled_r, sampled_c]
 
 
 def _compute_ecotone_swap_fields(
