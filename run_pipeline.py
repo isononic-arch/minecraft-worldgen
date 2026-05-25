@@ -345,22 +345,31 @@ def _process_tile(args: dict) -> dict:
         tile_x, tile_y, H=surface_y.shape[0], W=surface_y.shape[1]
     )
 
-    # ---- Step 6e: Rock-gap surface crunch (S87 Phase 2A) ----
-    # Displace surface_y by +/-1-2 blocks at rock_gap pixels (gap==5) via
-    # high-frequency low-amplitude per-pixel noise.  Makes rock faces look
-    # chunky/voxel-rough rather than polished.  Deterministic on world coords
-    # so adjacent tiles share the same displacement at shared pixels.
-    # User S87 priority: "rock gap noise will be huge".
+    # ---- Step 6e: Rock-gap surface crunch (S87 Phase 2A, S87-tune-1) ----
+    # Displace surface_y by per-pixel noise scaled by SLOPE so fade-band rock
+    # also crunches (not just gap==5 pixels).  S87 walk found:
+    #   - "Rock gap noise isn't generating on all rock gaps, especially faded
+    #      areas" -- gap_mask==5 fade band is coin-rolled so noise was patchy.
+    #     Solution: drive noise off cliff_deg directly, scale amplitude
+    #     by slope across 35-45 deg fade band.
+    #   - "a bit too intense" -- reduce default max amplitude from 2 to 1.
+    # Deterministic world-coord hash so adjacent tiles share the same value
+    # at shared pixels (no tile seams).
     _crunch_cfg = cfg.get("peak_crunch", {}) if isinstance(cfg, dict) else {}
     _crunch_enabled = bool(_crunch_cfg.get("enabled", True))
     if (_crunch_enabled and eco_grads is not None
-            and hasattr(eco_grads, "gap_mask")):
-        _crunch_amp = int(_crunch_cfg.get("amplitude_blocks", 2))
-        _gap = eco_grads.gap_mask
-        _rock_px = _gap == 5
-        if _rock_px.any():
-            import numpy as _np_crunch
-            _H, _W = surface_y.shape
+            and cliff_deg is not None):
+        _crunch_amp = int(_crunch_cfg.get("amplitude_blocks", 1))
+        _fade_start = float(_crunch_cfg.get("slope_fade_start_deg", 35.0))
+        _slope_full = float(_crunch_cfg.get("slope_full_deg", 45.0))
+        import numpy as _np_crunch
+        _H, _W = surface_y.shape
+        # Amplitude scalar per pixel: 0 below fade_start, 1 above slope_full.
+        _amp_scale = _np_crunch.clip(
+            (cliff_deg - _fade_start) / max(0.1, _slope_full - _fade_start),
+            0.0, 1.0,
+        ).astype(_np_crunch.float32)
+        if (_amp_scale > 0).any():
             # splitmix64 hash on world (x, z) -> uniform [0, 1)
             _wx = (tile_x * _W + _np_crunch.arange(_W, dtype=_np_crunch.uint64))[None, :]
             _wz = (tile_y * _H + _np_crunch.arange(_H, dtype=_np_crunch.uint64))[:, None]
@@ -370,15 +379,21 @@ def _process_tile(args: dict) -> dict:
             _hh = (_hh ^ (_hh >> _np_crunch.uint64(27))) * _np_crunch.uint64(0x94D049BB133111EB)
             _hh = _hh ^ (_hh >> _np_crunch.uint64(31))
             _u01 = (_hh.astype(_np_crunch.float64)
-                    / _np_crunch.float64(_np_crunch.iinfo(_np_crunch.uint64).max))
-            # Map [0,1) -> integer displacement in [-amp, +amp]
-            _disp = _np_crunch.floor(_u01 * (2 * _crunch_amp + 1)).astype(_np_crunch.int16) - _crunch_amp
-            # Only displace at rock_gap; never below 0 (sea floor protection
-            # would be excessive since rock_gap requires steep slope which
-            # is always well above sea level).
-            _new_y = surface_y.astype(_np_crunch.int16) + _disp
-            surface_y = _np_crunch.where(_rock_px, _new_y, surface_y.astype(_np_crunch.int16)).astype(surface_y.dtype)
-            del _wx, _wz, _hh, _u01, _disp, _new_y, _rock_px
+                    / _np_crunch.float64(_np_crunch.iinfo(_np_crunch.uint64).max)).astype(_np_crunch.float32)
+            # Signed displacement in [-amp, +amp] scaled by slope intensity.
+            _disp = ((_u01 - 0.5) * 2.0 * _crunch_amp * _amp_scale)
+            _disp_int = _np_crunch.round(_disp).astype(_np_crunch.int16)
+            # Only displace land above sea level (raw 17050 corresponds to Y63).
+            # Surface_y is already MC-Y here so just guard against going below
+            # SEA_Y on a pixel that's barely above water (rare).
+            _new_y = surface_y.astype(_np_crunch.int16) + _disp_int
+            _land = surface_y > 63
+            surface_y = _np_crunch.where(
+                _land & (_amp_scale > 0),
+                _new_y, surface_y.astype(_np_crunch.int16)
+            ).astype(surface_y.dtype)
+            del _wx, _wz, _hh, _u01, _disp, _disp_int, _new_y, _land
+        del _amp_scale
 
     # ---- Step 7: Surface decoration ----
     _use_geo = bool(cfg.get("lithology", {}).get("feature_flag_enabled", False))
