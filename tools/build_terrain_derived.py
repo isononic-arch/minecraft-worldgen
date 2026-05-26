@@ -40,7 +40,7 @@ import numpy as np
 import rasterio
 from rasterio.enums import Resampling
 from scipy.ndimage import (
-    binary_dilation, distance_transform_edt, gaussian_filter, sobel, zoom,
+    binary_dilation, distance_transform_edt, gaussian_filter, sobel,
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -182,25 +182,21 @@ def build_talus_apron(surface_y: np.ndarray, slope_deg: np.ndarray,
 
 # ─── Upscale + write ─────────────────────────────────────────────────────
 
-def upscale_50k(arr_ds: np.ndarray, scale: int,
-                 method: str = "bilinear") -> np.ndarray:
-    """Upscale 1:scale → 50k.  method='bilinear' for fade-like masks,
-    'nearest' for categorical (aspect)."""
-    factor = WORLD_50K / arr_ds.shape[0]
-    order = 1 if method == "bilinear" else 0
-    out = zoom(arr_ds, factor, order=order, prefilter=False)
-    return np.clip(out, 0, 255).astype(np.uint8)
+def chunked_upscale_write(arr_ds: np.ndarray, path: Path, scale: int,
+                            method: str = "bilinear") -> None:
+    """Chunked upscale 1:scale -> 50k + write to disk in row stripes.
+    Peak memory = chunk_rows * 50000 * 1 byte ~ 1 MB per stripe.
 
-
-def write_mask(path: Path, arr_50k: np.ndarray) -> None:
+    Uses core.hydrology_precompute.write_upscaled (the existing chunked
+    upscaler used by rebuild_floodplain etc.) so the I/O profile matches
+    every other 50k mask write."""
+    from core.hydrology_precompute import write_upscaled
     path.parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(
-        path, "w", driver="GTiff",
-        height=WORLD_50K, width=WORLD_50K,
-        count=1, dtype="uint8",
-        compress="lzw", tiled=True, blockxsize=512, blockysize=512,
-    ) as dst:
-        dst.write(arr_50k, 1)
+    write_upscaled(
+        data=arr_ds, path=path, dtype="uint8", scale=scale,
+        full_size=WORLD_50K, chunk_rows=100,
+        interpolation=("bilinear" if method == "bilinear" else "nearest"),
+    )
 
 
 # ─── Main ────────────────────────────────────────────────────────────────
@@ -270,13 +266,15 @@ def main() -> int:
 
     def emit(name: str, arr_ds: np.ndarray, method: str = "bilinear") -> None:
         t_ = time.perf_counter()
-        arr_50k = upscale_50k(arr_ds, scale=scale, method=method)
         path = masks_dir / f"{name}.tif"
-        write_mask(path, arr_50k)
-        nz = int((arr_50k > 0).sum())
-        mx = int(arr_50k.max())
-        print(f"  -> {name}.tif  nonzero={nz:>10d}  max={mx:>3d}  "
-              f"upscale+write {time.perf_counter()-t_:.1f}s")
+        chunked_upscale_write(arr_ds, path, scale=scale, method=method)
+        # Report stats from working-scale array (50k version is on disk only,
+        # not in memory).  Working-scale nonzero is a representative ratio.
+        nz_ds = int((arr_ds > 0).sum())
+        mx_ds = int(arr_ds.max())
+        size_mb = path.stat().st_size / (1024 * 1024)
+        print(f"  -> {name}.tif  ds_nonzero={nz_ds:>9d}  ds_max={mx_ds:>3d}  "
+              f"file={size_mb:>5.1f} MB  in {time.perf_counter()-t_:.1f}s")
 
     if not only or "aspect" in only:
         print("Building aspect...")
