@@ -2,7 +2,11 @@
 
 *Auto-loaded by Claude Code. Lean operational doc. For strategy, history, and broad context, see `PROJECT_MEMORY.md`. For the physical-realism refactor plan + implementation log, see `PHYSICAL_REALISM_REFACTOR.md` (§18 is the running log).*
 
-**Current state:** Session 85 (2026-05-22/24) — **Reconciliation + biome polish complete.**  Pulled S70-S84 work onto local master (was 32 commits behind), layered 14+ commits of S85 work, validated 36-tile render on cloud (4× CCX63 Hetzner Falkenstein, ~22 min wall, ~$2).  Branch `s85-cherry-picks` (tip `7f1ea25`) ready to merge to master after final in-world validation.  See [memory/S85_handoff.md](memory/S85_handoff.md) for full commit list + state.  See [memory/S85_to_S86_handoff_prompt.md](memory/S85_to_S86_handoff_prompt.md) for next-session pickup prompt.
+**Current state:** Session 87 (2026-05-25) — **BT-banding live + ~40 commits of Phase 1/2A/3 fixes.**  Branch `s85-cherry-picks` (tip `e32e362` v6).  See [memory/S87_to_S88_handoff.md](memory/S87_to_S88_handoff.md) for comprehensive pickup notes.
+
+**S87 in summary:**  BT-banded override.tif live (BA lowland / BT mid / SBT highland / AT peaks).  Phase 1 architectural fixes shipped (lithology per-pixel, wash intensification, rock-gap fade band, tree-clone rotation, LUSH floodplain exception, water-tick river-aware, palm swap filter, transition density blend, ecotone random-sample swap).  Phase 2A rock-gap crunch shipped with VoxelSniper smoothing + slope-based amp + river/wash exclusions + post-Step-9 lock-Y.  Per-biome density bumps + cross-section-driven tree weighting (8 forest biomes).  Column structure refactored: 1 dirt block at y-1, lithology basement from y-2 down (soil + sediment writes removed from `_fill_geology_layers`).  Single-tile render script + `SKIP_CACHE_CLEAR=1` for fast iteration.
+
+**S87 outstanding:**  (50,48) MIXED_FOREST blank tile, (13,82) RFC missing river chunks, river regression family (51,53 / 33,7 / 13,82), MANGROVE coral reef removal, (36,75) maquis bush bump no effect, cliff banding via lithology proper.  See [memory/S87_to_S88_handoff.md](memory/S87_to_S88_handoff.md) for full list + antipatterns to avoid.
 
 **S85 highlights:**  BT MC tag → meadow.  `BIOME_ALTITUDE_REMAPS = []` (deleted).  Per-pixel RNG soften (no blob islands).  Option A ecotone shadow lookup (preserves rare-block simplex blobs).  Per-lithology-group wash palettes (granitic warm earth / arid_basaltic dark gravel / limestone chalky / deepslate dry alpine / etc.).  Skip fluid ticks for above-sea rivers (no chunk-load settling).  FF tree filter (max 11 blocks tall).  Plateau-clamp surface ecotone + width 40→100, swap_cap 0.75→0.85 ("incredibly wide transitional biomes").  ARC_TUN<500 remap deleted.  Full treeline rescale for 768-height world.  cloud_bake/render_s85_validation.sh — one-shot 36-tile validation render.
 
@@ -187,6 +191,27 @@ For SOFT organic features (forest floor, moss, grass color), noise IS appropriat
 - Vectorize labeled-component iteration with `np.bincount(labeled.ravel())`. No `for i in range(n_labels): mask == i`.
 - `opensimplex.noise2array` at 1/4 res + bilinear upscale, not native 6250×6250.
 - **Slope math gotcha**: `np.gradient(sy)` returns dY per ARRAY INDEX. At 1:8 that's 8× the real slope. `rebuild_sand_dunes.py` uses corrected `/SCALE`. `rebuild_rock_exposure/windthrow/floodplain` + `core/eco_gradients.py` use OLD inflated math with thresholds tuned to it — **don't touch without retuning**. `slope.tif` from Gaea is non-linearly normalized; don't assume `slope_norm * 90 = degrees`.
+
+### S87 hard-won antipatterns (don't repeat)
+
+1. **NEVER edit a render script WHILE it's running.** Bash re-reads from disk; line-number shifts at runtime → syntax error mid-render. Finish edits BEFORE dispatch.
+2. **NEVER modify surface_y without re-locking at chunk_writer time.** Step 9 water/lake fixes + gaussian smoothing partially un-do anything done at Step 6e. Schematic anchors (Step 8) end up off vs. column tops → floating trees + MAX_TRUNK_EXT=6 fires.
+3. **Bed cache (`_bed_cache_v17.pkl`) is masks-derived but NOT in git.** When override.tif or hydro masks change, FORCE regen (omit `SKIP_CACHE_CLEAR=1`). Stale bed cache → dry/staircased rivers.
+4. **Nearest-pixel for ecotone swap = STRIPES.** `distance_transform_edt(..., return_indices=True)` collapses many swap pixels onto few neighbor cells along the boundary, producing visible parallel strips. Always RANDOM-sample for biome transition swaps.
+5. **`noise_layers_biome` "sub" field IS consumed by chunk_writer.** KARST had `sub=stone`/`dripstone` producing "1 surface + 3 stone" cliffs. Don't assume config entries are deprecated without tracing data flow.
+6. **VoxelSniper smoothing weight must be > 0 in the core.** A blend formula `bw = (1 - amp_scale)` makes smoothing contribute zero at amp_scale=1. Use `weight = base + extra*(1-amp_scale)` with base > 0 if you want smoothing everywhere.
+7. **Datapack changes after world creation don't fix the level.dat.** Vandirtest11 created with broken vandir_height.zip → level.dat locked with vanilla dimension settings. Cannot retroactively repair. ALWAYS install datapack BEFORE first world load.
+8. **Don't auto-install MCAs to a world the user is actively walking.** Use `NO_INSTALL=1` and let user manually copy when ready.
+9. **Don't commit fixes without explicit user approval** when user has overridden auto-mode for the session.
+
+### S87 good practices (do more of these)
+
+1. **`render_single_tile.sh` + `SKIP_CACHE_CLEAR=1` + `NO_INSTALL=1`** — ~7 min turnaround per fix. Use this iteration loop.
+2. **`md5sum`-verify every MCA copy** — catches "did the install really land" silently.
+3. **World-coord splitmix64 hashes for noise** — eliminates tile seams. Both sides of a seam compute the same value at the seam pixel.
+4. **Post-load filters in `schematic_placement.load_index`** — drop unwanted species/heights without editing schematic_index.json. Used heavily: SARID juniper filter, FF tall-tree filter, MAQUIS pine filter, DPINE height filter, BT/SBT height cull.
+5. **Config-driven feature knobs everywhere** — every Phase 2A parameter has a config.peak_crunch knob. Walk → tune → re-render, no code change.
+6. **Per-pixel lithology lookup for surface paint** — not biome-default. Wash palette + cliff stones already do this; extend pattern to anything biome-keyed that could be lithology-keyed instead.
 
 ### Workflow
 
