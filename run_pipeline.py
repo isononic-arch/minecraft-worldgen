@@ -403,25 +403,30 @@ def _process_tile(args: dict) -> dict:
             )
             _amp_scale = _amp_scale * _river_fade
             del _river_dist, _river_fade, _river_zone
-        # S87 walk #3 (36,15): wash-aware fade.  Washes are flow-driven sediment
-        # on rock_gap (gap==5 + flow > min_flow).  Should be SMOOTH (no crunch
-        # noise), with a small 3-block fade back into full noise outside the
-        # wash bounds.  User: "harsh seam border from noisy area -> noise off
-        # across the lithological palette".
+        # S88: HARD wash exclusion (was 6-block fade).  Washes are flow-driven
+        # sediment surfaces -- they must be SMOOTH, never noisy.  Match the
+        # wash painter's mask (rock_px & flow>min_flow) AND its dilation so
+        # every pixel that surface_decorator paints as a wash also gets zero
+        # crunch noise, plus a 2-block buffer ring outside the painter zone.
+        # User: "washes should NOT get the noise layer.  they should be smooth."
         if eco_grads is not None and hasattr(eco_grads, "gap_mask"):
             _gap = eco_grads.gap_mask
             _flow = masks.get("flow") if isinstance(masks, dict) else None
             if _flow is not None:
-                _wash_mask = (_gap == 5) & (_flow > 0.002)
-                if _wash_mask.any():
-                    from scipy.ndimage import distance_transform_edt as _dt_wash
-                    _wash_fade_blocks = float(_crunch_cfg.get("wash_fade_blocks", 6.0))  # was 3
-                    _wash_dist = _dt_wash(~_wash_mask).astype(_np_crunch.float32)
-                    _wash_fade = _np_crunch.clip(
-                        _wash_dist / max(0.5, _wash_fade_blocks), 0.0, 1.0
+                _wcfg_p2a = cfg.get("washes", {}) if isinstance(cfg, dict) else {}
+                _wash_min_flow = float(_wcfg_p2a.get("min_flow", 0.002))
+                _wash_paint_dilation = int(_wcfg_p2a.get("dilation", 2))
+                _wash_core = (_gap == 5) & (_flow > _wash_min_flow)
+                if _wash_core.any():
+                    from scipy.ndimage import binary_dilation as _bd_wash
+                    # Match wash painter dilation + 2-block buffer outside,
+                    # so even the painter's edge-fade pixels stay noise-free.
+                    _wash_zone_full = _bd_wash(
+                        _wash_core,
+                        iterations=_wash_paint_dilation + 2,
                     )
-                    _amp_scale = _amp_scale * _wash_fade
-                    del _wash_dist, _wash_fade, _wash_mask
+                    _amp_scale[_wash_zone_full] = 0.0
+                    del _wash_core, _wash_zone_full
         if (_amp_scale > 0).any():
             # splitmix64 hash on world (x, z) -> uniform [0, 1)
             _wx = (tile_x * _W + _np_crunch.arange(_W, dtype=_np_crunch.uint64))[None, :]
@@ -454,20 +459,26 @@ def _process_tile(args: dict) -> dict:
             _apply = _u_apply < (_amp_scale * _prob_cap)
             _signed = _np_crunch.where(_u01 < 0.5, -_crunch_amp, _crunch_amp).astype(_np_crunch.int16)
             _disp_int = _np_crunch.where(_apply, _signed, 0).astype(_np_crunch.int16)
-            # S87 walk #4 v6: VOXELSNIPER-STYLE SMOOTHING PASS (fixed).
-            # v5 had a bug: at noise core (amp_scale=1), the boundary weight
-            # was 0 so the smoothed version contributed NOTHING.  Smoothing
-            # only applied at boundaries.  User: "noise is way way way too
-            # intense, doesn't look like you did anything gaussian smoothing".
-            # v6: ALWAYS apply some smoothing (core gets base_smooth=0.5,
-            # boundary gets extra=0.4 on top, total up to 0.9).  Plus
-            # larger sigma=1.5 so isolated single +/-1 displacements get
-            # washed out everywhere, only clusters survive.
+            # S88 smoothing rework.  User: "smoothing appears to LESSEN at
+            # borders -- it should INCREASE at the borders of the rock_gap
+            # mask" + "increase smoothing across the board".  Three-part fix:
+            #   (1) Base gaussian sigma 1.5 -> 2.5 -- broader averaging
+            #       smooths ALL noise, not just isolated +/-1 spikes.
+            #   (2) Smooth weight base 0.5 -> 0.65 so the core noise is also
+            #       visibly smoothed.  Edge weight goes all the way to 1.0.
+            #   (3) NEW second pass: gaussian smoothing on the FINAL surface_y
+            #       (not just the displacement) across the boundary zone
+            #       (bell curve peaks at amp_scale=0.5).  This is the
+            #       "smoothing INCREASES at rock_gap borders" the user asked
+            #       for -- spatial feathering of the transition between
+            #       noisy rock and smooth lowland, not just weighted blending
+            #       of displacement values.
             from scipy.ndimage import gaussian_filter as _gf_crunch
             _disp_f = _disp_int.astype(_np_crunch.float32)
-            _disp_smooth = _gf_crunch(_disp_f, sigma=1.5)
-            # Smooth weight: 0.5 at core (always-on), +0.4 extra at fade edges.
-            _sw = (0.5 + 0.4 * (1.0 - _amp_scale)).astype(_np_crunch.float32)
+            _disp_smooth = _gf_crunch(_disp_f, sigma=2.5)
+            # Smooth weight: 0.65 at core (always-on), +0.35 extra at fade
+            # edges (so amp_scale=0 -> _sw=1.0 = fully smoothed).
+            _sw = (0.65 + 0.35 * (1.0 - _amp_scale)).astype(_np_crunch.float32)
             _disp_blended = _disp_f * (1.0 - _sw) + _disp_smooth * _sw
             _disp_int = _np_crunch.round(_disp_blended).astype(_np_crunch.int16)
             _new_y = surface_y.astype(_np_crunch.int16) + _disp_int
@@ -477,13 +488,47 @@ def _process_tile(args: dict) -> dict:
                 _displace_mask,
                 _new_y, surface_y.astype(_np_crunch.int16)
             ).astype(surface_y.dtype)
-            # Snapshot for post-Step-9 re-lock: at chunk_writer time, rock
-            # pixels must show this SAME Y (matching schematic anchors).
+
+            # ---- Boundary surface_y smoothing pass (S88) ----
+            # Bell curve weight: 0 at amp_scale=0 (pure smooth lowland) and
+            # at amp_scale=1 (pure rock core), peaks at amp_scale=0.5 (the
+            # mid-fade transition).  Spatial gaussian on surface_y itself
+            # feathers the boundary between noisy and smooth regions.
+            _amp_bell = (4.0 * _amp_scale * (1.0 - _amp_scale)).astype(
+                _np_crunch.float32)
+            _amp_bell = _np_crunch.clip(_amp_bell, 0.0, 1.0)
+            if float(_amp_bell.max()) > 0.05:
+                _sy_smooth_pass = _gf_crunch(
+                    surface_y.astype(_np_crunch.float32), sigma=3.0
+                )
+                _sy_blend = (
+                    surface_y.astype(_np_crunch.float32) * (1.0 - _amp_bell)
+                    + _sy_smooth_pass * _amp_bell
+                )
+                _new_sy_smoothed = _np_crunch.round(_sy_blend).astype(
+                    surface_y.dtype)
+                # Only land (not ocean) and only where the bell weight is
+                # meaningful (>5%) -- avoids touching pure rock core or
+                # pure non-rock lowland.
+                _bell_land = (surface_y > 63) & (_amp_bell > 0.05)
+                surface_y = _np_crunch.where(
+                    _bell_land, _new_sy_smoothed, surface_y
+                )
+                # Lock these pixels too: the boundary smoothing must survive
+                # Step 9 just like the displacement does.
+                _boundary_smooth_mask = _bell_land
+                del _sy_smooth_pass, _sy_blend, _new_sy_smoothed, _bell_land
+            else:
+                _boundary_smooth_mask = _np_crunch.zeros_like(
+                    _displace_mask, dtype=bool)
+
+            # Snapshot AFTER both displacement AND boundary smoothing: the
+            # lock at end of Step 9 restores the full Phase 2A result.
             _crunch_lock_y = surface_y.copy()
-            _crunch_rock_mask = _displace_mask.copy()
+            _crunch_rock_mask = (_displace_mask | _boundary_smooth_mask)
             del _wx, _wz, _hh, _hh2, _u01, _u_apply, _apply, _signed
             del _disp_int, _disp_f, _disp_smooth, _sw, _disp_blended
-            del _new_y, _land, _displace_mask
+            del _new_y, _land, _displace_mask, _amp_bell, _boundary_smooth_mask
         del _amp_scale
 
     # ---- Step 7: Surface decoration ----
