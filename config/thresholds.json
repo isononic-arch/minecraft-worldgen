@@ -4207,8 +4207,8 @@
       "deep_default_group": "granitic"
     },
     "cliff_cap": {
-      "_comment": "S88: resistant cap-rock palette painted on flat shelves above slope>=cliff_min_deg cliffs. NOT excluded from Phase 2A noise (hard-erosion category \u2014 block-scale weathering is realistic).",
-      "search_blocks": 4,
+      "_comment": "S88: resistant cap-rock palette painted on flat shelves above slope>=cliff_min_deg cliffs. NOT excluded from Phase 2A noise (hard-erosion category \u2014 block-scale weathering is realistic). search_blocks bumped 4 -> 8 so cap-fade has 2 pixels of gradation at 1:4 build scale.",
+      "search_blocks": 8,
       "cliff_min_deg": 35.0,
       "flat_max_deg": 20.0,
       "intensity_threshold": 64
@@ -4222,11 +4222,11 @@
       "phase2a_exclude": true
     },
     "bedrock_drainage": {
-      "_comment": "S88: water-cut polished rock palette painted on steep flow channels (flow>flow_threshold AND slope>=slope_min_deg). NOT excluded from Phase 2A noise (hard-erosion category).",
+      "_comment": "S88: water-cut polished rock palette painted on steep flow channels (flow>flow_threshold AND slope>=slope_min_deg). NOT excluded from Phase 2A noise (hard-erosion category). fade_blocks bumped 3 -> 6 so channel edges have visible gradation at 1:4 build scale.",
       "flow_threshold": 0.02,
       "slope_min_deg": 25.0,
       "dilation_blocks": 1,
-      "fade_blocks": 3,
+      "fade_blocks": 6,
       "intensity_threshold": 64
     }
   },
