@@ -333,6 +333,62 @@ def _build_band_lut(
     return lut
 
 
+def _compute_fault_field(
+    H: int, W: int,
+    tile_world_x: int, tile_world_z: int,
+    fault_scale_blocks: int = 80,
+) -> np.ndarray:
+    """Smoothed hash-noise field (H, W) float32 in roughly [-1, 1].
+    Zero-crossings of this field form continuous curves at world scale —
+    used as fault-trace proxy.  Seam-deterministic (world-coord hash)."""
+    row_u = (np.arange(H, dtype=np.uint32) + tile_world_z)
+    col_u = (np.arange(W, dtype=np.uint32) + tile_world_x)
+    rci = (row_u // fault_scale_blocks).astype(np.int32)
+    cci = (col_u // fault_scale_blocks).astype(np.int32)
+    rf = ((row_u % fault_scale_blocks).astype(np.float32)) / fault_scale_blocks
+    cf = ((col_u % fault_scale_blocks).astype(np.float32)) / fault_scale_blocks
+
+    def _h(ri, ci):
+        ri2d = ri[:, None].astype(np.uint32)
+        ci2d = ci[None, :].astype(np.uint32)
+        h = ri2d * np.uint32(0xC4F12345) ^ ci2d * np.uint32(0x9E373B17)
+        h ^= h >> np.uint32(16)
+        h *= np.uint32(0x45D9F3B)
+        h ^= h >> np.uint32(16)
+        return h.astype(np.float32) * np.float32(2.3283064e-10) * 2.0 - 1.0
+
+    rf2 = rf[:, None]; cf2 = cf[None, :]
+    v00 = _h(rci,     cci    )
+    v10 = _h(rci + 1, cci    )
+    v01 = _h(rci,     cci + 1)
+    v11 = _h(rci + 1, cci + 1)
+    return (v00 * (1 - rf2) * (1 - cf2)
+            + v10 * rf2       * (1 - cf2)
+            + v01 * (1 - rf2) * cf2
+            + v11 * rf2       * cf2).astype(np.float32)
+
+
+def _compute_vein_field(
+    surface_y: np.ndarray,
+    tile_world_x: int, tile_world_z: int,
+    lap_threshold: float = 4.0,
+    fault_scale_blocks: int = 80,
+    fault_width: float = 0.08,
+) -> np.ndarray:
+    """(H, W) bool — True where veins can appear.
+    Intersection of (a) terrain Laplacian magnitude > lap_threshold (ridge
+    lines + valley floors) and (b) |fault_field| < fault_width (narrow
+    band around fault-trace zero-crossings).  Veins concentrate at the
+    coincidence of high-curvature terrain and fault zones — geologically
+    realistic.  Seam-deterministic."""
+    from scipy.ndimage import laplace
+    H, W = surface_y.shape
+    lap = np.abs(laplace(surface_y.astype(np.float32)))
+    fault = _compute_fault_field(H, W, tile_world_x, tile_world_z,
+                                   fault_scale_blocks=fault_scale_blocks)
+    return (lap > lap_threshold) & (np.abs(fault) < fault_width)
+
+
 def _apply_banded_fill(
     vol: np.ndarray,
     stone_mask: np.ndarray,
@@ -345,6 +401,12 @@ def _apply_banded_fill(
     band_lut: np.ndarray | None = None,
     fleck_probability: float = 0.0,
     fleck_seed: int = 0,
+    *,
+    speckle_block_idx: int | None = None,
+    vein_field_2d: np.ndarray | None = None,
+    vein_block_indices: list[int] | None = None,
+    vein_amp: float = 0.0,
+    vein_seed: int = 0,
 ) -> None:
     """Apply Y-banded fill to vol for columns matching col_mask, Y-sliced.
 
@@ -359,13 +421,39 @@ def _apply_banded_fill(
     inside the painted layer — a small % of voxels get overwritten with a
     random other palette block.  Adds subtle salt-and-pepper visual noise to
     otherwise-clean stratified bands.  Default 0.0 (off) — callers must opt in.
+
+    S88: ``speckle_block_idx`` — when set, the fleck swap-target is THIS
+    specific block (not a random palette variant).  Used for the strata
+    "wear-through to primary rock" effect — speckle is always the primary
+    rock_gap block for the lithology.
+
+    S88: ``vein_field_2d`` + ``vein_block_indices`` + ``vein_amp`` + ``vein_seed``
+    — after band painting, cells where ``vein_field_2d[z, x]`` is True AND
+    a per-cell coin < ``vein_amp`` get overpainted with a block picked
+    uniformly at random from ``vein_block_indices`` (1 or 2 entries).
+    Produces realistic cross-band veins following ridge/fault geometry.
+    Two-block veins look like banded ore (e.g. coal+tuff stripes within
+    the same vein trace).
     """
     lut_size = band_lut.shape[0] if band_lut is not None else 0
     SLICE = 32
     _fleck_rng = (
         np.random.default_rng(fleck_seed & 0xFFFFFFFF)
-        if fleck_probability > 0 and n_v > 1 else None
+        if fleck_probability > 0 and (n_v > 1 or speckle_block_idx is not None)
+        else None
     )
+    _SPECKLE_SENTINEL = -1  # used in band_idx to mark per-cell speckle hits
+    _vein_active = (
+        vein_field_2d is not None
+        and vein_block_indices is not None
+        and len(vein_block_indices) > 0
+        and vein_amp > 0.0
+    )
+    _vein_rng = (
+        np.random.default_rng(vein_seed & 0xFFFFFFFF) if _vein_active else None
+    )
+    _n_vein_blocks = len(vein_block_indices) if vein_block_indices else 0
+
     for y_s in range(0, vol.shape[0], SLICE):
         y_e = min(y_s + SLICE, vol.shape[0])
         cs_slice = stone_mask[y_s:y_e] & col_mask[None, :, :]
@@ -382,20 +470,53 @@ def _apply_banded_fill(
         else:
             band_idx = (y_mod // band_scale_y) % n_v
 
-        # S69: per-voxel flecking — swap ~fleck_probability % of voxels to a
-        # random other variant, producing light salt-and-pepper noise.  Only
-        # active when opted in by caller (basement lithology fill).
+        # Flecking / speckle
         if _fleck_rng is not None:
             fleck_coin = _fleck_rng.random(band_idx.shape, dtype=np.float32)
-            fleck_variant = _fleck_rng.integers(0, n_v, size=band_idx.shape,
-                                                dtype=np.int32)
-            band_idx = np.where(fleck_coin < fleck_probability,
-                                fleck_variant, band_idx)
+            if speckle_block_idx is not None:
+                # S88: swap to a specific block (primary rock_gap "wear-through")
+                band_idx = np.where(fleck_coin < fleck_probability,
+                                    _SPECKLE_SENTINEL, band_idx)
+            elif n_v > 1:
+                # Original S69: swap to random palette variant
+                fleck_variant = _fleck_rng.integers(0, n_v, size=band_idx.shape,
+                                                    dtype=np.int32)
+                band_idx = np.where(fleck_coin < fleck_probability,
+                                    fleck_variant, band_idx)
 
+        # Per-variant write
         for vi, v_idx in enumerate(variant_indices):
             v_mask = cs_slice & (band_idx == vi)
             if v_mask.any():
                 vol[y_s:y_e][v_mask] = v_idx
+
+        # S88 speckle write (sentinel cells)
+        if speckle_block_idx is not None:
+            sp_mask = cs_slice & (band_idx == _SPECKLE_SENTINEL)
+            if sp_mask.any():
+                vol[y_s:y_e][sp_mask] = speckle_block_idx
+
+        # S88 vein write — overrides everything else where applicable.
+        # Per-cell pick from vein_block_indices (1 or 2 blocks; uniform).
+        if _vein_active:
+            vein_coin = _vein_rng.random(band_idx.shape, dtype=np.float32)
+            vein_apply = (
+                cs_slice
+                & vein_field_2d[None, :, :]
+                & (vein_coin < vein_amp)
+            )
+            if vein_apply.any():
+                if _n_vein_blocks == 1:
+                    vol[y_s:y_e][vein_apply] = vein_block_indices[0]
+                else:
+                    # Per-cell block selection from the 2-element list
+                    vein_block_pick = _vein_rng.integers(
+                        0, _n_vein_blocks, size=band_idx.shape, dtype=np.int8
+                    )
+                    for _bi in range(_n_vein_blocks):
+                        _bm = vein_apply & (vein_block_pick == _bi)
+                        if _bm.any():
+                            vol[y_s:y_e][_bm] = vein_block_indices[_bi]
 
 
 def _fill_geology_layers(
@@ -502,43 +623,143 @@ def _fill_geology_layers(
     bb_mask = stone_mask & (abs_y <= bedrock_band_top_y)
     vol[bb_mask] = DEEPSLATE_IDX
 
-    # 5b. Basement rock with lithology-palette banding
-    #     Uses XZ waviness for natural-looking tilted strata, plus per-column
-    #     Y noise for organic folded band edges.
-    xz_waviness = _compute_xz_waviness(H, W, tile_world_x, tile_world_z, band_scale_y)
-
-    # Per-column Y noise: ±1 block (S69: tightened from ±3 per user for more
-    # columnar strata appearance).  Deterministic from world position.
-    _noise_rng = np.random.default_rng(tile_world_x * 73856093 ^ tile_world_z * 19349669)
-    col_y_noise = _noise_rng.integers(-1, 2, size=(H, W), dtype=np.int32)
-
-    # S87 walk #4 v5: basement fills the ENTIRE stone zone (sediment + soil
-    # writes removed above).  Was bounded by sed_bot_y; now extends up to
-    # stone_zone_top (= surface_y - 3) so lithology stone replaces what was
-    # previously plain stone + dirt layers.
+    # 5b. Basement rock with lithology-palette banding.
+    # S88: per-group `strata` config overrides hardcoded BAND_MIN/MAX/fleck.
+    # When a group has a strata block, use its 3-block palette + thickness
+    # range + speckle (palette[0] of the group's main palette) + vein.
+    # Without strata config, fall back to the S69 banded-fill behavior.
+    _BAND_MIN_DEFAULT = 4
+    _BAND_MAX_DEFAULT = 10
+    _LUT_SIZE = Y_RANGE * 2  # enough headroom for waviness + noise offsets
     basement_mask = stone_mask & (abs_y > bedrock_band_top_y)
 
-    # Band thickness range (randomised per group for natural variation)
-    _BAND_MIN = 4
-    _BAND_MAX = 10
-    _LUT_SIZE = Y_RANGE * 2  # enough headroom for waviness + noise offsets
+    # Pre-compute vein field ONCE per tile (shared across all groups);
+    # per-group vein_amp gates how strongly each lithology uses it.
+    _global_strata_cfg = lith_cfg.get("strata", {}) if isinstance(lith_cfg, dict) else {}
+    _vein_lap_thr = float(_global_strata_cfg.get("vein_lap_threshold", 4.0))
+    _vein_fault_scale = int(_global_strata_cfg.get("vein_fault_scale_blocks", 80))
+    _vein_fault_width = float(_global_strata_cfg.get("vein_fault_width", 0.08))
+    _vein_field = _compute_vein_field(
+        surface_y, tile_world_x, tile_world_z,
+        lap_threshold=_vein_lap_thr,
+        fault_scale_blocks=_vein_fault_scale,
+        fault_width=_vein_fault_width,
+    )
+
+    # Pre-compute organic XZ waviness (used by all groups; per-group tilt
+    # adds a linear directional offset on top in the loop below).
+    _base_waviness = _compute_xz_waviness(H, W, tile_world_x, tile_world_z, band_scale_y)
+    _row_world_z = np.arange(H, dtype=np.float32) + tile_world_z
+    _col_world_x = np.arange(W, dtype=np.float32) + tile_world_x
+
+    # Per-column Y noise field (will be sized per group from strata.noise_amp_blocks)
+    _noise_rng_default = np.random.default_rng(tile_world_x * 73856093 ^ tile_world_z * 19349669)
 
     for gid, palette_idx_list in id_to_pal.items():
         group_cols = (lithology_tile == gid)  # (H, W)
         if not group_cols.any():
             continue
-        # Deterministic seed per group + tile so bands differ between groups
+
+        # Find this group's name + strata block
+        _gname = None
+        _gdata = None
+        for _gn, _gd in groups.items():
+            if _gd.get("id") == gid:
+                _gname = _gn
+                _gdata = _gd
+                break
+        _strata = _gdata.get("strata") if _gdata else None
+
         _lut_seed = tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 2654435761
+
+        if _strata is not None:
+            # ── S88 strata path ──────────────────────────────────────────
+            # Use strata.palette (3 blocks), per-group thickness range,
+            # directional tilt, per-group speckle (to palette[0]), per-group vein.
+            _str_pal_names = _strata.get("palette", [])
+            if not _str_pal_names:
+                # No strata palette -> fall through to default banded
+                _strata = None
+            else:
+                _str_pal_idx = [pal.idx(b) for b in _str_pal_names]
+                _band_min = int(_strata.get("thickness_min", _BAND_MIN_DEFAULT))
+                _band_max = int(_strata.get("thickness_max", _BAND_MAX_DEFAULT))
+                _noise_amp = int(_strata.get("noise_amp_blocks", 1))
+                _tilt_per100 = float(_strata.get("tilt_per_100blocks", 0.0))
+                _tilt_dir_deg = float(_strata.get("tilt_dir_deg", 0.0))
+                _speckle_rate = float(_strata.get("speckle_rate", 0.0))
+                _vein_block_names = _strata.get("vein_blocks", [])
+                if not _vein_block_names:
+                    # back-compat: accept old single-string key
+                    _single = _strata.get("vein_block")
+                    if _single:
+                        _vein_block_names = [_single]
+                _vein_amp = float(_strata.get("vein_amp", 0.0))
+
+                # Speckle block = palette[0] of the group's main palette
+                _speckle_block_name = _gdata.get("palette", ["stone"])[0]
+                _speckle_block_idx = pal.idx(_speckle_block_name)
+
+                # Build LUT with per-group thickness range
+                band_lut = _build_band_lut(
+                    len(_str_pal_idx), _band_min, _band_max, _LUT_SIZE, _lut_seed,
+                )
+
+                # Per-group col Y noise: ± _noise_amp blocks (deterministic per tile+group)
+                _ng_rng = np.random.default_rng(
+                    (tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 1234567) & 0xFFFFFFFF
+                )
+                col_y_noise = _ng_rng.integers(
+                    -_noise_amp, _noise_amp + 1, size=(H, W), dtype=np.int32
+                )
+
+                # Directional tilt: Y offset = (tilt/100) * (x*cos + z*sin)
+                _tilt_rad = np.deg2rad(_tilt_dir_deg)
+                _tilt_offset_2d = (
+                    (_tilt_per100 / 100.0)
+                    * (_col_world_x[None, :] * np.cos(_tilt_rad)
+                       + _row_world_z[:, None] * np.sin(_tilt_rad))
+                ).astype(np.int32)
+                _tilted_waviness = _base_waviness + _tilt_offset_2d
+
+                # Resolve vein block indices (list of 1 or 2).  Veins are
+                # geologically "imported material" -- the user permits blocks
+                # outside the group's main palette set as a vein-only
+                # exception (S88 walk #1 user direction).
+                _vein_block_indices: list[int] = []
+                if _vein_block_names and _vein_amp > 0:
+                    for _vbn in _vein_block_names:
+                        try:
+                            _vein_block_indices.append(pal.idx(_vbn))
+                        except Exception:
+                            pass  # silently skip blocks not in MC palette
+
+                _apply_banded_fill(
+                    vol, basement_mask, group_cols, _tilted_waviness,
+                    _str_pal_idx, len(_str_pal_idx), band_scale_y,
+                    col_y_noise=col_y_noise,
+                    band_lut=band_lut,
+                    fleck_probability=_speckle_rate,
+                    fleck_seed=tile_world_x * 83492791 ^ tile_world_z * 46508633 ^ gid * 1779033703,
+                    speckle_block_idx=_speckle_block_idx,
+                    vein_field_2d=_vein_field,
+                    vein_block_indices=_vein_block_indices if _vein_block_indices else None,
+                    vein_amp=_vein_amp,
+                    vein_seed=tile_world_x * 53248917 ^ tile_world_z * 67280421 ^ gid * 0xCAFE,
+                )
+                continue  # skip the default path below
+
+        # ── Default (S69) banded fill for groups without strata config ────
+        col_y_noise = _noise_rng_default.integers(-1, 2, size=(H, W), dtype=np.int32)
         band_lut = _build_band_lut(
-            len(palette_idx_list), _BAND_MIN, _BAND_MAX, _LUT_SIZE, _lut_seed,
+            len(palette_idx_list), _BAND_MIN_DEFAULT, _BAND_MAX_DEFAULT,
+            _LUT_SIZE, _lut_seed,
         )
         _apply_banded_fill(
-            vol, basement_mask, group_cols, xz_waviness,
+            vol, basement_mask, group_cols, _base_waviness,
             palette_idx_list, len(palette_idx_list), band_scale_y,
             col_y_noise=col_y_noise,
             band_lut=band_lut,
-            # S69: subterranean-only light flecking — ~2.5% per voxel gets
-            # swapped to a random other block in the same group palette.
             fleck_probability=0.025,
             fleck_seed=tile_world_x * 83492791 ^ tile_world_z * 46508633 ^ gid * 1779033703,
         )

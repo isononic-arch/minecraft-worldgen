@@ -3718,7 +3718,26 @@
           "mud",
           "mud",
           "mud"
-        ]
+        ],
+        "strata": {
+          "palette": [
+            "granite",
+            "dripstone_block",
+            "raw_iron_block"
+          ],
+          "thickness_min": 16,
+          "thickness_max": 32,
+          "noise_amp_blocks": 5,
+          "tilt_per_100blocks": 0,
+          "tilt_dir_deg": 0,
+          "speckle_rate": 0.1,
+          "vein_blocks": [
+            "raw_iron_block",
+            "soul_soil"
+          ],
+          "vein_amp": 0.4,
+          "_comment": "Massive intrusive \u2014 thick irregular bands, no tilt, high speckle, iron+soul-soil pegmatite veins."
+        }
       },
       "arid_basaltic": {
         "id": 2,
@@ -3782,7 +3801,26 @@
           "pale_moss_block",
           "pale_moss_block",
           "pale_moss_block"
-        ]
+        ],
+        "strata": {
+          "palette": [
+            "basalt",
+            "smooth_basalt",
+            "tuff"
+          ],
+          "thickness_min": 8,
+          "thickness_max": 16,
+          "noise_amp_blocks": 3,
+          "tilt_per_100blocks": 2,
+          "tilt_dir_deg": 45,
+          "speckle_rate": 0.08,
+          "vein_blocks": [
+            "dead_fire_coral_block",
+            "dead_bubble_coral_block"
+          ],
+          "vein_amp": 0.2,
+          "_comment": "Volcanic lava flows \u2014 medium bands, mild tilt NE, fire+bubble coral dike veins (vein-only palette exception)."
+        }
       },
       "temperate_basaltic": {
         "id": 3,
@@ -3846,7 +3884,26 @@
           "tuff",
           "tuff",
           "tuff"
-        ]
+        ],
+        "strata": {
+          "palette": [
+            "deepslate",
+            "cobbled_deepslate",
+            "deepslate_coal_ore"
+          ],
+          "thickness_min": 6,
+          "thickness_max": 14,
+          "noise_amp_blocks": 2,
+          "tilt_per_100blocks": 5,
+          "tilt_dir_deg": 90,
+          "speckle_rate": 0.05,
+          "vein_blocks": [
+            "deepslate_coal_ore",
+            "tuff"
+          ],
+          "vein_amp": 0.5,
+          "_comment": "Metamorphic foliation \u2014 thin sharp bands, gentle E tilt, coal+tuff seams in fault zones."
+        }
       },
       "limestone": {
         "id": 4,
@@ -3910,7 +3967,26 @@
           "clay",
           "clay",
           "clay"
-        ]
+        ],
+        "strata": {
+          "palette": [
+            "calcite",
+            "diorite",
+            "dead_horn_coral_block"
+          ],
+          "thickness_min": 5,
+          "thickness_max": 12,
+          "noise_amp_blocks": 1,
+          "tilt_per_100blocks": 1,
+          "tilt_dir_deg": 0,
+          "speckle_rate": 0.1,
+          "vein_blocks": [
+            "dead_horn_coral_block",
+            "dead_fire_coral_block"
+          ],
+          "vein_amp": 0.3,
+          "_comment": "Sedimentary bedding \u2014 thin bands, near-flat, horn+fire coral seams along faults (fire is vein-only palette exception)."
+        }
       },
       "deepslate_metamorphic": {
         "id": 5,
@@ -3974,7 +4050,26 @@
           "dead_bubble_coral_block",
           "dead_bubble_coral_block",
           "dead_bubble_coral_block"
-        ]
+        ],
+        "strata": {
+          "palette": [
+            "andesite",
+            "stone",
+            "tuff"
+          ],
+          "thickness_min": 8,
+          "thickness_max": 16,
+          "noise_amp_blocks": 4,
+          "tilt_per_100blocks": 8,
+          "tilt_dir_deg": 30,
+          "speckle_rate": 0.06,
+          "vein_blocks": [
+            "dead_fire_coral_block",
+            "dead_bubble_coral_block"
+          ],
+          "vein_amp": 0.6,
+          "_comment": "Folded mountain metamorphic \u2014 medium bands, strong NNE tilt, prominent fire+bubble coral veins."
+        }
       },
       "mossy_temperate": {
         "id": 6,
@@ -4038,7 +4133,25 @@
           "soul_soil",
           "moss_block",
           "moss_block"
-        ]
+        ],
+        "strata": {
+          "palette": [
+            "cobblestone",
+            "mossy_cobblestone",
+            "tuff"
+          ],
+          "thickness_min": 10,
+          "thickness_max": 18,
+          "noise_amp_blocks": 3,
+          "tilt_per_100blocks": 2,
+          "tilt_dir_deg": 0,
+          "speckle_rate": 0.12,
+          "vein_blocks": [
+            "moss_block"
+          ],
+          "vein_amp": 0.3,
+          "_comment": "Wet temperate \u2014 medium-thick bands, mild dip, high weathering speckle, moss-filled fractures."
+        }
       }
     },
     "zone_to_group": {
@@ -4102,6 +4215,14 @@
       "dilation_blocks": 1,
       "fade_blocks": 6,
       "intensity_threshold": 64
+    },
+    "strata": {
+      "_comment": "S88: per-cell strata banding in basement column.  Vein detection: terrain Laplacian > lap_threshold AND |simplex_fault| < fault_width => vein candidate.  Veins follow ridge lines + organic fault curves -- not flat diagonals.",
+      "vein_lap_threshold": 4.0,
+      "vein_fault_scale_blocks": 80,
+      "vein_fault_width": 0.08,
+      "noise_scale_blocks": 80,
+      "n_bands_per_palette": 3
     }
   },
   "surface_pipeline": {
