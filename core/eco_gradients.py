@@ -508,21 +508,21 @@ def compute_eco_gradients(
         water_mask_re = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
         _sy_f = sy  # float32 surface_y, already computed above
 
-        # ── Rock gap — Norterre-intense slope-gated fade band (S88) ──
-        # Per user S88 walk-feedback (Norterre photo aesthetic target):
-        #   < 25 deg: NO rock_gap (foothills + plateaus get grass/soil)
-        #   25-40 deg: SQRT-FRONT-LOADED fade → rock probability rises fast in
-        #     the foothill range (25-32°), settles toward 1.0 by 35-40°
-        #   >= 40 deg: SOLID rock_gap (true cliff/mountain faces)
-        # Shape change: linear → sqrt curve.  At 30° (midway) linear gives
-        # 33% prob; sqrt gives 58%.  Foothill rock outcrops become visible
-        # without losing cliff dominance at the top of the band.
-        # Plus S88 aspect modulator: SW-facing slopes (sunny, dry) get +amp%
-        # rock_gap probability; NE-facing (shaded, wet) -amp%.
-        # Rock-gap mask from Gaea still provides organic boundary dither
-        # WITHIN the slope-allowed band; we just gate which pixels are eligible.
-        ROCK_SLOPE_FADE_START = 25.0  # degrees — fade begins (was 35.0)
-        ROCK_SLOPE_SOLID = 40.0       # degrees — solid rock at/above (was 45.0)
+        # ── Rock gap — Norterre-intense + S88-walk2 hole-fix ──
+        # Per user S88 walk #2 feedback: "rock_gap has lots of 'holes' exposing
+        # dirt and surface underneath, even where slope should fire."  The
+        # 25-40° linear fade with per-pixel sqrt coin was leaving 30-40% of
+        # 28-32° cells unrock'd -> Swiss-cheese cliff faces.
+        # Tightened fade window 25-32° (was 25-40°) so anything >= 32° is
+        # solid rock.  Plus a probability FLOOR (0.40 default) so the
+        # foothill fade band (25-32°) ALWAYS shows at least 40% rock --
+        # no Swiss cheese.
+        # Beyond 32°: strata-on-surface painter takes over per the new
+        # layer stack (surface_decorator).
+        # Plus aspect modulator: SW-facing +amp, NE-facing -amp.
+        ROCK_SLOPE_FADE_START = 25.0  # degrees — fade begins
+        ROCK_SLOPE_SOLID = 32.0       # degrees — solid rock at/above (was 40.0)
+        ROCK_PROB_FLOOR = 0.40        # min probability inside the fade band
         if rock_gap is not None:
             _rg = rock_gap > 0.001  # uint8 {0,1} normalized to {0, 1/255}
             # SQRT ramp from FADE_START -> SOLID: front-loaded probability so
@@ -533,6 +533,16 @@ def compute_eco_gradients(
                 0.0, 1.0,
             ).astype(np.float32)
             _slope_prob = np.sqrt(_linear).astype(np.float32)
+            # S88 walk #2: probability floor inside the fade band so foothills
+            # always show rock (no Swiss-cheese holes).  Only applied where
+            # we're inside the fade window (cliff_deg >= FADE_START).
+            _in_fade = cliff_deg >= ROCK_SLOPE_FADE_START
+            _slope_prob = np.where(
+                _in_fade,
+                np.maximum(_slope_prob, ROCK_PROB_FLOOR),
+                _slope_prob,
+            ).astype(np.float32)
+            del _in_fade
             # S88 aspect modulator — SW-facing +amp, NE-facing -amp.
             # tile_streamer normalises uint8 → float32 [0,1] (byte/255).
             # Recover the byte to detect the sentinel (255 = flat terrain).

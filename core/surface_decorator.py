@@ -1110,6 +1110,172 @@ def _apply_snow_carpet(
         ground_cover[place_snow] = "snow[layers=1]"
 
 
+def _apply_strata_surface(
+    surface_blocks:    np.ndarray,
+    subsurface_blocks: np.ndarray,
+    surface_y:         np.ndarray,
+    biome_grid:        np.ndarray,
+    lithology_tile:    np.ndarray | None,
+    cliff_deg:         np.ndarray | None,
+    river_meta:        np.ndarray | None,
+    gap_mask:          np.ndarray | None,
+    cfg:               dict,
+    tile_x:            int,
+    tile_y:            int,
+) -> None:
+    """S88 walk #2: paint STRATA-banded blocks on surface_blk + sub_blk where
+    slope >= lithology.strata.surface_min_deg (default 32°).  This makes
+    strata bands visible at cliff tops and faces, not just at the basement
+    cliff-side cross-section.
+
+    Y-banding formula matches chunk_writer._fill_geology_layers basement
+    fill exactly (same band_lut seed, same xz_waviness, same col_y_noise,
+    same tilt formula).  Result: a strata band spanning multiple Y values
+    looks continuous from cliff TOP (painted here) down through cliff FACE
+    and into the basement -- no horizontal seam at sy-2.
+
+    Exclusions: river_meta>0 (water), gap==4 (floodplain), gap==7 (snow).
+    Operates IN-PLACE on surface_blocks + subsurface_blocks.
+    """
+    if cliff_deg is None:
+        return
+    litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
+    groups = litho_cfg.get("groups", {})
+    if not groups:
+        return
+    H, W = surface_y.shape
+    strata_global = litho_cfg.get("strata", {})
+    surface_min_deg = float(strata_global.get("surface_min_deg", 32.0))
+
+    steep = cliff_deg >= surface_min_deg
+    if not steep.any():
+        return
+
+    # Exclusion mask: water + floodplain + snow
+    excl = np.zeros((H, W), dtype=bool)
+    if river_meta is not None:
+        excl |= (river_meta > 0)
+    if gap_mask is not None:
+        excl |= (gap_mask == 4)
+        excl |= (gap_mask == 7)
+    if not (steep & ~excl).any():
+        return
+
+    # Lithology resolved at full tile resolution
+    if lithology_tile is not None and lithology_tile.shape != (H, W):
+        from scipy.ndimage import zoom as _sd_zoom
+        _zh = H / lithology_tile.shape[0]
+        _zw = W / lithology_tile.shape[1]
+        litho_at_res = _sd_zoom(lithology_tile, (_zh, _zw), order=0)
+    else:
+        litho_at_res = lithology_tile
+
+    # Import helpers from chunk_writer so the band schedule + waviness
+    # match chunk_writer's basement fill exactly.
+    from core.chunk_writer import (
+        _build_band_lut, _compute_xz_waviness, Y_RANGE,
+    )
+
+    tile_world_x = tile_x * W
+    tile_world_z = tile_y * H
+    _LUT_SIZE = Y_RANGE * 2
+
+    # band_scale_y default — matches chunk_writer's typical 8-10 value
+    # (used only for the waviness amplitude, since band_lut overrides bands)
+    _band_scale_y = int(litho_cfg.get("band_scale_y", 10))
+    base_waviness = _compute_xz_waviness(
+        H, W, tile_world_x, tile_world_z, _band_scale_y
+    )
+    col_world_x = (np.arange(W, dtype=np.float32) + tile_world_x)
+    row_world_z = (np.arange(H, dtype=np.float32) + tile_world_z)
+
+    for gname, gdata in groups.items():
+        strata = gdata.get("strata")
+        if not strata:
+            continue
+        str_pal_names = strata.get("palette", [])
+        if not str_pal_names:
+            continue
+        gid = int(gdata.get("id", 0))
+
+        # Per-group mask: steep + this lithology + not excluded
+        if litho_at_res is not None:
+            group_cols = (litho_at_res == gid)
+        else:
+            # No lithology mask -- biome-based fallback via zone_to_group
+            _z2g = litho_cfg.get("zone_to_group", {})
+            group_cols = np.zeros((H, W), dtype=bool)
+            for _bn, _gn in _z2g.items():
+                if _gn == gname:
+                    group_cols |= (biome_grid == _bn)
+        paint_mask = steep & group_cols & ~excl
+        if not paint_mask.any():
+            continue
+
+        band_min = int(strata.get("thickness_min", 4))
+        band_max = int(strata.get("thickness_max", 10))
+        noise_amp = int(strata.get("noise_amp_blocks", 1))
+        tilt_per100 = float(strata.get("tilt_per_100blocks", 0.0))
+        tilt_dir_deg = float(strata.get("tilt_dir_deg", 0.0))
+        speckle_rate = float(strata.get("speckle_rate", 0.0))
+        speckle_block = gdata.get("palette", ["stone"])[0]
+
+        # Same band LUT seed as chunk_writer._fill_geology_layers
+        lut_seed = tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 2654435761
+        band_lut = _build_band_lut(
+            len(str_pal_names), band_min, band_max, _LUT_SIZE, lut_seed,
+        )
+
+        # Same col_y_noise as chunk_writer (same RNG seed per group)
+        ng_rng = np.random.default_rng(
+            (tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 1234567) & 0xFFFFFFFF
+        )
+        col_y_noise = ng_rng.integers(
+            -noise_amp, noise_amp + 1, size=(H, W), dtype=np.int32
+        )
+
+        # Same tilt formula as chunk_writer
+        tilt_rad = np.deg2rad(tilt_dir_deg)
+        tilt_offset_2d = (
+            (tilt_per100 / 100.0)
+            * (col_world_x[None, :] * np.cos(tilt_rad)
+               + row_world_z[:, None] * np.sin(tilt_rad))
+        ).astype(np.int32)
+
+        # y_eff for sy and sy-1
+        y_eff_sy = (
+            surface_y.astype(np.int32) + base_waviness + col_y_noise + tilt_offset_2d
+        )
+        y_eff_sub = y_eff_sy - 1
+        band_idx_sy = band_lut[np.abs(y_eff_sy).astype(np.int32) % _LUT_SIZE]
+        band_idx_sub = band_lut[np.abs(y_eff_sub).astype(np.int32) % _LUT_SIZE]
+
+        # Per-cell speckle coin (deterministic per-tile-per-group)
+        sp_mask_sy = np.zeros((H, W), dtype=bool)
+        sp_mask_sub = np.zeros((H, W), dtype=bool)
+        if speckle_rate > 0:
+            sp_rng = np.random.default_rng(
+                (tile_world_x * 83492791 ^ tile_world_z * 46508633 ^ gid * 1779033703) & 0xFFFFFFFF
+            )
+            sp_mask_sy = paint_mask & (sp_rng.random((H, W), dtype=np.float32) < speckle_rate)
+            sp_mask_sub = paint_mask & (sp_rng.random((H, W), dtype=np.float32) < speckle_rate)
+
+        # Write per-band (skip speckle cells)
+        for vi, blk in enumerate(str_pal_names):
+            _m_sy = paint_mask & (band_idx_sy == vi) & ~sp_mask_sy
+            if _m_sy.any():
+                surface_blocks[_m_sy] = blk
+            _m_sub = paint_mask & (band_idx_sub == vi) & ~sp_mask_sub
+            if _m_sub.any():
+                subsurface_blocks[_m_sub] = blk
+
+        # Speckle overrides last
+        if sp_mask_sy.any():
+            surface_blocks[sp_mask_sy] = speckle_block
+        if sp_mask_sub.any():
+            subsurface_blocks[sp_mask_sub] = speckle_block
+
+
 def _flatten_dune_regions(
     surface_y: np.ndarray,
     gap_mask: np.ndarray,
@@ -1897,6 +2063,28 @@ def decorate_surface(
                     del _wash_zone
 
                 del _rng, _scatter
+
+            # ── S88 walk #2: STRATA SURFACE PAINT ──────────────────────────
+            # Strata bands extend up through surface_blk + sub_blk on slopes
+            # >= lithology.strata.surface_min_deg (default 32°).  Fires
+            # REGARDLESS of gap_mask -- on a steep cliff face that misses
+            # rock_gap detection, strata still wins.  Y-band schedule matches
+            # chunk_writer's basement fill exactly so bands continue smoothly
+            # from cliff TOP through the FACE into the basement -- no seam at
+            # the dirt layer.
+            _apply_strata_surface(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                surface_y         = surface_y,
+                biome_grid        = biome_grid,
+                lithology_tile    = lithology_tile,
+                cliff_deg         = cliff_deg,
+                river_meta        = river_meta,
+                gap_mask          = _gap,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
+            )
 
             # ── S88 terrain-derived painters ───────────────────────────────
             # bedrock_drainage / talus_apron / cliff_cap, in that order.
