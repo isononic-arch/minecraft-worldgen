@@ -372,7 +372,12 @@ def _process_tile(args: dict) -> dict:
         _crunch_amp = int(_crunch_cfg.get("amplitude_blocks", 1))
         _fade_start = float(_crunch_cfg.get("slope_fade_start_deg", 35.0))
         _slope_full = float(_crunch_cfg.get("slope_full_deg", 45.0))
-        _river_fade_blocks = float(_crunch_cfg.get("river_fade_blocks", 8.0))
+        # S87 walk #4 v4: turn intensity DOWN + fades UP.
+        _river_fade_blocks = float(_crunch_cfg.get("river_fade_blocks", 14.0))  # was 8
+        # Cap on max probability of displacement at full slope.  prob=1.0 was
+        # too intense; cap at 0.5 means even on steep cliffs only half the
+        # eligible pixels crunch -- sparser, less harsh.
+        _prob_cap = float(_crunch_cfg.get("probability_cap", 0.5))
         import numpy as _np_crunch
         _H, _W = surface_y.shape
         # Amplitude scalar per pixel: 0 below fade_start, 1 above slope_full.
@@ -391,7 +396,7 @@ def _process_tile(args: dict) -> dict:
         if river_meta is not None and (river_meta > 0).any():
             from scipy.ndimage import distance_transform_edt as _dt_river
             from scipy.ndimage import binary_dilation as _bd_river
-            _bank_radius = int(_crunch_cfg.get("river_bank_blocks", 5))
+            _bank_radius = int(_crunch_cfg.get("river_bank_blocks", 8))  # was 5
             _river_zone = _bd_river(river_meta > 0, iterations=_bank_radius)
             _river_dist = _dt_river(~_river_zone).astype(_np_crunch.float32)
             _river_fade = _np_crunch.clip(
@@ -411,7 +416,7 @@ def _process_tile(args: dict) -> dict:
                 _wash_mask = (_gap == 5) & (_flow > 0.002)
                 if _wash_mask.any():
                     from scipy.ndimage import distance_transform_edt as _dt_wash
-                    _wash_fade_blocks = float(_crunch_cfg.get("wash_fade_blocks", 3.0))
+                    _wash_fade_blocks = float(_crunch_cfg.get("wash_fade_blocks", 6.0))  # was 3
                     _wash_dist = _dt_wash(~_wash_mask).astype(_np_crunch.float32)
                     _wash_fade = _np_crunch.clip(
                         _wash_dist / max(0.5, _wash_fade_blocks), 0.0, 1.0
@@ -445,8 +450,9 @@ def _process_tile(args: dict) -> dict:
             _hh2 = _hh2 ^ (_hh2 >> _np_crunch.uint64(32))
             _u_apply = (_hh2.astype(_np_crunch.float64)
                         / _np_crunch.float64(_np_crunch.iinfo(_np_crunch.uint64).max)).astype(_np_crunch.float32)
-            # Probability check + signed full displacement.
-            _apply = _u_apply < _amp_scale
+            # S87 walk #4 v4: cap probability at _prob_cap so even at full
+            # slope we get sparser noise (less intense).
+            _apply = _u_apply < (_amp_scale * _prob_cap)
             _signed = _np_crunch.where(_u01 < 0.5, -_crunch_amp, _crunch_amp).astype(_np_crunch.int16)
             _disp_int = _np_crunch.where(_apply, _signed, 0).astype(_np_crunch.int16)
             _new_y = surface_y.astype(_np_crunch.int16) + _disp_int
@@ -1093,8 +1099,18 @@ def _process_tile(args: dict) -> dict:
         # fixes can perturb surface_y at rock pixels; the lock ensures the
         # final Y matches what schematic placement (Step 8) saw.  Without
         # this, trees float and trunk extension fires to MAX_TRUNK_EXT=6.
+        # S87 walk #4 v4: DEFENSIVE -- skip any pixel within river bank
+        # dilation zone, even if the river_fade should have already zeroed
+        # them out.  User reported "dry staircased river" regression -- the
+        # lock was likely stomping Step 9's WP-style water-bank lowering.
         if _crunch_lock_y is not None and _crunch_rock_mask is not None:
-            surface_y[_crunch_rock_mask] = _crunch_lock_y[_crunch_rock_mask]
+            _final_mask = _crunch_rock_mask
+            if river_meta is not None and (river_meta > 0).any():
+                from scipy.ndimage import binary_dilation as _bd_lock
+                _river_zone_lock = _bd_lock(river_meta > 0, iterations=8)
+                _final_mask = _crunch_rock_mask & ~_river_zone_lock
+                del _river_zone_lock
+            surface_y[_final_mask] = _crunch_lock_y[_final_mask]
 
         core_chunk.write_tile(
             surface_y    = surface_y,
