@@ -252,18 +252,36 @@ def carve_rivers(
     everywhere (no per-pixel water surface; chunk_writer falls back to lake
     handling + standard river_meta for water emission).
     """
-    # If no hydro masks AND no precomputed centerline, fall back to legacy carver.
-    # NOTE: hydro_lake counts — tiles with lakes but no rivers (e.g. inland
-    # closed basins) MUST run the new carver to get terrain-intersection lake
-    # painting; the legacy carver knows nothing about hydro_lake. Without
-    # this, lake-only tiles like (30,49) silently dry up. (S80 v24 fix.)
+    # S88: LEGACY FALLBACK REMOVED.
+    #
+    # Previously, when no precompute mask had data for a tile AND the painted
+    # overlay didn't populate hydro_centerline (e.g. (13,82) RFC where the
+    # painted river polygon sits at the tile's edge and doesn't rasterize
+    # into the 50k centerline grid), this branch fell through to the
+    # flow-threshold-based core/river_carver.py.
+    #
+    # Side effect: legacy carver hallucinates rivers from `flow > threshold`
+    # at locations that DO NOT MATCH the painted/precompute rivers. It sets
+    # river_meta on those wrong pixels, but does not return water_y_field,
+    # so the v2 wrapper backfills water_y_field = -1 everywhere. Result:
+    #   - surface_decorator sees river_meta>0 and paints bank materials
+    #     (mud/coarse_dirt/grass_block/clay) at the hallucinated location
+    #   - chunk_writer's river_water_mask = (abs_y <= -999) is empty -> no
+    #     water placed
+    #   - Visible: "ghost river" strip of dirty terrain with NO water, in
+    #     the wrong place compared to where the user actually painted.
+    #
+    # New behaviour: if no precompute data exists for the tile, return
+    # empty river_meta + empty water_y_field. No rivers carved at all.
+    # Better than a ghost river in the wrong location. The painted overlay
+    # is responsible for delivering hydro_centerline/hydro_depth -- if it
+    # doesn't, the carver no-ops cleanly.
     _has_any_hydro = ((hydro_order is not None and hydro_order.max() > 0)
                       or (hydro_centerline is not None and hydro_centerline.max() > 0)
                       or (hydro_lake is not None and hydro_lake.max() > 0))
     if not _has_any_hydro:
-        from core.river_carver import carve_rivers as _legacy
-        sy, rm = _legacy(surface_y, flow_tile, river_tile, cfg)
-        return (sy, rm,
+        return (surface_y.copy(),
+                np.zeros(surface_y.shape, dtype=np.uint8),
                 np.zeros(surface_y.shape, dtype=bool),
                 np.full(surface_y.shape, -1, dtype=np.int16))
 
