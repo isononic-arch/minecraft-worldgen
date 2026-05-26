@@ -78,10 +78,15 @@ scp -q root@"$IP":/root/minecraft-worldgen/output/r.*.mca "$OUT_DIR/" 2>&1
 COLLECTED=$(ls "$OUT_DIR"/*.mca 2>/dev/null | wc -l)
 echo "  $COLLECTED MCAs in $OUT_DIR/"
 
-step "STEP 8  Auto-install"
-if [ -d "$VANDIRTEST10" ]; then
-  cp -f "$OUT_DIR"/*.mca "$VANDIRTEST10/"
-  echo "  installed to Vandirtest10"
+NO_INSTALL="${NO_INSTALL:-0}"
+if [ "$NO_INSTALL" = "1" ]; then
+  step "STEP 8  Auto-install SKIPPED (NO_INSTALL=1) -- MCAs in $OUT_DIR/"
+else
+  step "STEP 8  Auto-install"
+  if [ -d "$VANDIRTEST10" ]; then
+    cp -f "$OUT_DIR"/*.mca "$VANDIRTEST10/"
+    echo "  installed to Vandirtest10"
+  fi
 fi
 
 ELAPSED=$(( ($(date +%s) - START_TIME) / 60 ))
