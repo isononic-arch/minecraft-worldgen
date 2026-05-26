@@ -238,6 +238,7 @@ def compute_eco_gradients(
     sand_dunes: np.ndarray | None = None,           # (H, W) float32 [0,1] — sand dune mask
     beach: np.ndarray | None = None,                # (H, W) float32 [0,1] — beach proximity mask
     override_tile: np.ndarray | None = None,        # (H, W) float32 [0,1] — raw override zone values (S57: zone 40 detection)
+    aspect_tile: np.ndarray | None = None,          # (H, W) uint8 0..254 compass (255 = flat sentinel) — S88
 ) -> EcoGradients:
     """Compute all ecological gradients for a single tile.
 
@@ -507,23 +508,55 @@ def compute_eco_gradients(
         water_mask_re = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
         _sy_f = sy  # float32 surface_y, already computed above
 
-        # ── Rock gap — slope-gated with 35-45 deg fade band (S86) ──
-        # Per WorldPainter convention + user S86 feedback:
-        #   < 35 deg: NO rock_gap (foothills + plateaus get grass/soil)
-        #   35-45 deg: linear fade 0->1 probability (foothill blending)
-        #   >= 45 deg: SOLID rock_gap (true cliff/mountain faces)
+        # ── Rock gap — Norterre-intense slope-gated fade band (S88) ──
+        # Per user S88 walk-feedback (Norterre photo aesthetic target):
+        #   < 25 deg: NO rock_gap (foothills + plateaus get grass/soil)
+        #   25-40 deg: SQRT-FRONT-LOADED fade → rock probability rises fast in
+        #     the foothill range (25-32°), settles toward 1.0 by 35-40°
+        #   >= 40 deg: SOLID rock_gap (true cliff/mountain faces)
+        # Shape change: linear → sqrt curve.  At 30° (midway) linear gives
+        # 33% prob; sqrt gives 58%.  Foothill rock outcrops become visible
+        # without losing cliff dominance at the top of the band.
+        # Plus S88 aspect modulator: SW-facing slopes (sunny, dry) get +amp%
+        # rock_gap probability; NE-facing (shaded, wet) -amp%.
         # Rock-gap mask from Gaea still provides organic boundary dither
         # WITHIN the slope-allowed band; we just gate which pixels are eligible.
-        # ROCK_Y_FLOOR/CEIL constants retained above for reference but unused.
-        ROCK_SLOPE_FADE_START = 35.0  # degrees — fade begins
-        ROCK_SLOPE_SOLID = 45.0       # degrees — solid rock at/above
+        ROCK_SLOPE_FADE_START = 25.0  # degrees — fade begins (was 35.0)
+        ROCK_SLOPE_SOLID = 40.0       # degrees — solid rock at/above (was 45.0)
         if rock_gap is not None:
             _rg = rock_gap > 0.001  # uint8 {0,1} normalized to {0, 1/255}
-            # Linear ramp from FADE_START -> SOLID gives probability in [0, 1]
-            _slope_prob = np.clip(
+            # SQRT ramp from FADE_START -> SOLID: front-loaded probability so
+            # the new foothill band (25-32°) carries visible rock without
+            # waiting for the cliff zone (35-40°).
+            _linear = np.clip(
                 (cliff_deg - ROCK_SLOPE_FADE_START) / (ROCK_SLOPE_SOLID - ROCK_SLOPE_FADE_START),
                 0.0, 1.0,
             ).astype(np.float32)
+            _slope_prob = np.sqrt(_linear).astype(np.float32)
+            # S88 aspect modulator — SW-facing +amp, NE-facing -amp.
+            # tile_streamer normalises uint8 → float32 [0,1] (byte/255).
+            # Recover the byte to detect the sentinel (255 = flat terrain).
+            # aspect byte 0..254 maps to 0..(360 - 360/255)°.
+            if aspect_tile is not None:
+                _ag_cfg = cfg.get("eco_gradients", {}).get("aspect", {})
+                _amp = float(_ag_cfg.get("modifier_amplitude", 0.30))
+                _peak_az = float(_ag_cfg.get("peak_azimuth_deg", 225.0))
+                _aspect_byte = np.round(aspect_tile * 255.0).astype(np.int32)
+                _aspect_valid = _aspect_byte < 255  # 255 = sentinel
+                _aspect_rad = (_aspect_byte.astype(np.float32)
+                               * (2.0 * np.pi / 256.0) - np.pi)
+                _peak_rad = (_peak_az * np.pi / 180.0) - np.pi
+                _sw_factor = np.cos(_aspect_rad - _peak_rad).astype(np.float32)
+                _rock_modifier = np.ones_like(_slope_prob)
+                _rock_modifier[_aspect_valid] = (
+                    1.0 + _amp * _sw_factor[_aspect_valid]
+                )
+                _slope_prob = np.clip(
+                    _slope_prob * _rock_modifier, 0.0, 1.0
+                ).astype(np.float32)
+                del _aspect_byte, _aspect_valid, _aspect_rad
+                del _sw_factor, _rock_modifier
+            del _linear
             # S86 seam-fix: per-pixel deterministic hash on WORLD coords so
             # adjacent tiles compute the same coin at shared seam pixels.
             # Previous per-tile-seeded RNG produced visible seam lines because

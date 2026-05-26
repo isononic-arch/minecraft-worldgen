@@ -2279,8 +2279,8 @@
     "riparian_max_distance_px": 32,
     "lake_fringe_max_distance_px": 16,
     "aspect": {
-      "_comment": "S88: rock_gap probability modulator. SW-facing (sunny/dry) slopes multiplied by 1 + amplitude*cos(aspect - peak); NE-facing get the negative. Below slope_min_deg, aspect ignored (sentinel byte 255).",
-      "modifier_amplitude": 0.2,
+      "_comment": "S88: rock_gap probability modulator. SW-facing (sunny/dry) slopes multiplied by 1 + amplitude*cos(aspect - peak); NE-facing get the negative. Below slope_min_deg, aspect ignored (sentinel byte 255). amplitude bumped 0.20 -> 0.30 for Norterre-intense SW/NE contrast.",
+      "modifier_amplitude": 0.3,
       "peak_azimuth_deg": 225.0,
       "slope_min_deg": 5.0
     }

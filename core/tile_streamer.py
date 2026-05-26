@@ -40,6 +40,11 @@ MASK_NAMES = [
     "snow_gap",
     "sand_dunes",
     "beach",
+    # S88 terrain-derived masks (built by tools/build_terrain_derived.py)
+    "aspect",
+    "cliff_cap",
+    "talus_apron",
+    "bedrock_drainage",
 ]
 
 

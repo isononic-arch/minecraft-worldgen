@@ -258,6 +258,7 @@ def _process_tile(args: dict) -> dict:
         sand_dunes = masks.get("sand_dunes"),
         beach = masks.get("beach"),
         override_tile = masks.get("override"),
+        aspect_tile = masks.get("aspect"),  # S88: rock_gap probability modulator
     )
 
     # ---- Step 6c: REMOVED S58 ----
@@ -427,6 +428,17 @@ def _process_tile(args: dict) -> dict:
                     )
                     _amp_scale[_wash_zone_full] = 0.0
                     del _wash_core, _wash_zone_full
+        # S88: talus exclusion — talus aprons are soft/depositional, like
+        # washes.  Cliff_cap and bedrock_drainage are NOT excluded (hard
+        # erosion, block-scale weathering is realistic).
+        _talus_tile = masks.get("talus_apron") if isinstance(masks, dict) else None
+        if _talus_tile is not None:
+            _talus_cfg_p2a = cfg.get("lithology", {}).get("talus", {})
+            if bool(_talus_cfg_p2a.get("phase2a_exclude", True)):
+                _talus_thr = int(_talus_cfg_p2a.get("intensity_threshold", 64))
+                _talus_byte = (_talus_tile * 255.0).astype(_np_crunch.int32)
+                _amp_scale[_talus_byte >= _talus_thr] = 0.0
+                del _talus_byte
         if (_amp_scale > 0).any():
             # splitmix64 hash on world (x, z) -> uniform [0, 1)
             _wx = (tile_x * _W + _np_crunch.arange(_W, dtype=_np_crunch.uint64))[None, :]
@@ -553,6 +565,11 @@ def _process_tile(args: dict) -> dict:
         lithology_tile = lithology_tile if _use_sp else None,
         clearing_field = clearing_field,
         biome_grid_padded = biome_grid_padded,
+        # S88: 3 terrain-derived rock-variant masks (cap, talus, bedrock).
+        # decorate_surface will skip painting where the tile is None.
+        cliff_cap_tile = masks.get("cliff_cap"),
+        talus_apron_tile = masks.get("talus_apron"),
+        bedrock_drainage_tile = masks.get("bedrock_drainage"),
     )
 
     # ---- Step 8: Schematic placement ----

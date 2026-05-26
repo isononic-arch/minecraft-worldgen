@@ -1282,6 +1282,9 @@ def decorate_surface(
     lithology_tile: np.ndarray | None = None,  # (H/8, W/8) uint8 lithology group IDs — upscaled internally
     clearing_field: np.ndarray | None = None,  # (H, W) float32 [0,1] — meadow clearing noise (S57 Phase 3a)
     biome_grid_padded: np.ndarray | None = None,  # (H+2*pad, W+2*pad) str — neighbour-tile biome halo (S58 Phase 3b)
+    cliff_cap_tile: np.ndarray | None = None,         # (H, W) float32 [0,1] — cap-rock intensity (S88)
+    talus_apron_tile: np.ndarray | None = None,       # (H, W) float32 [0,1] — debris-apron intensity (S88)
+    bedrock_drainage_tile: np.ndarray | None = None,  # (H, W) float32 [0,1] — water-cut rock intensity (S88)
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute surface and subsurface block arrays for a tile.
@@ -1884,6 +1887,153 @@ def decorate_surface(
                     del _wash_zone
 
                 del _rng, _scatter
+
+            # ── S88 terrain-derived painters ───────────────────────────────
+            # bedrock_drainage / talus_apron / cliff_cap, in that order.
+            # Each uses its own intensity_threshold from config; each shares
+            # the same lithology-group→palette pattern as the wash painter
+            # above.  Snake-cased palette keys: cap_palette, talus_palette,
+            # bedrock_drainage_palette.
+            #
+            # Exclusions per painter (so we don't paint over water, snow, etc):
+            #   bedrock_drainage  → skip river_meta>0, gap==4 (floodplain)
+            #   talus_apron       → skip river_meta>0, gap==4 (floodplain)
+            #   cliff_cap         → skip river_meta>0, gap==7 (snow wins)
+            #
+            # All three honour the per-pixel lithology group via
+            # _litho_at_res (set above) with biome fallback for unpainted
+            # pixels (lithology id 0).
+            _s88_lcfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
+            _s88_groups = _s88_lcfg.get("groups", {})
+            _s88_z2g = _s88_lcfg.get("zone_to_group", {})
+
+            def _s88_apply_painter(
+                mask_tile,
+                cfg_section: dict,
+                palette_key: str,
+                paint_subsurface: bool,
+                exclusion_mask: np.ndarray,
+                rng_salt: int,
+                default_palette: list[str],
+            ) -> None:
+                """Paint `palette_key` per-pixel where mask_tile >= threshold.
+                exclusion_mask: pixels where painting is forbidden."""
+                if mask_tile is None:
+                    return
+                intensity_threshold = int(cfg_section.get("intensity_threshold", 64))
+                # mask is float32 [0,1] from tile_streamer (uint8/255).
+                # Convert back to 0..255 byte space for threshold comparison.
+                intensity_byte = (mask_tile * 255.0).astype(np.int32)
+                paint_zone = (intensity_byte >= intensity_threshold) & ~exclusion_mask
+                if not paint_zone.any():
+                    return
+                # Build per-group palette LUT
+                gid_to_pal_local: dict[int, list] = {}
+                for _gn, _gd in _s88_groups.items():
+                    _gid = int(_gd.get("id", 0))
+                    gid_to_pal_local[_gid] = (
+                        _gd.get(palette_key) or default_palette
+                    )
+                def _pal_for_biome_local(bname: str) -> list:
+                    g = _s88_z2g.get(bname)
+                    if g and g in _s88_groups:
+                        p = _s88_groups[g].get(palette_key)
+                        if p:
+                            return p
+                    return default_palette
+
+                _s88_rng = np.random.default_rng(
+                    tile_x * 48271 ^ tile_y * 31337 ^ rng_salt)
+
+                if _litho_at_res is not None:
+                    for _gid_u in np.unique(_litho_at_res[paint_zone]):
+                        _gid = int(_gid_u)
+                        _bm = paint_zone & (_litho_at_res == _gid)
+                        if not _bm.any():
+                            continue
+                        if _gid == 0:
+                            # unpainted → per-biome fallback
+                            for _bn in np.unique(biome_grid[_bm]):
+                                _bm_b = _bm & (biome_grid == _bn)
+                                if not _bm_b.any():
+                                    continue
+                                _pal = _pal_for_biome_local(str(_bn))
+                                _arr = np.asarray(_pal, dtype=object)
+                                _n_px = int(_bm_b.sum())
+                                surface_blocks[_bm_b] = _arr[
+                                    _s88_rng.integers(0, len(_pal), size=_n_px)
+                                ]
+                                if paint_subsurface:
+                                    subsurface_blocks[_bm_b] = _arr[
+                                        _s88_rng.integers(0, len(_pal), size=_n_px)
+                                    ]
+                        else:
+                            _pal = gid_to_pal_local.get(_gid, default_palette)
+                            _arr = np.asarray(_pal, dtype=object)
+                            _n_px = int(_bm.sum())
+                            surface_blocks[_bm] = _arr[
+                                _s88_rng.integers(0, len(_pal), size=_n_px)
+                            ]
+                            if paint_subsurface:
+                                subsurface_blocks[_bm] = _arr[
+                                    _s88_rng.integers(0, len(_pal), size=_n_px)
+                                ]
+                else:
+                    # No lithology mask — per-biome only
+                    for _bn in np.unique(biome_grid[paint_zone]):
+                        _bm_b = paint_zone & (biome_grid == _bn)
+                        if not _bm_b.any():
+                            continue
+                        _pal = _pal_for_biome_local(str(_bn))
+                        _arr = np.asarray(_pal, dtype=object)
+                        _n_px = int(_bm_b.sum())
+                        surface_blocks[_bm_b] = _arr[
+                            _s88_rng.integers(0, len(_pal), size=_n_px)
+                        ]
+                        if paint_subsurface:
+                            subsurface_blocks[_bm_b] = _arr[
+                                _s88_rng.integers(0, len(_pal), size=_n_px)
+                            ]
+
+            # Build per-painter exclusion masks
+            _river_excl = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
+            _flood_excl = (_gap == 4)
+            _snow_excl = (_gap == 7)
+
+            # 1. bedrock_drainage — paints surface + sub (uniform rock column)
+            _s88_apply_painter(
+                mask_tile=bedrock_drainage_tile,
+                cfg_section=_s88_lcfg.get("bedrock_drainage", {}),
+                palette_key="bedrock_drainage_palette",
+                paint_subsurface=True,
+                exclusion_mask=_river_excl | _flood_excl,
+                rng_salt=0xB3D4,
+                default_palette=["andesite", "stone", "gravel"],
+            )
+
+            # 2. talus_apron — surface only (debris layer over dirt)
+            _s88_apply_painter(
+                mask_tile=talus_apron_tile,
+                cfg_section=_s88_lcfg.get("talus", {}),
+                palette_key="talus_palette",
+                paint_subsurface=False,
+                exclusion_mask=_river_excl | _flood_excl,
+                rng_salt=0x7A1F,
+                default_palette=["cobblestone", "gravel", "coarse_dirt"],
+            )
+
+            # 3. cliff_cap — surface + sub (cap rock all the way down 1 layer)
+            _s88_apply_painter(
+                mask_tile=cliff_cap_tile,
+                cfg_section=_s88_lcfg.get("cliff_cap", {}),
+                palette_key="cap_palette",
+                paint_subsurface=True,
+                exclusion_mask=_river_excl | _snow_excl,
+                rng_salt=0xCAFE,
+                default_palette=["tuff", "andesite", "cobblestone"],
+            )
+
+            del _river_excl, _flood_excl, _snow_excl
 
             # ── Snow caps (gap==7): snow_block replacement (S56 simplified) ──
             # Gaea dusting mask drives gap==7. All snow pixels get snow_block.
