@@ -2158,6 +2158,18 @@ def write_tile(
     snowy_mask = np.zeros((H, W), dtype=bool)
     for _sb in _SNOWY_BIOMES:
         snowy_mask |= (biome_grid == _sb)
+    # S88: no snow on tree canopies above steep slopes -- physically snow
+    # doesn't accumulate on near-vertical faces, and the new Norterre
+    # cliff-rock aesthetic needs to read as rock not snow-frosted rock.
+    # Slope max comes from snow_carpet.slope_max_deg (default 35°).
+    if snowy_mask.any():
+        from core.eco_gradients import compute_cliff_deg as _ccd_snowsnow
+        _snowsnow_slope = _ccd_snowsnow(surface_y)
+        _snow_slope_max = float(
+            cfg.get("snow_carpet", {}).get("slope_max_deg", 35.0)
+        ) if cfg else 35.0
+        snowy_mask &= (_snowsnow_slope < _snow_slope_max)
+        del _snowsnow_slope
     if snowy_mask.any():
         # Build leaf-index set from palette.  Includes vanilla leaf families +
         # azalea variants — anything that should accumulate snow on top.

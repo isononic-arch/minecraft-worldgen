@@ -1066,12 +1066,18 @@ def _apply_snow_carpet(
     cfg:            dict,
     tile_x:         int,
     tile_y:         int,
+    cliff_deg:      np.ndarray | None = None,
 ) -> None:
     """S64: place `snow[layers=1]` ground cover on snowy-biome pixels.
     Dithered at biome boundary via a distance-transform ramp — snow prob
     decays from 1.0 at interior to 0 at `ramp_blocks` outside the biome.
     Per-pixel coin decides placement within the ramp.  Does not overwrite
     existing ground_cover.  Skips water/ice/air surface blocks.
+
+    S88: slope cap added.  When cliff_deg is provided, pixels with
+    cliff_deg >= snow_carpet.slope_max_deg (default 35°) are excluded so
+    snow does not stick to near-vertical faces -- physically realistic and
+    keeps the Norterre cliff-rock aesthetic visible in snowy biomes.
     """
     snow_cfg = cfg.get("snow_carpet", {})
     if not snow_cfg.get("enabled", False):
@@ -1096,6 +1102,10 @@ def _apply_snow_carpet(
                               "ice", "packed_ice", "blue_ice", "snow_block"})
     for blk in _NOT_SNOW_ON:
         place_snow &= (surface_blocks != blk)
+    # S88 slope cap — no snow on steep faces.
+    if cliff_deg is not None:
+        slope_max = float(snow_cfg.get("slope_max_deg", 35.0))
+        place_snow &= (cliff_deg < slope_max)
     if place_snow.any():
         ground_cover[place_snow] = "snow[layers=1]"
 
@@ -2688,6 +2698,7 @@ def decorate_surface(
     # ──────────────────────────────────────────────────────────────────
     _apply_snow_carpet(
         surface_blocks, ground_cover, biome_grid, cfg, tile_x, tile_y,
+        cliff_deg=cliff_deg,  # S88: slope cap (skip snow on steep faces)
     )
 
     # ──────────────────────────────────────────────────────────────────

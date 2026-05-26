@@ -452,13 +452,18 @@
     "stone_below": 20
   },
   "snow_carpet": {
-    "_comment": "S65: drop BOREAL_ALPINE + BOREAL_TAIGA \u2014 only truly-snowy biomes get the carpet. Outward ramp bleed retained (hard boundary line would look worse per user).",
+    "_comment": "S65: drop BOREAL_ALPINE + BOREAL_TAIGA \u2014 only truly-snowy biomes get the carpet. Outward ramp bleed retained (hard boundary line would look worse per user). S88: slope_max_deg added per user direction \"on steep slopes, no snowcover even if in snowy biome\" -- snow_carpet GC + snow-on-trees post-pass both skip pixels with cliff_deg >= slope_max_deg.",
     "enabled": true,
     "biomes": [
       "SNOWY_BOREAL_TAIGA",
       "ARCTIC_TUNDRA"
     ],
-    "ramp_blocks": 30
+    "ramp_blocks": 30,
+    "slope_max_deg": 35.0
+  },
+  "peak_crunch": {
+    "_comment": "S87 Phase 2A rock-gap surface displacement noise. S88: DISABLED per user direction after first S88 wired render -- 4 new terrain-derived layers (cap, talus, bedrock, aspect + Norterre rock_gap bump) provide the cliff aesthetic without needing pixel-scale \u00b11 displacement.",
+    "enabled": false
   },
   "sand_dune_smoothing": {
     "_comment": "S69: Reverted to S67 intensity \u00e2\u20ac\u201d the S68 crank (sigma=16 passes=6 buffer=36) was needed only to hide sharp Gaea dune geometry, which the new dune_flatten pass now handles at the source. Mountain interiors adjacent to biome boundaries no longer get smeared 36 blocks deep.",
