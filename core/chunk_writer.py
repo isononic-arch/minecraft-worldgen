@@ -464,9 +464,10 @@ def _fill_geology_layers(
 
     # ---- 3. Compute layer boundaries (absolute MC Y) ----
     bedrock_band_top_y = Y_MIN + _BEDROCK_BAND_DEPTH         # scalar
-    # S87 walk #4 v5: stone_zone_top raised by 1 (was surface_y - 4) so the
-    # geology fill starts immediately below the 2 dirt layers.
-    stone_zone_top     = (surface_y - 3).astype(np.int32)     # (H, W)
+    # S87 walk #4 v6: stone_zone_top raised again (was surface_y - 3) to
+    # match the 1-dirt-layer sub_blk emission in build_column_array.
+    # Geology fill starts immediately below the single dirt layer.
+    stone_zone_top     = (surface_y - 2).astype(np.int32)     # (H, W)
 
     # Top-down allocation within the stone zone:
     #   soil at top → sediment below → basement fills the rest
@@ -612,9 +613,9 @@ def build_column_array(
 
     surf_broad = surface_y[None, :, :]                           # (1, H, W)
 
-    # S87 walk #4 v5: lithology starts 1 block higher (surface_y - 3) since
-    # sub_blk only emits 2 layers now (sy-1, sy-2).
-    stone_mask  = (abs_y >= Y_MIN + 1) & (abs_y <= surf_broad - 3)
+    # S87 walk #4 v6: lithology starts at surface_y - 2 since sub_blk only
+    # emits 1 layer now (sy-1).
+    stone_mask  = (abs_y >= Y_MIN + 1) & (abs_y <= surf_broad - 2)
     water_mask  = (abs_y > surf_broad) & (abs_y <= SEA_Y)
 
     STONE_IDX = pal.idx("stone")
@@ -712,15 +713,9 @@ def build_column_array(
     valid1 = (yi_sub1 >= 0) & (yi_sub1 < Y_RANGE)
     vol[yi_sub1[valid1], r_idx[valid1], c_idx[valid1]] = sub_idx_flat[valid1]
 
-    # subsurface sy-2
-    yi_sub2 = sy_flat - 2 - Y_MIN
-    valid2 = (yi_sub2 >= 0) & (yi_sub2 < Y_RANGE)
-    vol[yi_sub2[valid2], r_idx[valid2], c_idx[valid2]] = sub_idx_flat[valid2]
-
-    # S87 walk #4 v5: dropped sy-3 sub-layer.  Spec: 1 surface + 2 dirt, then
-    # lithology takes over at sy-3 and below.  No more noise_layers_biome paint
-    # at sy-3 -- pure lithology stone there (calcite for karst, granite for
-    # granitic, etc.) via _fill_geology_layers.
+    # S87 walk #4 v6: dropped sy-2 sub-layer too.  Spec: 1 surface + 1 dirt,
+    # then lithology takes over at sy-2 and below.  Pure lithology stone there
+    # (calcite for karst, granite for granitic, etc.) via _fill_geology_layers.
 
     # S69: Kill any seagrass/kelp that would pop above the water surface.
     # Root cause: tall_seagrass at surface_y=62 (depth=1) places upper half at

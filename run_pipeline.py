@@ -374,10 +374,9 @@ def _process_tile(args: dict) -> dict:
         _slope_full = float(_crunch_cfg.get("slope_full_deg", 45.0))
         # S87 walk #4 v4: turn intensity DOWN + fades UP.
         _river_fade_blocks = float(_crunch_cfg.get("river_fade_blocks", 14.0))  # was 8
-        # Cap on max probability of displacement at full slope.  prob=1.0 was
-        # too intense; cap at 0.5 means even on steep cliffs only half the
-        # eligible pixels crunch -- sparser, less harsh.
-        _prob_cap = float(_crunch_cfg.get("probability_cap", 0.5))
+        # S87 walk #4 v6: prob_cap halved 0.5 -> 0.25 per user.  Even at full
+        # slope, only 25% of eligible pixels get +/-amp.  Sparser noise.
+        _prob_cap = float(_crunch_cfg.get("probability_cap", 0.25))
         import numpy as _np_crunch
         _H, _W = surface_y.shape
         # Amplitude scalar per pixel: 0 below fade_start, 1 above slope_full.
@@ -455,21 +454,21 @@ def _process_tile(args: dict) -> dict:
             _apply = _u_apply < (_amp_scale * _prob_cap)
             _signed = _np_crunch.where(_u01 < 0.5, -_crunch_amp, _crunch_amp).astype(_np_crunch.int16)
             _disp_int = _np_crunch.where(_apply, _signed, 0).astype(_np_crunch.int16)
-            # S87 walk #4 v5: VOXELSNIPER-STYLE SMOOTHING PASS.
-            # User: "fire the noise, then fire a very low grade smoothing
-            # function. Think /b e rough then /b e smooth, intensing
-            # smoothness at boundaries to create natural border."
-            # Approach: gaussian-smooth the float displacement field.  Blend
-            # smoothed vs raw using (1 - amp_scale) as boundary weight:
-            # at noise core (amp_scale=1) we use raw (sharp); at fade
-            # boundary (amp_scale~0) we use smoothed (washed out).
-            # Effect: clusters of noise survive in cores, isolated noise
-            # fades smoothly toward 0 at boundaries.
+            # S87 walk #4 v6: VOXELSNIPER-STYLE SMOOTHING PASS (fixed).
+            # v5 had a bug: at noise core (amp_scale=1), the boundary weight
+            # was 0 so the smoothed version contributed NOTHING.  Smoothing
+            # only applied at boundaries.  User: "noise is way way way too
+            # intense, doesn't look like you did anything gaussian smoothing".
+            # v6: ALWAYS apply some smoothing (core gets base_smooth=0.5,
+            # boundary gets extra=0.4 on top, total up to 0.9).  Plus
+            # larger sigma=1.5 so isolated single +/-1 displacements get
+            # washed out everywhere, only clusters survive.
             from scipy.ndimage import gaussian_filter as _gf_crunch
             _disp_f = _disp_int.astype(_np_crunch.float32)
-            _disp_smooth = _gf_crunch(_disp_f, sigma=1.0)
-            _bw = (1.0 - _amp_scale).astype(_np_crunch.float32)  # boundary weight
-            _disp_blended = _disp_f * (1.0 - _bw) + _disp_smooth * _bw
+            _disp_smooth = _gf_crunch(_disp_f, sigma=1.5)
+            # Smooth weight: 0.5 at core (always-on), +0.4 extra at fade edges.
+            _sw = (0.5 + 0.4 * (1.0 - _amp_scale)).astype(_np_crunch.float32)
+            _disp_blended = _disp_f * (1.0 - _sw) + _disp_smooth * _sw
             _disp_int = _np_crunch.round(_disp_blended).astype(_np_crunch.int16)
             _new_y = surface_y.astype(_np_crunch.int16) + _disp_int
             _land = surface_y > 63
@@ -483,7 +482,7 @@ def _process_tile(args: dict) -> dict:
             _crunch_lock_y = surface_y.copy()
             _crunch_rock_mask = _displace_mask.copy()
             del _wx, _wz, _hh, _hh2, _u01, _u_apply, _apply, _signed
-            del _disp_int, _disp_f, _disp_smooth, _bw, _disp_blended
+            del _disp_int, _disp_f, _disp_smooth, _sw, _disp_blended
             del _new_y, _land, _displace_mask
         del _amp_scale
 
