@@ -455,9 +455,25 @@ def _process_tile(args: dict) -> dict:
             _apply = _u_apply < (_amp_scale * _prob_cap)
             _signed = _np_crunch.where(_u01 < 0.5, -_crunch_amp, _crunch_amp).astype(_np_crunch.int16)
             _disp_int = _np_crunch.where(_apply, _signed, 0).astype(_np_crunch.int16)
+            # S87 walk #4 v5: VOXELSNIPER-STYLE SMOOTHING PASS.
+            # User: "fire the noise, then fire a very low grade smoothing
+            # function. Think /b e rough then /b e smooth, intensing
+            # smoothness at boundaries to create natural border."
+            # Approach: gaussian-smooth the float displacement field.  Blend
+            # smoothed vs raw using (1 - amp_scale) as boundary weight:
+            # at noise core (amp_scale=1) we use raw (sharp); at fade
+            # boundary (amp_scale~0) we use smoothed (washed out).
+            # Effect: clusters of noise survive in cores, isolated noise
+            # fades smoothly toward 0 at boundaries.
+            from scipy.ndimage import gaussian_filter as _gf_crunch
+            _disp_f = _disp_int.astype(_np_crunch.float32)
+            _disp_smooth = _gf_crunch(_disp_f, sigma=1.0)
+            _bw = (1.0 - _amp_scale).astype(_np_crunch.float32)  # boundary weight
+            _disp_blended = _disp_f * (1.0 - _bw) + _disp_smooth * _bw
+            _disp_int = _np_crunch.round(_disp_blended).astype(_np_crunch.int16)
             _new_y = surface_y.astype(_np_crunch.int16) + _disp_int
             _land = surface_y > 63
-            _displace_mask = _land & _apply
+            _displace_mask = _land & (_disp_int != 0)
             surface_y = _np_crunch.where(
                 _displace_mask,
                 _new_y, surface_y.astype(_np_crunch.int16)
@@ -467,7 +483,8 @@ def _process_tile(args: dict) -> dict:
             _crunch_lock_y = surface_y.copy()
             _crunch_rock_mask = _displace_mask.copy()
             del _wx, _wz, _hh, _hh2, _u01, _u_apply, _apply, _signed
-            del _disp_int, _new_y, _land, _displace_mask
+            del _disp_int, _disp_f, _disp_smooth, _bw, _disp_blended
+            del _new_y, _land, _displace_mask
         del _amp_scale
 
     # ---- Step 7: Surface decoration ----

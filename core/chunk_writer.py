@@ -464,7 +464,9 @@ def _fill_geology_layers(
 
     # ---- 3. Compute layer boundaries (absolute MC Y) ----
     bedrock_band_top_y = Y_MIN + _BEDROCK_BAND_DEPTH         # scalar
-    stone_zone_top     = (surface_y - 4).astype(np.int32)     # (H, W)
+    # S87 walk #4 v5: stone_zone_top raised by 1 (was surface_y - 4) so the
+    # geology fill starts immediately below the 2 dirt layers.
+    stone_zone_top     = (surface_y - 3).astype(np.int32)     # (H, W)
 
     # Top-down allocation within the stone zone:
     #   soil at top → sediment below → basement fills the rest
@@ -509,8 +511,11 @@ def _fill_geology_layers(
     _noise_rng = np.random.default_rng(tile_world_x * 73856093 ^ tile_world_z * 19349669)
     col_y_noise = _noise_rng.integers(-1, 2, size=(H, W), dtype=np.int32)
 
-    # Basement range: above bedrock band, below sediment bottom
-    basement_mask = stone_mask & (abs_y > bedrock_band_top_y) & (abs_y < sed_bot_y[None, :, :])
+    # S87 walk #4 v5: basement fills the ENTIRE stone zone (sediment + soil
+    # writes removed above).  Was bounded by sed_bot_y; now extends up to
+    # stone_zone_top (= surface_y - 3) so lithology stone replaces what was
+    # previously plain stone + dirt layers.
+    basement_mask = stone_mask & (abs_y > bedrock_band_top_y)
 
     # Band thickness range (randomised per group for natural variation)
     _BAND_MIN = 4
@@ -539,30 +544,13 @@ def _fill_geology_layers(
 
     # Columns with lithology_tile==0 (water/unclassified) keep stone (already filled)
 
-    # 5c. Sediment layer: gravel / coarse_dirt / dirt by flow magnitude
-    GRAVEL_IDX = pal.idx("gravel")
-    COARSE_DIRT_IDX = pal.idx("coarse_dirt")
-    DIRT_IDX = pal.idx("dirt")
-
-    sed_mask = stone_mask & (abs_y >= sed_bot_y[None, :, :]) & (abs_y <= sed_top_y[None, :, :])
-
-    if flow_tile is not None:
-        high_flow_2d = (flow_tile > _SEDIMENT_FLOW_HIGH)
-        med_flow_2d  = (flow_tile > _SEDIMENT_FLOW_MED) & ~high_flow_2d
-        low_flow_2d  = ~high_flow_2d & ~med_flow_2d
-
-        vol[sed_mask & high_flow_2d[None, :, :]] = GRAVEL_IDX
-        vol[sed_mask & med_flow_2d[None, :, :]]  = COARSE_DIRT_IDX
-        vol[sed_mask & low_flow_2d[None, :, :]]  = DIRT_IDX
-    else:
-        vol[sed_mask] = DIRT_IDX
-
-    # 5d. Soil horizon: dirt on gentle slopes, coarse_dirt on steep
-    soil_mask = stone_mask & (abs_y >= soil_bot_y[None, :, :]) & (abs_y <= soil_top_y[None, :, :])
-    steep_2d = (slope_deg >= 18)  # moderate+ → coarse_dirt
-
-    vol[soil_mask & ~steep_2d[None, :, :]] = DIRT_IDX
-    vol[soil_mask & steep_2d[None, :, :]]  = COARSE_DIRT_IDX
+    # S87 walk #4 v5: SOIL + SEDIMENT layers DISABLED.
+    # Per user (36,15) spec: at y <= surface_y - 3, want PURE lithology stone
+    # (calcite/granite/etc.) with no dirt/sediment intercept.  The 2 dirt
+    # blocks from chunk_writer sub_blk (sy-1, sy-2) provide the topsoil; below
+    # that, basement_mask + cliff_banded lithology palette fills the rest.
+    # Sediment + soil writes removed; basement (computed above) fills the
+    # entire stone_zone naturally.
 
 
 # ---------------------------------------------------------------------------
@@ -624,7 +612,9 @@ def build_column_array(
 
     surf_broad = surface_y[None, :, :]                           # (1, H, W)
 
-    stone_mask  = (abs_y >= Y_MIN + 1) & (abs_y <= surf_broad - 4)
+    # S87 walk #4 v5: lithology starts 1 block higher (surface_y - 3) since
+    # sub_blk only emits 2 layers now (sy-1, sy-2).
+    stone_mask  = (abs_y >= Y_MIN + 1) & (abs_y <= surf_broad - 3)
     water_mask  = (abs_y > surf_broad) & (abs_y <= SEA_Y)
 
     STONE_IDX = pal.idx("stone")
@@ -727,10 +717,10 @@ def build_column_array(
     valid2 = (yi_sub2 >= 0) & (yi_sub2 < Y_RANGE)
     vol[yi_sub2[valid2], r_idx[valid2], c_idx[valid2]] = sub_idx_flat[valid2]
 
-    # subsurface sy-3 — extra dirt buffer so geology never peeks at convex edges
-    yi_sub3 = sy_flat - 3 - Y_MIN
-    valid3 = (yi_sub3 >= 0) & (yi_sub3 < Y_RANGE)
-    vol[yi_sub3[valid3], r_idx[valid3], c_idx[valid3]] = sub_idx_flat[valid3]
+    # S87 walk #4 v5: dropped sy-3 sub-layer.  Spec: 1 surface + 2 dirt, then
+    # lithology takes over at sy-3 and below.  No more noise_layers_biome paint
+    # at sy-3 -- pure lithology stone there (calcite for karst, granite for
+    # granitic, etc.) via _fill_geology_layers.
 
     # S69: Kill any seagrass/kelp that would pop above the water surface.
     # Root cause: tall_seagrass at surface_y=62 (depth=1) places upper half at
