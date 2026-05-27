@@ -100,9 +100,13 @@ CANOPY_RADIUS: dict[str, int] = {
 BASE_DENSITY: dict[str, float] = {
     "COASTAL_HEATH":           0.25,
     "TEMPERATE_RAINFOREST":    0.26,
-    "BOREAL_TAIGA":            0.95,   # S87w3 was 0.75 — user: closer to TRF density
-    "SNOWY_BOREAL_TAIGA":      0.70,   # S87w3 was 0.42 — user: way higher intensity
-    "BOREAL_ALPINE":           0.55,   # S87w3 was 0.28 — user: match TRF
+    "BOREAL_TAIGA":            1.00,   # S88w5 was 0.95 — user: 2x for coniferous forests.
+    "SNOWY_BOREAL_TAIGA":      1.00,   # S88w5 was 0.70 — user: 2x for coniferous forests.
+    "BOREAL_ALPINE":           1.00,   # S88w5 was 0.55 — user: 2x for coniferous forests.
+    # NOTE: gate is `rng.random() >= final_d`, so density saturates at 1.0
+    # (100% per-pixel attempt rate).  2x comes from this saturation + the
+    # S88w5 slope-bound relaxation (35°→45° start, 50°→65° full) letting
+    # more attempts pass the slope reject.
     "ARCTIC_TUNDRA":           0.04,
     "FROZEN_FLATS":            0.04,
     "TEMPERATE_DECIDUOUS":     0.22,

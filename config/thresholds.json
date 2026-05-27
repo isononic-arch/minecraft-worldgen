@@ -2290,10 +2290,10 @@
       "slope_min_deg": 5.0
     },
     "rock_gap_5block_fade": {
-      "_comment": "S88 walk #4: replace walk #3 slope-fade (25-32\u00b0 + 0.40 floor) with sharp distance fade.  Solid rock_gap at slope >= slope_solid_deg, then fade probability over fade_blocks (distance) outside.  Sharper boundary, no Swiss-cheese holes.",
+      "_comment": "S88 walk #5: tightened.  slope_solid 30->32 to align with strata fade-in floor (strata.surface_min_deg=32).  fade_blocks 5->2 for a sharper boundary closer to the strata formation zone.",
       "enabled": true,
-      "slope_solid_deg": 30.0,
-      "fade_blocks": 5
+      "slope_solid_deg": 32.0,
+      "fade_blocks": 2
     }
   },
   "eco_vegetation": {
@@ -2339,8 +2339,8 @@
       1.5
     ],
     "_comment_s87": "S87: bumped slope penalty thresholds 30->38 and 45->55 per user (59,44) walk - trees should grow on STEEPER slopes, not be killed at 30-45deg.",
-    "slope_penalty_start_deg": 35,
-    "slope_penalty_full_deg": 50,
+    "slope_penalty_start_deg": 45.0,
+    "slope_penalty_full_deg": 65.0,
     "habitat_score_floor": 0.05,
     "_comment_s87w3": "S87 walk #3 back-off: 38/55 was too forgiving and let trees creep up real mountain faces (34,9 walk). Back off to 35/50."
   },
@@ -3677,29 +3677,29 @@
           "rooted_dirt"
         ],
         "wash_palette": [
-          "dripstone_block",
-          "dripstone_block",
-          "dripstone_block",
-          "dripstone_block",
-          "dripstone_block",
-          "packed_mud",
-          "packed_mud",
-          "packed_mud",
-          "packed_mud",
-          "packed_mud"
+          "dead_bubble_coral_block",
+          "dead_bubble_coral_block",
+          "dead_bubble_coral_block",
+          "dead_bubble_coral_block",
+          "dead_bubble_coral_block",
+          "dead_horn_coral_block",
+          "dead_horn_coral_block",
+          "dead_horn_coral_block",
+          "dead_horn_coral_block",
+          "dead_horn_coral_block"
         ],
         "description": "Intrusive igneous basement \u2014 default temperate highland. S60 palette. S85: weighted distribution (~23% each granite/dripstone/packed_mud/rooted_dirt + ~8% raw_iron_block as rare accent).",
         "cap_palette": [
-          "dripstone_block",
-          "dripstone_block",
-          "dripstone_block",
-          "dripstone_block",
-          "dripstone_block",
-          "raw_iron_block",
-          "raw_iron_block",
-          "raw_iron_block",
-          "granite",
-          "granite"
+          "dead_fire_coral_block",
+          "dead_fire_coral_block",
+          "dead_fire_coral_block",
+          "dead_fire_coral_block",
+          "dead_tube_coral_block",
+          "dead_tube_coral_block",
+          "dead_tube_coral_block",
+          "andesite",
+          "andesite",
+          "andesite"
         ],
         "talus_palette": [
           "coarse_dirt",
@@ -3710,46 +3710,46 @@
           "brown_concrete_powder",
           "brown_concrete_powder",
           "brown_concrete_powder",
-          "rooted_dirt",
-          "rooted_dirt"
+          "brown_concrete_powder",
+          "brown_concrete_powder"
         ],
         "bedrock_drainage_palette": [
           "soul_soil",
           "soul_soil",
           "soul_soil",
           "soul_soil",
-          "soul_soil",
-          "mud",
-          "mud",
-          "mud",
-          "mud",
-          "mud"
+          "soul_sand",
+          "soul_sand",
+          "soul_sand",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder"
         ],
         "strata": {
           "axis": "Y_tilted",
-          "thickness_min": 80,
-          "thickness_max": 160,
+          "thickness_min": 160,
+          "thickness_max": 320,
           "tilt_per_100blocks": 30,
           "tilt_dir_deg": 45,
           "noise_amp_blocks": 12,
           "intersperse": 0.7,
           "band_a": {
-            "primary": "granite",
-            "secondary": "dripstone_block",
-            "primary_pct": 75
+            "primary": "dripstone_block",
+            "secondary": "packed_mud",
+            "primary_pct": 60
           },
           "band_b": {
-            "primary": "dripstone_block",
-            "secondary": "granite",
-            "primary_pct": 75
+            "primary": "granite",
+            "secondary": "rooted_dirt",
+            "primary_pct": 80
           },
           "speckle_blocks": [
             "raw_iron_block"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "raw_iron_block",
-            "soul_soil"
+            "muddy_mangrove_roots",
+            "mud"
           ],
           "vein_amp": 0.4,
           "_comment": "Massive intrusive \u2014 80-160 block bands, crazy 30\u00b0/100 tilt, 75/25 granite/dripstone mix with iron speckle."
@@ -3820,7 +3820,7 @@
         ],
         "strata": {
           "axis": "XZ_cols",
-          "col_size_blocks": 2,
+          "col_size_blocks": 6,
           "tilt_per_100blocks": 0,
           "tilt_dir_deg": 0,
           "noise_amp_blocks": 0,
@@ -3828,12 +3828,12 @@
           "band_a": {
             "primary": "basalt",
             "secondary": "gray_concrete_powder",
-            "primary_pct": 70
+            "primary_pct": 85
           },
           "band_b": {
             "primary": "smooth_basalt",
             "secondary": "tuff",
-            "primary_pct": 70
+            "primary_pct": 85
           },
           "speckle_blocks": [
             "mud"
@@ -3867,11 +3867,11 @@
           "light_gray_concrete_powder",
           "light_gray_concrete_powder",
           "light_gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder"
+          "pale_moss_block",
+          "pale_moss_block",
+          "pale_moss_block",
+          "pale_moss_block",
+          "pale_moss_block"
         ],
         "description": "S84: dark metamorphic mix \u2014 deepslate-heavy (~36%) + cobbled_deepslate (~27%) + basalt (~27%) + rare deepslate_coal_ore (~9%). Coastal headland / temperate peak feel. S88: wash_palette replaced with arid_basaltic-style values (independent copy).",
         "cap_palette": [
@@ -3887,16 +3887,16 @@
           "black_concrete_powder"
         ],
         "talus_palette": [
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder",
           "gravel",
           "gravel",
           "gravel",
           "gravel",
-          "gravel"
+          "gravel",
+          "clay",
+          "clay",
+          "clay",
+          "clay",
+          "clay"
         ],
         "bedrock_drainage_palette": [
           "andesite",
@@ -3912,7 +3912,7 @@
         ],
         "strata": {
           "axis": "XZ_cols",
-          "col_size_blocks": 2,
+          "col_size_blocks": 6,
           "tilt_per_100blocks": 0,
           "tilt_dir_deg": 0,
           "noise_amp_blocks": 0,
@@ -3920,21 +3920,21 @@
           "band_a": {
             "primary": "cobbled_deepslate",
             "secondary": "deepslate",
-            "primary_pct": 70
+            "primary_pct": 85
           },
           "band_b": {
             "primary": "dead_horn_coral_block",
             "secondary": "suspicious_gravel",
-            "primary_pct": 70
+            "primary_pct": 85
           },
           "speckle_blocks": [
-            "deepslate_coal_ore",
-            "smooth_basalt"
+            "dripstone_block",
+            "packed_mud"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "deepslate_coal_ore",
-            "tuff"
+            "black_concrete_powder",
+            "coal_block"
           ],
           "vein_amp": 0.5,
           "_comment": "S88 walk #4c: bands restructured -- A=cobbled_deepslate/deepslate, B=dead_horn_coral_block/suspicious_gravel (latter two are vein-exception blocks outside the temperate palette set, per user permission).  speckle unchanged (deepslate_coal_ore + smooth_basalt) but rate dropped to 0.02."
@@ -4005,8 +4005,8 @@
         ],
         "strata": {
           "axis": "Y_tilted",
-          "thickness_min": 1,
-          "thickness_max": 14,
+          "thickness_min": 40,
+          "thickness_max": 100,
           "tilt_per_100blocks": 6,
           "tilt_dir_deg": 15,
           "noise_amp_blocks": 2,
@@ -4048,29 +4048,29 @@
           "stone"
         ],
         "wash_palette": [
-          "clay",
-          "clay",
-          "clay",
-          "clay",
-          "clay",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder"
+          "packed_mud",
+          "packed_mud",
+          "packed_mud",
+          "packed_mud",
+          "packed_mud",
+          "brown_mushroom_block",
+          "brown_mushroom_block",
+          "brown_mushroom_block",
+          "brown_mushroom_block",
+          "brown_mushroom_block"
         ],
         "description": "High-alpine / arctic basement. S60 palette. S85: removed tuff per user (was 16.7%, now redistributed to remaining 5 blocks at 20% each).",
         "cap_palette": [
-          "dead_fire_coral_block",
-          "dead_fire_coral_block",
-          "dead_fire_coral_block",
-          "dead_fire_coral_block",
-          "dead_fire_coral_block",
-          "dead_horn_coral_block",
-          "dead_horn_coral_block",
-          "dead_horn_coral_block",
-          "dead_horn_coral_block",
-          "dead_horn_coral_block"
+          "basalt",
+          "basalt",
+          "basalt",
+          "basalt",
+          "basalt",
+          "smooth_basalt",
+          "smooth_basalt",
+          "smooth_basalt",
+          "smooth_basalt",
+          "smooth_basalt"
         ],
         "talus_palette": [
           "suspicious_gravel",
@@ -4090,16 +4090,16 @@
           "tuff",
           "tuff",
           "tuff",
-          "dead_bubble_coral_block",
-          "dead_bubble_coral_block",
-          "dead_bubble_coral_block",
-          "dead_bubble_coral_block",
-          "dead_bubble_coral_block"
+          "mud",
+          "mud",
+          "mud",
+          "mud",
+          "mud"
         ],
         "strata": {
           "axis": "Y_tilted",
-          "thickness_min": 6,
-          "thickness_max": 16,
+          "thickness_min": 40,
+          "thickness_max": 100,
           "tilt_per_100blocks": 25,
           "tilt_dir_deg": 30,
           "noise_amp_blocks": 4,
@@ -4119,8 +4119,8 @@
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "dead_fire_coral_block",
-            "dead_bubble_coral_block"
+            "basalt",
+            "smooth_basalt"
           ],
           "vein_amp": 0.6,
           "_comment": "Folded mountain metamorphic \u2014 6-16 block bands, STRONG 25\u00b0/100 tilt @ 30\u00b0, 90/10 andesite/stone with tuff speckle."
@@ -4191,8 +4191,8 @@
         ],
         "strata": {
           "axis": "Y_tilted",
-          "thickness_min": 8,
-          "thickness_max": 18,
+          "thickness_min": 40,
+          "thickness_max": 100,
           "tilt_per_100blocks": 4,
           "tilt_dir_deg": 0,
           "noise_amp_blocks": 3,
@@ -4265,7 +4265,7 @@
       "search_blocks": 8,
       "cliff_min_deg": 35.0,
       "flat_max_deg": 28.0,
-      "intensity_threshold": 64
+      "intensity_threshold": 32
     },
     "talus": {
       "_comment": "S88: rubble apron palette painted on flat ground below slope>=cliff_min_deg cliffs. EXCLUDED from Phase 2A noise (soft/depositional \u2014 like washes, surface should be smooth).",
@@ -4286,8 +4286,8 @@
     "strata": {
       "_comment": "S88 walk #4c: surface_min_deg bumped 28->32 + new surface_fade_max_deg=35. Strata FADES IN over slope 32-35 (probabilistic) instead of solid >=28 (was overpainting too much).  Below 32: no strata.  Above 35: solid.",
       "vein_lap_threshold": 4.0,
-      "vein_fault_scale_blocks": 80,
-      "vein_fault_width": 0.08,
+      "vein_fault_scale_blocks": 240,
+      "vein_fault_width": 0.15,
       "noise_scale_blocks": 80,
       "n_bands_per_palette": 3,
       "surface_min_deg": 32.0,
