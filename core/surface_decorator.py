@@ -1122,6 +1122,7 @@ def _apply_strata_surface(
     cfg:               dict,
     tile_x:            int,
     tile_y:            int,
+    aspect:            np.ndarray | None = None,
 ) -> None:
     """S88 walk #4c: paint v2 STRATA blocks on surface_blk + sub_blk with a
     PROBABILISTIC FADE-IN over slope range [surface_min_deg, surface_fade_max_deg]
@@ -1176,6 +1177,19 @@ def _apply_strata_surface(
     if gap_mask is not None:
         excl |= (gap_mask == 4)
         excl |= (gap_mask == 7)
+
+    # Walk #6 (option C): SURFACE strata paint gated to rock_gap pixels only.
+    # On steep no-rock-gap pixels we leave y (biome surface) + y-1 (dirt)
+    # untouched; chunk_writer's basement strata fills y-2 and below with the
+    # same band_a/band_b palette, giving the visual user described
+    # (option C: "strata pushed down 2 blocks").  At band thicknesses 8-100
+    # the 2-block Y offset of basement vs surface band id is imperceptible.
+    if gap_mask is not None:
+        rock_gap_mask = (gap_mask == 5)
+        steep_seed = steep_seed & rock_gap_mask
+        if not steep_seed.any():
+            return
+
     if not (steep_seed & ~excl).any():
         return
 
@@ -1253,15 +1267,45 @@ def _apply_strata_surface(
         # XZ_cols:  based on (x // col_size, z // col_size) hash
         if axis == "XZ_cols":
             col_size = max(1, int(strata.get("col_size_blocks", 2)))
-            col_x_idx = ((np.arange(W, dtype=np.uint32) + tile_world_x) // col_size)
-            col_z_idx = ((np.arange(H, dtype=np.uint32) + tile_world_z) // col_size)
+            col_mode = strata.get("col_hash_mode", "grid")  # walk #6: "diagonal" available
             salt_a = np.uint32(0xC4F12345 ^ ((gid * 1779033703) & 0xFFFFFFFF))
             salt_b = np.uint32(0x9E373B17 ^ ((gid * 2654435769) & 0xFFFFFFFF))
-            _h = (col_z_idx[:, None] * salt_a) ^ (col_x_idx[None, :] * salt_b)
-            _h ^= _h >> np.uint32(16)
-            _h *= np.uint32(0x45D9F3B)
-            _h ^= _h >> np.uint32(16)
-            band_idx_sy = (_h & np.uint32(1)).astype(np.int8)
+            if col_mode == "diagonal" and aspect is not None:
+                # Walk #6 v2: ASPECT-PERPENDICULAR hash.  At each pixel the
+                # "along-cliff" direction is perpendicular to local aspect
+                # (the horizontal direction along the cliff face).  Hashing
+                # by distance along that direction gives column stripes that
+                # ROTATE to align with the local cliff face — vertical-from-
+                # the-cliff regardless of cliff orientation.
+                #
+                # aspect ∈ [0, 2π) measured eastward from north (downhill
+                # direction).  along-cliff vector = (cos(aspect), -sin(aspect)).
+                # along-cliff coord at (x_w, z_w) =
+                #   x_w * cos(aspect) - z_w * sin(aspect)
+                _x_w = (np.arange(W, dtype=np.float32) + tile_world_x)[None, :]
+                _z_w = (np.arange(H, dtype=np.float32) + tile_world_z)[:, None]
+                _cos_a = np.cos(aspect).astype(np.float32)
+                _sin_a = np.sin(aspect).astype(np.float32)
+                _along = _x_w * _cos_a - _z_w * _sin_a  # (H, W) float32
+                # Subtle wobble: trace terrain curvature so stripes don't
+                # look mathematically straight.  surface_y mod col_size shifts
+                # the along-cliff coord by a soft wave.
+                _wobble = (surface_y.astype(np.float32) / max(1.0, float(col_size * 4)))
+                _along_idx = ((_along + _wobble) // float(col_size)).astype(np.int64)
+                # Hash that into bands
+                _h = (_along_idx.astype(np.uint32) * salt_a) ^ salt_b
+                _h ^= _h >> np.uint32(16)
+                _h *= np.uint32(0x45D9F3B)
+                _h ^= _h >> np.uint32(16)
+                band_idx_sy = (_h & np.uint32(1)).astype(np.int8)
+            else:  # original 2D grid hash (fallback when aspect missing)
+                col_x_idx = ((np.arange(W, dtype=np.uint32) + tile_world_x) // col_size)
+                col_z_idx = ((np.arange(H, dtype=np.uint32) + tile_world_z) // col_size)
+                _h = (col_z_idx[:, None] * salt_a) ^ (col_x_idx[None, :] * salt_b)
+                _h ^= _h >> np.uint32(16)
+                _h *= np.uint32(0x45D9F3B)
+                _h ^= _h >> np.uint32(16)
+                band_idx_sy = (_h & np.uint32(1)).astype(np.int8)
             band_idx_sub = band_idx_sy  # XZ_cols: same band per column at any Y
         else:  # Y_tilted
             thickness_min = int(strata.get("thickness_min", 4))
@@ -1506,6 +1550,163 @@ def _apply_strata_veins_surface(
                 if m.any():
                     surface_blocks[m] = vb
                     subsurface_blocks[m] = vb
+
+
+def _apply_concavity_drainage(
+    surface_blocks:    np.ndarray,
+    subsurface_blocks: np.ndarray,
+    surface_y:         np.ndarray,
+    lithology_tile:    np.ndarray | None,
+    river_meta:        np.ndarray | None,
+    gap_mask:          np.ndarray | None,
+    cfg:               dict,
+    tile_x:            int,
+    tile_y:            int,
+) -> None:
+    """S88 walk #6 NEW pass: paint bedrock_drainage_palette on concave terrain.
+
+    Detects pixels where the surface_y Laplacian is strongly positive (a
+    local depression / bowl).  Complements the existing bedrock_drainage
+    MASK painter (which uses flow accumulation): this catches gully
+    pinch-points, depression bowls, and any negative-curvature feature
+    the flow mask missed.
+
+    Per-pixel lithology via lithology_tile -> group bedrock_drainage_palette.
+    Excludes water, floodplain, snow.
+    """
+    cc = cfg.get("lithology", {}).get("concavity", {}) if isinstance(cfg, dict) else {}
+    if not cc.get("enabled", False):
+        return
+    lap_threshold = float(cc.get("lap_threshold", 1.5))
+    palette_key = cc.get("palette_key", "bedrock_drainage_palette")
+
+    H, W = surface_y.shape
+    sy = surface_y.astype(np.float32)
+    # 3x3 discrete Laplacian. Positive = local depression (neighbors higher).
+    lap = np.zeros_like(sy)
+    lap[1:-1, 1:-1] = (
+        sy[ :-2, 1:-1] + sy[2:  , 1:-1] +
+        sy[1:-1,  :-2] + sy[1:-1, 2:  ] -
+        4.0 * sy[1:-1, 1:-1]
+    )
+    paint_mask = lap >= lap_threshold
+
+    excl = np.zeros((H, W), dtype=bool)
+    if river_meta is not None:
+        excl |= (river_meta > 0)
+    if gap_mask is not None:
+        excl |= (gap_mask == 4) | (gap_mask == 7)
+    paint_mask &= ~excl
+    if not paint_mask.any():
+        return
+
+    # Resolve lithology at native res
+    if lithology_tile is None:
+        return  # no painted lithology, no per-group palette
+    if lithology_tile.shape != (H, W):
+        from scipy.ndimage import zoom as _z
+        litho_at_res = _z(
+            lithology_tile,
+            (H / lithology_tile.shape[0], W / lithology_tile.shape[1]),
+            order=0,
+        )
+    else:
+        litho_at_res = lithology_tile
+
+    groups = cfg.get("lithology", {}).get("groups", {})
+    gid_to_pal: dict[int, list] = {}
+    DEFAULT = ["andesite", "stone", "gravel"]
+    for _gname, _gdata in groups.items():
+        _gid = int(_gdata.get("id", 0))
+        gid_to_pal[_gid] = _gdata.get(palette_key) or DEFAULT
+
+    rng = np.random.default_rng(
+        (tile_x * 0xC0FFEE ^ tile_y * 0xDEAD ^ 0xBE) & 0xFFFFFFFF
+    )
+    for _gid_u in np.unique(litho_at_res[paint_mask]):
+        _gid = int(_gid_u)
+        _bm = paint_mask & (litho_at_res == _gid)
+        if not _bm.any():
+            continue
+        _pal = gid_to_pal.get(_gid, DEFAULT)
+        _arr = np.asarray(_pal, dtype=object)
+        _n = int(_bm.sum())
+        surface_blocks[_bm] = _arr[rng.integers(0, len(_pal), size=_n)]
+        subsurface_blocks[_bm] = _arr[rng.integers(0, len(_pal), size=_n)]
+
+
+def _apply_cap_edge_stroke(
+    surface_blocks:    np.ndarray,
+    subsurface_blocks: np.ndarray,
+    lithology_tile:    np.ndarray | None,
+    river_meta:        np.ndarray | None,
+    gap_mask:          np.ndarray | None,
+    cfg:               dict,
+    tile_x:            int,
+    tile_y:            int,
+    stroke_width:      int = 4,
+) -> None:
+    """S88 walk #6 NEW pass: paint cap_palette as a 3-5 block INWARD-only
+    stroke at the outer edge of rock_gap regions.  Represents a 'fade out'
+    from rocky cliff face to surrounding land — only repaints existing
+    rock pixels (does not extend the rocky zone outward).
+
+    Per-pixel lithology -> group cap_palette.
+    """
+    if gap_mask is None:
+        return
+    rock_zone = (gap_mask == 5)
+    if not rock_zone.any():
+        return
+
+    H, W = rock_zone.shape
+    from scipy.ndimage import distance_transform_edt as _dt
+    # Distance INSIDE rock_zone to the nearest non-rock pixel (the edge).
+    dist_to_edge = _dt(rock_zone).astype(np.float32)
+    sw = max(1, int(stroke_width))
+    stroke_band = rock_zone & (dist_to_edge > 0) & (dist_to_edge <= float(sw))
+
+    excl = np.zeros((H, W), dtype=bool)
+    if river_meta is not None:
+        excl |= (river_meta > 0)
+    excl |= (gap_mask == 4) | (gap_mask == 7)
+    stroke_band &= ~excl
+    if not stroke_band.any():
+        return
+
+    # Resolve lithology
+    if lithology_tile is None:
+        return
+    if lithology_tile.shape != (H, W):
+        from scipy.ndimage import zoom as _z
+        litho_at_res = _z(
+            lithology_tile,
+            (H / lithology_tile.shape[0], W / lithology_tile.shape[1]),
+            order=0,
+        )
+    else:
+        litho_at_res = lithology_tile
+
+    groups = cfg.get("lithology", {}).get("groups", {})
+    gid_to_cap: dict[int, list] = {}
+    DEFAULT = ["stone", "cobblestone", "andesite"]
+    for _gname, _gdata in groups.items():
+        _gid = int(_gdata.get("id", 0))
+        gid_to_cap[_gid] = _gdata.get("cap_palette") or DEFAULT
+
+    rng = np.random.default_rng(
+        (tile_x * 0xCAFEFADE ^ tile_y * 0xBADDCAFE ^ 0xEDAE) & 0xFFFFFFFF
+    )
+    for _gid_u in np.unique(litho_at_res[stroke_band]):
+        _gid = int(_gid_u)
+        _bm = stroke_band & (litho_at_res == _gid)
+        if not _bm.any():
+            continue
+        _pal = gid_to_cap.get(_gid, DEFAULT)
+        _arr = np.asarray(_pal, dtype=object)
+        _n = int(_bm.sum())
+        surface_blocks[_bm] = _arr[rng.integers(0, len(_pal), size=_n)]
+        subsurface_blocks[_bm] = _arr[rng.integers(0, len(_pal), size=_n)]
 
 
 def _flatten_dune_regions(
@@ -2180,6 +2381,7 @@ def decorate_surface(
                 cfg               = cfg,
                 tile_x            = tile_x,
                 tile_y            = tile_y,
+                aspect            = eco_grads.aspect if eco_grads is not None else None,
             )
 
             # ── S88 walk #4b: WASH PAINTER (moved from inside rock_px) ─────
@@ -2283,6 +2485,15 @@ def decorate_surface(
                 intensity_threshold = int(cfg_section.get("intensity_threshold", 64))
                 intensity_byte = (mask_tile * 255.0).astype(np.int32)
                 paint_zone = (intensity_byte >= intensity_threshold) & ~exclusion_mask
+                # Walk #6: optional runtime dilation (used by cliff_cap to
+                # widen rock-cap coverage without rebuilding the mask).
+                _dilate_blocks = int(cfg_section.get("dilate_blocks", 0))
+                if _dilate_blocks > 0 and paint_zone.any():
+                    from scipy.ndimage import binary_dilation as _bd_painter
+                    paint_zone = (
+                        _bd_painter(paint_zone, iterations=_dilate_blocks)
+                        & ~exclusion_mask
+                    )
                 if not paint_zone.any():
                     return
                 gid_to_pal_local: dict[int, list] = {}
@@ -2361,6 +2572,37 @@ def decorate_surface(
                 cfg               = cfg,
                 tile_x            = tile_x,
                 tile_y            = tile_y,
+            )
+
+            # 2c. Walk #6 NEW: concavity pass (laplacian-based) painting
+            #     bedrock_drainage_palette per-lithology on local depressions.
+            _apply_concavity_drainage(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                surface_y         = surface_y,
+                lithology_tile    = lithology_tile,
+                river_meta        = river_meta,
+                gap_mask          = _gap,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
+            )
+
+            # 2d. Walk #6 NEW: cap_edge_stroke — 3-5 block inward fade band
+            #     at the outer edge of rock_gap, painted per-lithology with
+            #     cap_palette.  Soft transition from rocky cliff to land.
+            _apply_cap_edge_stroke(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                lithology_tile    = lithology_tile,
+                river_meta        = river_meta,
+                gap_mask          = _gap,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
+                stroke_width      = int(
+                    cfg.get("lithology", {}).get("cap_edge_stroke", {}).get("width", 4)
+                ),
             )
 
             # 3. cliff_cap — surface + sub (cap rock all the way down 1 layer)
