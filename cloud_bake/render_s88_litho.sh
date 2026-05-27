@@ -1,30 +1,34 @@
 #!/usr/bin/env bash
-# render_s88_litho.sh — 4-tile pure-litho render for visual reference.
+# render_s88_litho.sh — 6-tile pure-litho CLIFF render for strata visual reference.
 #
-# Pure tiles (100% one biome -> 100% one lithology group):
-#   (50,50)  MIXED_FOREST           granitic
-#   (23,29)  TEMPERATE_RAINFOREST   mossy_temperate
-#   (27,9)   BOREAL_ALPINE          deepslate_metamorphic (mountain)
-#   (32,13)  ARCTIC_TUNDRA          deepslate_metamorphic (arctic)
+# Verified vs ACTUAL masks/lithology.tif (NOT biome zone_to_group):
+#   (72,60)  granitic               Y_tilted   100%  211k rock_gap
+#   (24,80)  arid_basaltic          XZ_cols    100%  218k rock_gap   [walk #4c]
+#   (89,52)  temperate_basaltic     XZ_cols    100%  244k rock_gap   [walk #4c]
+#   (36,15)  limestone              Y_tilted    92%  135k rock_gap   (karst tile)
+#   (19,44)  deepslate_metamorphic  Y_tilted   100%  217k rock_gap
+#   (63,72)  mossy_temperate        Y_tilted   100%   95k rock_gap
 #
 # Use after a strata code+config push to inspect each litho's bands +
-# speckle + vein behavior in isolation.
+# speckle + vein behavior in isolation, with VISIBLE CLIFF FACES.
 
 set -u
 
-if [ "$#" -ne 4 ]; then
-  echo "Usage: $0 IP1 IP2 IP3 IP4"
-  echo "  IP1 -> (50,50) granitic MIXED_FOREST"
-  echo "  IP2 -> (23,29) mossy_temperate TEMPERATE_RAINFOREST"
-  echo "  IP3 -> (27,9)  deepslate_metamorphic BOREAL_ALPINE"
-  echo "  IP4 -> (32,13) deepslate_metamorphic ARCTIC_TUNDRA"
+if [ "$#" -ne 6 ]; then
+  echo "Usage: $0 IP1 IP2 IP3 IP4 IP5 IP6"
+  echo "  IP1 -> (72,60) granitic                Y_tilted  211k rock_gap"
+  echo "  IP2 -> (24,80) arid_basaltic           XZ_cols   218k rock_gap  [walk #4c]"
+  echo "  IP3 -> (89,52) temperate_basaltic      XZ_cols   244k rock_gap  [walk #4c]"
+  echo "  IP4 -> (36,15) limestone               Y_tilted  135k rock_gap  (karst)"
+  echo "  IP5 -> (19,44) deepslate_metamorphic   Y_tilted  217k rock_gap"
+  echo "  IP6 -> (63,72) mossy_temperate         Y_tilted   95k rock_gap"
   exit 1
 fi
 
-IPS=("$1" "$2" "$3" "$4")
-TXS=(50 23 27 32)
-TZS=(50 29  9 13)
-NAMES=("granitic-MIXED_FOREST" "mossy-TEMPERATE_RAINFOREST" "deepslate-BOREAL_ALPINE" "deepslate-ARCTIC_TUNDRA")
+IPS=("$1" "$2" "$3" "$4" "$5" "$6")
+TXS=(72 24 89 36 19 63)
+TZS=(60 80 52 15 44 72)
+NAMES=("granitic-CLIFF" "arid_basaltic-CLIFF" "temperate_basaltic-CLIFF" "limestone-CLIFF" "deepslate_metamorphic-CLIFF" "mossy_temperate-CLIFF")
 
 BRANCH="s85-cherry-picks"
 OUT_DIR="output_s88_litho"
@@ -87,21 +91,21 @@ prep_and_dispatch_one() {
   echo "$tag dispatched OK" | tee -a "$log_file"
 }
 
-log "STEP 1-4  Parallel prep + dispatch"
-for idx in 0 1 2 3; do
+log "STEP 1-6  Parallel prep + dispatch"
+for idx in 0 1 2 3 4 5; do
   prep_and_dispatch_one "$idx" &
 done
 wait
 log "All boxes dispatched"
 
-log "STEP 5  Monitor"
+log "STEP 7  Monitor"
 mkdir -p "$OUT_DIR"
 declare -A DONE
-for idx in 0 1 2 3; do DONE[$idx]=0; done
+for idx in 0 1 2 3 4 5; do DONE[$idx]=0; done
 while true; do
   ELAPSED=$(( ($(date +%s) - START_TIME) / 60 ))
   all_done=1; status=""
-  for idx in 0 1 2 3; do
+  for idx in 0 1 2 3 4 5; do
     if [ "${DONE[$idx]}" = "1" ]; then
       status="${status}  (${TXS[$idx]},${TZS[$idx]})=DONE"
       continue
@@ -122,31 +126,31 @@ while true; do
   sleep 30
 done
 
-log "STEP 6  Collecting"
-for idx in 0 1 2 3; do
+log "STEP 8  Collecting"
+for idx in 0 1 2 3 4 5; do
   ip="${IPS[$idx]}"
   scp -q root@"$ip":/root/minecraft-worldgen/output/r.*.mca "$OUT_DIR/" 2>&1 || true
 done
 COLLECTED=$(ls "$OUT_DIR"/*.mca 2>/dev/null | wc -l)
 log "$COLLECTED MCAs in $OUT_DIR/"
 
-log "STEP 7  Hash verify"
+log "STEP 9  Hash verify"
 for f in "$OUT_DIR"/*.mca; do
   [ -f "$f" ] && md5sum "$f"
 done
 
 if [ "$INSTALL" = "1" ]; then
-  log "STEP 8  Installing to Vandirtest10"
+  log "STEP 10  Installing to Vandirtest10"
   [ -d "$VANDIRTEST10" ] && cp -f "$OUT_DIR"/*.mca "$VANDIRTEST10/" && log "  installed"
 else
-  log "STEP 8  Install SKIPPED -- MCAs in $OUT_DIR/."
+  log "STEP 10  Install SKIPPED -- MCAs in $OUT_DIR/."
 fi
 
 ELAPSED=$(( ($(date +%s) - START_TIME) / 60 ))
 log "[DONE] in ${ELAPSED}m"
 echo ""
 echo "Teleport coords:"
-for idx in 0 1 2 3; do
+for idx in 0 1 2 3 4 5; do
   tx="${TXS[$idx]}"; tz="${TZS[$idx]}"; name="${NAMES[$idx]}"
   echo "  /tp @s $((tx*512+256)) 200 $((tz*512+256))   # ($tx,$tz) $name"
 done

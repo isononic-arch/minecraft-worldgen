@@ -1219,15 +1219,10 @@ def _apply_strata_surface(
             continue  # old-schema groups would have palette; skip if missing
         gid = int(gdata.get("id", 0))
 
-        # Per-group mask
-        if litho_at_res is not None:
-            group_cols = (litho_at_res == gid)
-        else:
-            _z2g = litho_cfg.get("zone_to_group", {})
-            group_cols = np.zeros((H, W), dtype=bool)
-            for _bn, _gn in _z2g.items():
-                if _gn == gname:
-                    group_cols |= (biome_grid == _bn)
+        # Per-group mask: lithology.tif is source of truth.  No biome fallback.
+        if litho_at_res is None:
+            continue  # No painted lithology → no strata for this tile
+        group_cols = (litho_at_res == gid)
         paint_mask_seed = steep_seed & group_cols & ~excl
         if not paint_mask_seed.any():
             continue
@@ -1477,14 +1472,10 @@ def _apply_strata_veins_surface(
             continue
         gid = int(gdata.get("id", 0))
 
-        if litho_at_res is not None:
-            group_cols = (litho_at_res == gid)
-        else:
-            _z2g = litho_cfg.get("zone_to_group", {})
-            group_cols = np.zeros((H, W), dtype=bool)
-            for _bn, _gn in _z2g.items():
-                if _gn == gname:
-                    group_cols |= (biome_grid == _bn)
+        # Per-group mask: lithology.tif is source of truth.  No biome fallback.
+        if litho_at_res is None:
+            continue
+        group_cols = (litho_at_res == gid)
 
         # Walk #4c: fade-in gate (32-35°) before vein_amp coin
         _vfade_rng = np.random.default_rng(
@@ -2102,18 +2093,13 @@ def decorate_surface(
             # ── gap==6 (alpine_meadow) RETIRED S56 — Gaea slope mask replaces ──
 
             # ── Rock (gap==5): surface block selection via lithology palette ──
-            # S71-3: PAINTED lithology mask is source of truth.  Per-pixel
-            # group ID from `lithology_tile` selects the palette; only unpainted
-            # cells (id=0) fall back to the biome-based `zone_to_group` path.
-            # Previously this was per-biome, which ignored the user's painted
-            # lithology overlay (e.g. arid_basaltic continents rendered as
-            # whatever biome's hardcoded mapping said).
-            # S88 walk #4b: lithology context exposed to ALL painters (rock_gap
-            # inside rock_px, wash and surface veins outside).  Previously only
-            # defined inside `if rock_px.any():`, so moving wash to AFTER strata
-            # required them in outer scope.
+            # S88 walk #4d: PAINTED `lithology.tif` is the SOLE source of truth.
+            # No biome fallback via zone_to_group.  Unpainted pixels (gid=0)
+            # and tiles without a lithology mask both use _DEFAULT_PAL.
+            # Previously the biome fallback hid lithology painting bugs by
+            # silently falling back to biome-derived defaults — that masking
+            # is now removed so palette mistakes are visible immediately.
             _litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
-            _zone_to_group = _litho_cfg.get("zone_to_group", {})
             _groups = _litho_cfg.get("groups", {})
             _litho_at_res = None
             if lithology_tile is not None:
@@ -2139,63 +2125,33 @@ def decorate_surface(
                     _pal_g = _gdata.get("palette") or _DEFAULT_PAL
                     _gid_to_pal[_gid] = _pal_g
 
-                # _litho_at_res is now computed at outer scope (above) so wash
-                # painter (moved to AFTER strata per S88 walk #4b user direction)
-                # can access it.  No-op duplicate removed here.
-
-                def _palette_for_biome(biome_name: str) -> list:
-                    g = _zone_to_group.get(biome_name)
-                    if g and g in _groups:
-                        p = _groups[g].get("palette")
-                        if p:
-                            return p
-                    return _DEFAULT_PAL
-
+                # PAINTED-ONLY path.  No biome fallback.
+                # gid==0 (unpainted) and missing lithology_tile both use _DEFAULT_PAL.
                 if _litho_at_res is not None:
-                    # PAINTED-FIRST path: iterate over unique lithology IDs
                     _unique_gids = np.unique(_litho_at_res[rock_px])
                     for _gid in _unique_gids:
                         _gid = int(_gid)
                         _bm_lith = rock_px & (_litho_at_res == _gid)
                         if not _bm_lith.any():
                             continue
-                        if _gid == 0:
-                            # Unpainted cells — fall back to per-biome
-                            for _bname in np.unique(biome_grid[_bm_lith]):
-                                _bm_fb = _bm_lith & (biome_grid == _bname)
-                                if not _bm_fb.any():
-                                    continue
-                                _pal = _palette_for_biome(str(_bname))
-                                _n = len(_pal)
-                                for _i, _blk in enumerate(_pal):
-                                    _lo = _i / _n; _hi = (_i + 1) / _n
-                                    _band = _bm_fb & (_scatter >= _lo) & (_scatter < _hi)
-                                    if _band.any():
-                                        surface_blocks[_band] = _blk
-                                subsurface_blocks[_bm_fb] = _pal[0]
-                        else:
-                            _pal = _gid_to_pal.get(_gid, _DEFAULT_PAL)
-                            _n = len(_pal)
-                            for _i, _blk in enumerate(_pal):
-                                _lo = _i / _n; _hi = (_i + 1) / _n
-                                _band = _bm_lith & (_scatter >= _lo) & (_scatter < _hi)
-                                if _band.any():
-                                    surface_blocks[_band] = _blk
-                            subsurface_blocks[_bm_lith] = _pal[0]
-                else:
-                    # No lithology mask available — pure biome fallback (legacy)
-                    for _bname in np.unique(biome_grid[rock_px]):
-                        _bm = rock_px & (biome_grid == _bname)
-                        if not _bm.any():
-                            continue
-                        _pal = _palette_for_biome(str(_bname))
+                        _pal = _gid_to_pal.get(_gid, _DEFAULT_PAL)
                         _n = len(_pal)
                         for _i, _blk in enumerate(_pal):
                             _lo = _i / _n; _hi = (_i + 1) / _n
-                            _band = _bm & (_scatter >= _lo) & (_scatter < _hi)
+                            _band = _bm_lith & (_scatter >= _lo) & (_scatter < _hi)
                             if _band.any():
                                 surface_blocks[_band] = _blk
-                        subsurface_blocks[_bm] = _pal[0]
+                        subsurface_blocks[_bm_lith] = _pal[0]
+                else:
+                    # No lithology mask available — default palette globally
+                    _pal = _DEFAULT_PAL
+                    _n = len(_pal)
+                    for _i, _blk in enumerate(_pal):
+                        _lo = _i / _n; _hi = (_i + 1) / _n
+                        _band = rock_px & (_scatter >= _lo) & (_scatter < _hi)
+                        if _band.any():
+                            surface_blocks[_band] = _blk
+                    subsurface_blocks[rock_px] = _pal[0]
 
                 # S88 walk #4b: wash painter MOVED to after strata-surface
                 # (see below this rock_px block).  Strata used to overwrite
@@ -2265,52 +2221,28 @@ def decorate_surface(
                         _wp = _gdata.get("wash_palette") or _DEFAULT_WASH_PAL
                         _gid_to_wash[_gid] = _wp
 
-                    def _wash_palette_for_biome(biome_name: str) -> list:
-                        g = _zone_to_group.get(biome_name)
-                        if g and g in _groups:
-                            wp = _groups[g].get("wash_palette")
-                            if wp:
-                                return wp
-                        return _DEFAULT_WASH_PAL
-
+                    # PAINTED-ONLY path.  gid==0 + no lithology = _DEFAULT_WASH_PAL.
                     if _litho_at_res is not None:
                         for _gid in np.unique(_litho_at_res[_wash_zone]):
                             _gid = int(_gid)
                             _bm_w = _wash_zone & (_litho_at_res == _gid)
                             if not _bm_w.any():
                                 continue
-                            if _gid == 0:
-                                for _bname in np.unique(biome_grid[_bm_w]):
-                                    _bm_wfb = _bm_w & (biome_grid == _bname)
-                                    if not _bm_wfb.any():
-                                        continue
-                                    _wp = _wash_palette_for_biome(str(_bname))
-                                    _n_pix = int(_bm_wfb.sum())
-                                    _wp_arr = np.asarray(_wp, dtype=object)
-                                    surface_blocks[_bm_wfb] = _wp_arr[
-                                        _wash_rng.integers(0, len(_wp), size=_n_pix)]
-                                    subsurface_blocks[_bm_wfb] = _wp_arr[
-                                        _wash_rng.integers(0, len(_wp), size=_n_pix)]
-                            else:
-                                _wp = _gid_to_wash.get(_gid, _DEFAULT_WASH_PAL)
-                                _n_pix = int(_bm_w.sum())
-                                _wp_arr = np.asarray(_wp, dtype=object)
-                                surface_blocks[_bm_w] = _wp_arr[
-                                    _wash_rng.integers(0, len(_wp), size=_n_pix)]
-                                subsurface_blocks[_bm_w] = _wp_arr[
-                                    _wash_rng.integers(0, len(_wp), size=_n_pix)]
-                    else:
-                        for _bname in np.unique(biome_grid[_wash_zone]):
-                            _bm_w = _wash_zone & (biome_grid == _bname)
-                            if not _bm_w.any():
-                                continue
-                            _wp = _wash_palette_for_biome(str(_bname))
+                            _wp = _gid_to_wash.get(_gid, _DEFAULT_WASH_PAL)
                             _n_pix = int(_bm_w.sum())
                             _wp_arr = np.asarray(_wp, dtype=object)
                             surface_blocks[_bm_w] = _wp_arr[
                                 _wash_rng.integers(0, len(_wp), size=_n_pix)]
                             subsurface_blocks[_bm_w] = _wp_arr[
                                 _wash_rng.integers(0, len(_wp), size=_n_pix)]
+                    else:
+                        _wp = _DEFAULT_WASH_PAL
+                        _n_pix = int(_wash_zone.sum())
+                        _wp_arr = np.asarray(_wp, dtype=object)
+                        surface_blocks[_wash_zone] = _wp_arr[
+                            _wash_rng.integers(0, len(_wp), size=_n_pix)]
+                        subsurface_blocks[_wash_zone] = _wp_arr[
+                            _wash_rng.integers(0, len(_wp), size=_n_pix)]
                     del _wash_rng
                 del _wash_zone
 
@@ -2331,7 +2263,6 @@ def decorate_surface(
             # pixels (lithology id 0).
             _s88_lcfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
             _s88_groups = _s88_lcfg.get("groups", {})
-            _s88_z2g = _s88_lcfg.get("zone_to_group", {})
 
             def _s88_apply_painter(
                 mask_tile,
@@ -2343,33 +2274,37 @@ def decorate_surface(
                 default_palette: list[str],
             ) -> None:
                 """Paint `palette_key` per-pixel where mask_tile >= threshold.
-                exclusion_mask: pixels where painting is forbidden."""
+                exclusion_mask: pixels where painting is forbidden.
+                Walk #4d: lithology.tif is the SOLE source of truth.  No
+                biome fallback.  Unpainted pixels (gid=0) or missing mask =
+                default_palette globally."""
                 if mask_tile is None:
                     return
                 intensity_threshold = int(cfg_section.get("intensity_threshold", 64))
-                # mask is float32 [0,1] from tile_streamer (uint8/255).
-                # Convert back to 0..255 byte space for threshold comparison.
                 intensity_byte = (mask_tile * 255.0).astype(np.int32)
                 paint_zone = (intensity_byte >= intensity_threshold) & ~exclusion_mask
                 if not paint_zone.any():
                     return
-                # Build per-group palette LUT
                 gid_to_pal_local: dict[int, list] = {}
                 for _gn, _gd in _s88_groups.items():
                     _gid = int(_gd.get("id", 0))
                     gid_to_pal_local[_gid] = (
                         _gd.get(palette_key) or default_palette
                     )
-                def _pal_for_biome_local(bname: str) -> list:
-                    g = _s88_z2g.get(bname)
-                    if g and g in _s88_groups:
-                        p = _s88_groups[g].get(palette_key)
-                        if p:
-                            return p
-                    return default_palette
 
                 _s88_rng = np.random.default_rng(
                     tile_x * 48271 ^ tile_y * 31337 ^ rng_salt)
+
+                def _paint_block(_bm, _pal):
+                    _arr = np.asarray(_pal, dtype=object)
+                    _n_px = int(_bm.sum())
+                    surface_blocks[_bm] = _arr[
+                        _s88_rng.integers(0, len(_pal), size=_n_px)
+                    ]
+                    if paint_subsurface:
+                        subsurface_blocks[_bm] = _arr[
+                            _s88_rng.integers(0, len(_pal), size=_n_px)
+                        ]
 
                 if _litho_at_res is not None:
                     for _gid_u in np.unique(_litho_at_res[paint_zone]):
@@ -2377,49 +2312,10 @@ def decorate_surface(
                         _bm = paint_zone & (_litho_at_res == _gid)
                         if not _bm.any():
                             continue
-                        if _gid == 0:
-                            # unpainted → per-biome fallback
-                            for _bn in np.unique(biome_grid[_bm]):
-                                _bm_b = _bm & (biome_grid == _bn)
-                                if not _bm_b.any():
-                                    continue
-                                _pal = _pal_for_biome_local(str(_bn))
-                                _arr = np.asarray(_pal, dtype=object)
-                                _n_px = int(_bm_b.sum())
-                                surface_blocks[_bm_b] = _arr[
-                                    _s88_rng.integers(0, len(_pal), size=_n_px)
-                                ]
-                                if paint_subsurface:
-                                    subsurface_blocks[_bm_b] = _arr[
-                                        _s88_rng.integers(0, len(_pal), size=_n_px)
-                                    ]
-                        else:
-                            _pal = gid_to_pal_local.get(_gid, default_palette)
-                            _arr = np.asarray(_pal, dtype=object)
-                            _n_px = int(_bm.sum())
-                            surface_blocks[_bm] = _arr[
-                                _s88_rng.integers(0, len(_pal), size=_n_px)
-                            ]
-                            if paint_subsurface:
-                                subsurface_blocks[_bm] = _arr[
-                                    _s88_rng.integers(0, len(_pal), size=_n_px)
-                                ]
+                        _pal = gid_to_pal_local.get(_gid, default_palette)
+                        _paint_block(_bm, _pal)
                 else:
-                    # No lithology mask — per-biome only
-                    for _bn in np.unique(biome_grid[paint_zone]):
-                        _bm_b = paint_zone & (biome_grid == _bn)
-                        if not _bm_b.any():
-                            continue
-                        _pal = _pal_for_biome_local(str(_bn))
-                        _arr = np.asarray(_pal, dtype=object)
-                        _n_px = int(_bm_b.sum())
-                        surface_blocks[_bm_b] = _arr[
-                            _s88_rng.integers(0, len(_pal), size=_n_px)
-                        ]
-                        if paint_subsurface:
-                            subsurface_blocks[_bm_b] = _arr[
-                                _s88_rng.integers(0, len(_pal), size=_n_px)
-                            ]
+                    _paint_block(paint_zone, default_palette)
 
             # Build per-painter exclusion masks
             _river_excl = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
@@ -2781,12 +2677,11 @@ def decorate_surface(
         _fade_mask = _above & _grass_mask & (_coin_fade < _fade_prob)
         if _fade_mask.any():
             _litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
-            _zone_to_group = _litho_cfg.get("zone_to_group", {})
             _groups = _litho_cfg.get("groups", {})
             _DEFAULT_STONE_PAL = ["stone", "andesite", "granite", "diorite"]
 
-            # S71-3: PAINTED lithology mask is source of truth for fade palette.
-            # Only fall back to biome-based zone_to_group on unpainted cells.
+            # Walk #4d: PAINTED lithology.tif is SOLE source of truth.
+            # No biome fallback.  gid=0 + no mask = _DEFAULT_STONE_PAL.
             _gid_to_pal_fade: dict[int, list] = {}
             for _gname, _gdata in _groups.items():
                 _gid_f = int(_gdata.get("id", 0))
@@ -2802,11 +2697,14 @@ def decorate_surface(
                 else:
                     _litho_at_res_fade = lithology_tile
 
-            def _fade_palette_for_biome(biome_name: str) -> list:
-                _gname = _zone_to_group.get(biome_name)
-                _pal_b = (_groups.get(_gname, {}).get("palette")
-                          if _gname else None) or _DEFAULT_STONE_PAL
-                return _pal_b
+            def _fade_paint(_bm, _pal):
+                _n = len(_pal)
+                for _i, _blk in enumerate(_pal):
+                    _lo = _i / _n; _hi = (_i + 1) / _n
+                    _band = _bm & (_scatter_pal >= _lo) & (_scatter_pal < _hi)
+                    if _band.any():
+                        surface_blocks[_band] = _blk
+                subsurface_blocks[_bm] = _pal[0]
 
             if _litho_at_res_fade is not None:
                 for _gid_v in np.unique(_litho_at_res_fade[_fade_mask]):
@@ -2814,43 +2712,10 @@ def decorate_surface(
                     _bm_l = _fade_mask & (_litho_at_res_fade == _gid_v)
                     if not _bm_l.any():
                         continue
-                    if _gid_v == 0:
-                        # Unpainted — biome fallback
-                        for _bname in np.unique(biome_grid[_bm_l]):
-                            _bm_fb = _bm_l & (biome_grid == _bname)
-                            if not _bm_fb.any():
-                                continue
-                            _pal = _fade_palette_for_biome(str(_bname))
-                            _n = len(_pal)
-                            for _i, _blk in enumerate(_pal):
-                                _lo = _i / _n; _hi = (_i + 1) / _n
-                                _band = _bm_fb & (_scatter_pal >= _lo) & (_scatter_pal < _hi)
-                                if _band.any():
-                                    surface_blocks[_band] = _blk
-                            subsurface_blocks[_bm_fb] = _pal[0]
-                    else:
-                        _pal = _gid_to_pal_fade.get(_gid_v, _DEFAULT_STONE_PAL)
-                        _n = len(_pal)
-                        for _i, _blk in enumerate(_pal):
-                            _lo = _i / _n; _hi = (_i + 1) / _n
-                            _band = _bm_l & (_scatter_pal >= _lo) & (_scatter_pal < _hi)
-                            if _band.any():
-                                surface_blocks[_band] = _blk
-                        subsurface_blocks[_bm_l] = _pal[0]
+                    _pal = _gid_to_pal_fade.get(_gid_v, _DEFAULT_STONE_PAL)
+                    _fade_paint(_bm_l, _pal)
             else:
-                # No lithology — pure biome fallback (legacy)
-                for _bname in np.unique(biome_grid[_fade_mask]):
-                    _bm = _fade_mask & (biome_grid == _bname)
-                    if not _bm.any():
-                        continue
-                    _pal = _fade_palette_for_biome(str(_bname))
-                    _n = len(_pal)
-                    for _i, _blk in enumerate(_pal):
-                        _lo = _i / _n; _hi = (_i + 1) / _n
-                        _band = _bm & (_scatter_pal >= _lo) & (_scatter_pal < _hi)
-                        if _band.any():
-                            surface_blocks[_band] = _blk
-                    subsurface_blocks[_bm] = _pal[0]
+                _fade_paint(_fade_mask, _DEFAULT_STONE_PAL)
 
     # --- Ground cover --------------------------------------------------------
     # NOTE: ground cover is applied here provisionally; if the surface pipeline
