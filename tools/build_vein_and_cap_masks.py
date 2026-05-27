@@ -112,28 +112,38 @@ def compute_fault_zero_crossings(H: int, W: int, scale_blocks: int) -> np.ndarra
 
 
 def write_upscaled_uint8(arr_1x4: np.ndarray, output_path: str) -> None:
-    """Upscale arr from H_BUILD to H_50K via NEAREST + chunked write."""
+    """Walk #10.1: BILINEAR upscale from H_BUILD to H_50K via PIL.Image.resize.
+
+    The previous NEAREST 1:4 -> 1:1 upscale (np.repeat) produced 4-block
+    'staircase' stamps at every signal boundary because each source pixel
+    became a perfect 4x4 patch of identical values.  Bilinear smooths the
+    transitions: each source pixel now contributes proportionally to a
+    region of the output, eliminating the right-angle stairsteps.
+
+    PIL handles the 2.5GB intermediate efficiently (single-image L-mode
+    resize).  Then chunked write to GeoTIFF.
+    """
+    from PIL import Image
     profile = {
         "driver": "GTiff",
         "height": H_50K, "width": H_50K, "count": 1,
         "dtype": "uint8",
         "compress": "lzw", "tiled": True, "blockxsize": 512, "blockysize": 512,
     }
-    print(f"  writing {output_path} as {H_50K}x{H_50K}...")
+    print(f"  bilinear upscale to {H_50K}x{H_50K}...")
+    src_img = Image.fromarray(arr_1x4, mode="L")
+    big_img = src_img.resize((H_50K, H_50K), Image.BILINEAR)
+    print(f"  writing {output_path}...")
     with rasterio.open(output_path, "w", **profile) as dst:
-        # Write in 1024-row chunks
+        # Crop in 1024-row chunks and write
         for y_start in range(0, H_50K, 1024):
             y_end = min(y_start + 1024, H_50K)
             chunk_h = y_end - y_start
-            # Find corresponding source rows
-            src_y_start = y_start // SCALE
-            src_y_end = (y_end + SCALE - 1) // SCALE
-            src_chunk = arr_1x4[src_y_start:src_y_end, :]
-            # Upscale via repeat
-            upscaled = np.repeat(np.repeat(src_chunk, SCALE, axis=0), SCALE, axis=1)
-            # Crop to exact target rows + width
-            upscaled = upscaled[: chunk_h, : H_50K]
-            dst.write(upscaled.astype(np.uint8), 1, window=Window(0, y_start, H_50K, chunk_h))
+            chunk = np.asarray(
+                big_img.crop((0, y_start, H_50K, y_end)),
+                dtype=np.uint8,
+            )
+            dst.write(chunk, 1, window=Window(0, y_start, H_50K, chunk_h))
 
 
 def main() -> int:

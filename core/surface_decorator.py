@@ -1518,6 +1518,15 @@ def _apply_strata_veins_surface(
         excl |= (gap_mask == 4)
         excl |= (gap_mask == 7)
 
+    # Walk #10.1: veins ONLY fire on rock_gap pixels (per user — was covering
+    # everything when slope-only-gated).
+    if gap_mask is not None:
+        _rock_gate = (gap_mask == 5)
+        vein_field = vein_field & _rock_gate
+        if not vein_field.any():
+            return
+        del _rock_gate
+
     if lithology_tile is not None and lithology_tile.shape != (H, W):
         from scipy.ndimage import zoom as _sd_zoom_v
         _zh = H / lithology_tile.shape[0]
@@ -1833,23 +1842,23 @@ def _apply_rock_varnish(
     1-block-thick surface stain).  Each group's varnish_palette is 2-3
     shades darker than its rock_gap base in the same color family.
     """
-    if gap_mask is None or lithology_tile is None:
+    if lithology_tile is None:
         return
     v_cfg = cfg.get("lithology", {}).get("varnish", {})
     if not v_cfg.get("enabled", False):
         return
 
-    rock_zone = (gap_mask == 5)
-    if not rock_zone.any():
-        return
-
-    H, W = rock_zone.shape
+    # Walk #10.1: VARNISH applies EVERYWHERE (not rock_gap-only).  The
+    # varnish_field mask itself encodes the drip-flow + slope gate, so
+    # runtime just needs to exclude water/floodplain/snow.
+    H, W = surface_y.shape
     _amp = float(v_cfg.get("amp", 0.5))
 
     excl = np.zeros((H, W), dtype=bool)
     if river_meta is not None:
         excl |= (river_meta > 0)
-    excl |= (gap_mask == 4) | (gap_mask == 7)
+    if gap_mask is not None:
+        excl |= (gap_mask == 4) | (gap_mask == 7)
 
     # Walk #10/11: prefer PRECOMPUTE MASK varnish_field.tif if available.
     # The mask bakes slope_factor * drip_band per pixel as uint8 0-255.
@@ -1863,7 +1872,7 @@ def _apply_rock_varnish(
             (tile_x * 0xDEADBEEF ^ tile_y * 0xCAFE4D ^ 0xBA17) & 0xFFFFFFFF
         )
         _coin = _rng_main.random((H, W), dtype=np.float32)
-        candidate = rock_zone & ~excl & (_coin < (_amp * v_intensity))
+        candidate = ~excl & (_coin < (_amp * v_intensity))
     else:
         # Fallback: runtime detection (walk #9.4 path)
         if flow_tile is None or cliff_deg is None:
@@ -1877,7 +1886,8 @@ def _apply_rock_varnish(
         _flow_min = float(v_cfg.get("flow_drip_min", 0.0001))
         _flow_max = float(v_cfg.get("flow_drip_max", 0.001))
         flow_drip = (flow_tile > _flow_min) & (flow_tile < _flow_max)
-        candidate = rock_zone & flow_drip & (slope_factor > 0) & ~excl
+        # Walk #10.1: NO rock_gap gate — varnish fires everywhere drip+slope
+        candidate = flow_drip & (slope_factor > 0) & ~excl
         if candidate.any():
             _rng_main = np.random.default_rng(
                 (tile_x * 0xDEADBEEF ^ tile_y * 0xCAFE4D ^ 0xBA17) & 0xFFFFFFFF
@@ -1891,10 +1901,8 @@ def _apply_rock_varnish(
     _dilate = int(v_cfg.get("dilate_blocks", 0))
     if _dilate > 0:
         from scipy.ndimage import binary_dilation as _bd_v
-        candidate = (
-            _bd_v(candidate, iterations=_dilate)
-            & rock_zone & ~excl
-        )
+        # Walk #10.1: no rock_zone re-mask (varnish fires everywhere)
+        candidate = _bd_v(candidate, iterations=_dilate) & ~excl
 
     # Lithology resolve
     if lithology_tile.shape != (H, W):
@@ -2707,6 +2715,26 @@ def decorate_surface(
                 cliff_deg         = cliff_deg,
             )
 
+            # ── Walk #10.1: VEINS moved BEFORE wash ────────────────────────
+            # User layer order: surface -> rock_gap -> strata -> concavity ->
+            # VEINS -> wash -> bedrock -> talus -> varnish -> cap -> cleanup.
+            # Veins now paint first so wash/bedrock/talus can paint over
+            # them on overlapping pixels (rivers + drainage win over veins).
+            _apply_strata_veins_surface(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                surface_y         = surface_y,
+                biome_grid        = biome_grid,
+                lithology_tile    = lithology_tile,
+                cliff_deg         = cliff_deg,
+                river_meta        = river_meta,
+                gap_mask          = _gap,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
+                vein_field_tile   = vein_field_tile,
+            )
+
             # ── S88 walk #4b: WASH PAINTER (moved from inside rock_px) ─────
             # Per user direction: rock_gap -> strata -> WASH -> bedrock -> talus
             #                     -> veins -> cap.
@@ -2915,25 +2943,8 @@ def decorate_surface(
                 default_palette=["cobblestone", "gravel", "coarse_dirt"],
             )
 
-            # 2b. SURFACE VEINS (S88 walk #4b new).  Veins were basement-only
-            # before -- user noted "WHERE ARE THE VEINS" because surface had
-            # zero vein painting.  Now veins fire at slope >= surface_min_deg
-            # AND vein_field (laplacian + fault zero-crossing) cells, on top
-            # of strata, before cap.  Cap still wins on its mask cells.
-            _apply_strata_veins_surface(
-                surface_blocks    = surface_blocks,
-                subsurface_blocks = subsurface_blocks,
-                surface_y         = surface_y,
-                biome_grid        = biome_grid,
-                lithology_tile    = lithology_tile,
-                cliff_deg         = cliff_deg,
-                river_meta        = river_meta,
-                gap_mask          = _gap,
-                cfg               = cfg,
-                tile_x            = tile_x,
-                tile_y            = tile_y,
-                vein_field_tile   = vein_field_tile,
-            )
+            # 2b. Walk #10.1: VEINS moved to BEFORE wash (between strata and
+            # wash, with concavity also early).  Old call site here removed.
 
             # 2c. Walk #9.1: concavity MOVED to between strata and wash above
             #     (was here in walk #6-9; fired before varnish + cap).  Now

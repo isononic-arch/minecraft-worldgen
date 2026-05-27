@@ -3752,7 +3752,7 @@
             "muddy_mangrove_roots",
             "mud"
           ],
-          "vein_amp": 1.0,
+          "vein_amp": 0.4,
           "_comment": "Massive intrusive \u2014 80-160 block bands, crazy 30\u00b0/100 tilt, 75/25 granite/dripstone mix with iron speckle."
         },
         "varnish_palette": [
@@ -3870,7 +3870,7 @@
             "brown_concrete_powder",
             "granite"
           ],
-          "vein_amp": 0.75,
+          "vein_amp": 0.4,
           "_comment": "S88 walk #4c: bands restructured -- A=basalt/gray_concrete_powder, B=smooth_basalt/tuff.  speckle=[mud] (was [deepslate]).",
           "col_hash_mode": "diagonal"
         },
@@ -4168,7 +4168,7 @@
             "black_concrete_powder",
             "tuff"
           ],
-          "vein_amp": 1.0,
+          "vein_amp": 0.4,
           "_comment": "S88 walk #4c: bands restructured -- A=cobbled_deepslate/deepslate, B=dead_horn_coral_block/suspicious_gravel (latter two are vein-exception blocks outside the temperate palette set, per user permission).  speckle unchanged (deepslate_coal_ore + smooth_basalt) but rate dropped to 0.02.",
           "col_hash_mode": "diagonal"
         },
@@ -4278,7 +4278,7 @@
             "dead_horn_coral_block",
             "dead_fire_coral_block"
           ],
-          "vein_amp": 1.0,
+          "vein_amp": 0.4,
           "_comment": "Sedimentary \u2014 1-14 block bands (highly variable), mild 6\u00b0/100 tilt @ 15\u00b0, 80/20 calcite/diorite with andesite speckle."
         },
         "varnish_palette": [
@@ -4387,7 +4387,7 @@
             "basalt",
             "smooth_basalt"
           ],
-          "vein_amp": 1.0,
+          "vein_amp": 0.4,
           "_comment": "Folded mountain metamorphic \u2014 6-16 block bands, STRONG 25\u00b0/100 tilt @ 30\u00b0, 90/10 andesite/stone with tuff speckle."
         },
         "varnish_palette": [
@@ -4489,7 +4489,7 @@
           "vein_blocks": [
             "moss_block"
           ],
-          "vein_amp": 1.0,
+          "vein_amp": 0.4,
           "_comment": "Wet temperate \u2014 8-18 block bands, mild 4\u00b0/100 tilt, 60/40 cobblestone/mossy split with triple speckle (tuff+moss+andesite)."
         },
         "varnish_palette": [
@@ -4578,7 +4578,7 @@
       "aspect_smooth_sigma": 4.0,
       "vein_streak_min": 5,
       "vein_streak_max": 14,
-      "vein_mask_threshold": 32
+      "vein_mask_threshold": 96
     },
     "concavity": {
       "_comment": "S88 walk #6 NEW PASS: detects concave terrain (positive Laplacian of surface_y) and paints lithology bedrock_drainage_palette.  Complements the existing bedrock_drainage mask painter by catching gully/bowl/depression features the mask misses (the mask is flow-derived; this is curvature-derived).",
