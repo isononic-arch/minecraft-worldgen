@@ -1453,6 +1453,7 @@ def _apply_strata_veins_surface(
     cfg:               dict,
     tile_x:            int,
     tile_y:            int,
+    vein_field_tile:   np.ndarray | None = None,
 ) -> None:
     """S88 walk #4b/4c: paint per-group vein blocks on surface_blk + sub_blk
     where the SAME vein_field used by chunk_writer's basement veins fires,
@@ -1486,19 +1487,27 @@ def _apply_strata_veins_surface(
         (cliff_deg - surface_min_deg) / _fade_denom, 0.0, 1.0
     ).astype(np.float32)
 
-    # Compute vein field — same formula as chunk_writer (seam-deterministic)
-    from core.chunk_writer import _compute_vein_field
-    vein_lap_thr = float(strata_global.get("vein_lap_threshold", 4.0))
-    vein_fault_scale = int(strata_global.get("vein_fault_scale_blocks", 80))
-    vein_fault_width = float(strata_global.get("vein_fault_width", 0.08))
-    tile_world_x = tile_x * W
-    tile_world_z = tile_y * H
-    vein_field = _compute_vein_field(
-        surface_y, tile_world_x, tile_world_z,
-        lap_threshold=vein_lap_thr,
-        fault_scale_blocks=vein_fault_scale,
-        fault_width=vein_fault_width,
-    )
+    # Walk #10/11: vein_field comes from PRECOMPUTE MASK (vein_field.tif).
+    # Fall back to runtime computation if mask not provided.
+    if vein_field_tile is not None:
+        # tile_streamer normalises uint8 -> float32 [0,1]; convert back to byte
+        vein_intensity_byte = (vein_field_tile * 255.0).astype(np.int32)
+        vein_mask_thr = int(strata_global.get("vein_mask_threshold", 32))
+        vein_field = vein_intensity_byte >= vein_mask_thr
+    else:
+        # Legacy runtime path (kept for fallback if mask missing)
+        from core.chunk_writer import _compute_vein_field
+        vein_lap_thr = float(strata_global.get("vein_lap_threshold", 4.0))
+        vein_fault_scale = int(strata_global.get("vein_fault_scale_blocks", 80))
+        vein_fault_width = float(strata_global.get("vein_fault_width", 0.08))
+        tile_world_x = tile_x * W
+        tile_world_z = tile_y * H
+        vein_field = _compute_vein_field(
+            surface_y, tile_world_x, tile_world_z,
+            lap_threshold=vein_lap_thr,
+            fault_scale_blocks=vein_fault_scale,
+            fault_width=vein_fault_width,
+        )
     if not vein_field.any():
         return
 
@@ -2185,6 +2194,7 @@ def decorate_surface(
     cliff_cap_tile: np.ndarray | None = None,         # (H, W) float32 [0,1] — cap-rock intensity (S88)
     talus_apron_tile: np.ndarray | None = None,       # (H, W) float32 [0,1] — debris-apron intensity (S88)
     bedrock_drainage_tile: np.ndarray | None = None,  # (H, W) float32 [0,1] — water-cut rock intensity (S88)
+    vein_field_tile: np.ndarray | None = None,        # (H, W) float32 [0,1] — vein detection (walk #10/11)
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute surface and subsurface block arrays for a tile.
@@ -2836,6 +2846,43 @@ def decorate_surface(
                 else:
                     _paint_block(paint_zone, default_palette)
 
+                # Walk #10: optional 3x3 median/mode filter post-paint to
+                # smooth salt-and-pepper per-pixel palette pick into patches
+                # (bedrock_drainage was 'spotty' per user — this consolidates
+                # adjacent same-block clusters).
+                if cfg_section.get("median_filter_post", False) and paint_zone.any():
+                    # Map block names to int indices per palette, mode-filter,
+                    # map back.  Operates on the paint_zone only.
+                    _pal_set = set()
+                    for _pal_v in gid_to_pal_local.values():
+                        _pal_set.update(_pal_v)
+                    _pal_set.update(default_palette)
+                    _pal_list = sorted(_pal_set)
+                    _name_to_idx = {n: i for i, n in enumerate(_pal_list)}
+                    _N = len(_pal_list)
+                    # Build int index array for surface_blocks at paint_zone
+                    _idx_arr = np.full((H, W), -1, dtype=np.int16)
+                    for _i, _n in enumerate(_pal_list):
+                        _idx_arr[paint_zone & (surface_blocks == _n)] = _i
+                    # 3x3 mode filter via scipy.ndimage.generic_filter is slow;
+                    # use a per-block dilation-comparison instead: count each
+                    # palette index in 3x3 windows, pick majority.
+                    from scipy.ndimage import uniform_filter
+                    _winner_idx = _idx_arr.copy()
+                    _winner_cnt = np.zeros((H, W), dtype=np.float32)
+                    for _i in range(_N):
+                        _occ = (_idx_arr == _i).astype(np.float32)
+                        _cnt3 = uniform_filter(_occ, size=3, mode="nearest") * 9.0
+                        _better = _cnt3 > _winner_cnt
+                        _winner_idx[_better] = _i
+                        _winner_cnt[_better] = _cnt3[_better]
+                    # Apply winner where paint_zone
+                    _pal_arr_obj = np.asarray(_pal_list, dtype=object)
+                    _valid = paint_zone & (_winner_idx >= 0)
+                    surface_blocks[_valid] = _pal_arr_obj[_winner_idx[_valid]]
+                    if paint_subsurface:
+                        subsurface_blocks[_valid] = _pal_arr_obj[_winner_idx[_valid]]
+
             # Build per-painter exclusion masks
             _river_excl = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
             _flood_excl = (_gap == 4)
@@ -2880,6 +2927,7 @@ def decorate_surface(
                 cfg               = cfg,
                 tile_x            = tile_x,
                 tile_y            = tile_y,
+                vein_field_tile   = vein_field_tile,
             )
 
             # 2c. Walk #9.1: concavity MOVED to between strata and wash above

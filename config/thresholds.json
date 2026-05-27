@@ -2292,8 +2292,9 @@
     "rock_gap_5block_fade": {
       "_comment": "S88 walk #5: tightened.  slope_solid 30->32 to align with strata fade-in floor (strata.surface_min_deg=32).  fade_blocks 5->2 for a sharper boundary closer to the strata formation zone.",
       "enabled": true,
-      "slope_solid_deg": 38.0,
-      "fade_blocks": 1
+      "slope_solid_deg": 32.0,
+      "fade_blocks": 1,
+      "morph_close_iterations": 2
     }
   },
   "eco_vegetation": {
@@ -3751,7 +3752,7 @@
             "muddy_mangrove_roots",
             "mud"
           ],
-          "vein_amp": 0.85,
+          "vein_amp": 1.0,
           "_comment": "Massive intrusive \u2014 80-160 block bands, crazy 30\u00b0/100 tilt, 75/25 granite/dripstone mix with iron speckle."
         },
         "varnish_palette": [
@@ -3831,10 +3832,10 @@
           "brown_concrete_powder"
         ],
         "bedrock_drainage_palette": [
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
           "granite",
           "granite",
           "granite",
@@ -3864,12 +3865,12 @@
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "smooth_red_sandstone",
-            "red_sand",
+            "granite",
+            "brown_concrete_powder",
             "brown_concrete_powder",
             "granite"
           ],
-          "vein_amp": 0.5,
+          "vein_amp": 0.75,
           "_comment": "S88 walk #4c: bands restructured -- A=basalt/gray_concrete_powder, B=smooth_basalt/tuff.  speckle=[mud] (was [deepslate]).",
           "col_hash_mode": "diagonal"
         },
@@ -3944,36 +3945,36 @@
           "rooted_dirt",
           "rooted_dirt",
           "rooted_dirt",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone"
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite"
         ],
         "concavity_palette": [
           "brown_concrete_powder",
@@ -4046,36 +4047,36 @@
           "rooted_dirt",
           "rooted_dirt",
           "rooted_dirt",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sand",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone",
-          "red_sandstone"
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite",
+          "granite"
         ]
       },
       "temperate_basaltic": {
@@ -4130,16 +4131,16 @@
           "clay"
         ],
         "bedrock_drainage_palette": [
-          "andesite",
-          "andesite",
-          "andesite",
-          "andesite",
-          "andesite",
-          "tuff",
-          "tuff",
-          "tuff",
-          "tuff",
-          "tuff"
+          "blackstone",
+          "blackstone",
+          "blackstone",
+          "blackstone",
+          "mud",
+          "mud",
+          "mud",
+          "black_concrete_powder",
+          "black_concrete_powder",
+          "black_concrete_powder"
         ],
         "strata": {
           "axis": "XZ_cols",
@@ -4277,7 +4278,7 @@
             "dead_horn_coral_block",
             "dead_fire_coral_block"
           ],
-          "vein_amp": 0.7,
+          "vein_amp": 1.0,
           "_comment": "Sedimentary \u2014 1-14 block bands (highly variable), mild 6\u00b0/100 tilt @ 15\u00b0, 80/20 calcite/diorite with andesite speckle."
         },
         "varnish_palette": [
@@ -4488,7 +4489,7 @@
           "vein_blocks": [
             "moss_block"
           ],
-          "vein_amp": 0.7,
+          "vein_amp": 1.0,
           "_comment": "Wet temperate \u2014 8-18 block bands, mild 4\u00b0/100 tilt, 60/40 cobblestone/mossy split with triple speckle (tuff+moss+andesite)."
         },
         "varnish_palette": [
@@ -4561,7 +4562,8 @@
       "flow_threshold": 0.02,
       "dilation_blocks": 1,
       "fade_blocks": 6,
-      "intensity_threshold": 24
+      "intensity_threshold": 24,
+      "median_filter_post": true
     },
     "strata": {
       "_comment": "S88 walk #4c: surface_min_deg bumped 28->32 + new surface_fade_max_deg=35. Strata FADES IN over slope 32-35 (probabilistic) instead of solid >=28 (was overpainting too much).  Below 32: no strata.  Above 35: solid.",
@@ -4574,8 +4576,9 @@
       "surface_fade_max_deg": 35.0,
       "xz_wobble_amp": 0.25,
       "aspect_smooth_sigma": 4.0,
-      "vein_streak_min": 3,
-      "vein_streak_max": 8
+      "vein_streak_min": 5,
+      "vein_streak_max": 14,
+      "vein_mask_threshold": 32
     },
     "concavity": {
       "_comment": "S88 walk #6 NEW PASS: detects concave terrain (positive Laplacian of surface_y) and paints lithology bedrock_drainage_palette.  Complements the existing bedrock_drainage mask painter by catching gully/bowl/depression features the mask misses (the mask is flow-derived; this is curvature-derived).",
@@ -4592,7 +4595,7 @@
       "crevice_sigma": 2.0,
       "crevice_threshold": 0.5,
       "slope_min_deg": 32.0,
-      "dilate_blocks": 3,
+      "dilate_blocks": 6,
       "flow_drip_min": 0.0001,
       "flow_drip_max": 0.001,
       "slope_max_deg": 60.0
@@ -4695,7 +4698,7 @@
   },
   "washes": {
     "min_flow": 0.001,
-    "dilation": 3,
+    "dilation": 2,
     "fade_blocks": 5
   }
 }

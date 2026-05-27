@@ -581,6 +581,22 @@ def compute_eco_gradients(
             gap_mask[rock_avail & _rg & (_rock_coin < _slope_prob)] = 5
             del _rg, _slope_prob, _wx, _wz, _h, _rock_coin, rock_avail
 
+            # Walk #10: runtime morphological close on rock_gap mask to
+            # smooth salt-and-pepper from the Gaea-derived slope distribution.
+            # Per user — rock_gap was speckled, "trying to add clean
+            # definition" downstream.  Close ops fill holes < 2 blocks.
+            _close_iters = int(_rg_cfg.get("morph_close_iterations", 0))
+            if _close_iters > 0:
+                from scipy.ndimage import binary_closing as _bc_rg
+                _rock_mask_5 = (gap_mask == 5)
+                if _rock_mask_5.any():
+                    _closed = _bc_rg(_rock_mask_5, iterations=_close_iters)
+                    # Only ADD new rock pixels — don't overwrite other gap values
+                    _new_rock = _closed & ~_rock_mask_5 & (gap_mask == 0)
+                    gap_mask[_new_rock] = 5
+                    del _closed, _new_rock
+                del _rock_mask_5
+
             # S87 #11 (walk #2 + walk #3): sub-slope flat-detect exemption.
             # ORIGINAL spec (38,11): "the little flat surface areas within the
             # macro sloped area to be their usual topsoil".

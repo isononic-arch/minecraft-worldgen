@@ -570,6 +570,7 @@ def _process_tile(args: dict) -> dict:
         cliff_cap_tile = masks.get("cliff_cap"),
         talus_apron_tile = masks.get("talus_apron"),
         bedrock_drainage_tile = masks.get("bedrock_drainage"),
+        vein_field_tile = masks.get("vein_field"),
     )
 
     # ---- Step 8: Schematic placement ----

@@ -45,6 +45,8 @@ MASK_NAMES = [
     "cliff_cap",
     "talus_apron",
     "bedrock_drainage",
+    # S88 walk #10/11: vein_field mask (built by tools/build_vein_and_cap_masks.py)
+    "vein_field",
 ]
 
 
