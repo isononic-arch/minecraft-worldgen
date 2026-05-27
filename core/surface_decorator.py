@@ -1626,6 +1626,7 @@ def _apply_concavity_drainage(
     cfg:               dict,
     tile_x:            int,
     tile_y:            int,
+    cliff_deg:         np.ndarray | None = None,
 ) -> None:
     """S88 walk #6 NEW pass: paint bedrock_drainage_palette on concave terrain.
 
@@ -1641,9 +1642,10 @@ def _apply_concavity_drainage(
     cc = cfg.get("lithology", {}).get("concavity", {}) if isinstance(cfg, dict) else {}
     if not cc.get("enabled", False):
         return
-    lap_threshold = float(cc.get("lap_threshold", 1.5))
+    lap_threshold = float(cc.get("lap_threshold", 3.0))
     palette_key = cc.get("palette_key", "concavity_palette")  # walk #9: new key
     dilate_blocks = int(cc.get("dilate_blocks", 0))
+    slope_min_deg = float(cc.get("slope_min_deg", 0.0))  # walk #9.1: slope gate
 
     H, W = surface_y.shape
     sy = surface_y.astype(np.float32)
@@ -1656,10 +1658,17 @@ def _apply_concavity_drainage(
     )
     paint_mask = lap >= lap_threshold
 
+    # Walk #9.1: slope gate (matches strata fade-in floor at 32° default)
+    if slope_min_deg > 0 and cliff_deg is not None:
+        paint_mask &= (cliff_deg >= slope_min_deg)
+
     # Walk #9: dilate detected pixels into small patches for visibility
     if dilate_blocks > 0 and paint_mask.any():
         from scipy.ndimage import binary_dilation as _bd_conv
         paint_mask = _bd_conv(paint_mask, iterations=dilate_blocks)
+        # Re-apply slope gate post-dilation so we don't bleed onto flat
+        if slope_min_deg > 0 and cliff_deg is not None:
+            paint_mask &= (cliff_deg >= slope_min_deg)
 
     excl = np.zeros((H, W), dtype=bool)
     if river_meta is not None:
@@ -2648,6 +2657,23 @@ def decorate_surface(
                 aspect            = eco_grads.aspect if eco_grads is not None else None,
             )
 
+            # ── Walk #9.1: CONCAVITY moved to BETWEEN strata and wash ─────
+            # Was firing on flat valley pixels with sharp curvature in walk #9.
+            # Now gated by slope_min_deg=32° (matches strata fade-in floor) +
+            # lap_threshold raised to 3.0 (only most-aggressive local pits).
+            _apply_concavity_drainage(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                surface_y         = surface_y,
+                lithology_tile    = lithology_tile,
+                river_meta        = river_meta,
+                gap_mask          = _gap,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
+                cliff_deg         = cliff_deg,
+            )
+
             # ── S88 walk #4b: WASH PAINTER (moved from inside rock_px) ─────
             # Per user direction: rock_gap -> strata -> WASH -> bedrock -> talus
             #                     -> veins -> cap.
@@ -2838,19 +2864,10 @@ def decorate_surface(
                 tile_y            = tile_y,
             )
 
-            # 2c. Walk #6 NEW: concavity pass (laplacian-based) painting
-            #     bedrock_drainage_palette per-lithology on local depressions.
-            _apply_concavity_drainage(
-                surface_blocks    = surface_blocks,
-                subsurface_blocks = subsurface_blocks,
-                surface_y         = surface_y,
-                lithology_tile    = lithology_tile,
-                river_meta        = river_meta,
-                gap_mask          = _gap,
-                cfg               = cfg,
-                tile_x            = tile_x,
-                tile_y            = tile_y,
-            )
+            # 2c. Walk #9.1: concavity MOVED to between strata and wash above
+            #     (was here in walk #6-9; fired before varnish + cap).  Now
+            #     fires earlier in pipeline so wash/bedrock/talus/veins can
+            #     paint OVER it on overlapping pixels.
 
             # 2d. Walk #8 NEW: rock varnish — per-litho stain in crevices/
             #     corners.  Each group's varnish_palette is relatively

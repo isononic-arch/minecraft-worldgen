@@ -4581,9 +4581,10 @@
     "concavity": {
       "_comment": "S88 walk #6 NEW PASS: detects concave terrain (positive Laplacian of surface_y) and paints lithology bedrock_drainage_palette.  Complements the existing bedrock_drainage mask painter by catching gully/bowl/depression features the mask misses (the mask is flow-derived; this is curvature-derived).",
       "enabled": true,
-      "lap_threshold": 0.75,
+      "lap_threshold": 3.0,
       "palette_key": "concavity_palette",
-      "dilate_blocks": 2
+      "dilate_blocks": 2,
+      "slope_min_deg": 32.0
     },
     "varnish": {
       "_comment": "S88 walk #8: NEW rock varnish pass.  Paints per-litho varnish_palette on rock_gap pixels in local crevices/corners (surface_y < gaussian_smoothed surface_y).  Per-pixel coin gated at amp.  Each varnish_palette is relatively 2-3 shades darker than that group's rock_gap base, in the same color family \u2014 reads as natural rock staining/oxidation.",
