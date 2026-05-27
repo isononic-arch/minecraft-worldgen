@@ -2813,22 +2813,11 @@ def decorate_surface(
                 tile_y            = tile_y,
             )
 
-            # ── Walk #9.1: CONCAVITY moved to BETWEEN strata and wash ─────
-            # Was firing on flat valley pixels with sharp curvature in walk #9.
-            # Now gated by slope_min_deg=32° (matches strata fade-in floor) +
-            # lap_threshold raised to 3.0 (only most-aggressive local pits).
-            _apply_concavity_drainage(
-                surface_blocks    = surface_blocks,
-                subsurface_blocks = subsurface_blocks,
-                surface_y         = surface_y,
-                lithology_tile    = lithology_tile,
-                river_meta        = river_meta,
-                gap_mask          = _gap,
-                cfg               = cfg,
-                tile_x            = tile_x,
-                tile_y            = tile_y,
-                cliff_deg         = cliff_deg,
-            )
+            # ── Walk #12: CONCAVITY moved LATER (after talus, before varnish)
+            # per realistic-geology pipeline order: concavity captures sediment
+            # accumulated IN local depressions by water/gravity — should
+            # OVERLAY erosional features (wash/talus) not be hidden under them.
+            # Old call relocated to after talus_apron painter below.
 
             # ── Walk #10.1: VEINS moved BEFORE wash ────────────────────────
             # User layer order: surface -> rock_gap -> strata -> concavity ->
@@ -3061,10 +3050,22 @@ def decorate_surface(
             # 2b. Walk #10.1: VEINS moved to BEFORE wash (between strata and
             # wash, with concavity also early).  Old call site here removed.
 
-            # 2c. Walk #9.1: concavity MOVED to between strata and wash above
-            #     (was here in walk #6-9; fired before varnish + cap).  Now
-            #     fires earlier in pipeline so wash/bedrock/talus/veins can
-            #     paint OVER it on overlapping pixels.
+            # 2c. Walk #12: CONCAVITY moved here (after talus, before varnish).
+            # Real-geology order: concavity captures sediment ACCUMULATED in
+            # local depressions by water/gravity — must overlay wash/bedrock/
+            # talus, not be hidden under them.
+            _apply_concavity_drainage(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                surface_y         = surface_y,
+                lithology_tile    = lithology_tile,
+                river_meta        = river_meta,
+                gap_mask          = _gap,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
+                cliff_deg         = cliff_deg,
+            )
 
             # 2d. Walk #8 NEW: rock varnish — per-litho stain in crevices/
             #     corners.  Each group's varnish_palette is relatively
@@ -3102,6 +3103,26 @@ def decorate_surface(
                 rng_salt=0xCAFE,
                 default_palette=["tuff", "andesite", "cobblestone"],
             )
+
+            # Walk #12: KILL GROUND_COVER on cap pixels (cap is bare rock,
+            # no grass/flowers/bushes should grow on a peak top).  Computes
+            # the same paint_zone as the cap painter just did and zeros
+            # ground_cover at those pixels.  Tree suppression handled
+            # downstream in schematic_placement via gap_mask + cliff_cap_tile.
+            if (
+                cliff_cap_tile is not None
+                and _s88_lcfg.get("cliff_cap", {}).get("kill_ground_cover", False)
+                and ground_cover is not None
+            ):
+                _cc_thr = int(_s88_lcfg.get("cliff_cap", {}).get("intensity_threshold", 8))
+                _cc_dil = int(_s88_lcfg.get("cliff_cap", {}).get("dilate_blocks", 0))
+                _cc_intensity = (cliff_cap_tile * 255.0).astype(np.int32)
+                _cc_zone = (_cc_intensity >= _cc_thr) & ~(_river_excl | _snow_excl)
+                if _cc_dil > 0 and _cc_zone.any():
+                    from scipy.ndimage import binary_dilation as _bd_cck
+                    _cc_zone = _bd_cck(_cc_zone, iterations=_cc_dil)
+                if _cc_zone.any():
+                    ground_cover[_cc_zone] = ""
 
             # ── Walk #9 NEW: rock_zone_cleanup ───────────────────────────
             # Final pass: on rock_gap (gap_mask==5) pixels, overwrite any

@@ -776,6 +776,7 @@ def place_schematics(
     cliff_deg:    np.ndarray | None = None,  # (H,W) float32 degrees
     clearing_field: np.ndarray | None = None,  # (H,W) float32 [0,1] — meadow clearing noise (S57 Phase 3a)
     surface_blocks: np.ndarray | None = None,  # (H,W) object str — for snow-surface skip (S58)
+    cliff_cap_tile: np.ndarray | None = None,  # (H,W) float32 [0,1] — walk #12: suppress trees on cap
 ) -> list[PlacementRecord]:
     """
     Compute schematic placements for one tile.
@@ -872,6 +873,18 @@ def place_schematics(
              | (gap == 7) | (gap == 8))
             & ~sand_dune_in_desert & ~snow_in_arctic & ~floodplain_ok
         )
+        # Walk #12: also suppress trees on cliff_cap pixels (bare peak tops
+        # shouldn't have trees growing on them).
+        _cc_cfg = cfg.get("lithology", {}).get("cliff_cap", {}) if isinstance(cfg, dict) else {}
+        if cliff_cap_tile is not None and _cc_cfg.get("suppress_trees", False):
+            _cc_thr = int(_cc_cfg.get("intensity_threshold", 8))
+            _cc_dil = int(_cc_cfg.get("dilate_blocks", 0))
+            _cc_intensity_byte = (cliff_cap_tile * 255.0).astype(np.int32)
+            _cap_pixels = _cc_intensity_byte >= _cc_thr
+            if _cc_dil > 0 and _cap_pixels.any():
+                from scipy.ndimage import binary_dilation as _bd_cc
+                _cap_pixels = _bd_cc(_cap_pixels, iterations=_cc_dil)
+            full_suppress = full_suppress | _cap_pixels
         land_mask = land_mask & ~full_suppress
 
         # Alpine meadow (gap==6): allow sparse scattered krummholz trees

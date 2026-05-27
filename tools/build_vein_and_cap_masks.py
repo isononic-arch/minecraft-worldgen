@@ -54,11 +54,10 @@ VEIN_FAULT_BRANCH_WIDTH = 0.06  # narrower → thinner branches
 VEIN_FAULT_BRANCH_PROXIMITY = 8 # branches only spawn within N pixels of mainlines
 VEIN_SLOPE_MIN_DEG = 32.0       # gate: only on >= 32° slopes (matches strata)
 
-# ─── VARNISH_FIELD params ───────────────────────────────────────────────
-# Slope-fade range (intensity ramps from 0 at slope_min to 255 at slope_max).
-VARN_SLOPE_MIN_DEG = 32.0
-VARN_SLOPE_MAX_DEG = 60.0
-# Drip flow band — between dry (no water) and wash (active channel).
+# ─── VARNISH_FIELD params (walk #12 — drip-only, sharp slopes) ──────────
+# User: "1 over, 4 up" climb = arctan(4/1) = ~76°.  Only sharp drip cliffs.
+VARN_SLOPE_MIN_DEG = 60.0        # was 32 — only sharp drips
+VARN_SLOPE_MAX_DEG = 80.0        # was 60 — full intensity at near-vertical
 VARN_FLOW_DRIP_MIN = 0.0001
 VARN_FLOW_DRIP_MAX = 0.001
 # Read flow.tif at full 50k then downsample to 1:4 by max-pool (preserves

@@ -595,6 +595,7 @@ def _process_tile(args: dict) -> dict:
         cliff_deg    = cliff_deg,
         clearing_field = clearing_field,
         surface_blocks = surface_blk,
+        cliff_cap_tile = masks.get("cliff_cap"),
     )
 
     # ---- Step 9: Chunk write ----
