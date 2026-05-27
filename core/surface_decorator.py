@@ -1802,28 +1802,34 @@ def _apply_rock_varnish(
     tile_x:            int,
     tile_y:            int,
     cliff_deg:         np.ndarray | None = None,
+    flow_tile:         np.ndarray | None = None,
 ) -> None:
-    """S88 walk #9 v2: paint per-lithology varnish stain at cliff BASES.
+    """S88 walk #9.4: PURE FLOW varnish — drip-line streaks on cliff faces.
 
-    Detection (walk #9):
-      1. rock_gap pixel (gap_mask == 5)
-      2. slope >= slope_min_deg (sharp slopes only — water drips here)
-      3. crevice or cliff-base: surface_y within `cliff_base_band` blocks
-         of the local minimum surface_y in a `cliff_base_window` neighborhood.
-         (real water-pooling/stain happens at the FOOT of cliff faces.)
+    Detection:
+      1. rock_gap pixel (gap_mask == 5).  Strata-firing area = rock_gap-only
+         per walk #6 gating, so rock_gap is the full "rock/strata firing"
+         zone.
+      2. Drip-flow band: flow_drip_min < flow < flow_drip_max.  Below =
+         no water, no stain.  Above = active river/wash channel (varnish
+         doesn't fire there; wash painter handles those upstream in the
+         pipeline).
+      3. Slope fade-in: per-pixel probability ramps from 0 at slope_min_deg
+         (= strata floor 32°) to varnish.amp at slope_max_deg (60°).
+         "Most-most-most inclined areas" get the densest staining; gentler
+         cliffs get progressively less.
 
-    Post-detection: dilate by `dilate_blocks` for visible patches instead
-    of single-pixel scatter (was sparse in walk #8).
-
-    Per-pixel paint of surface_blocks ONLY (no subsurface — surface stain
-    is 1 block thick).  Each group's varnish_palette is 2-3 shades darker
-    than its rock_gap base in the same color family.
+    Per-pixel paint of surface_blocks ONLY (no subsurface — varnish is a
+    1-block-thick surface stain).  Each group's varnish_palette is 2-3
+    shades darker than its rock_gap base in the same color family.
     """
     if gap_mask is None or lithology_tile is None:
         return
     v_cfg = cfg.get("lithology", {}).get("varnish", {})
     if not v_cfg.get("enabled", False):
         return
+    if flow_tile is None:
+        return  # walk #9.4 requires flow_tile
 
     rock_zone = (gap_mask == 5)
     if not rock_zone.any():
@@ -1831,42 +1837,48 @@ def _apply_rock_varnish(
 
     H, W = rock_zone.shape
 
-    # ── (1) slope gate ───────────────────────────────────────────────────
-    _slope_min = float(v_cfg.get("slope_min_deg", 0.0))
-    if cliff_deg is not None and _slope_min > 0:
-        sharp_enough = cliff_deg >= _slope_min
-    else:
-        sharp_enough = np.ones((H, W), dtype=bool)
+    # ── (1) slope fade-in: clip((slope - min) / (max - min), 0, 1) ──────
+    _slope_min = float(v_cfg.get("slope_min_deg", 32.0))
+    _slope_max = float(v_cfg.get("slope_max_deg", 60.0))
+    _amp = float(v_cfg.get("amp", 0.5))
+    if cliff_deg is None:
+        return  # walk #9.4 requires cliff_deg
+    _slope_denom = max(0.1, _slope_max - _slope_min)
+    slope_factor = np.clip(
+        (cliff_deg - _slope_min) / _slope_denom, 0.0, 1.0
+    ).astype(np.float32)
 
-    # ── (2) cliff-base detection ────────────────────────────────────────
-    # local minimum surface_y in a 2*window+1 window; varnish fires where
-    # this pixel's surface_y is within cliff_base_band of that local min.
-    from scipy.ndimage import minimum_filter as _mf_v
-    _win = int(v_cfg.get("cliff_base_window", 12))
-    _band = int(v_cfg.get("cliff_base_band", 6))
-    sy_i32 = surface_y.astype(np.int32)
-    local_min_y = _mf_v(sy_i32, size=(2 * _win + 1))
-    cliff_base = (sy_i32 - local_min_y) < _band
+    # ── (2) drip-flow gate (flow_drip_min < flow < flow_drip_max) ───────
+    _flow_min = float(v_cfg.get("flow_drip_min", 0.0001))
+    _flow_max = float(v_cfg.get("flow_drip_max", 0.001))
+    flow_drip = (flow_tile > _flow_min) & (flow_tile < _flow_max)
 
     excl = np.zeros((H, W), dtype=bool)
     if river_meta is not None:
         excl |= (river_meta > 0)
     excl |= (gap_mask == 4) | (gap_mask == 7)
 
-    candidate = rock_zone & sharp_enough & cliff_base & ~excl
+    # Combined paint candidate (before per-pixel coin)
+    candidate = rock_zone & flow_drip & (slope_factor > 0) & ~excl
     if not candidate.any():
         return
 
-    # ── (3) Dilate detected pixels into patches for visibility ──────────
-    # Walk #9.3: re-apply ALL gates (rock_zone + slope + cliff_base) after
-    # dilation so varnish stays strictly inside the slope ≥ 40° + cliff-base
-    # zone and doesn't bleed onto rock_gap pixels below 40°.
+    # ── (3) Per-pixel coin against slope-faded probability ──────────────
+    _rng_main = np.random.default_rng(
+        (tile_x * 0xDEADBEEF ^ tile_y * 0xCAFE4D ^ 0xBA17) & 0xFFFFFFFF
+    )
+    _slope_coin = _rng_main.random((H, W), dtype=np.float32)
+    candidate = candidate & (_slope_coin < (_amp * slope_factor))
+    if not candidate.any():
+        return
+
+    # ── (4) Optional dilate for visibility ──────────────────────────────
     _dilate = int(v_cfg.get("dilate_blocks", 0))
     if _dilate > 0:
         from scipy.ndimage import binary_dilation as _bd_v
         candidate = (
             _bd_v(candidate, iterations=_dilate)
-            & rock_zone & sharp_enough & cliff_base & ~excl
+            & rock_zone & flow_drip & ~excl
         )
 
     # Lithology resolve
@@ -2897,6 +2909,7 @@ def decorate_surface(
                 tile_x            = tile_x,
                 tile_y            = tile_y,
                 cliff_deg         = cliff_deg,
+                flow_tile         = flow_tile,
             )
 
             # 3. cliff_cap — surface + sub (cap rock all the way down 1 layer)

@@ -4586,15 +4586,16 @@
       "slope_min_deg": 32.0
     },
     "varnish": {
-      "_comment": "S88 walk #8: NEW rock varnish pass.  Paints per-litho varnish_palette on rock_gap pixels in local crevices/corners (surface_y < gaussian_smoothed surface_y).  Per-pixel coin gated at amp.  Each varnish_palette is relatively 2-3 shades darker than that group's rock_gap base, in the same color family \u2014 reads as natural rock staining/oxidation.",
+      "_comment": "S88 walk #9.4: PURE FLOW detection.  Varnish fires on rock_gap pixels in the drip-flow band (flow_drip_min < flow < flow_drip_max, below wash) with probability fading in by slope (slope_min_deg -> slope_max_deg).  Strongest at sharpest slopes (real drip lines / waterfall streaks).",
       "enabled": true,
       "amp": 0.5,
       "crevice_sigma": 2.0,
       "crevice_threshold": 0.5,
-      "slope_min_deg": 40.0,
+      "slope_min_deg": 32.0,
       "dilate_blocks": 3,
-      "cliff_base_window": 12,
-      "cliff_base_band": 3
+      "flow_drip_min": 0.0001,
+      "flow_drip_max": 0.001,
+      "slope_max_deg": 60.0
     },
     "rock_zone_cleanup": {
       "_comment": "S88 walk #9 NEW pass: on rock_gap (gap_mask==5) pixels, overwrite any surviving GRASS_FAMILY surface blocks or DIRT_FAMILY subsurface blocks with the per-litho rock_gap palette.  Catches grassy/dirt slip-through from ecotone dither, biome surface paint, etc.  Y-2..Y-5 (column basement) handled separately by chunk_writer cleanup.",
