@@ -4208,11 +4208,11 @@
           "white_concrete_powder",
           "white_concrete_powder",
           "white_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder"
+          "light_gray_concrete_powder",
+          "light_gray_concrete_powder",
+          "light_gray_concrete_powder",
+          "light_gray_concrete_powder",
+          "light_gray_concrete_powder"
         ],
         "description": "S85: full repaint \u00e2\u20ac\u201d calcite (~45%) dominant + diorite (~36%) slightly less, dead_horn_coral_block (~9%) + light_gray_concrete_powder (~9%) as rare accents. Karst barrens + cave-prone carbonate.",
         "cap_palette": [
