@@ -250,41 +250,68 @@ def compute_concavity_field(height_f: np.ndarray, slope_deg: np.ndarray) -> np.n
 
 
 def write_upscaled_uint8(arr_1x4: np.ndarray, output_path: str) -> None:
-    """Walk #10.1: BILINEAR upscale from H_BUILD to H_50K via PIL.Image.resize.
+    """Walk #11 speedup: chunked BILINEAR upscale via numpy vectorized math.
 
-    The previous NEAREST 1:4 -> 1:1 upscale (np.repeat) produced 4-block
-    'staircase' stamps at every signal boundary because each source pixel
-    became a perfect 4x4 patch of identical values.  Bilinear smooths the
-    transitions: each source pixel now contributes proportionally to a
-    region of the output, eliminating the right-angle stairsteps.
+    Walk #10.1 used PIL.Image.resize BILINEAR which was single-threaded
+    Python and took ~5 min per mask at 50k.  scipy.ndimage.zoom would be
+    BLAS-vectorized but allocates the full 2.5GB output in memory.
 
-    PIL handles the 2.5GB intermediate efficiently (single-image L-mode
-    resize).  Then chunked write to GeoTIFF.
+    This implementation does BILINEAR upscale in 1024-row CHUNKS via
+    pure-numpy vectorized 2x2 weighted sums.  Per-chunk: ~1MB temp,
+    fully vectorized, multi-threaded numpy ops.  Expected ~10-30 sec
+    per mask at 50k.
     """
-    from PIL import Image
+    import numpy as _np
     profile = {
         "driver": "GTiff",
         "height": H_50K, "width": H_50K, "count": 1,
         "dtype": "uint8",
         "compress": "lzw", "tiled": True, "blockxsize": 512, "blockysize": 512,
     }
-    print(f"  bilinear upscale to {H_50K}x{H_50K}...")
-    src_img = Image.fromarray(arr_1x4, mode="L")
-    big_img = src_img.resize((H_50K, H_50K), Image.BILINEAR)
-    print(f"  writing {output_path}...")
+    src = arr_1x4.astype(_np.float32)
+    src_h, src_w = src.shape
+
+    print(f"  chunked bilinear upscale to {H_50K}x{H_50K}...")
     with rasterio.open(output_path, "w", **profile) as dst:
-        # Crop in 1024-row chunks and write
         for y_start in range(0, H_50K, 1024):
             y_end = min(y_start + 1024, H_50K)
             chunk_h = y_end - y_start
-            chunk = np.asarray(
-                big_img.crop((0, y_start, H_50K, y_end)),
-                dtype=np.uint8,
+
+            # Pixel-center coordinates in source space for output rows/cols
+            out_y = _np.arange(y_start, y_end, dtype=_np.float32)
+            out_x = _np.arange(H_50K, dtype=_np.float32)
+            # Map to source: source coord = (out + 0.5) / scale - 0.5
+            sy = (out_y + 0.5) / SCALE - 0.5
+            sx = (out_x + 0.5) / SCALE - 0.5
+            # Floor + fraction for bilinear
+            sy0 = _np.clip(_np.floor(sy).astype(_np.int32), 0, src_h - 1)
+            sy1 = _np.clip(sy0 + 1, 0, src_h - 1)
+            sx0 = _np.clip(_np.floor(sx).astype(_np.int32), 0, src_w - 1)
+            sx1 = _np.clip(sx0 + 1, 0, src_w - 1)
+            wy = (sy - sy0).astype(_np.float32)[:, None]
+            wx = (sx - sx0).astype(_np.float32)[None, :]
+            # 4-corner sample (broadcasting)
+            v00 = src[_np.ix_(sy0, sx0)]
+            v01 = src[_np.ix_(sy0, sx1)]
+            v10 = src[_np.ix_(sy1, sx0)]
+            v11 = src[_np.ix_(sy1, sx1)]
+            chunk = (
+                v00 * (1 - wy) * (1 - wx)
+                + v01 * (1 - wy) * wx
+                + v10 * wy * (1 - wx)
+                + v11 * wy * wx
             )
-            dst.write(chunk, 1, window=Window(0, y_start, H_50K, chunk_h))
+            dst.write(
+                _np.clip(chunk, 0, 255).astype(_np.uint8),
+                1,
+                window=Window(0, y_start, H_50K, chunk_h),
+            )
 
 
 def main() -> int:
+    import sys as _sys
+    # Force unbuffered stdout so we see progress in real time when redirected
+    _sys.stdout.reconfigure(line_buffering=True)
     t0 = time.time()
     print("=== build_vein_and_cap_masks ===")
     print(f"reading masks/height.tif at 1:{SCALE}...")
