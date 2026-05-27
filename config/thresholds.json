@@ -4559,7 +4559,6 @@
     "bedrock_drainage": {
       "_comment": "S88: water-cut polished rock palette painted on steep flow channels (flow>flow_threshold AND slope>=slope_min_deg). NOT excluded from Phase 2A noise (hard-erosion category). fade_blocks bumped 3 -> 6 so channel edges have visible gradation at 1:4 build scale.",
       "flow_threshold": 0.02,
-      "slope_min_deg": 25.0,
       "dilation_blocks": 1,
       "fade_blocks": 6,
       "intensity_threshold": 24
@@ -4581,9 +4580,9 @@
     "concavity": {
       "_comment": "S88 walk #6 NEW PASS: detects concave terrain (positive Laplacian of surface_y) and paints lithology bedrock_drainage_palette.  Complements the existing bedrock_drainage mask painter by catching gully/bowl/depression features the mask misses (the mask is flow-derived; this is curvature-derived).",
       "enabled": true,
-      "lap_threshold": 3.0,
+      "lap_threshold": 5.0,
       "palette_key": "concavity_palette",
-      "dilate_blocks": 2,
+      "dilate_blocks": 1,
       "slope_min_deg": 32.0
     },
     "varnish": {
