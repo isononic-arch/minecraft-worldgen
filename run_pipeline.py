@@ -572,6 +572,7 @@ def _process_tile(args: dict) -> dict:
         bedrock_drainage_tile = masks.get("bedrock_drainage"),
         vein_field_tile = masks.get("vein_field"),
         varnish_field_tile = masks.get("varnish_field"),
+        joint_pattern_tile = masks.get("joint_pattern"),
     )
 
     # ---- Step 8: Schematic placement ----

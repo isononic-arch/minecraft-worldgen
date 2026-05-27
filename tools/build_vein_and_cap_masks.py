@@ -1,11 +1,13 @@
 """
-build_vein_and_cap_masks.py — S88 walk #10/11: build vein_field.tif + rebuild
-cliff_cap.tif + bake varnish_field.tif.
+build_vein_and_cap_masks.py — S88 walk #10/11: full terrain-derived mask set.
 
 Outputs (50k uint8):
-  masks/vein_field.tif
-  masks/cliff_cap.tif
-  masks/varnish_field.tif
+  masks/vein_field.tif       — laplacian + branching fault network, slope-gated
+  masks/cliff_cap.tif        — edge caps + convex peaks + gaussian fade band
+  masks/varnish_field.tif    — slope-faded drip-flow zone, NORTH-MODULATED (walk #11)
+  masks/joint_pattern.tif    — columnar joint planes (walk #11, for basaltics)
+  masks/insolation_index.tif — sun exposure index (walk #11, aspect+slope)
+  masks/concavity_field.tif  — local depression curvature (walk #11)
 
 Mask design:
 
@@ -62,15 +64,33 @@ VARN_FLOW_DRIP_MAX = 0.001
 # Read flow.tif at full 50k then downsample to 1:4 by max-pool (preserves
 # drip-path signal; min-pool would over-erase narrow streaks).
 
-# ─── CLIFF_CAP params ───────────────────────────────────────────────────
+# ─── CLIFF_CAP params (walk #11 bumped per user) ────────────────────────
 CAP_FLAT_MAX_DEG = 28.0         # pixel must be flatter than this to qualify
 CAP_CLIFF_MIN_DEG = 35.0        # uphill neighbor must be steeper than this
-CAP_SEARCH_BLOCKS = 24          # search radius for adjacent cliff face (was 8)
+CAP_SEARCH_BLOCKS = 40          # walk #11: 24 -> 40 (2x bigger cap coverage)
 CAP_PEAK_LAP_THR = 1.0          # negative laplacian > this = convex peak
 CAP_PEAK_MIN_Y = 200            # only peaks above this Y count
-CAP_FADE_BLOCKS = 6             # gaussian fade ring at cap boundary
+CAP_FADE_BLOCKS = 10            # walk #11: 6 -> 10 (smoother peak halos)
 CAP_BASE_INTENSITY = 200        # solid cap pixels get this value
 CAP_PEAK_INTENSITY = 220        # peak pixels get this (stronger)
+
+# ─── JOINT_PATTERN params (walk #11 — basaltic columnar joints) ─────────
+JOINT_COL_SIZE_BLOCKS = 3       # column width (~3m, real basalt ≈ 0.5-2m)
+JOINT_JITTER_SCALE = 12         # simplex period for column-shape jitter
+JOINT_JITTER_AMP_BLOCKS = 1.5   # max perturbation per pixel (breaks perfect grid)
+JOINT_DILATE_PX = 0             # 0 = 1-block-wide joints; 1 = 2-block visible
+
+# ─── INSOLATION params ──────────────────────────────────────────────────
+# south_factor = -cos(aspect_rad).  insolation = (south_factor+1)/2 * slope_norm.
+INSOL_SOUTH_BIAS = True         # True = south faces get high values
+INSOL_FLAT_VALUE = 128          # neutral for flat (aspect sentinel = 255)
+
+# ─── CONCAVITY params (matches runtime defaults walk #9.2) ──────────────
+CONCAV_LAP_SIGMA = 1.5
+CONCAV_LAP_THR = 3.0            # slightly looser than runtime 5.0 so mask
+                                # captures candidate zones; runtime can re-gate
+CONCAV_SLOPE_MIN_DEG = 32.0
+CONCAV_DILATE_PX = 2
 
 
 def read_at_scale(path: str, scale: int) -> np.ndarray:
@@ -139,6 +159,94 @@ def compute_fault_zero_crossings(H: int, W: int) -> np.ndarray:
 
     # Combine — mainlines at full strength, branches at 70% strength
     return np.maximum(mainlines, branches * 0.7)
+
+
+def compute_joint_pattern(H: int, W: int) -> np.ndarray:
+    """Walk #11: simplex-perturbed grid of columnar joint planes.
+
+    Bakes the (col_x, col_z) hash boundaries with a slight per-pixel jitter
+    (simplex offset) so columns are quasi-hexagonal, not a perfect grid.
+    Output: uint8 where joint boundaries = 255, column interiors = 0.
+
+    Consumed by basaltic groups in surface_decorator — joint pixels get
+    a darker basalt variant, producing visible vertical fracture lines on
+    cliff faces.
+    """
+    osn_x = opensimplex.OpenSimplex(seed=0xC0107)
+    osn_z = opensimplex.OpenSimplex(seed=0x707A4)
+    jit_scale_px = max(1, JOINT_JITTER_SCALE // SCALE)
+    jx = osn_x.noise2array(
+        np.arange(W, dtype=np.float64) / jit_scale_px,
+        np.arange(H, dtype=np.float64) / jit_scale_px,
+    ) * JOINT_JITTER_AMP_BLOCKS
+    jz = osn_z.noise2array(
+        np.arange(W, dtype=np.float64) / jit_scale_px,
+        np.arange(H, dtype=np.float64) / jit_scale_px,
+    ) * JOINT_JITTER_AMP_BLOCKS
+
+    col_size_px = max(1, JOINT_COL_SIZE_BLOCKS // SCALE)
+    x_w = (np.arange(W, dtype=np.float32)[None, :] + jx.astype(np.float32))
+    z_w = (np.arange(H, dtype=np.float32)[:, None] + jz.astype(np.float32))
+    col_x = (x_w / float(col_size_px)).astype(np.int32)
+    col_z = (z_w / float(col_size_px)).astype(np.int32)
+
+    # Boundary: neighbor differs in either axis
+    boundary = np.zeros((H, W), dtype=bool)
+    diff_zr = np.abs(col_z[:-1, :] - col_z[1:, :]) > 0
+    diff_xr = np.abs(col_x[:, :-1] - col_x[:, 1:]) > 0
+    boundary[:-1, :] |= diff_zr
+    boundary[1:, :] |= diff_zr
+    boundary[:, :-1] |= diff_xr
+    boundary[:, 1:] |= diff_xr
+
+    if JOINT_DILATE_PX > 0:
+        boundary = binary_dilation(boundary, iterations=JOINT_DILATE_PX)
+
+    out = np.where(boundary, 255, 0).astype(np.uint8)
+    return out
+
+
+def compute_insolation_index(slope_deg: np.ndarray, aspect_byte: np.ndarray | None) -> np.ndarray:
+    """Walk #11: aspect+slope sun-exposure proxy.  south=high, north=low.
+
+    Used by varnish modulation (north faces wetter = more varnish), and
+    available for future vegetation/snow passes.
+    """
+    H, W = slope_deg.shape
+    if aspect_byte is None:
+        return np.full((H, W), INSOL_FLAT_VALUE, dtype=np.uint8)
+    # aspect_byte 0..254 maps to 0..360°; 255 = flat sentinel
+    valid = aspect_byte < 255
+    aspect_rad = (aspect_byte.astype(np.float32) * (2 * np.pi / 256.0) - np.pi)
+    # south_factor = -cos(aspect) in [-1, 1]; +1 = south
+    south_factor = (-np.cos(aspect_rad) + 1.0) * 0.5  # remap to [0, 1]
+    # slope contribution: steeper = more direct sun penetration
+    slope_norm = np.clip(slope_deg / 60.0, 0.0, 1.0).astype(np.float32)
+    insolation = south_factor * slope_norm
+    out = np.clip(insolation * 255, 0, 255).astype(np.uint8)
+    out[~valid] = INSOL_FLAT_VALUE
+    return out
+
+
+def compute_concavity_field(height_f: np.ndarray, slope_deg: np.ndarray) -> np.ndarray:
+    """Walk #11: bake positive laplacian (depressions) + slope gate.
+
+    Same compute as runtime _apply_concavity_drainage but at build time so
+    we save per-tile compute + can visualize.
+    """
+    smooth = gaussian_filter(height_f.astype(np.float32), sigma=CONCAV_LAP_SIGMA)
+    lap = np.zeros_like(smooth)
+    lap[1:-1, 1:-1] = (
+        smooth[:-2, 1:-1] + smooth[2:, 1:-1] +
+        smooth[1:-1, :-2] + smooth[1:-1, 2:] -
+        4.0 * smooth[1:-1, 1:-1]
+    )
+    paint_mask = (lap >= CONCAV_LAP_THR) & (slope_deg >= CONCAV_SLOPE_MIN_DEG)
+    if CONCAV_DILATE_PX > 0 and paint_mask.any():
+        paint_mask = binary_dilation(paint_mask, iterations=CONCAV_DILATE_PX)
+        paint_mask &= (slope_deg >= CONCAV_SLOPE_MIN_DEG)
+    out = np.where(paint_mask, 255, 0).astype(np.uint8)
+    return out
 
 
 def write_upscaled_uint8(arr_1x4: np.ndarray, output_path: str) -> None:
@@ -284,13 +392,68 @@ def main() -> int:
     )
     print(f"  drip-band pixels: {drip_band.sum():,} ({drip_band.mean()*100:.2f}%)")
 
-    # Combine: intensity = slope_factor * drip * 255
-    varn_intensity = varn_slope_factor * drip_band.astype(np.float32)
+    # Read aspect at 1:4 for north-modulation (walk #11)
+    print("  reading aspect.tif for north-modulation...")
+    aspect_byte = None
+    try:
+        aspect_full = read_at_scale("masks/aspect.tif", SCALE)
+        # aspect uint8: 0..254 = compass 0..360°, 255 = flat sentinel
+        if aspect_full.dtype == np.uint8:
+            aspect_byte = aspect_full
+        else:
+            aspect_byte = np.clip(aspect_full, 0, 255).astype(np.uint8)
+    except Exception as e:
+        print(f"  WARN: no aspect.tif ({e}); skipping north-modulation")
+
+    # Walk #11: NORTH-MODULATION for varnish
+    # north_factor: cos(aspect_rad) remapped [-1,1] -> [0,1] where 1=north
+    # Multiply varnish intensity by (0.5 + north_factor) so north faces
+    # get up to 1.5x stain, south faces ~0.5x (real water lingers on shaded
+    # cliffs vs evaporating on sunny ones).
+    if aspect_byte is not None:
+        _valid = aspect_byte < 255
+        _arad = aspect_byte.astype(np.float32) * (2 * np.pi / 256.0) - np.pi
+        north_factor = ((np.cos(_arad) + 1.0) * 0.5).astype(np.float32)  # [0,1]
+        north_factor[~_valid] = 0.5
+        # Aspect modulation: scale = 0.5 + north_factor (range [0.5, 1.5])
+        varn_intensity = (
+            varn_slope_factor * drip_band.astype(np.float32) *
+            (0.5 + north_factor)
+        )
+    else:
+        varn_intensity = varn_slope_factor * drip_band.astype(np.float32)
+
     varn_u8 = np.clip(varn_intensity * 255, 0, 255).astype(np.uint8)
     pct_varn = (varn_u8 >= 32).sum() / varn_u8.size * 100
     print(f"  varnish_field >=32: {pct_varn:.2f}%  max={varn_u8.max()}")
     write_upscaled_uint8(varn_u8, "masks/varnish_field.tif")
     print(f"  varnish_field.tif written ({time.time() - t0:.1f}s total)")
+
+    # ── 4. JOINT_PATTERN (walk #11 — columnar joints for basaltics) ──────
+    print()
+    print("=== JOINT_PATTERN ===")
+    joint_u8 = compute_joint_pattern(H_BUILD, H_BUILD)
+    pct_joint = (joint_u8 >= 128).sum() / joint_u8.size * 100
+    print(f"  joint_pattern boundary pixels: {pct_joint:.2f}%  max={joint_u8.max()}")
+    write_upscaled_uint8(joint_u8, "masks/joint_pattern.tif")
+    print(f"  joint_pattern.tif written ({time.time() - t0:.1f}s total)")
+
+    # ── 5. INSOLATION_INDEX (walk #11 — sun exposure proxy) ──────────────
+    print()
+    print("=== INSOLATION_INDEX ===")
+    insol_u8 = compute_insolation_index(slope_deg, aspect_byte)
+    print(f"  insolation min/mean/max: {insol_u8.min()}/{insol_u8.mean():.1f}/{insol_u8.max()}")
+    write_upscaled_uint8(insol_u8, "masks/insolation_index.tif")
+    print(f"  insolation_index.tif written ({time.time() - t0:.1f}s total)")
+
+    # ── 6. CONCAVITY_FIELD (walk #11 — bake runtime laplacian) ───────────
+    print()
+    print("=== CONCAVITY_FIELD ===")
+    concav_u8 = compute_concavity_field(height.astype(np.float32), slope_deg)
+    pct_concav = (concav_u8 >= 128).sum() / concav_u8.size * 100
+    print(f"  concavity_field >=128: {pct_concav:.2f}%")
+    write_upscaled_uint8(concav_u8, "masks/concavity_field.tif")
+    print(f"  concavity_field.tif written ({time.time() - t0:.1f}s total)")
 
     print()
     print(f"DONE in {time.time() - t0:.1f}s")

@@ -1754,6 +1754,83 @@ def _apply_concavity_drainage(
         subsurface_blocks[_bm] = _arr[rng.integers(0, len(_pal), size=_n)]
 
 
+def _apply_basaltic_joints(
+    surface_blocks:    np.ndarray,
+    subsurface_blocks: np.ndarray,
+    lithology_tile:    np.ndarray | None,
+    gap_mask:          np.ndarray | None,
+    joint_pattern_tile: np.ndarray | None,
+    cfg:               dict,
+    tile_x:            int,
+    tile_y:            int,
+) -> None:
+    """S88 walk #11: paint VISIBLE COLUMNAR JOINTS on basaltic groups.
+
+    Real basalt cools into hexagonal column pillars with visible fracture
+    planes between columns.  We've had XZ_cols hash for years giving
+    columns the right band-per-column behavior — but ADJACENT COLUMNS
+    look identical because the band swap is subtle.
+
+    This pass paints the JOINT BOUNDARIES with a darker block, producing
+    visible vertical fracture lines on cliff faces between columns.
+
+    Gated to: gap_mask == 5 (rock_gap pixels) AND lithology in basaltic
+    groups (gid 2 = arid_basaltic, gid 3 = temperate_basaltic).
+    """
+    if gap_mask is None or lithology_tile is None or joint_pattern_tile is None:
+        return
+    rock_zone = (gap_mask == 5)
+    if not rock_zone.any():
+        return
+    H, W = rock_zone.shape
+
+    # Resolve lithology
+    if lithology_tile.shape != (H, W):
+        from scipy.ndimage import zoom as _zj
+        litho_at_res = _zj(
+            lithology_tile,
+            (H / lithology_tile.shape[0], W / lithology_tile.shape[1]),
+            order=0,
+        )
+    else:
+        litho_at_res = lithology_tile
+
+    # Find basaltic gids from config (groups with axis == XZ_cols)
+    groups = cfg.get("lithology", {}).get("groups", {})
+    basaltic_gids = set()
+    gid_to_joint_block: dict[int, str] = {}
+    for _gname, _gdata in groups.items():
+        if _gdata.get("strata", {}).get("axis") == "XZ_cols":
+            _gid = int(_gdata.get("id", 0))
+            basaltic_gids.add(_gid)
+            # Joint block = the DARKER of the two band primaries (basalt > smooth_basalt)
+            _ba = _gdata.get("strata", {}).get("band_a", {})
+            gid_to_joint_block[_gid] = _ba.get("primary", "basalt")
+    if not basaltic_gids:
+        return
+
+    basaltic_mask = np.zeros((H, W), dtype=bool)
+    for _gid in basaltic_gids:
+        basaltic_mask |= (litho_at_res == _gid)
+    if not basaltic_mask.any():
+        return
+
+    # Joint threshold: byte >= 128 = boundary pixel
+    _intensity_byte = (joint_pattern_tile * 255.0).astype(np.int32)
+    joint_zone = rock_zone & basaltic_mask & (_intensity_byte >= 128)
+    if not joint_zone.any():
+        return
+
+    # Paint joint pixels per-litho with the group's joint block
+    for _gid in basaltic_gids:
+        _bm = joint_zone & (litho_at_res == _gid)
+        if not _bm.any():
+            continue
+        _blk = gid_to_joint_block.get(_gid, "basalt")
+        surface_blocks[_bm] = _blk
+        subsurface_blocks[_bm] = _blk
+
+
 def _apply_rock_zone_cleanup(
     surface_blocks:    np.ndarray,
     subsurface_blocks: np.ndarray,
@@ -2230,6 +2307,7 @@ def decorate_surface(
     bedrock_drainage_tile: np.ndarray | None = None,  # (H, W) float32 [0,1] — water-cut rock intensity (S88)
     vein_field_tile: np.ndarray | None = None,        # (H, W) float32 [0,1] — vein detection (walk #10/11)
     varnish_field_tile: np.ndarray | None = None,     # (H, W) float32 [0,1] — varnish detection (walk #10/11)
+    joint_pattern_tile: np.ndarray | None = None,     # (H, W) float32 [0,1] — basaltic columnar joints (walk #11)
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute surface and subsurface block arrays for a tile.
@@ -2718,6 +2796,21 @@ def decorate_surface(
                 tile_x            = tile_x,
                 tile_y            = tile_y,
                 aspect            = eco_grads.aspect if eco_grads is not None else None,
+            )
+
+            # ── Walk #11: BASALTIC COLUMNAR JOINTS ──────────────────────────
+            # Paint vertical joint planes (darker basalt block) on basaltic
+            # rock_gap pixels using joint_pattern.tif.  Produces visible
+            # vertical fractures every ~3 blocks on basalt cliff faces.
+            _apply_basaltic_joints(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                lithology_tile    = lithology_tile,
+                gap_mask          = _gap,
+                joint_pattern_tile= joint_pattern_tile,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
             )
 
             # ── Walk #9.1: CONCAVITY moved to BETWEEN strata and wash ─────

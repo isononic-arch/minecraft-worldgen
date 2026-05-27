@@ -49,6 +49,12 @@ MASK_NAMES = [
     # (built by tools/build_vein_and_cap_masks.py)
     "vein_field",
     "varnish_field",
+    # S88 walk #11: joint_pattern (basaltic columnar joints) +
+    # insolation_index (aspect+slope sun exposure) +
+    # concavity_field (baked laplacian depression mask)
+    "joint_pattern",
+    "insolation_index",
+    "concavity_field",
 ]
 
 
