@@ -4582,7 +4582,7 @@
       "enabled": true,
       "lap_threshold": 5.0,
       "palette_key": "concavity_palette",
-      "dilate_blocks": 1,
+      "dilate_blocks": 2,
       "slope_min_deg": 32.0
     },
     "varnish": {
