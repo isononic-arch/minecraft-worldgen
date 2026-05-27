@@ -3820,7 +3820,7 @@
         ],
         "strata": {
           "axis": "XZ_cols",
-          "col_size_blocks": 5,
+          "col_size_blocks": 16,
           "tilt_per_100blocks": 0,
           "tilt_dir_deg": 0,
           "noise_amp_blocks": 0,
@@ -3913,7 +3913,7 @@
         ],
         "strata": {
           "axis": "XZ_cols",
-          "col_size_blocks": 5,
+          "col_size_blocks": 16,
           "tilt_per_100blocks": 0,
           "tilt_dir_deg": 0,
           "noise_amp_blocks": 0,
@@ -4267,8 +4267,8 @@
       "search_blocks": 8,
       "cliff_min_deg": 35.0,
       "flat_max_deg": 28.0,
-      "intensity_threshold": 8,
-      "dilate_blocks": 12
+      "intensity_threshold": 48,
+      "dilate_blocks": 4
     },
     "talus": {
       "_comment": "S88: rubble apron palette painted on flat ground below slope>=cliff_min_deg cliffs. EXCLUDED from Phase 2A noise (soft/depositional \u2014 like washes, surface should be smooth).",
@@ -4294,7 +4294,11 @@
       "noise_scale_blocks": 80,
       "n_bands_per_palette": 3,
       "surface_min_deg": 32.0,
-      "surface_fade_max_deg": 35.0
+      "surface_fade_max_deg": 35.0,
+      "xz_wobble_amp": 0.25,
+      "aspect_smooth_sigma": 4.0,
+      "vein_streak_min": 3,
+      "vein_streak_max": 8
     },
     "concavity": {
       "_comment": "S88 walk #6 NEW PASS: detects concave terrain (positive Laplacian of surface_y) and paints lithology bedrock_drainage_palette.  Complements the existing bedrock_drainage mask painter by catching gully/bowl/depression features the mask misses (the mask is flow-derived; this is curvature-derived).",

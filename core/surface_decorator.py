@@ -1271,26 +1271,37 @@ def _apply_strata_surface(
             salt_a = np.uint32(0xC4F12345 ^ ((gid * 1779033703) & 0xFFFFFFFF))
             salt_b = np.uint32(0x9E373B17 ^ ((gid * 2654435769) & 0xFFFFFFFF))
             if col_mode == "diagonal" and aspect is not None:
-                # Walk #6 v2: ASPECT-PERPENDICULAR hash.  At each pixel the
-                # "along-cliff" direction is perpendicular to local aspect
-                # (the horizontal direction along the cliff face).  Hashing
-                # by distance along that direction gives column stripes that
-                # ROTATE to align with the local cliff face — vertical-from-
-                # the-cliff regardless of cliff orientation.
+                # Walk #6 v2 + walk #7: ASPECT-PERPENDICULAR hash with smoothing
+                # to fix per-pixel aspect noise.  along-cliff direction is
+                # perpendicular to local aspect; hashing by distance along that
+                # direction gives column stripes that ROTATE to align with the
+                # local cliff face.
                 #
-                # aspect ∈ [0, 2π) measured eastward from north (downhill
-                # direction).  along-cliff vector = (cos(aspect), -sin(aspect)).
-                # along-cliff coord at (x_w, z_w) =
-                #   x_w * cos(aspect) - z_w * sin(aspect)
+                # Walk #7 fixes "noise" complaint:
+                #   - col_size bumped to 16 (was 5) for visible wider stripes
+                #   - aspect gaussian-smoothed at sigma=4 to kill pixel-level
+                #     direction noise
+                #   - terrain wobble dialed back via xz_wobble_amp config (0.25
+                #     vs effective 1.0 in walk #6)
+                _sg = cfg.get("lithology", {}).get("strata", {})
+                _asp_sigma = float(_sg.get("aspect_smooth_sigma", 4.0))
+                _wob_amp = float(_sg.get("xz_wobble_amp", 0.25))
+                if _asp_sigma > 0.1:
+                    from scipy.ndimage import gaussian_filter as _gf_asp
+                    # Smooth sin + cos independently to avoid wrap-around issues
+                    _cos_a_s = _gf_asp(np.cos(aspect).astype(np.float32), sigma=_asp_sigma)
+                    _sin_a_s = _gf_asp(np.sin(aspect).astype(np.float32), sigma=_asp_sigma)
+                else:
+                    _cos_a_s = np.cos(aspect).astype(np.float32)
+                    _sin_a_s = np.sin(aspect).astype(np.float32)
                 _x_w = (np.arange(W, dtype=np.float32) + tile_world_x)[None, :]
                 _z_w = (np.arange(H, dtype=np.float32) + tile_world_z)[:, None]
-                _cos_a = np.cos(aspect).astype(np.float32)
-                _sin_a = np.sin(aspect).astype(np.float32)
-                _along = _x_w * _cos_a - _z_w * _sin_a  # (H, W) float32
-                # Subtle wobble: trace terrain curvature so stripes don't
-                # look mathematically straight.  surface_y mod col_size shifts
-                # the along-cliff coord by a soft wave.
-                _wobble = (surface_y.astype(np.float32) / max(1.0, float(col_size * 4)))
+                _along = _x_w * _cos_a_s - _z_w * _sin_a_s  # (H, W) float32
+                # Gentler wobble: surface_y * (xz_wobble_amp / col_size)
+                _wobble = (
+                    surface_y.astype(np.float32)
+                    * (_wob_amp / max(1.0, float(col_size)))
+                )
                 _along_idx = ((_along + _wobble) // float(col_size)).astype(np.int64)
                 # Hash that into bands
                 _h = (_along_idx.astype(np.uint32) * salt_a) ^ salt_b
@@ -1536,17 +1547,70 @@ def _apply_strata_veins_surface(
             (tile_x * 53248917 ^ tile_y * 67280421 ^ gid * 0xBEEFCAFE) & 0xFFFFFFFF
         )
         coin = v_rng.random((H, W), dtype=np.float32)
-        v_apply = candidate & (coin < vein_amp)
-        if not v_apply.any():
+        v_seed = candidate & (coin < vein_amp)
+        if not v_seed.any():
             continue
 
-        if len(vein_blocks) == 1:
-            surface_blocks[v_apply] = vein_blocks[0]
-            subsurface_blocks[v_apply] = vein_blocks[0]
+        # Walk #7: VEIN STREAKING.  Each seed pixel is extended into a
+        # 3-8 block run along the strata axis so veins read as visible
+        # streaks instead of isolated single-block scatter.
+        _streak_min = int(strata_global.get("vein_streak_min", 3))
+        _streak_max = int(strata_global.get("vein_streak_max", 8))
+        # Direction along strata axis
+        axis = strata.get("axis", "Y_tilted")
+        if axis == "XZ_cols":
+            _dz, _dx = 1, 0  # vertical-on-cliff streaks
         else:
-            v_pick = v_rng.integers(0, len(vein_blocks), size=(H, W), dtype=np.int8)
+            _t_rad = np.deg2rad(float(strata.get("tilt_dir_deg", 0.0)))
+            _dz = int(round(float(np.sin(_t_rad))))
+            _dx = int(round(float(np.cos(_t_rad))))
+            if _dz == 0 and _dx == 0:
+                _dx = 1
+        # Per-seed streak length picker
+        _len_coin = v_rng.random((H, W), dtype=np.float32)
+        _len_range = max(1, _streak_max - _streak_min + 1)
+        _length_at_seed = np.clip(
+            (_len_coin * float(_len_range)).astype(np.int32) + _streak_min,
+            _streak_min, _streak_max,
+        )
+        _length_at_seed = np.where(v_seed, _length_at_seed, 0)
+        # Per-seed block index (so a streak shares one vein block)
+        if len(vein_blocks) > 1:
+            _v_pick = v_rng.integers(0, len(vein_blocks), size=(H, W), dtype=np.int8)
+        else:
+            _v_pick = np.zeros((H, W), dtype=np.int8)
+        # Build streak mask: extend seeds along (dz,dx) for L blocks
+        v_mask = v_seed.copy()
+        streak_pick = np.where(v_seed, _v_pick, np.int8(-1))
+        for _L in range(1, _streak_max + 1):
+            _seed_with = (_length_at_seed > _L) & v_seed
+            if not _seed_with.any():
+                break
+            _rolled = np.roll(_seed_with, shift=(_L * _dz, _L * _dx), axis=(0, 1))
+            if _dz > 0:
+                _rolled[:_L * _dz, :] = False
+            elif _dz < 0:
+                _rolled[_L * _dz:, :] = False
+            if _dx > 0:
+                _rolled[:, :_L * _dx] = False
+            elif _dx < 0:
+                _rolled[:, _L * _dx:] = False
+            _rolled_pick = np.roll(_v_pick, shift=(_L * _dz, _L * _dx), axis=(0, 1))
+            _new = _rolled & ~v_mask
+            if _new.any():
+                streak_pick = np.where(_new, _rolled_pick, streak_pick)
+                v_mask |= _new
+        # Re-apply candidate constraints to the extended streaks (don't
+        # paint veins through water, snow, non-rock-gap if gated, etc).
+        v_mask &= candidate
+
+        # Paint per-cell streak block
+        if len(vein_blocks) == 1:
+            surface_blocks[v_mask] = vein_blocks[0]
+            subsurface_blocks[v_mask] = vein_blocks[0]
+        else:
             for i, vb in enumerate(vein_blocks):
-                m = v_apply & (v_pick == i)
+                m = v_mask & (streak_pick == i)
                 if m.any():
                     surface_blocks[m] = vb
                     subsurface_blocks[m] = vb
