@@ -519,6 +519,182 @@ def _apply_banded_fill(
                             vol[y_s:y_e][_bm] = vein_block_indices[_bi]
 
 
+def _apply_strata_fill_v2(
+    vol: np.ndarray,
+    pal: "BlockPalette",
+    stone_mask: np.ndarray,
+    col_mask: np.ndarray,
+    strata_cfg: dict,
+    gid: int,
+    *,
+    tile_world_x: int,
+    tile_world_z: int,
+    vein_field_2d: np.ndarray | None = None,
+) -> None:
+    """S88 walk #4: 2-band mixed strata fill with axis, mix ratios, multi-block speckle/vein.
+
+    Each band is a MIX of (primary, secondary) blocks at primary_pct ratio.
+    Strict alternation A-B-A-B via _build_band_lut(n_v=2) (random thickness
+    per band, strict block-pair alternation).
+
+    axis:
+      "Y_tilted" — Y-based banding with directional tilt + waviness + noise
+      "XZ_cols"  — vertical columns; band_idx depends on (x // col_size,
+                   z // col_size) hash, constant in Y for each (x,z).
+
+    Multi-block speckle: per-cell uniform pick from speckle_blocks list.
+    Multi-block veins: per-cell uniform pick from vein_blocks list, gated
+    by vein_field_2d intersect + per-cell coin < vein_amp.
+    """
+    H, W = stone_mask.shape[-2:]
+    axis = strata_cfg.get("axis", "Y_tilted")
+
+    # Resolve block indices (silently skip blocks not in palette)
+    def _idx_or_none(name: str) -> int | None:
+        try:
+            return pal.idx(name)
+        except Exception:
+            return None
+
+    band_a = strata_cfg.get("band_a", {})
+    band_b = strata_cfg.get("band_b", {})
+    a_pri = _idx_or_none(band_a.get("primary", "stone")) or pal.idx("stone")
+    a_sec = _idx_or_none(band_a.get("secondary", "stone")) or a_pri
+    a_pct = float(band_a.get("primary_pct", 50)) / 100.0
+    b_pri = _idx_or_none(band_b.get("primary", "stone")) or pal.idx("stone")
+    b_sec = _idx_or_none(band_b.get("secondary", "stone")) or b_pri
+    b_pct = float(band_b.get("primary_pct", 50)) / 100.0
+
+    speckle_names = strata_cfg.get("speckle_blocks", [])
+    speckle_indices = [i for i in (_idx_or_none(n) for n in speckle_names) if i is not None]
+    speckle_rate = float(strata_cfg.get("speckle_rate", 0.0))
+
+    vein_names = strata_cfg.get("vein_blocks", [])
+    vein_indices = [i for i in (_idx_or_none(n) for n in vein_names) if i is not None]
+    vein_amp = float(strata_cfg.get("vein_amp", 0.0))
+
+    # Build band_idx data per axis
+    if axis == "XZ_cols":
+        col_size = max(1, int(strata_cfg.get("col_size_blocks", 2)))
+        col_x = ((np.arange(W, dtype=np.uint32) + tile_world_x) // col_size)
+        col_z = ((np.arange(H, dtype=np.uint32) + tile_world_z) // col_size)
+        salt_a = np.uint32(0xC4F12345 ^ ((gid * 1779033703) & 0xFFFFFFFF))
+        salt_b = np.uint32(0x9E373B17 ^ ((gid * 2654435769) & 0xFFFFFFFF))
+        _h = (col_z[:, None] * salt_a) ^ (col_x[None, :] * salt_b)
+        _h ^= _h >> np.uint32(16)
+        _h *= np.uint32(0x45D9F3B)
+        _h ^= _h >> np.uint32(16)
+        band_idx_2d = (_h & np.uint32(1)).astype(np.int8)  # (H, W)
+        y_offset_2d = None
+        band_lut = None
+    else:  # Y_tilted
+        thickness_min = int(strata_cfg.get("thickness_min", 4))
+        thickness_max = int(strata_cfg.get("thickness_max", 10))
+        lut_seed = tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 2654435761
+        _LUT_SIZE = Y_RANGE * 2
+        band_lut = _build_band_lut(2, thickness_min, thickness_max, _LUT_SIZE, lut_seed)
+        tilt_per100 = float(strata_cfg.get("tilt_per_100blocks", 0.0))
+        tilt_dir = float(strata_cfg.get("tilt_dir_deg", 0.0))
+        noise_amp = int(strata_cfg.get("noise_amp_blocks", 0))
+        # Waviness (organic boundaries) — amplitude based on band thickness
+        _xz_band_scale = max(8, thickness_max)
+        xz_waviness = _compute_xz_waviness(H, W, tile_world_x, tile_world_z, _xz_band_scale)
+        if noise_amp > 0:
+            _ng_rng = np.random.default_rng(
+                (tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 1234567) & 0xFFFFFFFF
+            )
+            col_y_noise = _ng_rng.integers(
+                -noise_amp, noise_amp + 1, size=(H, W), dtype=np.int32
+            )
+        else:
+            col_y_noise = np.zeros((H, W), dtype=np.int32)
+        col_world_x = (np.arange(W, dtype=np.float32) + tile_world_x)
+        row_world_z = (np.arange(H, dtype=np.float32) + tile_world_z)
+        tilt_rad = np.deg2rad(tilt_dir)
+        tilt_offset_2d = (
+            (tilt_per100 / 100.0)
+            * (col_world_x[None, :] * np.cos(tilt_rad)
+               + row_world_z[:, None] * np.sin(tilt_rad))
+        ).astype(np.int32)
+        y_offset_2d = xz_waviness + col_y_noise + tilt_offset_2d
+        band_idx_2d = None
+
+    # Per-cell RNGs (deterministic per tile + group; new seeds per slice)
+    base_seed = (tile_world_x * 1779033703 ^ tile_world_z * 0xDEADBEEF ^ gid * 0xCAFED00D) & 0xFFFFFFFF
+    primary_rng = np.random.default_rng(base_seed)
+    speckle_coin_rng = np.random.default_rng(base_seed ^ 0x12345678)
+    speckle_pick_rng = np.random.default_rng(base_seed ^ 0x87654321)
+    vein_coin_rng = np.random.default_rng(base_seed ^ 0xABCDEF01)
+    vein_pick_rng = np.random.default_rng(base_seed ^ 0x10FEDCBA)
+
+    _LUT_SIZE_LOCAL = Y_RANGE * 2
+    SLICE = 32
+
+    for y_s in range(0, vol.shape[0], SLICE):
+        y_e = min(y_s + SLICE, vol.shape[0])
+        slice_h = y_e - y_s
+        cs_slice = stone_mask[y_s:y_e] & col_mask[None, :, :]
+        if not cs_slice.any():
+            continue
+
+        # band_idx_3d for this Y slice
+        if axis == "XZ_cols":
+            band_idx_3d = np.broadcast_to(band_idx_2d[None, :, :], (slice_h, H, W))
+        else:
+            y_arr = np.arange(y_s, y_e, dtype=np.int32)
+            y_mod = y_arr[:, None, None] + y_offset_2d[None, :, :]
+            band_idx_3d = band_lut[np.abs(y_mod).astype(np.int32) % _LUT_SIZE_LOCAL]
+
+        # Primary/secondary pick per band
+        is_band_a = band_idx_3d == 0
+        primary_3d = np.where(is_band_a, a_pri, b_pri).astype(np.int32)
+        secondary_3d = np.where(is_band_a, a_sec, b_sec).astype(np.int32)
+        pct_3d = np.where(is_band_a, a_pct, b_pct).astype(np.float32)
+        primary_coin = primary_rng.random(band_idx_3d.shape, dtype=np.float32)
+        block_idx = np.where(primary_coin < pct_3d, primary_3d, secondary_3d)
+        del is_band_a, primary_3d, secondary_3d, pct_3d, primary_coin
+
+        # Speckle override
+        if speckle_rate > 0 and speckle_indices:
+            sp_coin = speckle_coin_rng.random(band_idx_3d.shape, dtype=np.float32)
+            sp_apply = (sp_coin < speckle_rate) & cs_slice
+            if sp_apply.any():
+                if len(speckle_indices) == 1:
+                    block_idx = np.where(sp_apply, speckle_indices[0], block_idx)
+                else:
+                    sp_pick = speckle_pick_rng.integers(
+                        0, len(speckle_indices), size=band_idx_3d.shape, dtype=np.int8
+                    )
+                    for _i, _sp_idx in enumerate(speckle_indices):
+                        _m = sp_apply & (sp_pick == _i)
+                        if _m.any():
+                            block_idx = np.where(_m, _sp_idx, block_idx)
+                    del sp_pick
+            del sp_coin, sp_apply
+
+        # Vein override (highest priority)
+        if vein_amp > 0 and vein_indices and vein_field_2d is not None:
+            v_coin = vein_coin_rng.random(band_idx_3d.shape, dtype=np.float32)
+            v_apply = (v_coin < vein_amp) & vein_field_2d[None, :, :] & cs_slice
+            if v_apply.any():
+                if len(vein_indices) == 1:
+                    block_idx = np.where(v_apply, vein_indices[0], block_idx)
+                else:
+                    v_pick = vein_pick_rng.integers(
+                        0, len(vein_indices), size=band_idx_3d.shape, dtype=np.int8
+                    )
+                    for _i, _v_idx in enumerate(vein_indices):
+                        _m = v_apply & (v_pick == _i)
+                        if _m.any():
+                            block_idx = np.where(_m, _v_idx, block_idx)
+                    del v_pick
+            del v_coin, v_apply
+
+        # Write to vol where cs_slice True
+        vol[y_s:y_e] = np.where(cs_slice, block_idx, vol[y_s:y_e])
+        del block_idx, band_idx_3d
+
+
 def _fill_geology_layers(
     vol: np.ndarray,
     pal: "BlockPalette",
@@ -673,81 +849,26 @@ def _fill_geology_layers(
         _lut_seed = tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 2654435761
 
         if _strata is not None:
-            # ── S88 strata path ──────────────────────────────────────────
-            # Use strata.palette (3 blocks), per-group thickness range,
-            # directional tilt, per-group speckle (to palette[0]), per-group vein.
-            _str_pal_names = _strata.get("palette", [])
-            if not _str_pal_names:
-                # No strata palette -> fall through to default banded
-                _strata = None
-            else:
-                _str_pal_idx = [pal.idx(b) for b in _str_pal_names]
-                _band_min = int(_strata.get("thickness_min", _BAND_MIN_DEFAULT))
-                _band_max = int(_strata.get("thickness_max", _BAND_MAX_DEFAULT))
-                _noise_amp = int(_strata.get("noise_amp_blocks", 1))
-                _tilt_per100 = float(_strata.get("tilt_per_100blocks", 0.0))
-                _tilt_dir_deg = float(_strata.get("tilt_dir_deg", 0.0))
-                _speckle_rate = float(_strata.get("speckle_rate", 0.0))
-                _vein_block_names = _strata.get("vein_blocks", [])
-                if not _vein_block_names:
-                    # back-compat: accept old single-string key
-                    _single = _strata.get("vein_block")
-                    if _single:
-                        _vein_block_names = [_single]
-                _vein_amp = float(_strata.get("vein_amp", 0.0))
-
-                # Speckle block = palette[0] of the group's main palette
-                _speckle_block_name = _gdata.get("palette", ["stone"])[0]
-                _speckle_block_idx = pal.idx(_speckle_block_name)
-
-                # Build LUT with per-group thickness range
-                band_lut = _build_band_lut(
-                    len(_str_pal_idx), _band_min, _band_max, _LUT_SIZE, _lut_seed,
-                )
-
-                # Per-group col Y noise: ± _noise_amp blocks (deterministic per tile+group)
-                _ng_rng = np.random.default_rng(
-                    (tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 1234567) & 0xFFFFFFFF
-                )
-                col_y_noise = _ng_rng.integers(
-                    -_noise_amp, _noise_amp + 1, size=(H, W), dtype=np.int32
-                )
-
-                # Directional tilt: Y offset = (tilt/100) * (x*cos + z*sin)
-                _tilt_rad = np.deg2rad(_tilt_dir_deg)
-                _tilt_offset_2d = (
-                    (_tilt_per100 / 100.0)
-                    * (_col_world_x[None, :] * np.cos(_tilt_rad)
-                       + _row_world_z[:, None] * np.sin(_tilt_rad))
-                ).astype(np.int32)
-                _tilted_waviness = _base_waviness + _tilt_offset_2d
-
-                # Resolve vein block indices (list of 1 or 2).  Veins are
-                # geologically "imported material" -- the user permits blocks
-                # outside the group's main palette set as a vein-only
-                # exception (S88 walk #1 user direction).
-                _vein_block_indices: list[int] = []
-                if _vein_block_names and _vein_amp > 0:
-                    for _vbn in _vein_block_names:
-                        try:
-                            _vein_block_indices.append(pal.idx(_vbn))
-                        except Exception:
-                            pass  # silently skip blocks not in MC palette
-
-                _apply_banded_fill(
-                    vol, basement_mask, group_cols, _tilted_waviness,
-                    _str_pal_idx, len(_str_pal_idx), band_scale_y,
-                    col_y_noise=col_y_noise,
-                    band_lut=band_lut,
-                    fleck_probability=_speckle_rate,
-                    fleck_seed=tile_world_x * 83492791 ^ tile_world_z * 46508633 ^ gid * 1779033703,
-                    speckle_block_idx=_speckle_block_idx,
+            # ── S88 walk #4 strata v2 path ───────────────────────────────
+            # 2-band mixed strata: each band has (primary, secondary, primary_pct).
+            # axis: "Y_tilted" (horizontal/tilted bands) or "XZ_cols"
+            # (vertical columns).  Multi-block speckle + multi-block veins.
+            # Schema validation: must have band_a + band_b dicts.
+            if "band_a" in _strata and "band_b" in _strata:
+                _apply_strata_fill_v2(
+                    vol=vol,
+                    pal=pal,
+                    stone_mask=basement_mask,
+                    col_mask=group_cols,
+                    strata_cfg=_strata,
+                    gid=gid,
+                    tile_world_x=tile_world_x,
+                    tile_world_z=tile_world_z,
                     vein_field_2d=_vein_field,
-                    vein_block_indices=_vein_block_indices if _vein_block_indices else None,
-                    vein_amp=_vein_amp,
-                    vein_seed=tile_world_x * 53248917 ^ tile_world_z * 67280421 ^ gid * 0xCAFE,
                 )
                 continue  # skip the default path below
+            # If no band_a/band_b -> fall through to default banded
+            _strata = None
 
         # ── Default (S69) banded fill for groups without strata config ────
         col_y_noise = _noise_rng_default.integers(-1, 2, size=(H, W), dtype=np.int32)

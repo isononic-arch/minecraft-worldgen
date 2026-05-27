@@ -2288,6 +2288,12 @@
       "modifier_amplitude": 0.3,
       "peak_azimuth_deg": 225.0,
       "slope_min_deg": 5.0
+    },
+    "rock_gap_5block_fade": {
+      "_comment": "S88 walk #4: replace walk #3 slope-fade (25-32\u00b0 + 0.40 floor) with sharp distance fade.  Solid rock_gap at slope >= slope_solid_deg, then fade probability over fade_blocks (distance) outside.  Sharper boundary, no Swiss-cheese holes.",
+      "enabled": true,
+      "slope_solid_deg": 30.0,
+      "fade_blocks": 5
     }
   },
   "eco_vegetation": {
@@ -3720,23 +3726,33 @@
           "mud"
         ],
         "strata": {
-          "palette": [
-            "granite",
-            "dripstone_block",
+          "axis": "Y_tilted",
+          "thickness_min": 80,
+          "thickness_max": 160,
+          "tilt_per_100blocks": 30,
+          "tilt_dir_deg": 45,
+          "noise_amp_blocks": 12,
+          "intersperse": 0.7,
+          "band_a": {
+            "primary": "granite",
+            "secondary": "dripstone_block",
+            "primary_pct": 75
+          },
+          "band_b": {
+            "primary": "dripstone_block",
+            "secondary": "granite",
+            "primary_pct": 75
+          },
+          "speckle_blocks": [
             "raw_iron_block"
           ],
-          "thickness_min": 16,
-          "thickness_max": 32,
-          "noise_amp_blocks": 5,
-          "tilt_per_100blocks": 0,
-          "tilt_dir_deg": 0,
           "speckle_rate": 0.1,
           "vein_blocks": [
             "raw_iron_block",
             "soul_soil"
           ],
           "vein_amp": 0.4,
-          "_comment": "Massive intrusive \u2014 thick irregular bands, no tilt, high speckle, iron+soul-soil pegmatite veins."
+          "_comment": "Massive intrusive \u2014 80-160 block bands, crazy 30\u00b0/100 tilt, 75/25 granite/dripstone mix with iron speckle."
         }
       },
       "arid_basaltic": {
@@ -3803,23 +3819,32 @@
           "pale_moss_block"
         ],
         "strata": {
-          "palette": [
-            "basalt",
-            "smooth_basalt",
-            "tuff"
+          "axis": "XZ_cols",
+          "col_size_blocks": 2,
+          "tilt_per_100blocks": 0,
+          "tilt_dir_deg": 0,
+          "noise_amp_blocks": 0,
+          "intersperse": 0.0,
+          "band_a": {
+            "primary": "basalt",
+            "secondary": "smooth_basalt",
+            "primary_pct": 70
+          },
+          "band_b": {
+            "primary": "smooth_basalt",
+            "secondary": "basalt",
+            "primary_pct": 70
+          },
+          "speckle_blocks": [
+            "deepslate"
           ],
-          "thickness_min": 8,
-          "thickness_max": 16,
-          "noise_amp_blocks": 3,
-          "tilt_per_100blocks": 2,
-          "tilt_dir_deg": 45,
           "speckle_rate": 0.08,
           "vein_blocks": [
             "dead_fire_coral_block",
             "dead_bubble_coral_block"
           ],
           "vein_amp": 0.2,
-          "_comment": "Volcanic lava flows \u2014 medium bands, mild tilt NE, fire+bubble coral dike veins (vein-only palette exception)."
+          "_comment": "Volcanic \u2014 2-block VERTICAL COLUMNS (Devil's Postpile style), 70/30 basalt/smooth_basalt with deepslate speckle."
         }
       },
       "temperate_basaltic": {
@@ -3886,23 +3911,33 @@
           "tuff"
         ],
         "strata": {
-          "palette": [
-            "deepslate",
-            "cobbled_deepslate",
-            "deepslate_coal_ore"
+          "axis": "XZ_cols",
+          "col_size_blocks": 2,
+          "tilt_per_100blocks": 0,
+          "tilt_dir_deg": 0,
+          "noise_amp_blocks": 0,
+          "intersperse": 0.0,
+          "band_a": {
+            "primary": "deepslate",
+            "secondary": "cobbled_deepslate",
+            "primary_pct": 70
+          },
+          "band_b": {
+            "primary": "cobbled_deepslate",
+            "secondary": "deepslate",
+            "primary_pct": 70
+          },
+          "speckle_blocks": [
+            "deepslate_coal_ore",
+            "smooth_basalt"
           ],
-          "thickness_min": 6,
-          "thickness_max": 14,
-          "noise_amp_blocks": 2,
-          "tilt_per_100blocks": 5,
-          "tilt_dir_deg": 90,
-          "speckle_rate": 0.05,
+          "speckle_rate": 0.1,
           "vein_blocks": [
             "deepslate_coal_ore",
             "tuff"
           ],
           "vein_amp": 0.5,
-          "_comment": "Metamorphic foliation \u2014 thin sharp bands, gentle E tilt, coal+tuff seams in fault zones."
+          "_comment": "Dark metamorphic \u2014 2-block VERTICAL COLUMNS, 70/30 deepslate/cobbled_deepslate with coal_ore + smooth_basalt speckle."
         }
       },
       "limestone": {
@@ -3969,23 +4004,33 @@
           "clay"
         ],
         "strata": {
-          "palette": [
-            "calcite",
-            "diorite",
-            "dead_horn_coral_block"
+          "axis": "Y_tilted",
+          "thickness_min": 1,
+          "thickness_max": 14,
+          "tilt_per_100blocks": 6,
+          "tilt_dir_deg": 15,
+          "noise_amp_blocks": 2,
+          "intersperse": 0.15,
+          "band_a": {
+            "primary": "calcite",
+            "secondary": "diorite",
+            "primary_pct": 80
+          },
+          "band_b": {
+            "primary": "diorite",
+            "secondary": "calcite",
+            "primary_pct": 80
+          },
+          "speckle_blocks": [
+            "andesite"
           ],
-          "thickness_min": 5,
-          "thickness_max": 12,
-          "noise_amp_blocks": 1,
-          "tilt_per_100blocks": 1,
-          "tilt_dir_deg": 0,
           "speckle_rate": 0.1,
           "vein_blocks": [
             "dead_horn_coral_block",
             "dead_fire_coral_block"
           ],
           "vein_amp": 0.3,
-          "_comment": "Sedimentary bedding \u2014 thin bands, near-flat, horn+fire coral seams along faults (fire is vein-only palette exception)."
+          "_comment": "Sedimentary \u2014 1-14 block bands (highly variable), mild 6\u00b0/100 tilt @ 15\u00b0, 80/20 calcite/diorite with andesite speckle."
         }
       },
       "deepslate_metamorphic": {
@@ -4052,23 +4097,33 @@
           "dead_bubble_coral_block"
         ],
         "strata": {
-          "palette": [
-            "andesite",
-            "stone",
+          "axis": "Y_tilted",
+          "thickness_min": 6,
+          "thickness_max": 16,
+          "tilt_per_100blocks": 25,
+          "tilt_dir_deg": 30,
+          "noise_amp_blocks": 4,
+          "intersperse": 0.2,
+          "band_a": {
+            "primary": "andesite",
+            "secondary": "stone",
+            "primary_pct": 90
+          },
+          "band_b": {
+            "primary": "stone",
+            "secondary": "andesite",
+            "primary_pct": 90
+          },
+          "speckle_blocks": [
             "tuff"
           ],
-          "thickness_min": 8,
-          "thickness_max": 16,
-          "noise_amp_blocks": 4,
-          "tilt_per_100blocks": 8,
-          "tilt_dir_deg": 30,
           "speckle_rate": 0.06,
           "vein_blocks": [
             "dead_fire_coral_block",
             "dead_bubble_coral_block"
           ],
           "vein_amp": 0.6,
-          "_comment": "Folded mountain metamorphic \u2014 medium bands, strong NNE tilt, prominent fire+bubble coral veins."
+          "_comment": "Folded mountain metamorphic \u2014 6-16 block bands, STRONG 25\u00b0/100 tilt @ 30\u00b0, 90/10 andesite/stone with tuff speckle."
         }
       },
       "mossy_temperate": {
@@ -4135,22 +4190,34 @@
           "moss_block"
         ],
         "strata": {
-          "palette": [
-            "cobblestone",
-            "mossy_cobblestone",
-            "tuff"
-          ],
-          "thickness_min": 10,
+          "axis": "Y_tilted",
+          "thickness_min": 8,
           "thickness_max": 18,
-          "noise_amp_blocks": 3,
-          "tilt_per_100blocks": 2,
+          "tilt_per_100blocks": 4,
           "tilt_dir_deg": 0,
-          "speckle_rate": 0.12,
+          "noise_amp_blocks": 3,
+          "intersperse": 0.3,
+          "band_a": {
+            "primary": "cobblestone",
+            "secondary": "mossy_cobblestone",
+            "primary_pct": 60
+          },
+          "band_b": {
+            "primary": "mossy_cobblestone",
+            "secondary": "cobblestone",
+            "primary_pct": 60
+          },
+          "speckle_blocks": [
+            "tuff",
+            "moss_block",
+            "andesite"
+          ],
+          "speckle_rate": 0.15,
           "vein_blocks": [
             "moss_block"
           ],
           "vein_amp": 0.3,
-          "_comment": "Wet temperate \u2014 medium-thick bands, mild dip, high weathering speckle, moss-filled fractures."
+          "_comment": "Wet temperate \u2014 8-18 block bands, mild 4\u00b0/100 tilt, 60/40 cobblestone/mossy split with triple speckle (tuff+moss+andesite)."
         }
       }
     },
@@ -4197,7 +4264,7 @@
       "_comment": "S88: resistant cap-rock palette painted on flat shelves above slope>=cliff_min_deg cliffs. NOT excluded from Phase 2A noise (hard-erosion category \u2014 block-scale weathering is realistic). search_blocks bumped 4 -> 8 so cap-fade has 2 pixels of gradation at 1:4 build scale.",
       "search_blocks": 8,
       "cliff_min_deg": 35.0,
-      "flat_max_deg": 20.0,
+      "flat_max_deg": 28.0,
       "intensity_threshold": 64
     },
     "talus": {
@@ -4217,12 +4284,13 @@
       "intensity_threshold": 64
     },
     "strata": {
-      "_comment": "S88: per-cell strata banding in basement column.  Vein detection: terrain Laplacian > lap_threshold AND |simplex_fault| < fault_width => vein candidate.  Veins follow ridge lines + organic fault curves -- not flat diagonals.",
+      "_comment": "S88 walk #4: surface_min_deg lowered 32->28 so strata covers more of the cliff face (kills biome dirt/podzol bleed-through).  vein_lap_threshold / vein_fault_scale_blocks / vein_fault_width unchanged.",
       "vein_lap_threshold": 4.0,
       "vein_fault_scale_blocks": 80,
       "vein_fault_width": 0.08,
       "noise_scale_blocks": 80,
-      "n_bands_per_palette": 3
+      "n_bands_per_palette": 3,
+      "surface_min_deg": 28.0
     }
   },
   "surface_pipeline": {

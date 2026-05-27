@@ -508,41 +508,36 @@ def compute_eco_gradients(
         water_mask_re = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
         _sy_f = sy  # float32 surface_y, already computed above
 
-        # ── Rock gap — Norterre-intense + S88-walk2 hole-fix ──
-        # Per user S88 walk #2 feedback: "rock_gap has lots of 'holes' exposing
-        # dirt and surface underneath, even where slope should fire."  The
-        # 25-40° linear fade with per-pixel sqrt coin was leaving 30-40% of
-        # 28-32° cells unrock'd -> Swiss-cheese cliff faces.
-        # Tightened fade window 25-32° (was 25-40°) so anything >= 32° is
-        # solid rock.  Plus a probability FLOOR (0.40 default) so the
-        # foothill fade band (25-32°) ALWAYS shows at least 40% rock --
-        # no Swiss cheese.
-        # Beyond 32°: strata-on-surface painter takes over per the new
-        # layer stack (surface_decorator).
-        # Plus aspect modulator: SW-facing +amp, NE-facing -amp.
-        ROCK_SLOPE_FADE_START = 25.0  # degrees — fade begins
-        ROCK_SLOPE_SOLID = 32.0       # degrees — solid rock at/above (was 40.0)
-        ROCK_PROB_FLOOR = 0.40        # min probability inside the fade band
+        # ── Rock gap — S88 walk #4: hard threshold + 5-block distance fade ──
+        # Per user walk #4 direction: revert walk #3's slope-fade-with-floor
+        # and use a SHARP distance-based fade instead.
+        #   slope >= slope_solid_deg (default 30°): solid rock_gap
+        #   outside: probability fades 1.0 -> 0.0 over fade_blocks (5 blocks
+        #            of world distance from the nearest rock_core cell)
+        # Result: a clean halo around cliffs (no slope-band fuzz), no Swiss
+        # cheese on the cliff face itself.  Aspect modulator still applies.
+        _rg_cfg = cfg.get("eco_gradients", {}).get("rock_gap_5block_fade", {})
+        ROCK_SLOPE_SOLID = float(_rg_cfg.get("slope_solid_deg", 30.0))
+        ROCK_FADE_BLOCKS = int(_rg_cfg.get("fade_blocks", 5))
         if rock_gap is not None:
             _rg = rock_gap > 0.001  # uint8 {0,1} normalized to {0, 1/255}
             # SQRT ramp from FADE_START -> SOLID: front-loaded probability so
             # the new foothill band (25-32°) carries visible rock without
             # waiting for the cliff zone (35-40°).
-            _linear = np.clip(
-                (cliff_deg - ROCK_SLOPE_FADE_START) / (ROCK_SLOPE_SOLID - ROCK_SLOPE_FADE_START),
-                0.0, 1.0,
-            ).astype(np.float32)
-            _slope_prob = np.sqrt(_linear).astype(np.float32)
-            # S88 walk #2: probability floor inside the fade band so foothills
-            # always show rock (no Swiss-cheese holes).  Only applied where
-            # we're inside the fade window (cliff_deg >= FADE_START).
-            _in_fade = cliff_deg >= ROCK_SLOPE_FADE_START
-            _slope_prob = np.where(
-                _in_fade,
-                np.maximum(_slope_prob, ROCK_PROB_FLOOR),
-                _slope_prob,
-            ).astype(np.float32)
-            del _in_fade
+            # S88 walk #4: solid rock core + distance fade.
+            _rock_core = cliff_deg >= ROCK_SLOPE_SOLID
+            from scipy.ndimage import distance_transform_edt as _dt_rock
+            if _rock_core.any():
+                _dist_from_core = _dt_rock(~_rock_core).astype(np.float32)
+                _slope_prob = np.clip(
+                    1.0 - _dist_from_core / max(0.5, float(ROCK_FADE_BLOCKS)),
+                    0.0, 1.0,
+                ).astype(np.float32)
+                del _dist_from_core
+            else:
+                _slope_prob = np.zeros_like(cliff_deg, dtype=np.float32)
+            del _rock_core
+            _linear = _slope_prob  # legacy name kept for the `del _linear` below
             # S88 aspect modulator — SW-facing +amp, NE-facing -amp.
             # tile_streamer normalises uint8 → float32 [0,1] (byte/255).
             # Recover the byte to detect the sentinel (255 = flat terrain).

@@ -1123,16 +1123,21 @@ def _apply_strata_surface(
     tile_x:            int,
     tile_y:            int,
 ) -> None:
-    """S88 walk #2: paint STRATA-banded blocks on surface_blk + sub_blk where
-    slope >= lithology.strata.surface_min_deg (default 32°).  This makes
-    strata bands visible at cliff tops and faces, not just at the basement
-    cliff-side cross-section.
+    """S88 walk #4: paint v2 STRATA blocks on surface_blk + sub_blk where
+    slope >= lithology.strata.surface_min_deg (default 28°).  Uses the
+    same 2-band mixed model + axis logic as chunk_writer's basement fill
+    so cliff-top strata is consistent with the column below.
 
-    Y-banding formula matches chunk_writer._fill_geology_layers basement
-    fill exactly (same band_lut seed, same xz_waviness, same col_y_noise,
-    same tilt formula).  Result: a strata band spanning multiple Y values
-    looks continuous from cliff TOP (painted here) down through cliff FACE
-    and into the basement -- no horizontal seam at sy-2.
+    Per group strata.axis:
+      "Y_tilted" — band_idx from Y + waviness + col_y_noise + tilt (matches
+                   chunk_writer's basement schedule -> seam-free continuity
+                   from cliff top through column).
+      "XZ_cols"  — band_idx from (x // col_size, z // col_size) hash;
+                   surface and sub at same (x,z) share the band.
+
+    Per band: pick primary OR secondary by coin against primary_pct.
+    Multi-block speckle from speckle_blocks list.
+    Veins NOT applied at surface (basement-only feature).
 
     Exclusions: river_meta>0 (water), gap==4 (floodplain), gap==7 (snow).
     Operates IN-PLACE on surface_blocks + subsurface_blocks.
@@ -1145,7 +1150,7 @@ def _apply_strata_surface(
         return
     H, W = surface_y.shape
     strata_global = litho_cfg.get("strata", {})
-    surface_min_deg = float(strata_global.get("surface_min_deg", 32.0))
+    surface_min_deg = float(strata_global.get("surface_min_deg", 28.0))
 
     steep = cliff_deg >= surface_min_deg
     if not steep.any():
@@ -1170,8 +1175,9 @@ def _apply_strata_surface(
     else:
         litho_at_res = lithology_tile
 
-    # Import helpers from chunk_writer so the band schedule + waviness
-    # match chunk_writer's basement fill exactly.
+    # Import helpers from chunk_writer so band schedule + waviness match
+    # the basement fill exactly (cliff-top strata continues smoothly into
+    # the column below).
     from core.chunk_writer import (
         _build_band_lut, _compute_xz_waviness, Y_RANGE,
     )
@@ -1179,30 +1185,31 @@ def _apply_strata_surface(
     tile_world_x = tile_x * W
     tile_world_z = tile_y * H
     _LUT_SIZE = Y_RANGE * 2
-
-    # band_scale_y default — matches chunk_writer's typical 8-10 value
-    # (used only for the waviness amplitude, since band_lut overrides bands)
-    _band_scale_y = int(litho_cfg.get("band_scale_y", 10))
-    base_waviness = _compute_xz_waviness(
-        H, W, tile_world_x, tile_world_z, _band_scale_y
-    )
     col_world_x = (np.arange(W, dtype=np.float32) + tile_world_x)
     row_world_z = (np.arange(H, dtype=np.float32) + tile_world_z)
+
+    def _idx_or_none(name: str) -> int | None:
+        # block-name lookup is in the chunk_writer's palette; here we work
+        # in string-name space (surface_blocks is an object array).
+        # Just check the string is valid by returning the name itself
+        # if non-empty.
+        return name if (name and isinstance(name, str)) else None
 
     for gname, gdata in groups.items():
         strata = gdata.get("strata")
         if not strata:
             continue
-        str_pal_names = strata.get("palette", [])
-        if not str_pal_names:
-            continue
+        # NEW schema requires band_a + band_b
+        band_a = strata.get("band_a")
+        band_b = strata.get("band_b")
+        if not band_a or not band_b:
+            continue  # old-schema groups would have palette; skip if missing
         gid = int(gdata.get("id", 0))
 
-        # Per-group mask: steep + this lithology + not excluded
+        # Per-group mask
         if litho_at_res is not None:
             group_cols = (litho_at_res == gid)
         else:
-            # No lithology mask -- biome-based fallback via zone_to_group
             _z2g = litho_cfg.get("zone_to_group", {})
             group_cols = np.zeros((H, W), dtype=bool)
             for _bn, _gn in _z2g.items():
@@ -1212,68 +1219,110 @@ def _apply_strata_surface(
         if not paint_mask.any():
             continue
 
-        band_min = int(strata.get("thickness_min", 4))
-        band_max = int(strata.get("thickness_max", 10))
-        noise_amp = int(strata.get("noise_amp_blocks", 1))
-        tilt_per100 = float(strata.get("tilt_per_100blocks", 0.0))
-        tilt_dir_deg = float(strata.get("tilt_dir_deg", 0.0))
+        axis = strata.get("axis", "Y_tilted")
+        a_pri = _idx_or_none(band_a.get("primary"))
+        a_sec = _idx_or_none(band_a.get("secondary"))
+        a_pct = float(band_a.get("primary_pct", 50)) / 100.0
+        b_pri = _idx_or_none(band_b.get("primary"))
+        b_sec = _idx_or_none(band_b.get("secondary"))
+        b_pct = float(band_b.get("primary_pct", 50)) / 100.0
+        if a_pri is None or a_sec is None or b_pri is None or b_sec is None:
+            continue  # invalid block names
+
+        speckle_names = [s for s in strata.get("speckle_blocks", []) if s]
         speckle_rate = float(strata.get("speckle_rate", 0.0))
-        speckle_block = gdata.get("palette", ["stone"])[0]
 
-        # Same band LUT seed as chunk_writer._fill_geology_layers
-        lut_seed = tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 2654435761
-        band_lut = _build_band_lut(
-            len(str_pal_names), band_min, band_max, _LUT_SIZE, lut_seed,
+        # Compute band_idx_2d for both sy and sy-1
+        # Y_tilted: based on surface_y per cell
+        # XZ_cols:  based on (x // col_size, z // col_size) hash
+        if axis == "XZ_cols":
+            col_size = max(1, int(strata.get("col_size_blocks", 2)))
+            col_x_idx = ((np.arange(W, dtype=np.uint32) + tile_world_x) // col_size)
+            col_z_idx = ((np.arange(H, dtype=np.uint32) + tile_world_z) // col_size)
+            salt_a = np.uint32(0xC4F12345 ^ ((gid * 1779033703) & 0xFFFFFFFF))
+            salt_b = np.uint32(0x9E373B17 ^ ((gid * 2654435769) & 0xFFFFFFFF))
+            _h = (col_z_idx[:, None] * salt_a) ^ (col_x_idx[None, :] * salt_b)
+            _h ^= _h >> np.uint32(16)
+            _h *= np.uint32(0x45D9F3B)
+            _h ^= _h >> np.uint32(16)
+            band_idx_sy = (_h & np.uint32(1)).astype(np.int8)
+            band_idx_sub = band_idx_sy  # XZ_cols: same band per column at any Y
+        else:  # Y_tilted
+            thickness_min = int(strata.get("thickness_min", 4))
+            thickness_max = int(strata.get("thickness_max", 10))
+            noise_amp = int(strata.get("noise_amp_blocks", 0))
+            tilt_per100 = float(strata.get("tilt_per_100blocks", 0.0))
+            tilt_dir_deg = float(strata.get("tilt_dir_deg", 0.0))
+
+            lut_seed = tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 2654435761
+            band_lut = _build_band_lut(2, thickness_min, thickness_max, _LUT_SIZE, lut_seed)
+
+            _xz_band_scale = max(8, thickness_max)
+            base_waviness = _compute_xz_waviness(H, W, tile_world_x, tile_world_z, _xz_band_scale)
+            if noise_amp > 0:
+                ng_rng = np.random.default_rng(
+                    (tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 1234567) & 0xFFFFFFFF
+                )
+                col_y_noise = ng_rng.integers(-noise_amp, noise_amp + 1, size=(H, W), dtype=np.int32)
+            else:
+                col_y_noise = np.zeros((H, W), dtype=np.int32)
+            tilt_rad = np.deg2rad(tilt_dir_deg)
+            tilt_offset_2d = (
+                (tilt_per100 / 100.0)
+                * (col_world_x[None, :] * np.cos(tilt_rad)
+                   + row_world_z[:, None] * np.sin(tilt_rad))
+            ).astype(np.int32)
+            y_eff_sy = (
+                surface_y.astype(np.int32) + base_waviness + col_y_noise + tilt_offset_2d
+            )
+            y_eff_sub = y_eff_sy - 1
+            band_idx_sy = band_lut[np.abs(y_eff_sy).astype(np.int32) % _LUT_SIZE]
+            band_idx_sub = band_lut[np.abs(y_eff_sub).astype(np.int32) % _LUT_SIZE]
+
+        # Per-cell primary/secondary pick (independent for sy and sy-1)
+        primary_rng = np.random.default_rng(
+            (tile_world_x * 1779033703 ^ tile_world_z * 0xDEADBEEF ^ gid * 0xCAFED00D) & 0xFFFFFFFF
         )
+        coin_sy = primary_rng.random((H, W), dtype=np.float32)
+        coin_sub = primary_rng.random((H, W), dtype=np.float32)
+        # block names for sy
+        primary_sy = np.where(band_idx_sy == 0, a_pri, b_pri)
+        secondary_sy = np.where(band_idx_sy == 0, a_sec, b_sec)
+        pct_sy = np.where(band_idx_sy == 0, a_pct, b_pct).astype(np.float32)
+        block_sy = np.where(coin_sy < pct_sy, primary_sy, secondary_sy)
+        # block names for sub
+        primary_sub = np.where(band_idx_sub == 0, a_pri, b_pri)
+        secondary_sub = np.where(band_idx_sub == 0, a_sec, b_sec)
+        pct_sub = np.where(band_idx_sub == 0, a_pct, b_pct).astype(np.float32)
+        block_sub = np.where(coin_sub < pct_sub, primary_sub, secondary_sub)
 
-        # Same col_y_noise as chunk_writer (same RNG seed per group)
-        ng_rng = np.random.default_rng(
-            (tile_world_x * 73856093 ^ tile_world_z * 19349669 ^ gid * 1234567) & 0xFFFFFFFF
-        )
-        col_y_noise = ng_rng.integers(
-            -noise_amp, noise_amp + 1, size=(H, W), dtype=np.int32
-        )
-
-        # Same tilt formula as chunk_writer
-        tilt_rad = np.deg2rad(tilt_dir_deg)
-        tilt_offset_2d = (
-            (tilt_per100 / 100.0)
-            * (col_world_x[None, :] * np.cos(tilt_rad)
-               + row_world_z[:, None] * np.sin(tilt_rad))
-        ).astype(np.int32)
-
-        # y_eff for sy and sy-1
-        y_eff_sy = (
-            surface_y.astype(np.int32) + base_waviness + col_y_noise + tilt_offset_2d
-        )
-        y_eff_sub = y_eff_sy - 1
-        band_idx_sy = band_lut[np.abs(y_eff_sy).astype(np.int32) % _LUT_SIZE]
-        band_idx_sub = band_lut[np.abs(y_eff_sub).astype(np.int32) % _LUT_SIZE]
-
-        # Per-cell speckle coin (deterministic per-tile-per-group)
-        sp_mask_sy = np.zeros((H, W), dtype=bool)
-        sp_mask_sub = np.zeros((H, W), dtype=bool)
-        if speckle_rate > 0:
+        # Speckle override (multi-block uniform pick)
+        if speckle_rate > 0 and speckle_names:
             sp_rng = np.random.default_rng(
                 (tile_world_x * 83492791 ^ tile_world_z * 46508633 ^ gid * 1779033703) & 0xFFFFFFFF
             )
-            sp_mask_sy = paint_mask & (sp_rng.random((H, W), dtype=np.float32) < speckle_rate)
-            sp_mask_sub = paint_mask & (sp_rng.random((H, W), dtype=np.float32) < speckle_rate)
+            sp_coin_sy = sp_rng.random((H, W), dtype=np.float32)
+            sp_coin_sub = sp_rng.random((H, W), dtype=np.float32)
+            sp_mask_sy = sp_coin_sy < speckle_rate
+            sp_mask_sub = sp_coin_sub < speckle_rate
+            if len(speckle_names) == 1:
+                block_sy = np.where(sp_mask_sy, speckle_names[0], block_sy)
+                block_sub = np.where(sp_mask_sub, speckle_names[0], block_sub)
+            else:
+                sp_pick_sy = sp_rng.integers(0, len(speckle_names), size=(H, W), dtype=np.int8)
+                sp_pick_sub = sp_rng.integers(0, len(speckle_names), size=(H, W), dtype=np.int8)
+                for _i, _spn in enumerate(speckle_names):
+                    _m_sy = sp_mask_sy & (sp_pick_sy == _i)
+                    _m_sub = sp_mask_sub & (sp_pick_sub == _i)
+                    if _m_sy.any():
+                        block_sy = np.where(_m_sy, _spn, block_sy)
+                    if _m_sub.any():
+                        block_sub = np.where(_m_sub, _spn, block_sub)
 
-        # Write per-band (skip speckle cells)
-        for vi, blk in enumerate(str_pal_names):
-            _m_sy = paint_mask & (band_idx_sy == vi) & ~sp_mask_sy
-            if _m_sy.any():
-                surface_blocks[_m_sy] = blk
-            _m_sub = paint_mask & (band_idx_sub == vi) & ~sp_mask_sub
-            if _m_sub.any():
-                subsurface_blocks[_m_sub] = blk
-
-        # Speckle overrides last
-        if sp_mask_sy.any():
-            surface_blocks[sp_mask_sy] = speckle_block
-        if sp_mask_sub.any():
-            subsurface_blocks[sp_mask_sub] = speckle_block
+        # Write to surface_blocks + subsurface_blocks at paint_mask cells
+        if paint_mask.any():
+            surface_blocks[paint_mask] = block_sy[paint_mask]
+            subsurface_blocks[paint_mask] = block_sub[paint_mask]
 
 
 def _flatten_dune_regions(
