@@ -922,6 +922,7 @@ def build_column_array(
     use_new_geology:         bool                = False,
     flow_tile:               np.ndarray | None = None,  # (H, W) float32 [0,1] — for inline sediment thickness
     cfg:                     dict | None        = None,  # thresholds.json — for lithology group palettes
+    gap_mask:                np.ndarray | None  = None,  # (H, W) uint8 — for walk #9 rock_zone Y-2..Y-5 cleanup
 ) -> tuple[np.ndarray, "BlockPalette"]:
     """
     Build a (Y_RANGE, H, W) object array of block name strings.
@@ -1280,6 +1281,54 @@ def build_column_array(
                     # Also clear upper half if double-tall
                     if cov_yi + 1 < Y_RANGE and vol[cov_yi + 1, r, c] in veg_indices:
                         vol[cov_yi + 1, r, c] = AIR_IDX
+
+    # ── Walk #9 NEW: rock_zone Y-2..Y-5 cleanup ──────────────────────────
+    # On rock_gap (gap_mask==5) pixels, force the top-6 column blocks
+    # (Y, Y-1, ..., Y-5) to be lithology rock if any grass/dirt slipped
+    # through.  Y and Y-1 are handled by surface_decorator; this pass
+    # handles Y-2 through Y-5 (the basement strata zone).  Overwrites
+    # any GRASS/DIRT block in those rows with the lithology palette[0]
+    # (dominant rock for that group).
+    if gap_mask is not None and lithology_tile is not None and cfg is not None:
+        _cu = cfg.get("lithology", {}).get("rock_zone_cleanup", {})
+        if _cu.get("enabled", False) and _cu.get("column_top6_cleanup", False):
+            _rock_zone = (gap_mask == 5)
+            if _rock_zone.any():
+                # Build group_id -> dominant_rock_block_idx LUT
+                _bad_names = set(_cu.get("surface_bad_blocks", [])) | set(_cu.get("subsurface_bad_blocks", []))
+                _bad_indices = frozenset(
+                    pal._idx.get(n, -1) for n in _bad_names
+                ) - {-1}
+                if _bad_indices:
+                    _groups_cfg = cfg.get("lithology", {}).get("groups", {})
+                    _gid_to_rock_idx: dict[int, int] = {}
+                    for _gn, _gd in _groups_cfg.items():
+                        _gid_v = int(_gd.get("id", 0))
+                        _palette = _gd.get("palette", ["stone"])
+                        if _palette:
+                            try:
+                                _gid_to_rock_idx[_gid_v] = pal.idx(_palette[0])
+                            except Exception:
+                                _gid_to_rock_idx[_gid_v] = pal.idx("stone")
+                    _stone_idx_fb = pal.idx("stone")
+                    # Find rock pixels' (row, col, surface_y)
+                    _rr, _cc = np.where(_rock_zone)
+                    _bad_arr = np.array(list(_bad_indices), dtype=np.int32)
+                    for _idx in range(len(_rr)):
+                        _r, _c = int(_rr[_idx]), int(_cc[_idx])
+                        _gid_here = int(lithology_tile[_r, _c]) if lithology_tile.shape == _rock_zone.shape else 0
+                        _rock_idx = _gid_to_rock_idx.get(_gid_here, _stone_idx_fb)
+                        _sy_abs = int(surface_y[_r, _c])
+                        # Check Y-2 down to Y-5 (4 blocks)
+                        for _y_off in range(2, 6):
+                            _y_abs = _sy_abs - _y_off
+                            _y_rel = _y_abs - Y_MIN
+                            if _y_rel < 0 or _y_rel >= Y_RANGE:
+                                continue
+                            _cur = int(vol[_y_rel, _r, _c])
+                            if _cur in _bad_indices:
+                                vol[_y_rel, _r, _c] = _rock_idx
+                del _rock_zone
 
     return vol, pal
 
@@ -2373,6 +2422,7 @@ def write_tile(
     river_water_y: np.ndarray | None = None, # (H, W) int16 — river water surface
     lithology_tile: np.ndarray | None = None, # (H, W) uint8 — Phase 1.75
     flow_tile:      np.ndarray | None = None, # (H, W) float32 — Phase 1.75
+    gap_mask:       np.ndarray | None = None, # (H, W) uint8 — walk #9 cleanup
 ) -> list[str]:
     """
     Full tile write pipeline:
@@ -2405,6 +2455,7 @@ def write_tile(
         use_new_geology= _use_geo,
         flow_tile      = flow_tile if _use_geo else None,
         cfg            = cfg if _use_geo else None,
+        gap_mask       = gap_mask,
     )
 
     # S71-2 Option β: river water-spread post-pass (purely additive — does

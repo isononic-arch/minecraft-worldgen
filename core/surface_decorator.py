@@ -1642,7 +1642,8 @@ def _apply_concavity_drainage(
     if not cc.get("enabled", False):
         return
     lap_threshold = float(cc.get("lap_threshold", 1.5))
-    palette_key = cc.get("palette_key", "bedrock_drainage_palette")
+    palette_key = cc.get("palette_key", "concavity_palette")  # walk #9: new key
+    dilate_blocks = int(cc.get("dilate_blocks", 0))
 
     H, W = surface_y.shape
     sy = surface_y.astype(np.float32)
@@ -1654,6 +1655,11 @@ def _apply_concavity_drainage(
         4.0 * sy[1:-1, 1:-1]
     )
     paint_mask = lap >= lap_threshold
+
+    # Walk #9: dilate detected pixels into small patches for visibility
+    if dilate_blocks > 0 and paint_mask.any():
+        from scipy.ndimage import binary_dilation as _bd_conv
+        paint_mask = _bd_conv(paint_mask, iterations=dilate_blocks)
 
     excl = np.zeros((H, W), dtype=bool)
     if river_meta is not None:
@@ -1699,6 +1705,83 @@ def _apply_concavity_drainage(
         subsurface_blocks[_bm] = _arr[rng.integers(0, len(_pal), size=_n)]
 
 
+def _apply_rock_zone_cleanup(
+    surface_blocks:    np.ndarray,
+    subsurface_blocks: np.ndarray,
+    lithology_tile:    np.ndarray | None,
+    gap_mask:          np.ndarray | None,
+    cfg:               dict,
+    tile_x:            int,
+    tile_y:            int,
+) -> None:
+    """S88 walk #9 NEW final pass: on rock_gap (gap_mask==5) pixels,
+    overwrite any surviving grass/dirt blocks with the per-litho rock_gap
+    palette.  Catches biome-surface/ecotone-dither slip-through that
+    survived all prior painting passes on rock pixels.
+
+    Configurable bad-block lists in cfg.lithology.rock_zone_cleanup.
+    Subsurface dirt is allowed for granitic (rooted_dirt is in its rock
+    palette) — only the literal block names in subsurface_bad_blocks
+    get overwritten.  Y-2 through Y-5 column cleanup is chunk_writer's
+    responsibility.
+    """
+    if gap_mask is None or lithology_tile is None:
+        return
+    cu_cfg = cfg.get("lithology", {}).get("rock_zone_cleanup", {})
+    if not cu_cfg.get("enabled", False):
+        return
+    rock_zone = (gap_mask == 5)
+    if not rock_zone.any():
+        return
+
+    surface_bad = set(cu_cfg.get("surface_bad_blocks", []))
+    sub_bad = set(cu_cfg.get("subsurface_bad_blocks", []))
+
+    surface_bad_mask = rock_zone & np.isin(
+        surface_blocks, list(surface_bad)
+    )
+    sub_bad_mask = rock_zone & np.isin(
+        subsurface_blocks, list(sub_bad)
+    )
+    if not (surface_bad_mask.any() or sub_bad_mask.any()):
+        return
+
+    # Resolve lithology to pick the right per-pixel rock_gap palette
+    H, W = rock_zone.shape
+    if lithology_tile.shape != (H, W):
+        from scipy.ndimage import zoom as _z_cu
+        litho_at_res = _z_cu(
+            lithology_tile,
+            (H / lithology_tile.shape[0], W / lithology_tile.shape[1]),
+            order=0,
+        )
+    else:
+        litho_at_res = lithology_tile
+
+    groups = cfg.get("lithology", {}).get("groups", {})
+    DEFAULT = ["stone", "andesite", "cobblestone"]
+    gid_to_pal: dict[int, list] = {}
+    for _gname, _gdata in groups.items():
+        _gid = int(_gdata.get("id", 0))
+        gid_to_pal[_gid] = _gdata.get("palette") or DEFAULT
+
+    rng = np.random.default_rng(
+        (tile_x * 0xDEAD ^ tile_y * 0xC1EA1 ^ 0xCC1A) & 0xFFFFFFFF
+    )
+    for _gid_u in np.unique(litho_at_res[surface_bad_mask | sub_bad_mask]):
+        _gid = int(_gid_u)
+        _pal = gid_to_pal.get(_gid, DEFAULT)
+        _arr = np.asarray(_pal, dtype=object)
+        _sm = surface_bad_mask & (litho_at_res == _gid)
+        if _sm.any():
+            _n = int(_sm.sum())
+            surface_blocks[_sm] = _arr[rng.integers(0, len(_pal), size=_n)]
+        _sub_m = sub_bad_mask & (litho_at_res == _gid)
+        if _sub_m.any():
+            _n = int(_sub_m.sum())
+            subsurface_blocks[_sub_m] = _arr[rng.integers(0, len(_pal), size=_n)]
+
+
 def _apply_rock_varnish(
     surface_blocks:    np.ndarray,
     subsurface_blocks: np.ndarray,
@@ -1709,18 +1792,23 @@ def _apply_rock_varnish(
     cfg:               dict,
     tile_x:            int,
     tile_y:            int,
+    cliff_deg:         np.ndarray | None = None,
 ) -> None:
-    """S88 walk #8 NEW pass: paint per-lithology varnish stain on rock_gap
-    pixels in local crevices/corners.
+    """S88 walk #9 v2: paint per-lithology varnish stain at cliff BASES.
 
-    Real-world rock varnish = manganese + iron oxide coating that
-    accumulates in cracks, alcoves, and drip lines where water lingers.
-    Each group's varnish_palette is 2-3 shades darker than its rock_gap
-    base, in the same color family — reads as natural rock staining
-    (subtle on dark basaltics, dramatic on white limestone).
+    Detection (walk #9):
+      1. rock_gap pixel (gap_mask == 5)
+      2. slope >= slope_min_deg (sharp slopes only — water drips here)
+      3. crevice or cliff-base: surface_y within `cliff_base_band` blocks
+         of the local minimum surface_y in a `cliff_base_window` neighborhood.
+         (real water-pooling/stain happens at the FOOT of cliff faces.)
 
-    Crevice detection: surface_y < gaussian_smoothed(surface_y) - thresh
-    (local micro-pits relative to a sigma-2 smooth of the height field).
+    Post-detection: dilate by `dilate_blocks` for visible patches instead
+    of single-pixel scatter (was sparse in walk #8).
+
+    Per-pixel paint of surface_blocks ONLY (no subsurface — surface stain
+    is 1 block thick).  Each group's varnish_palette is 2-3 shades darker
+    than its rock_gap base in the same color family.
     """
     if gap_mask is None or lithology_tile is None:
         return
@@ -1734,21 +1822,37 @@ def _apply_rock_varnish(
 
     H, W = rock_zone.shape
 
-    # Crevice detection
-    from scipy.ndimage import gaussian_filter as _gf_v
-    _sigma = float(v_cfg.get("crevice_sigma", 2.0))
-    _thr = float(v_cfg.get("crevice_threshold", 0.5))
-    sy_smooth = _gf_v(surface_y.astype(np.float32), sigma=_sigma)
-    crevice = surface_y.astype(np.float32) < (sy_smooth - _thr)
+    # ── (1) slope gate ───────────────────────────────────────────────────
+    _slope_min = float(v_cfg.get("slope_min_deg", 0.0))
+    if cliff_deg is not None and _slope_min > 0:
+        sharp_enough = cliff_deg >= _slope_min
+    else:
+        sharp_enough = np.ones((H, W), dtype=bool)
+
+    # ── (2) cliff-base detection ────────────────────────────────────────
+    # local minimum surface_y in a 2*window+1 window; varnish fires where
+    # this pixel's surface_y is within cliff_base_band of that local min.
+    from scipy.ndimage import minimum_filter as _mf_v
+    _win = int(v_cfg.get("cliff_base_window", 12))
+    _band = int(v_cfg.get("cliff_base_band", 6))
+    sy_i32 = surface_y.astype(np.int32)
+    local_min_y = _mf_v(sy_i32, size=(2 * _win + 1))
+    cliff_base = (sy_i32 - local_min_y) < _band
 
     excl = np.zeros((H, W), dtype=bool)
     if river_meta is not None:
         excl |= (river_meta > 0)
     excl |= (gap_mask == 4) | (gap_mask == 7)
 
-    candidate = rock_zone & crevice & ~excl
+    candidate = rock_zone & sharp_enough & cliff_base & ~excl
     if not candidate.any():
         return
+
+    # ── (3) Dilate detected pixels into patches for visibility ──────────
+    _dilate = int(v_cfg.get("dilate_blocks", 0))
+    if _dilate > 0:
+        from scipy.ndimage import binary_dilation as _bd_v
+        candidate = _bd_v(candidate, iterations=_dilate) & rock_zone & ~excl
 
     # Lithology resolve
     if lithology_tile.shape != (H, W):
@@ -2769,6 +2873,7 @@ def decorate_surface(
                 cfg               = cfg,
                 tile_x            = tile_x,
                 tile_y            = tile_y,
+                cliff_deg         = cliff_deg,
             )
 
             # 3. cliff_cap — surface + sub (cap rock all the way down 1 layer)
@@ -2780,6 +2885,22 @@ def decorate_surface(
                 exclusion_mask=_river_excl | _snow_excl,
                 rng_salt=0xCAFE,
                 default_palette=["tuff", "andesite", "cobblestone"],
+            )
+
+            # ── Walk #9 NEW: rock_zone_cleanup ───────────────────────────
+            # Final pass: on rock_gap (gap_mask==5) pixels, overwrite any
+            # surviving GRASS_FAMILY surface blocks or DIRT_FAMILY subsurface
+            # blocks with the per-litho rock_gap palette.  Catches grass/dirt
+            # slip-through from ecotone dither, biome surface paint, etc.
+            # Y-2..Y-5 cleanup handled separately by chunk_writer.
+            _apply_rock_zone_cleanup(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                lithology_tile    = lithology_tile,
+                gap_mask          = _gap,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
             )
 
             del _river_excl, _flood_excl, _snow_excl

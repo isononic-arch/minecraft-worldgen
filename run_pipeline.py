@@ -1205,6 +1205,7 @@ def _process_tile(args: dict) -> dict:
             river_water_y= river_water_y,
             lithology_tile=lithology_tile,
             flow_tile    = masks["flow"],
+            gap_mask     = eco_grads.gap_mask if eco_grads is not None else None,
         )
 
     elapsed_ms = int((time.perf_counter() - t0) * 1000)

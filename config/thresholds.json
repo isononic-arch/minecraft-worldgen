@@ -2292,8 +2292,8 @@
     "rock_gap_5block_fade": {
       "_comment": "S88 walk #5: tightened.  slope_solid 30->32 to align with strata fade-in floor (strata.surface_min_deg=32).  fade_blocks 5->2 for a sharper boundary closer to the strata formation zone.",
       "enabled": true,
-      "slope_solid_deg": 32.0,
-      "fade_blocks": 2
+      "slope_solid_deg": 38.0,
+      "fade_blocks": 1
     }
   },
   "eco_vegetation": {
@@ -2339,8 +2339,8 @@
       1.5
     ],
     "_comment_s87": "S87: bumped slope penalty thresholds 30->38 and 45->55 per user (59,44) walk - trees should grow on STEEPER slopes, not be killed at 30-45deg.",
-    "slope_penalty_start_deg": 45.0,
-    "slope_penalty_full_deg": 65.0,
+    "slope_penalty_start_deg": 55.0,
+    "slope_penalty_full_deg": 75.0,
     "habitat_score_floor": 0.05,
     "_comment_s87w3": "S87 walk #3 back-off: 38/55 was too forgiving and let trees creep up real mountain faces (34,9 walk). Back off to 35/50."
   },
@@ -3765,6 +3765,18 @@
           "brown_concrete_powder",
           "brown_concrete_powder",
           "brown_concrete_powder"
+        ],
+        "concavity_palette": [
+          "soul_soil",
+          "soul_soil",
+          "soul_soil",
+          "soul_soil",
+          "soul_sand",
+          "soul_sand",
+          "soul_sand",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder"
         ]
       },
       "arid_basaltic": {
@@ -3807,28 +3819,28 @@
           "deepslate"
         ],
         "talus_palette": [
-          "clay",
-          "clay",
-          "clay",
-          "clay",
-          "clay",
-          "dead_fire_coral_block",
-          "dead_fire_coral_block",
-          "dead_fire_coral_block",
-          "dead_fire_coral_block",
-          "dead_fire_coral_block"
+          "packed_mud",
+          "packed_mud",
+          "packed_mud",
+          "packed_mud",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "brown_concrete_powder",
+          "brown_concrete_powder"
         ],
         "bedrock_drainage_palette": [
-          "tuff",
-          "tuff",
-          "tuff",
-          "tuff",
-          "tuff",
-          "pale_moss_block",
-          "pale_moss_block",
-          "pale_moss_block",
-          "pale_moss_block",
-          "pale_moss_block"
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "granite",
+          "granite",
+          "granite",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt"
         ],
         "strata": {
           "axis": "XZ_cols",
@@ -3852,14 +3864,118 @@
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "dead_fire_coral_block",
-            "dead_bubble_coral_block"
+            "smooth_red_sandstone",
+            "red_sand",
+            "brown_concrete_powder",
+            "granite"
           ],
           "vein_amp": 0.5,
           "_comment": "S88 walk #4c: bands restructured -- A=basalt/gray_concrete_powder, B=smooth_basalt/tuff.  speckle=[mud] (was [deepslate]).",
           "col_hash_mode": "diagonal"
         },
         "varnish_palette": [
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone"
+        ],
+        "concavity_palette": [
           "brown_concrete_powder",
           "brown_concrete_powder",
           "brown_concrete_powder",
@@ -4049,23 +4165,27 @@
           "speckle_rate": 0.02,
           "vein_blocks": [
             "black_concrete_powder",
-            "coal_block"
+            "tuff"
           ],
           "vein_amp": 1.0,
           "_comment": "S88 walk #4c: bands restructured -- A=cobbled_deepslate/deepslate, B=dead_horn_coral_block/suspicious_gravel (latter two are vein-exception blocks outside the temperate palette set, per user permission).  speckle unchanged (deepslate_coal_ore + smooth_basalt) but rate dropped to 0.02.",
           "col_hash_mode": "diagonal"
         },
         "varnish_palette": [
-          "coal_block",
-          "coal_block",
-          "coal_block",
-          "coal_block",
-          "black_concrete_powder",
-          "black_concrete_powder",
-          "black_concrete_powder",
           "tuff",
-          "tuff",
-          "tuff"
+          "mud"
+        ],
+        "concavity_palette": [
+          "gravel",
+          "gravel",
+          "gravel",
+          "gravel",
+          "gravel",
+          "clay",
+          "clay",
+          "clay",
+          "clay",
+          "clay"
         ]
       },
       "limestone": {
@@ -4171,6 +4291,10 @@
           "stone",
           "stone",
           "stone"
+        ],
+        "concavity_palette": [
+          "dead_horn_coral_block",
+          "dead_fire_coral_block"
         ]
       },
       "deepslate_metamorphic": {
@@ -4213,16 +4337,16 @@
           "smooth_basalt"
         ],
         "talus_palette": [
+          "packed_mud",
+          "packed_mud",
+          "packed_mud",
+          "packed_mud",
+          "coarse_dirt",
+          "coarse_dirt",
+          "coarse_dirt",
           "suspicious_gravel",
           "suspicious_gravel",
-          "suspicious_gravel",
-          "suspicious_gravel",
-          "suspicious_gravel",
-          "gravel",
-          "gravel",
-          "gravel",
-          "gravel",
-          "gravel"
+          "suspicious_gravel"
         ],
         "bedrock_drainage_palette": [
           "tuff",
@@ -4266,6 +4390,10 @@
           "_comment": "Folded mountain metamorphic \u2014 6-16 block bands, STRONG 25\u00b0/100 tilt @ 30\u00b0, 90/10 andesite/stone with tuff speckle."
         },
         "varnish_palette": [
+          "basalt",
+          "smooth_basalt"
+        ],
+        "concavity_palette": [
           "basalt",
           "smooth_basalt"
         ]
@@ -4365,6 +4493,11 @@
         },
         "varnish_palette": [
           "moss_block"
+        ],
+        "concavity_palette": [
+          "tuff",
+          "moss_block",
+          "andesite"
         ]
       }
     },
@@ -4448,15 +4581,40 @@
     "concavity": {
       "_comment": "S88 walk #6 NEW PASS: detects concave terrain (positive Laplacian of surface_y) and paints lithology bedrock_drainage_palette.  Complements the existing bedrock_drainage mask painter by catching gully/bowl/depression features the mask misses (the mask is flow-derived; this is curvature-derived).",
       "enabled": true,
-      "lap_threshold": 1.5,
-      "palette_key": "bedrock_drainage_palette"
+      "lap_threshold": 0.75,
+      "palette_key": "concavity_palette",
+      "dilate_blocks": 2
     },
     "varnish": {
       "_comment": "S88 walk #8: NEW rock varnish pass.  Paints per-litho varnish_palette on rock_gap pixels in local crevices/corners (surface_y < gaussian_smoothed surface_y).  Per-pixel coin gated at amp.  Each varnish_palette is relatively 2-3 shades darker than that group's rock_gap base, in the same color family \u2014 reads as natural rock staining/oxidation.",
       "enabled": true,
       "amp": 0.5,
       "crevice_sigma": 2.0,
-      "crevice_threshold": 0.5
+      "crevice_threshold": 0.5,
+      "slope_min_deg": 40.0,
+      "dilate_blocks": 3,
+      "cliff_base_window": 12,
+      "cliff_base_band": 6
+    },
+    "rock_zone_cleanup": {
+      "_comment": "S88 walk #9 NEW pass: on rock_gap (gap_mask==5) pixels, overwrite any surviving GRASS_FAMILY surface blocks or DIRT_FAMILY subsurface blocks with the per-litho rock_gap palette.  Catches grassy/dirt slip-through from ecotone dither, biome surface paint, etc.  Y-2..Y-5 (column basement) handled separately by chunk_writer cleanup.",
+      "enabled": true,
+      "surface_bad_blocks": [
+        "grass_block",
+        "podzol",
+        "mycelium",
+        "snow",
+        "snow_block",
+        "powder_snow"
+      ],
+      "subsurface_bad_blocks": [
+        "grass_block",
+        "podzol",
+        "mycelium",
+        "dirt",
+        "coarse_dirt"
+      ],
+      "column_top6_cleanup": true
     }
   },
   "surface_pipeline": {
