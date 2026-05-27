@@ -4312,16 +4312,16 @@
           "stone"
         ],
         "wash_palette": [
-          "packed_mud",
-          "packed_mud",
-          "packed_mud",
-          "packed_mud",
-          "packed_mud",
-          "brown_mushroom_block",
-          "brown_mushroom_block",
-          "brown_mushroom_block",
-          "brown_mushroom_block",
-          "brown_mushroom_block"
+          "tuff",
+          "tuff",
+          "tuff",
+          "tuff",
+          "tuff",
+          "pale_moss_block",
+          "pale_moss_block",
+          "pale_moss_block",
+          "pale_moss_block",
+          "pale_moss_block"
         ],
         "description": "High-alpine / arctic basement. S60 palette. S85: removed tuff per user (was 16.7%, now redistributed to remaining 5 blocks at 20% each).",
         "cap_palette": [
