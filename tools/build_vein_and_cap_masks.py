@@ -75,9 +75,14 @@ CAP_BASE_INTENSITY = 200        # solid cap pixels get this value
 CAP_PEAK_INTENSITY = 220        # peak pixels get this (stronger)
 
 # ─── JOINT_PATTERN params (walk #11 — basaltic columnar joints) ─────────
-JOINT_COL_SIZE_BLOCKS = 3       # column width (~3m, real basalt ≈ 0.5-2m)
-JOINT_JITTER_SCALE = 12         # simplex period for column-shape jitter
-JOINT_JITTER_AMP_BLOCKS = 1.5   # max perturbation per pixel (breaks perfect grid)
+# Walk #11 fix: bumped col_size_blocks 3 -> 12 so that at 1:4 build res
+# (col_size_blocks // SCALE = 3 build-pixels per column) we have actual
+# column granularity.  At 50k = 12 block columns = ~12m diameter (real
+# basalt is 0.5-2m, but we're at MC block scale; 3-block columns would
+# require building at full 50k which is too memory-heavy).
+JOINT_COL_SIZE_BLOCKS = 12      # column width in 50k blocks (3 at 1:4)
+JOINT_JITTER_SCALE = 48         # simplex period for column-shape jitter
+JOINT_JITTER_AMP_BLOCKS = 4.0   # max perturbation (1 build pixel ≈ 4 blocks)
 JOINT_DILATE_PX = 0             # 0 = 1-block-wide joints; 1 = 2-block visible
 
 # ─── INSOLATION params ──────────────────────────────────────────────────
@@ -250,62 +255,41 @@ def compute_concavity_field(height_f: np.ndarray, slope_deg: np.ndarray) -> np.n
 
 
 def write_upscaled_uint8(arr_1x4: np.ndarray, output_path: str) -> None:
-    """Walk #11 speedup: chunked BILINEAR upscale via numpy vectorized math.
+    """Walk #11 v2: scipy.ndimage.zoom (BLAS-backed) bilinear upscale.
 
-    Walk #10.1 used PIL.Image.resize BILINEAR which was single-threaded
-    Python and took ~5 min per mask at 50k.  scipy.ndimage.zoom would be
-    BLAS-vectorized but allocates the full 2.5GB output in memory.
+    Previous attempts:
+      - np.repeat NEAREST: fast but produced 4-block staircase stamps
+      - PIL.Image.resize BILINEAR: single-threaded Python, ~5 min/mask
+      - hand-rolled vectorized bilinear: huge temp allocs (~50MB×4 per
+        chunk), still slow due to np.ix_ overhead
 
-    This implementation does BILINEAR upscale in 1024-row CHUNKS via
-    pure-numpy vectorized 2x2 weighted sums.  Per-chunk: ~1MB temp,
-    fully vectorized, multi-threaded numpy ops.  Expected ~10-30 sec
-    per mask at 50k.
+    scipy.ndimage.zoom does proper spline interpolation in a single C
+    call.  order=1 = bilinear.  Allocates the full output in float32
+    (~10GB peak for 50k) which fits in 16GB+ cloud boxes.
     """
-    import numpy as _np
+    from scipy.ndimage import zoom as _zoom
     profile = {
         "driver": "GTiff",
         "height": H_50K, "width": H_50K, "count": 1,
         "dtype": "uint8",
         "compress": "lzw", "tiled": True, "blockxsize": 512, "blockysize": 512,
     }
-    src = arr_1x4.astype(_np.float32)
-    src_h, src_w = src.shape
-
-    print(f"  chunked bilinear upscale to {H_50K}x{H_50K}...")
+    print(f"  scipy.zoom (order=1) to {H_50K}x{H_50K}...")
+    zoomed = _zoom(arr_1x4.astype(np.float32), zoom=SCALE, order=1, prefilter=False)
+    # Trim/pad to exact target size
+    zoomed = zoomed[:H_50K, :H_50K]
+    if zoomed.shape != (H_50K, H_50K):
+        # Pad with edge values if zoom output is short
+        full = np.zeros((H_50K, H_50K), dtype=np.float32)
+        h, w = zoomed.shape
+        full[:h, :w] = zoomed
+        zoomed = full
+    print(f"  writing {output_path}...")
+    out_u8 = np.clip(zoomed, 0, 255).astype(np.uint8)
     with rasterio.open(output_path, "w", **profile) as dst:
-        for y_start in range(0, H_50K, 1024):
-            y_end = min(y_start + 1024, H_50K)
-            chunk_h = y_end - y_start
-
-            # Pixel-center coordinates in source space for output rows/cols
-            out_y = _np.arange(y_start, y_end, dtype=_np.float32)
-            out_x = _np.arange(H_50K, dtype=_np.float32)
-            # Map to source: source coord = (out + 0.5) / scale - 0.5
-            sy = (out_y + 0.5) / SCALE - 0.5
-            sx = (out_x + 0.5) / SCALE - 0.5
-            # Floor + fraction for bilinear
-            sy0 = _np.clip(_np.floor(sy).astype(_np.int32), 0, src_h - 1)
-            sy1 = _np.clip(sy0 + 1, 0, src_h - 1)
-            sx0 = _np.clip(_np.floor(sx).astype(_np.int32), 0, src_w - 1)
-            sx1 = _np.clip(sx0 + 1, 0, src_w - 1)
-            wy = (sy - sy0).astype(_np.float32)[:, None]
-            wx = (sx - sx0).astype(_np.float32)[None, :]
-            # 4-corner sample (broadcasting)
-            v00 = src[_np.ix_(sy0, sx0)]
-            v01 = src[_np.ix_(sy0, sx1)]
-            v10 = src[_np.ix_(sy1, sx0)]
-            v11 = src[_np.ix_(sy1, sx1)]
-            chunk = (
-                v00 * (1 - wy) * (1 - wx)
-                + v01 * (1 - wy) * wx
-                + v10 * wy * (1 - wx)
-                + v11 * wy * wx
-            )
-            dst.write(
-                _np.clip(chunk, 0, 255).astype(_np.uint8),
-                1,
-                window=Window(0, y_start, H_50K, chunk_h),
-            )
+        for y_start in range(0, H_50K, 2048):
+            y_end = min(y_start + 2048, H_50K)
+            dst.write(out_u8[y_start:y_end], 1, window=Window(0, y_start, H_50K, y_end - y_start))
 
 
 def main() -> int:
