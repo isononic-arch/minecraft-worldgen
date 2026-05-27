@@ -44,8 +44,12 @@ H_BUILD = H_50K // SCALE  # 12500
 VEIN_LAP_SIGMA = 1.5            # gaussian pre-smooth before laplacian
 VEIN_LAP_WEIGHT = 0.5           # contribution of |laplacian| to final intensity
 VEIN_FAULT_WEIGHT = 0.5         # contribution of fault zero-crossings
-VEIN_FAULT_SCALE_BLOCKS = 240   # simplex period in world blocks
-VEIN_FAULT_WIDTH = 0.12         # |noise| < width = fault trace zone
+# Walk #10.2: TWO-scale fault network for branching (main + cross-faults)
+VEIN_FAULT_MAIN_SCALE = 240     # main fault period in world blocks
+VEIN_FAULT_MAIN_WIDTH = 0.10    # |noise| < width for mainline traces
+VEIN_FAULT_BRANCH_SCALE = 80    # cross-fault/branch period (3x finer)
+VEIN_FAULT_BRANCH_WIDTH = 0.06  # narrower → thinner branches
+VEIN_FAULT_BRANCH_PROXIMITY = 8 # branches only spawn within N pixels of mainlines
 VEIN_SLOPE_MIN_DEG = 32.0       # gate: only on >= 32° slopes (matches strata)
 
 # ─── VARNISH_FIELD params ───────────────────────────────────────────────
@@ -100,15 +104,41 @@ def compute_laplacian_magnitude(height_f: np.ndarray) -> np.ndarray:
     return lap  # signed: negative=convex/peak, positive=concave/bowl
 
 
-def compute_fault_zero_crossings(H: int, W: int, scale_blocks: int) -> np.ndarray:
-    """Simplex noise at scale, return |noise| < width as fault trace zones."""
-    # Sample period in 1:4 pixels
-    period_px = scale_blocks // SCALE
-    osn = opensimplex.OpenSimplex(seed=0xFA017)
-    x_idx = np.arange(W, dtype=np.float64) / period_px
-    y_idx = np.arange(H, dtype=np.float64) / period_px
-    fault = osn.noise2array(x_idx, y_idx).astype(np.float32)
-    return (np.abs(fault) < VEIN_FAULT_WIDTH).astype(np.float32)
+def compute_fault_zero_crossings(H: int, W: int) -> np.ndarray:
+    """Walk #10.2: TWO-scale branching fault network.
+
+    Mainlines (period 240) = long linear traces — the dominant fault set.
+    Branches (period 80) = shorter cross-faults — only spawn within
+    BRANCH_PROXIMITY pixels of a mainline (so they appear as feeders/
+    splays off the major faults, not random everywhere).
+    """
+    # Mainlines — long-period simplex zero-crossings
+    osn_main = opensimplex.OpenSimplex(seed=0xFA017)
+    main_px = VEIN_FAULT_MAIN_SCALE // SCALE
+    fault_main = osn_main.noise2array(
+        np.arange(W, dtype=np.float64) / main_px,
+        np.arange(H, dtype=np.float64) / main_px,
+    ).astype(np.float32)
+    mainlines = (np.abs(fault_main) < VEIN_FAULT_MAIN_WIDTH).astype(np.float32)
+    print(f"    mainline pixels: {mainlines.mean()*100:.2f}%")
+
+    # Branches — short-period simplex zero-crossings, gated by proximity to mainlines
+    osn_br = opensimplex.OpenSimplex(seed=0xBEACE)
+    br_px = max(1, VEIN_FAULT_BRANCH_SCALE // SCALE)
+    fault_br = osn_br.noise2array(
+        np.arange(W, dtype=np.float64) / br_px,
+        np.arange(H, dtype=np.float64) / br_px,
+    ).astype(np.float32)
+    branches_raw = (np.abs(fault_br) < VEIN_FAULT_BRANCH_WIDTH).astype(np.float32)
+    # Gate to within BRANCH_PROXIMITY of mainlines
+    mainlines_bool = mainlines.astype(bool)
+    proximity_iters = max(1, VEIN_FAULT_BRANCH_PROXIMITY // SCALE)
+    main_zone = binary_dilation(mainlines_bool, iterations=proximity_iters)
+    branches = branches_raw * main_zone.astype(np.float32)
+    print(f"    branch pixels (near mainline): {branches.mean()*100:.2f}%")
+
+    # Combine — mainlines at full strength, branches at 70% strength
+    return np.maximum(mainlines, branches * 0.7)
 
 
 def write_upscaled_uint8(arr_1x4: np.ndarray, output_path: str) -> None:
@@ -164,7 +194,7 @@ def main() -> int:
     # ── 1. VEIN_FIELD ───────────────────────────────────────────────────
     print("=== VEIN_FIELD ===")
     print("  computing simplex fault zero-crossings...")
-    fault_traces = compute_fault_zero_crossings(H_BUILD, H_BUILD, VEIN_FAULT_SCALE_BLOCKS)
+    fault_traces = compute_fault_zero_crossings(H_BUILD, H_BUILD)
     print(f"  fault_traces coverage: {fault_traces.mean()*100:.1f}%")
 
     # Normalize |laplacian| to [0,1]

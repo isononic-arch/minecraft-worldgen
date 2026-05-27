@@ -1574,16 +1574,21 @@ def _apply_strata_veins_surface(
         # streaks instead of isolated single-block scatter.
         _streak_min = int(strata_global.get("vein_streak_min", 3))
         _streak_max = int(strata_global.get("vein_streak_max", 8))
-        # Direction along strata axis
+        # Walk #10.2: CROSS-CUTTING orientation — veins run PERPENDICULAR to
+        # strata axis (real mineral veins/dikes cut ACROSS bedding, not along
+        # it).  This is the iconic "quartz vein through schist" visual.
         axis = strata.get("axis", "Y_tilted")
         if axis == "XZ_cols":
-            _dz, _dx = 1, 0  # vertical-on-cliff streaks
+            # XZ_cols strata = vertical columns (along Z).  Perpendicular = X axis.
+            _dz, _dx = 0, 1
         else:
-            _t_rad = np.deg2rad(float(strata.get("tilt_dir_deg", 0.0)))
+            # Y_tilted strata bands run perpendicular to tilt_dir_deg.
+            # Cross-cutting = ALONG tilt_dir_deg + 90° offset.
+            _t_rad = np.deg2rad(float(strata.get("tilt_dir_deg", 0.0)) + 90.0)
             _dz = int(round(float(np.sin(_t_rad))))
             _dx = int(round(float(np.cos(_t_rad))))
             if _dz == 0 and _dx == 0:
-                _dx = 1
+                _dz = 1  # vertical fallback (more vein-like than horizontal)
         # Per-seed streak length picker
         _len_coin = v_rng.random((H, W), dtype=np.float32)
         _len_range = max(1, _streak_max - _streak_min + 1)
@@ -1622,7 +1627,24 @@ def _apply_strata_veins_surface(
         # paint veins through water, snow, non-rock-gap if gated, etc).
         v_mask &= candidate
 
-        # Paint per-cell streak block
+        # Walk #10.2: HALO zone — paint 1-block ring around veins using the
+        # group's varnish_palette as "host rock chemically altered by the
+        # vein fluids".  Real veins have alteration halos extending a few
+        # cm around the main fracture; this is the MC-scale analog.
+        if v_mask.any():
+            from scipy.ndimage import binary_dilation as _bd_halo
+            _halo = _bd_halo(v_mask, iterations=1) & ~v_mask & candidate
+            if _halo.any():
+                _halo_pal = gdata.get("varnish_palette") or vein_blocks
+                _halo_arr = np.asarray(_halo_pal, dtype=object)
+                _n_halo = int(_halo.sum())
+                surface_blocks[_halo] = _halo_arr[
+                    v_rng.integers(0, len(_halo_pal), size=_n_halo)
+                ]
+                # Halo is surface-only; don't paint subsurface (matches
+                # varnish convention — 1 block thick stain).
+
+        # Paint per-cell streak block (core veins overwrite halo where they overlap)
         if len(vein_blocks) == 1:
             surface_blocks[v_mask] = vein_blocks[0]
             subsurface_blocks[v_mask] = vein_blocks[0]
