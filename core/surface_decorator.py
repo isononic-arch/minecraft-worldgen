@@ -1858,10 +1858,16 @@ def _apply_rock_varnish(
         return
 
     # ── (3) Dilate detected pixels into patches for visibility ──────────
+    # Walk #9.3: re-apply ALL gates (rock_zone + slope + cliff_base) after
+    # dilation so varnish stays strictly inside the slope ≥ 40° + cliff-base
+    # zone and doesn't bleed onto rock_gap pixels below 40°.
     _dilate = int(v_cfg.get("dilate_blocks", 0))
     if _dilate > 0:
         from scipy.ndimage import binary_dilation as _bd_v
-        candidate = _bd_v(candidate, iterations=_dilate) & rock_zone & ~excl
+        candidate = (
+            _bd_v(candidate, iterations=_dilate)
+            & rock_zone & sharp_enough & cliff_base & ~excl
+        )
 
     # Lithology resolve
     if lithology_tile.shape != (H, W):

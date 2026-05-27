@@ -3794,16 +3794,16 @@
           "smooth_basalt"
         ],
         "wash_palette": [
-          "gravel",
-          "gravel",
-          "gravel",
-          "gravel",
-          "gravel",
-          "clay",
-          "clay",
-          "clay",
-          "clay",
-          "clay"
+          "gray_concrete_powder",
+          "gray_concrete_powder",
+          "gray_concrete_powder",
+          "gray_concrete_powder",
+          "gray_concrete_powder",
+          "cobbled_deepslate",
+          "cobbled_deepslate",
+          "cobbled_deepslate",
+          "cobbled_deepslate",
+          "cobbled_deepslate"
         ],
         "description": "Arid/semi-arid mafic \u2014 dune + steppe + karst margins. S60 renamed from sedimentary.",
         "cap_palette": [
@@ -4093,16 +4093,16 @@
           "deepslate_coal_ore"
         ],
         "wash_palette": [
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "pale_moss_block",
-          "pale_moss_block",
-          "pale_moss_block",
-          "pale_moss_block",
-          "pale_moss_block"
+          "gray_concrete_powder",
+          "gray_concrete_powder",
+          "gray_concrete_powder",
+          "gray_concrete_powder",
+          "gray_concrete_powder",
+          "cobbled_deepslate",
+          "cobbled_deepslate",
+          "cobbled_deepslate",
+          "cobbled_deepslate",
+          "cobbled_deepslate"
         ],
         "description": "S84: dark metamorphic mix \u2014 deepslate-heavy (~36%) + cobbled_deepslate (~27%) + basalt (~27%) + rare deepslate_coal_ore (~9%). Coastal headland / temperate peak feel. S88: wash_palette replaced with arid_basaltic-style values (independent copy).",
         "cap_palette": [
@@ -4203,16 +4203,16 @@
           "diorite"
         ],
         "wash_palette": [
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "gravel",
-          "gravel",
-          "gravel",
-          "gravel",
-          "gravel"
+          "white_concrete_powder",
+          "white_concrete_powder",
+          "white_concrete_powder",
+          "white_concrete_powder",
+          "white_concrete_powder",
+          "gray_concrete_powder",
+          "gray_concrete_powder",
+          "gray_concrete_powder",
+          "gray_concrete_powder",
+          "gray_concrete_powder"
         ],
         "description": "S85: full repaint \u00e2\u20ac\u201d calcite (~45%) dominant + diorite (~36%) slightly less, dead_horn_coral_block (~9%) + light_gray_concrete_powder (~9%) as rare accents. Karst barrens + cave-prone carbonate.",
         "cap_palette": [
@@ -4594,7 +4594,7 @@
       "slope_min_deg": 40.0,
       "dilate_blocks": 3,
       "cliff_base_window": 12,
-      "cliff_base_band": 6
+      "cliff_base_band": 3
     },
     "rock_zone_cleanup": {
       "_comment": "S88 walk #9 NEW pass: on rock_gap (gap_mask==5) pixels, overwrite any surviving GRASS_FAMILY surface blocks or DIRT_FAMILY subsurface blocks with the per-litho rock_gap palette.  Catches grassy/dirt slip-through from ecotone dither, biome surface paint, etc.  Y-2..Y-5 (column basement) handled separately by chunk_writer cleanup.",
@@ -4693,8 +4693,8 @@
     "blue_noise_size": 512
   },
   "washes": {
-    "min_flow": 0.0005,
-    "dilation": 5,
-    "fade_blocks": 8
+    "min_flow": 0.001,
+    "dilation": 3,
+    "fade_blocks": 5
   }
 }
