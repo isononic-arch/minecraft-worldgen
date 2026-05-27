@@ -3753,7 +3753,19 @@
           ],
           "vein_amp": 0.85,
           "_comment": "Massive intrusive \u2014 80-160 block bands, crazy 30\u00b0/100 tilt, 75/25 granite/dripstone mix with iron speckle."
-        }
+        },
+        "varnish_palette": [
+          "mud",
+          "mud",
+          "mud",
+          "mud",
+          "muddy_mangrove_roots",
+          "muddy_mangrove_roots",
+          "muddy_mangrove_roots",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder"
+        ]
       },
       "arid_basaltic": {
         "id": 2,
@@ -3846,7 +3858,109 @@
           "vein_amp": 0.5,
           "_comment": "S88 walk #4c: bands restructured -- A=basalt/gray_concrete_powder, B=smooth_basalt/tuff.  speckle=[mud] (was [deepslate]).",
           "col_hash_mode": "diagonal"
-        }
+        },
+        "varnish_palette": [
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "brown_concrete_powder",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "rooted_dirt",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sand",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone",
+          "red_sandstone"
+        ]
       },
       "temperate_basaltic": {
         "id": 3,
@@ -3940,7 +4054,19 @@
           "vein_amp": 1.0,
           "_comment": "S88 walk #4c: bands restructured -- A=cobbled_deepslate/deepslate, B=dead_horn_coral_block/suspicious_gravel (latter two are vein-exception blocks outside the temperate palette set, per user permission).  speckle unchanged (deepslate_coal_ore + smooth_basalt) but rate dropped to 0.02.",
           "col_hash_mode": "diagonal"
-        }
+        },
+        "varnish_palette": [
+          "coal_block",
+          "coal_block",
+          "coal_block",
+          "coal_block",
+          "black_concrete_powder",
+          "black_concrete_powder",
+          "black_concrete_powder",
+          "tuff",
+          "tuff",
+          "tuff"
+        ]
       },
       "limestone": {
         "id": 4,
@@ -4033,7 +4159,19 @@
           ],
           "vein_amp": 0.7,
           "_comment": "Sedimentary \u2014 1-14 block bands (highly variable), mild 6\u00b0/100 tilt @ 15\u00b0, 80/20 calcite/diorite with andesite speckle."
-        }
+        },
+        "varnish_palette": [
+          "tuff",
+          "tuff",
+          "tuff",
+          "tuff",
+          "andesite",
+          "andesite",
+          "andesite",
+          "stone",
+          "stone",
+          "stone"
+        ]
       },
       "deepslate_metamorphic": {
         "id": 5,
@@ -4126,7 +4264,11 @@
           ],
           "vein_amp": 1.0,
           "_comment": "Folded mountain metamorphic \u2014 6-16 block bands, STRONG 25\u00b0/100 tilt @ 30\u00b0, 90/10 andesite/stone with tuff speckle."
-        }
+        },
+        "varnish_palette": [
+          "basalt",
+          "smooth_basalt"
+        ]
       },
       "mossy_temperate": {
         "id": 6,
@@ -4220,7 +4362,10 @@
           ],
           "vein_amp": 0.7,
           "_comment": "Wet temperate \u2014 8-18 block bands, mild 4\u00b0/100 tilt, 60/40 cobblestone/mossy split with triple speckle (tuff+moss+andesite)."
-        }
+        },
+        "varnish_palette": [
+          "moss_block"
+        ]
       }
     },
     "zone_to_group": {
@@ -4267,8 +4412,8 @@
       "search_blocks": 8,
       "cliff_min_deg": 35.0,
       "flat_max_deg": 28.0,
-      "intensity_threshold": 48,
-      "dilate_blocks": 4
+      "intensity_threshold": 8,
+      "dilate_blocks": 12
     },
     "talus": {
       "_comment": "S88: rubble apron palette painted on flat ground below slope>=cliff_min_deg cliffs. EXCLUDED from Phase 2A noise (soft/depositional \u2014 like washes, surface should be smooth).",
@@ -4305,6 +4450,13 @@
       "enabled": true,
       "lap_threshold": 1.5,
       "palette_key": "bedrock_drainage_palette"
+    },
+    "varnish": {
+      "_comment": "S88 walk #8: NEW rock varnish pass.  Paints per-litho varnish_palette on rock_gap pixels in local crevices/corners (surface_y < gaussian_smoothed surface_y).  Per-pixel coin gated at amp.  Each varnish_palette is relatively 2-3 shades darker than that group's rock_gap base, in the same color family \u2014 reads as natural rock staining/oxidation.",
+      "enabled": true,
+      "amp": 0.5,
+      "crevice_sigma": 2.0,
+      "crevice_threshold": 0.5
     }
   },
   "surface_pipeline": {

@@ -1699,6 +1699,102 @@ def _apply_concavity_drainage(
         subsurface_blocks[_bm] = _arr[rng.integers(0, len(_pal), size=_n)]
 
 
+def _apply_rock_varnish(
+    surface_blocks:    np.ndarray,
+    subsurface_blocks: np.ndarray,
+    surface_y:         np.ndarray,
+    lithology_tile:    np.ndarray | None,
+    river_meta:        np.ndarray | None,
+    gap_mask:          np.ndarray | None,
+    cfg:               dict,
+    tile_x:            int,
+    tile_y:            int,
+) -> None:
+    """S88 walk #8 NEW pass: paint per-lithology varnish stain on rock_gap
+    pixels in local crevices/corners.
+
+    Real-world rock varnish = manganese + iron oxide coating that
+    accumulates in cracks, alcoves, and drip lines where water lingers.
+    Each group's varnish_palette is 2-3 shades darker than its rock_gap
+    base, in the same color family — reads as natural rock staining
+    (subtle on dark basaltics, dramatic on white limestone).
+
+    Crevice detection: surface_y < gaussian_smoothed(surface_y) - thresh
+    (local micro-pits relative to a sigma-2 smooth of the height field).
+    """
+    if gap_mask is None or lithology_tile is None:
+        return
+    v_cfg = cfg.get("lithology", {}).get("varnish", {})
+    if not v_cfg.get("enabled", False):
+        return
+
+    rock_zone = (gap_mask == 5)
+    if not rock_zone.any():
+        return
+
+    H, W = rock_zone.shape
+
+    # Crevice detection
+    from scipy.ndimage import gaussian_filter as _gf_v
+    _sigma = float(v_cfg.get("crevice_sigma", 2.0))
+    _thr = float(v_cfg.get("crevice_threshold", 0.5))
+    sy_smooth = _gf_v(surface_y.astype(np.float32), sigma=_sigma)
+    crevice = surface_y.astype(np.float32) < (sy_smooth - _thr)
+
+    excl = np.zeros((H, W), dtype=bool)
+    if river_meta is not None:
+        excl |= (river_meta > 0)
+    excl |= (gap_mask == 4) | (gap_mask == 7)
+
+    candidate = rock_zone & crevice & ~excl
+    if not candidate.any():
+        return
+
+    # Lithology resolve
+    if lithology_tile.shape != (H, W):
+        from scipy.ndimage import zoom as _zv
+        litho_at_res = _zv(
+            lithology_tile,
+            (H / lithology_tile.shape[0], W / lithology_tile.shape[1]),
+            order=0,
+        )
+    else:
+        litho_at_res = lithology_tile
+
+    # Per-group varnish_palette LUT
+    groups = cfg.get("lithology", {}).get("groups", {})
+    gid_to_varnish: dict[int, list] = {}
+    for _gname, _gdata in groups.items():
+        _gid = int(_gdata.get("id", 0))
+        _vp = _gdata.get("varnish_palette")
+        if _vp:
+            gid_to_varnish[_gid] = _vp
+
+    # Per-pixel coin gated at varnish.amp
+    _amp = float(v_cfg.get("amp", 0.5))
+    rng = np.random.default_rng(
+        (tile_x * 0xDEADBEEF ^ tile_y * 0xCAFE4D ^ 0xBA17) & 0xFFFFFFFF
+    )
+    coin = rng.random((H, W), dtype=np.float32)
+    apply_zone = candidate & (coin < _amp)
+    if not apply_zone.any():
+        return
+
+    for _gid_u in np.unique(litho_at_res[apply_zone]):
+        _gid = int(_gid_u)
+        _pal = gid_to_varnish.get(_gid)
+        if not _pal:
+            continue
+        _bm = apply_zone & (litho_at_res == _gid)
+        if not _bm.any():
+            continue
+        _arr = np.asarray(_pal, dtype=object)
+        _n = int(_bm.sum())
+        surface_blocks[_bm] = _arr[rng.integers(0, len(_pal), size=_n)]
+        # subsurface unaffected — varnish is a SURFACE stain (no thicker
+        # than 1 block, like real desert varnish coating).
+
+
 def _apply_cap_edge_stroke(
     surface_blocks:    np.ndarray,
     subsurface_blocks: np.ndarray,
@@ -2652,21 +2748,27 @@ def decorate_surface(
                 tile_y            = tile_y,
             )
 
-            # 2d. Walk #6 NEW: cap_edge_stroke — 3-5 block inward fade band
-            #     at the outer edge of rock_gap, painted per-lithology with
-            #     cap_palette.  Soft transition from rocky cliff to land.
-            _apply_cap_edge_stroke(
+            # 2d. Walk #8 NEW: rock varnish — per-litho stain in crevices/
+            #     corners.  Each group's varnish_palette is relatively
+            #     darker than its rock_gap base, reads as natural mineral
+            #     staining (subtle on dark basaltics, dramatic on white
+            #     limestone — iconic Mojave karst varnish).
+            #
+            # WALK #8 REMOVED: _apply_cap_edge_stroke (the 4-block cap-
+            # palette ring at rock_gap edges was the real cause of "cap
+            # covering everything" in walk #6/#7, not the cap painter
+            # itself).  Cap painter restored to walk #6's larger
+            # proportions (threshold=8, dilate=12) via config.
+            _apply_rock_varnish(
                 surface_blocks    = surface_blocks,
                 subsurface_blocks = subsurface_blocks,
+                surface_y         = surface_y,
                 lithology_tile    = lithology_tile,
                 river_meta        = river_meta,
                 gap_mask          = _gap,
                 cfg               = cfg,
                 tile_x            = tile_x,
                 tile_y            = tile_y,
-                stroke_width      = int(
-                    cfg.get("lithology", {}).get("cap_edge_stroke", {}).get("width", 4)
-                ),
             )
 
             # 3. cliff_cap — surface + sub (cap rock all the way down 1 layer)
