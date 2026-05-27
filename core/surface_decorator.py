@@ -1812,6 +1812,7 @@ def _apply_rock_varnish(
     tile_y:            int,
     cliff_deg:         np.ndarray | None = None,
     flow_tile:         np.ndarray | None = None,
+    varnish_field_tile: np.ndarray | None = None,
 ) -> None:
     """S88 walk #9.4: PURE FLOW varnish — drip-line streaks on cliff faces.
 
@@ -1837,47 +1838,52 @@ def _apply_rock_varnish(
     v_cfg = cfg.get("lithology", {}).get("varnish", {})
     if not v_cfg.get("enabled", False):
         return
-    if flow_tile is None:
-        return  # walk #9.4 requires flow_tile
 
     rock_zone = (gap_mask == 5)
     if not rock_zone.any():
         return
 
     H, W = rock_zone.shape
-
-    # ── (1) slope fade-in: clip((slope - min) / (max - min), 0, 1) ──────
-    _slope_min = float(v_cfg.get("slope_min_deg", 32.0))
-    _slope_max = float(v_cfg.get("slope_max_deg", 60.0))
     _amp = float(v_cfg.get("amp", 0.5))
-    if cliff_deg is None:
-        return  # walk #9.4 requires cliff_deg
-    _slope_denom = max(0.1, _slope_max - _slope_min)
-    slope_factor = np.clip(
-        (cliff_deg - _slope_min) / _slope_denom, 0.0, 1.0
-    ).astype(np.float32)
-
-    # ── (2) drip-flow gate (flow_drip_min < flow < flow_drip_max) ───────
-    _flow_min = float(v_cfg.get("flow_drip_min", 0.0001))
-    _flow_max = float(v_cfg.get("flow_drip_max", 0.001))
-    flow_drip = (flow_tile > _flow_min) & (flow_tile < _flow_max)
 
     excl = np.zeros((H, W), dtype=bool)
     if river_meta is not None:
         excl |= (river_meta > 0)
     excl |= (gap_mask == 4) | (gap_mask == 7)
 
-    # Combined paint candidate (before per-pixel coin)
-    candidate = rock_zone & flow_drip & (slope_factor > 0) & ~excl
-    if not candidate.any():
-        return
-
-    # ── (3) Per-pixel coin against slope-faded probability ──────────────
-    _rng_main = np.random.default_rng(
-        (tile_x * 0xDEADBEEF ^ tile_y * 0xCAFE4D ^ 0xBA17) & 0xFFFFFFFF
-    )
-    _slope_coin = _rng_main.random((H, W), dtype=np.float32)
-    candidate = candidate & (_slope_coin < (_amp * slope_factor))
+    # Walk #10/11: prefer PRECOMPUTE MASK varnish_field.tif if available.
+    # The mask bakes slope_factor * drip_band per pixel as uint8 0-255.
+    # Runtime: convert to float [0,1] and roll a coin per pixel.
+    if varnish_field_tile is not None:
+        # tile_streamer normalises uint8 -> float32 [0,1]; treat as varnish
+        # intensity (= baked slope_factor * drip_band).
+        v_intensity = varnish_field_tile.astype(np.float32)
+        # Same per-pixel coin as runtime path
+        _rng_main = np.random.default_rng(
+            (tile_x * 0xDEADBEEF ^ tile_y * 0xCAFE4D ^ 0xBA17) & 0xFFFFFFFF
+        )
+        _coin = _rng_main.random((H, W), dtype=np.float32)
+        candidate = rock_zone & ~excl & (_coin < (_amp * v_intensity))
+    else:
+        # Fallback: runtime detection (walk #9.4 path)
+        if flow_tile is None or cliff_deg is None:
+            return  # legacy path requires both
+        _slope_min = float(v_cfg.get("slope_min_deg", 32.0))
+        _slope_max = float(v_cfg.get("slope_max_deg", 60.0))
+        _slope_denom = max(0.1, _slope_max - _slope_min)
+        slope_factor = np.clip(
+            (cliff_deg - _slope_min) / _slope_denom, 0.0, 1.0
+        ).astype(np.float32)
+        _flow_min = float(v_cfg.get("flow_drip_min", 0.0001))
+        _flow_max = float(v_cfg.get("flow_drip_max", 0.001))
+        flow_drip = (flow_tile > _flow_min) & (flow_tile < _flow_max)
+        candidate = rock_zone & flow_drip & (slope_factor > 0) & ~excl
+        if candidate.any():
+            _rng_main = np.random.default_rng(
+                (tile_x * 0xDEADBEEF ^ tile_y * 0xCAFE4D ^ 0xBA17) & 0xFFFFFFFF
+            )
+            _slope_coin = _rng_main.random((H, W), dtype=np.float32)
+            candidate = candidate & (_slope_coin < (_amp * slope_factor))
     if not candidate.any():
         return
 
@@ -1887,7 +1893,7 @@ def _apply_rock_varnish(
         from scipy.ndimage import binary_dilation as _bd_v
         candidate = (
             _bd_v(candidate, iterations=_dilate)
-            & rock_zone & flow_drip & ~excl
+            & rock_zone & ~excl
         )
 
     # Lithology resolve
@@ -1910,15 +1916,13 @@ def _apply_rock_varnish(
         if _vp:
             gid_to_varnish[_gid] = _vp
 
-    # Per-pixel coin gated at varnish.amp
-    _amp = float(v_cfg.get("amp", 0.5))
+    # Walk #10: candidate already coined upstream (mask path coined via
+    # _coin < _amp*v_intensity; runtime path coined via _slope_coin).
+    # Apply directly without a second coin.
+    apply_zone = candidate
     rng = np.random.default_rng(
-        (tile_x * 0xDEADBEEF ^ tile_y * 0xCAFE4D ^ 0xBA17) & 0xFFFFFFFF
+        (tile_x * 0xCAFEFADE ^ tile_y * 0xBADDD00D ^ 0xBA17) & 0xFFFFFFFF
     )
-    coin = rng.random((H, W), dtype=np.float32)
-    apply_zone = candidate & (coin < _amp)
-    if not apply_zone.any():
-        return
 
     for _gid_u in np.unique(litho_at_res[apply_zone]):
         _gid = int(_gid_u)
@@ -2195,6 +2199,7 @@ def decorate_surface(
     talus_apron_tile: np.ndarray | None = None,       # (H, W) float32 [0,1] — debris-apron intensity (S88)
     bedrock_drainage_tile: np.ndarray | None = None,  # (H, W) float32 [0,1] — water-cut rock intensity (S88)
     vein_field_tile: np.ndarray | None = None,        # (H, W) float32 [0,1] — vein detection (walk #10/11)
+    varnish_field_tile: np.ndarray | None = None,     # (H, W) float32 [0,1] — varnish detection (walk #10/11)
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute surface and subsurface block arrays for a tile.
@@ -2958,6 +2963,7 @@ def decorate_surface(
                 tile_y            = tile_y,
                 cliff_deg         = cliff_deg,
                 flow_tile         = flow_tile,
+                varnish_field_tile= varnish_field_tile,
             )
 
             # 3. cliff_cap — surface + sub (cap rock all the way down 1 layer)

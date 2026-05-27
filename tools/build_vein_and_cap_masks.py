@@ -1,10 +1,11 @@
 """
 build_vein_and_cap_masks.py — S88 walk #10/11: build vein_field.tif + rebuild
-cliff_cap.tif with convex peaks + fade band.
+cliff_cap.tif + bake varnish_field.tif.
 
 Outputs (50k uint8):
   masks/vein_field.tif
   masks/cliff_cap.tif
+  masks/varnish_field.tif
 
 Mask design:
 
@@ -46,6 +47,16 @@ VEIN_FAULT_WEIGHT = 0.5         # contribution of fault zero-crossings
 VEIN_FAULT_SCALE_BLOCKS = 240   # simplex period in world blocks
 VEIN_FAULT_WIDTH = 0.12         # |noise| < width = fault trace zone
 VEIN_SLOPE_MIN_DEG = 32.0       # gate: only on >= 32° slopes (matches strata)
+
+# ─── VARNISH_FIELD params ───────────────────────────────────────────────
+# Slope-fade range (intensity ramps from 0 at slope_min to 255 at slope_max).
+VARN_SLOPE_MIN_DEG = 32.0
+VARN_SLOPE_MAX_DEG = 60.0
+# Drip flow band — between dry (no water) and wash (active channel).
+VARN_FLOW_DRIP_MIN = 0.0001
+VARN_FLOW_DRIP_MAX = 0.001
+# Read flow.tif at full 50k then downsample to 1:4 by max-pool (preserves
+# drip-path signal; min-pool would over-erase narrow streaks).
 
 # ─── CLIFF_CAP params ───────────────────────────────────────────────────
 CAP_FLAT_MAX_DEG = 28.0         # pixel must be flatter than this to qualify
@@ -210,6 +221,36 @@ def main() -> int:
     print(f"  cliff_cap >=32 (paintable): {pct_strong:.2f}% of build res")
     write_upscaled_uint8(cap_u8, "masks/cliff_cap.tif")
     print(f"  cliff_cap.tif written ({time.time() - t0:.1f}s total)")
+
+    # ── 3. VARNISH_FIELD — slope-faded drip-flow zone ────────────────────
+    print()
+    print("=== VARNISH_FIELD ===")
+    print("  reading masks/flow.tif at 1:4...")
+    flow_full = read_at_scale("masks/flow.tif", SCALE).astype(np.float32)
+    # flow.tif is stored uint16 0..65535 mapping to [0,1].  Normalize:
+    if flow_full.max() > 1.5:
+        flow_full = flow_full / 65535.0
+    print(f"  flow range: {flow_full.min():.6f}..{flow_full.max():.6f}")
+
+    # Slope fade-in factor (0 at slope_min, 1 at slope_max)
+    slope_denom = max(0.1, VARN_SLOPE_MAX_DEG - VARN_SLOPE_MIN_DEG)
+    varn_slope_factor = np.clip(
+        (slope_deg - VARN_SLOPE_MIN_DEG) / slope_denom, 0.0, 1.0,
+    ).astype(np.float32)
+
+    # Drip flow band
+    drip_band = (
+        (flow_full > VARN_FLOW_DRIP_MIN) & (flow_full < VARN_FLOW_DRIP_MAX)
+    )
+    print(f"  drip-band pixels: {drip_band.sum():,} ({drip_band.mean()*100:.2f}%)")
+
+    # Combine: intensity = slope_factor * drip * 255
+    varn_intensity = varn_slope_factor * drip_band.astype(np.float32)
+    varn_u8 = np.clip(varn_intensity * 255, 0, 255).astype(np.uint8)
+    pct_varn = (varn_u8 >= 32).sum() / varn_u8.size * 100
+    print(f"  varnish_field >=32: {pct_varn:.2f}%  max={varn_u8.max()}")
+    write_upscaled_uint8(varn_u8, "masks/varnish_field.tif")
+    print(f"  varnish_field.tif written ({time.time() - t0:.1f}s total)")
 
     print()
     print(f"DONE in {time.time() - t0:.1f}s")
