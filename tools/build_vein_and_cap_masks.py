@@ -129,40 +129,53 @@ def compute_laplacian_magnitude(height_f: np.ndarray) -> np.ndarray:
     return lap  # signed: negative=convex/peak, positive=concave/bowl
 
 
-def compute_fault_zero_crossings(H: int, W: int) -> np.ndarray:
-    """Walk #10.2: TWO-scale branching fault network.
+# ─── Simplex sub-resolution for speed (walk #11 v4) ─────────────────────
+# opensimplex.noise2array at 12500x12500 takes ~10-15 min single-threaded.
+# Simplex fields are smooth at structural scale (period >= 80 blocks), so
+# computing at 1:16 (3125x3125) then upscaling via scipy.ndimage.zoom (BLAS)
+# to 1:4 gives visually identical results at ~4x speed-up per call.
+SIMPLEX_SUBRES_DIV = 4  # 1:16 vs 1:4 build = 4x fewer cells per dim
 
-    Mainlines (period 240) = long linear traces — the dominant fault set.
-    Branches (period 80) = shorter cross-faults — only spawn within
-    BRANCH_PROXIMITY pixels of a mainline (so they appear as feeders/
-    splays off the major faults, not random everywhere).
+
+def _simplex_grid(scale_blocks: int, seed: int, H_build: int, W_build: int) -> np.ndarray:
+    """Vectorized simplex noise at SIMPLEX_SUBRES_DIV-times reduced resolution,
+    upscaled bilinearly to build resolution (H_build x W_build).
+    """
+    from scipy.ndimage import zoom as _z
+    sub_h = max(1, H_build // SIMPLEX_SUBRES_DIV)
+    sub_w = max(1, W_build // SIMPLEX_SUBRES_DIV)
+    # Period in low-res pixels (each low-res pixel = SIMPLEX_SUBRES_DIV build-pixels
+    # = SIMPLEX_SUBRES_DIV * SCALE world blocks)
+    period_lores = max(1, scale_blocks // (SCALE * SIMPLEX_SUBRES_DIV))
+    osn = opensimplex.OpenSimplex(seed=seed)
+    noise_lo = osn.noise2array(
+        np.arange(sub_w, dtype=np.float64) / period_lores,
+        np.arange(sub_h, dtype=np.float64) / period_lores,
+    ).astype(np.float32)
+    # Upscale to build resolution
+    return _z(noise_lo, zoom=SIMPLEX_SUBRES_DIV, order=1, prefilter=False)[:H_build, :W_build]
+
+
+def compute_fault_zero_crossings(H: int, W: int) -> np.ndarray:
+    """Walk #10.2 + #11 v4: TWO-scale branching fault network at low-res simplex.
+
+    Mainlines (period 240) + branches (period 80) computed at SIMPLEX_SUBRES_DIV
+    lower than build res (so ~16x fewer simplex calls), then upscaled.
     """
     # Mainlines — long-period simplex zero-crossings
-    osn_main = opensimplex.OpenSimplex(seed=0xFA017)
-    main_px = VEIN_FAULT_MAIN_SCALE // SCALE
-    fault_main = osn_main.noise2array(
-        np.arange(W, dtype=np.float64) / main_px,
-        np.arange(H, dtype=np.float64) / main_px,
-    ).astype(np.float32)
+    fault_main = _simplex_grid(VEIN_FAULT_MAIN_SCALE, 0xFA017, H, W)
     mainlines = (np.abs(fault_main) < VEIN_FAULT_MAIN_WIDTH).astype(np.float32)
     print(f"    mainline pixels: {mainlines.mean()*100:.2f}%")
 
     # Branches — short-period simplex zero-crossings, gated by proximity to mainlines
-    osn_br = opensimplex.OpenSimplex(seed=0xBEACE)
-    br_px = max(1, VEIN_FAULT_BRANCH_SCALE // SCALE)
-    fault_br = osn_br.noise2array(
-        np.arange(W, dtype=np.float64) / br_px,
-        np.arange(H, dtype=np.float64) / br_px,
-    ).astype(np.float32)
+    fault_br = _simplex_grid(VEIN_FAULT_BRANCH_SCALE, 0xBEACE, H, W)
     branches_raw = (np.abs(fault_br) < VEIN_FAULT_BRANCH_WIDTH).astype(np.float32)
-    # Gate to within BRANCH_PROXIMITY of mainlines
     mainlines_bool = mainlines.astype(bool)
     proximity_iters = max(1, VEIN_FAULT_BRANCH_PROXIMITY // SCALE)
     main_zone = binary_dilation(mainlines_bool, iterations=proximity_iters)
     branches = branches_raw * main_zone.astype(np.float32)
     print(f"    branch pixels (near mainline): {branches.mean()*100:.2f}%")
 
-    # Combine — mainlines at full strength, branches at 70% strength
     return np.maximum(mainlines, branches * 0.7)
 
 
@@ -177,17 +190,9 @@ def compute_joint_pattern(H: int, W: int) -> np.ndarray:
     a darker basalt variant, producing visible vertical fracture lines on
     cliff faces.
     """
-    osn_x = opensimplex.OpenSimplex(seed=0xC0107)
-    osn_z = opensimplex.OpenSimplex(seed=0x707A4)
-    jit_scale_px = max(1, JOINT_JITTER_SCALE // SCALE)
-    jx = osn_x.noise2array(
-        np.arange(W, dtype=np.float64) / jit_scale_px,
-        np.arange(H, dtype=np.float64) / jit_scale_px,
-    ) * JOINT_JITTER_AMP_BLOCKS
-    jz = osn_z.noise2array(
-        np.arange(W, dtype=np.float64) / jit_scale_px,
-        np.arange(H, dtype=np.float64) / jit_scale_px,
-    ) * JOINT_JITTER_AMP_BLOCKS
+    # Walk #11 v4: simplex at low-res then upscale (4x faster)
+    jx = _simplex_grid(JOINT_JITTER_SCALE, 0xC0107, H, W) * JOINT_JITTER_AMP_BLOCKS
+    jz = _simplex_grid(JOINT_JITTER_SCALE, 0x707A4, H, W) * JOINT_JITTER_AMP_BLOCKS
 
     col_size_px = max(1, JOINT_COL_SIZE_BLOCKS // SCALE)
     x_w = (np.arange(W, dtype=np.float32)[None, :] + jx.astype(np.float32))
