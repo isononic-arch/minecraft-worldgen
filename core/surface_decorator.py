@@ -1123,10 +1123,14 @@ def _apply_strata_surface(
     tile_x:            int,
     tile_y:            int,
 ) -> None:
-    """S88 walk #4: paint v2 STRATA blocks on surface_blk + sub_blk where
-    slope >= lithology.strata.surface_min_deg (default 28°).  Uses the
-    same 2-band mixed model + axis logic as chunk_writer's basement fill
-    so cliff-top strata is consistent with the column below.
+    """S88 walk #4c: paint v2 STRATA blocks on surface_blk + sub_blk with a
+    PROBABILISTIC FADE-IN over slope range [surface_min_deg, surface_fade_max_deg]
+    (defaults 32° -> 35°).  Below surface_min_deg no strata.  Above
+    surface_fade_max_deg strata is solid.  Between, per-cell coin against
+    linear ramp.
+
+    Uses the same 2-band mixed model + axis logic as chunk_writer's basement
+    fill so cliff-top strata is consistent with the column below.
 
     Per group strata.axis:
       "Y_tilted" — band_idx from Y + waviness + col_y_noise + tilt (matches
@@ -1136,8 +1140,11 @@ def _apply_strata_surface(
                    surface and sub at same (x,z) share the band.
 
     Per band: pick primary OR secondary by coin against primary_pct.
-    Multi-block speckle from speckle_blocks list.
-    Veins NOT applied at surface (basement-only feature).
+    Speckle blocks form 1-4 block CLUSTERS following the strata axis:
+      - Y_tilted: 1-4 block runs along tilt_dir_deg
+      - XZ_cols:  1-4 block runs along Z (vertical-on-cliff streaks)
+    Speckles paint surface_blk ONLY (no taller than y=1 per user spec).
+    Veins NOT applied here (separate _apply_strata_veins_surface pass).
 
     Exclusions: river_meta>0 (water), gap==4 (floodplain), gap==7 (snow).
     Operates IN-PLACE on surface_blocks + subsurface_blocks.
@@ -1150,11 +1157,17 @@ def _apply_strata_surface(
         return
     H, W = surface_y.shape
     strata_global = litho_cfg.get("strata", {})
-    surface_min_deg = float(strata_global.get("surface_min_deg", 28.0))
+    surface_min_deg = float(strata_global.get("surface_min_deg", 32.0))
+    surface_fade_max_deg = float(strata_global.get("surface_fade_max_deg", 35.0))
 
-    steep = cliff_deg >= surface_min_deg
-    if not steep.any():
+    steep_seed = cliff_deg >= surface_min_deg
+    if not steep_seed.any():
         return
+    # Per-cell fade-in probability over [surface_min_deg, surface_fade_max_deg]
+    _fade_denom = max(0.1, surface_fade_max_deg - surface_min_deg)
+    fade_prob = np.clip(
+        (cliff_deg - surface_min_deg) / _fade_denom, 0.0, 1.0
+    ).astype(np.float32)
 
     # Exclusion mask: water + floodplain + snow
     excl = np.zeros((H, W), dtype=bool)
@@ -1163,7 +1176,7 @@ def _apply_strata_surface(
     if gap_mask is not None:
         excl |= (gap_mask == 4)
         excl |= (gap_mask == 7)
-    if not (steep & ~excl).any():
+    if not (steep_seed & ~excl).any():
         return
 
     # Lithology resolved at full tile resolution
@@ -1215,7 +1228,15 @@ def _apply_strata_surface(
             for _bn, _gn in _z2g.items():
                 if _gn == gname:
                     group_cols |= (biome_grid == _bn)
-        paint_mask = steep & group_cols & ~excl
+        paint_mask_seed = steep_seed & group_cols & ~excl
+        if not paint_mask_seed.any():
+            continue
+        # Per-group fade-in coin
+        _fade_rng = np.random.default_rng(
+            (tile_world_x * 9176381 ^ tile_world_z * 3741581 ^ gid * 0xFADE001) & 0xFFFFFFFF
+        )
+        _fade_coin = _fade_rng.random((H, W), dtype=np.float32)
+        paint_mask = paint_mask_seed & (_fade_coin < fade_prob)
         if not paint_mask.any():
             continue
 
@@ -1296,33 +1317,204 @@ def _apply_strata_surface(
         pct_sub = np.where(band_idx_sub == 0, a_pct, b_pct).astype(np.float32)
         block_sub = np.where(coin_sub < pct_sub, primary_sub, secondary_sub)
 
-        # Speckle override (multi-block uniform pick)
+        # S88 walk #4c: SPECKLE = 1-4 block CLUSTERS following strata axis.
+        # Y_tilted -> runs along tilt_dir_deg.  XZ_cols -> runs along Z
+        # (vertical-on-cliff streaks).  Speckle paints SURFACE ONLY (no
+        # taller than y=1 per user spec) so block_sub is untouched.
         if speckle_rate > 0 and speckle_names:
             sp_rng = np.random.default_rng(
                 (tile_world_x * 83492791 ^ tile_world_z * 46508633 ^ gid * 1779033703) & 0xFFFFFFFF
             )
-            sp_coin_sy = sp_rng.random((H, W), dtype=np.float32)
-            sp_coin_sub = sp_rng.random((H, W), dtype=np.float32)
-            sp_mask_sy = sp_coin_sy < speckle_rate
-            sp_mask_sub = sp_coin_sub < speckle_rate
-            if len(speckle_names) == 1:
-                block_sy = np.where(sp_mask_sy, speckle_names[0], block_sy)
-                block_sub = np.where(sp_mask_sub, speckle_names[0], block_sub)
+            seed_coin = sp_rng.random((H, W), dtype=np.float32)
+            sp_seed = seed_coin < speckle_rate
+            # Length picker: 0-3 additional blocks beyond the seed (so total
+            # cluster length is 1..4).
+            length_coin = sp_rng.random((H, W), dtype=np.float32)
+            length_at_seed = np.clip(
+                (length_coin * 4.0).astype(np.int32), 0, 3
+            )
+            length_at_seed = np.where(sp_seed, length_at_seed, 0)
+            # Direction vector
+            if axis == "XZ_cols":
+                _dz, _dx = 1, 0
             else:
-                sp_pick_sy = sp_rng.integers(0, len(speckle_names), size=(H, W), dtype=np.int8)
-                sp_pick_sub = sp_rng.integers(0, len(speckle_names), size=(H, W), dtype=np.int8)
+                _t_rad = np.deg2rad(float(strata.get("tilt_dir_deg", 0.0)))
+                _dz = int(round(float(np.sin(_t_rad))))
+                _dx = int(round(float(np.cos(_t_rad))))
+                if _dz == 0 and _dx == 0:
+                    _dx = 1
+            # Per-seed block index (so a cluster shares one speckle block)
+            if len(speckle_names) > 1:
+                sp_pick = sp_rng.integers(
+                    0, len(speckle_names), size=(H, W), dtype=np.int8
+                )
+            else:
+                sp_pick = np.zeros((H, W), dtype=np.int8)
+            # Build cluster mask: extend seed for L = 1..3 along (_dz, _dx)
+            sp_mask = sp_seed.copy()
+            # Track which speckle index covers each cluster pixel
+            cluster_pick = np.where(sp_seed, sp_pick, np.int8(-1))
+            for _L in range(1, 4):
+                # Seeds whose length permits extension to >=L blocks beyond seed
+                _seed_with = (length_at_seed >= _L) & sp_seed
+                if not _seed_with.any():
+                    continue
+                _rolled = np.roll(_seed_with, shift=(_L * _dz, _L * _dx), axis=(0, 1))
+                # Zero out wraparound rows/cols
+                if _dz > 0:
+                    _rolled[:_L * _dz, :] = False
+                elif _dz < 0:
+                    _rolled[_L * _dz:, :] = False
+                if _dx > 0:
+                    _rolled[:, :_L * _dx] = False
+                elif _dx < 0:
+                    _rolled[:, _L * _dx:] = False
+                # Pick index propagation: rolled cells inherit seed's pick
+                _rolled_pick = np.roll(sp_pick, shift=(_L * _dz, _L * _dx), axis=(0, 1))
+                # Only update where not already part of cluster (preserve seed-of-record)
+                _new = _rolled & ~sp_mask
+                if _new.any():
+                    cluster_pick = np.where(_new, _rolled_pick, cluster_pick)
+                    sp_mask |= _new
+            # Apply speckle to surface block ONLY
+            if len(speckle_names) == 1:
+                block_sy = np.where(sp_mask, speckle_names[0], block_sy)
+            else:
                 for _i, _spn in enumerate(speckle_names):
-                    _m_sy = sp_mask_sy & (sp_pick_sy == _i)
-                    _m_sub = sp_mask_sub & (sp_pick_sub == _i)
-                    if _m_sy.any():
-                        block_sy = np.where(_m_sy, _spn, block_sy)
-                    if _m_sub.any():
-                        block_sub = np.where(_m_sub, _spn, block_sub)
+                    _m = sp_mask & (cluster_pick == _i)
+                    if _m.any():
+                        block_sy = np.where(_m, _spn, block_sy)
 
         # Write to surface_blocks + subsurface_blocks at paint_mask cells
         if paint_mask.any():
             surface_blocks[paint_mask] = block_sy[paint_mask]
             subsurface_blocks[paint_mask] = block_sub[paint_mask]
+
+
+def _apply_strata_veins_surface(
+    surface_blocks:    np.ndarray,
+    subsurface_blocks: np.ndarray,
+    surface_y:         np.ndarray,
+    biome_grid:        np.ndarray,
+    lithology_tile:    np.ndarray | None,
+    cliff_deg:         np.ndarray | None,
+    river_meta:        np.ndarray | None,
+    gap_mask:          np.ndarray | None,
+    cfg:               dict,
+    tile_x:            int,
+    tile_y:            int,
+) -> None:
+    """S88 walk #4b/4c: paint per-group vein blocks on surface_blk + sub_blk
+    where the SAME vein_field used by chunk_writer's basement veins fires,
+    gated by the strata fade-in over [surface_min_deg, surface_fade_max_deg]
+    (32->35° default).
+
+    Veins are mineral/rock seams cross-cutting strata along fault zones
+    intersecting ridge lines.  Geologically they're VISIBLE on cliff
+    faces, not just buried in the basement -- this function brings them
+    to the surface so the user actually sees them.
+
+    Multi-block vein_blocks list (1 or 2 blocks) -- per-cell uniform pick.
+    Exclusions: river_meta>0, gap==4 (floodplain), gap==7 (snow).
+    """
+    if cliff_deg is None:
+        return
+    litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
+    groups = litho_cfg.get("groups", {})
+    if not groups:
+        return
+    H, W = surface_y.shape
+    strata_global = litho_cfg.get("strata", {})
+    surface_min_deg = float(strata_global.get("surface_min_deg", 32.0))
+    surface_fade_max_deg = float(strata_global.get("surface_fade_max_deg", 35.0))
+
+    steep_seed = cliff_deg >= surface_min_deg
+    if not steep_seed.any():
+        return
+    _fade_denom = max(0.1, surface_fade_max_deg - surface_min_deg)
+    fade_prob = np.clip(
+        (cliff_deg - surface_min_deg) / _fade_denom, 0.0, 1.0
+    ).astype(np.float32)
+
+    # Compute vein field — same formula as chunk_writer (seam-deterministic)
+    from core.chunk_writer import _compute_vein_field
+    vein_lap_thr = float(strata_global.get("vein_lap_threshold", 4.0))
+    vein_fault_scale = int(strata_global.get("vein_fault_scale_blocks", 80))
+    vein_fault_width = float(strata_global.get("vein_fault_width", 0.08))
+    tile_world_x = tile_x * W
+    tile_world_z = tile_y * H
+    vein_field = _compute_vein_field(
+        surface_y, tile_world_x, tile_world_z,
+        lap_threshold=vein_lap_thr,
+        fault_scale_blocks=vein_fault_scale,
+        fault_width=vein_fault_width,
+    )
+    if not vein_field.any():
+        return
+
+    excl = np.zeros((H, W), dtype=bool)
+    if river_meta is not None:
+        excl |= (river_meta > 0)
+    if gap_mask is not None:
+        excl |= (gap_mask == 4)
+        excl |= (gap_mask == 7)
+
+    if lithology_tile is not None and lithology_tile.shape != (H, W):
+        from scipy.ndimage import zoom as _sd_zoom_v
+        _zh = H / lithology_tile.shape[0]
+        _zw = W / lithology_tile.shape[1]
+        litho_at_res = _sd_zoom_v(lithology_tile, (_zh, _zw), order=0)
+    else:
+        litho_at_res = lithology_tile
+
+    for gname, gdata in groups.items():
+        strata = gdata.get("strata")
+        if not strata:
+            continue
+        vein_blocks = strata.get("vein_blocks", [])
+        vein_amp = float(strata.get("vein_amp", 0.0))
+        if not vein_blocks or vein_amp <= 0:
+            continue
+        gid = int(gdata.get("id", 0))
+
+        if litho_at_res is not None:
+            group_cols = (litho_at_res == gid)
+        else:
+            _z2g = litho_cfg.get("zone_to_group", {})
+            group_cols = np.zeros((H, W), dtype=bool)
+            for _bn, _gn in _z2g.items():
+                if _gn == gname:
+                    group_cols |= (biome_grid == _bn)
+
+        # Walk #4c: fade-in gate (32-35°) before vein_amp coin
+        _vfade_rng = np.random.default_rng(
+            (tile_x * 9176381 ^ tile_y * 3741581 ^ gid * 0xFADEBEEF) & 0xFFFFFFFF
+        )
+        _vfade_coin = _vfade_rng.random((H, W), dtype=np.float32)
+        candidate = (
+            steep_seed & group_cols & ~excl & vein_field & (_vfade_coin < fade_prob)
+        )
+        if not candidate.any():
+            continue
+
+        v_rng = np.random.default_rng(
+            (tile_x * 53248917 ^ tile_y * 67280421 ^ gid * 0xBEEFCAFE) & 0xFFFFFFFF
+        )
+        coin = v_rng.random((H, W), dtype=np.float32)
+        v_apply = candidate & (coin < vein_amp)
+        if not v_apply.any():
+            continue
+
+        if len(vein_blocks) == 1:
+            surface_blocks[v_apply] = vein_blocks[0]
+            subsurface_blocks[v_apply] = vein_blocks[0]
+        else:
+            v_pick = v_rng.integers(0, len(vein_blocks), size=(H, W), dtype=np.int8)
+            for i, vb in enumerate(vein_blocks):
+                m = v_apply & (v_pick == i)
+                if m.any():
+                    surface_blocks[m] = vb
+                    subsurface_blocks[m] = vb
 
 
 def _flatten_dune_regions(
@@ -1916,14 +2108,28 @@ def decorate_surface(
             # Previously this was per-biome, which ignored the user's painted
             # lithology overlay (e.g. arid_basaltic continents rendered as
             # whatever biome's hardcoded mapping said).
+            # S88 walk #4b: lithology context exposed to ALL painters (rock_gap
+            # inside rock_px, wash and surface veins outside).  Previously only
+            # defined inside `if rock_px.any():`, so moving wash to AFTER strata
+            # required them in outer scope.
+            _litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
+            _zone_to_group = _litho_cfg.get("zone_to_group", {})
+            _groups = _litho_cfg.get("groups", {})
+            _litho_at_res = None
+            if lithology_tile is not None:
+                if lithology_tile.shape != (H, W):
+                    from scipy.ndimage import zoom as _sd_zoom_outer
+                    _zh_outer = H / lithology_tile.shape[0]
+                    _zw_outer = W / lithology_tile.shape[1]
+                    _litho_at_res = _sd_zoom_outer(
+                        lithology_tile, (_zh_outer, _zw_outer), order=0)
+                else:
+                    _litho_at_res = lithology_tile
+
             rock_px = _gap == 5
             if rock_px.any():
                 _rng = np.random.default_rng(tile_x * 48271 ^ tile_y * 31337 ^ 0xB10C)
                 _scatter = _rng.random((H, W)).astype(np.float32)
-
-                _litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
-                _zone_to_group = _litho_cfg.get("zone_to_group", {})
-                _groups = _litho_cfg.get("groups", {})
                 _DEFAULT_PAL = ["stone", "andesite", "granite", "diorite"]
 
                 # Build group-id → palette LUT from config.
@@ -1933,16 +2139,9 @@ def decorate_surface(
                     _pal_g = _gdata.get("palette") or _DEFAULT_PAL
                     _gid_to_pal[_gid] = _pal_g
 
-                # Upscale lithology to tile resolution if needed.
-                _litho_at_res = None
-                if lithology_tile is not None:
-                    if lithology_tile.shape != (H, W):
-                        from scipy.ndimage import zoom as _sd_zoom
-                        _zh = H / lithology_tile.shape[0]
-                        _zw = W / lithology_tile.shape[1]
-                        _litho_at_res = _sd_zoom(lithology_tile, (_zh, _zw), order=0)
-                    else:
-                        _litho_at_res = lithology_tile
+                # _litho_at_res is now computed at outer scope (above) so wash
+                # painter (moved to AFTER strata per S88 walk #4b user direction)
+                # can access it.  No-op duplicate removed here.
 
                 def _palette_for_biome(biome_name: str) -> list:
                     g = _zone_to_group.get(biome_name)
@@ -1998,119 +2197,11 @@ def decorate_surface(
                                 surface_blocks[_band] = _blk
                         subsurface_blocks[_bm] = _pal[0]
 
-                # Flow-driven wash channels — per-lithology-group wash palette.
-                # S85: was hardcoded sand+sandstone universally; now each lithology
-                # group has its own `wash_palette` in config.
-                # S86 Item 1B: intensified per user feedback.
-                #   - Lower flow threshold (0.005 -> configurable, default 0.002):
-                #     wider trigger zone, more wash visible.
-                #   - Dilate wash zone (default 2 blocks): wider channels.
-                #   - Write to subsurface_blocks too: 2-block visible depth
-                #     instead of single block on top of underlying rock.
-                #   - 5-block linear fade at outer dilation edge so washes
-                #     blend into surrounding terrain instead of stopping at
-                #     a hard ring.
-                # Knobs in config.washes (defaults below if missing).
-                if flow_tile is not None:
-                    _wcfg = cfg.get("washes", {}) if isinstance(cfg, dict) else {}
-                    _wash_min_flow = float(_wcfg.get("min_flow", 0.002))
-                    _wash_dilation = int(_wcfg.get("dilation", 2))
-                    _wash_fade_blocks = int(_wcfg.get("fade_blocks", 5))
-                    _wash_zone_core = rock_px & (flow_tile > _wash_min_flow)
-                    if _wash_dilation > 0 and _wash_zone_core.any():
-                        from scipy.ndimage import binary_dilation as _bd
-                        _wash_zone = _bd(_wash_zone_core, iterations=_wash_dilation) & rock_px
-                    else:
-                        _wash_zone = _wash_zone_core
-                    # Fade: probability ramps from 1 at the core down to 0 over
-                    # _wash_fade_blocks at the outer rim of the dilation.
-                    _wash_fade_prob = None
-                    if _wash_fade_blocks > 0 and _wash_zone.any() and _wash_zone_core.any():
-                        from scipy.ndimage import distance_transform_edt as _dt
-                        # dist from edge of core: pixels in core have dist 0 inside core.
-                        # Actually we want: at core pixels prob=1, at outer edge prob=0.
-                        _dist_from_core = _dt(~_wash_zone_core).astype(np.float32)
-                        _wash_fade_prob = np.clip(
-                            1.0 - _dist_from_core / float(_wash_fade_blocks),
-                            0.0, 1.0,
-                        )
-                    # Apply fade by dropping pixels via coin vs fade probability.
-                    # Result: core stays solid, outer rim thins out gradually.
-                    if _wash_fade_prob is not None:
-                        _fade_rng = np.random.default_rng(
-                            tile_x * 17 ^ tile_y * 31 ^ 0xFADE)
-                        _fade_coin = _fade_rng.random((H, W)).astype(np.float32)
-                        _wash_zone = _wash_zone & (_fade_coin < _wash_fade_prob)
-                    if _wash_zone.any():
-                        _DEFAULT_WASH_PAL = ["gravel", "coarse_dirt", "sand"]
-                        _wash_rng = np.random.default_rng(
-                            tile_x * 48271 ^ tile_y * 31337 ^ 0x4A5E)
-                        # Build group-id -> wash_palette LUT from config.
-                        _gid_to_wash: dict[int, list] = {}
-                        for _gname, _gdata in _groups.items():
-                            _gid = int(_gdata.get("id", 0))
-                            _wp = _gdata.get("wash_palette") or _DEFAULT_WASH_PAL
-                            _gid_to_wash[_gid] = _wp
-
-                        def _wash_palette_for_biome(biome_name: str) -> list:
-                            g = _zone_to_group.get(biome_name)
-                            if g and g in _groups:
-                                wp = _groups[g].get("wash_palette")
-                                if wp:
-                                    return wp
-                            return _DEFAULT_WASH_PAL
-
-                        # Per-pixel wash group lookup: lithology mask first,
-                        # biome fallback for unpainted pixels (matches the rock
-                        # surface palette path above).
-                        # S86 Item 1B: ALSO write to subsurface_blocks so washes
-                        # appear 2 blocks deep instead of 1 (user feedback: single
-                        # block over each layer reveals rock on slopes).
-                        if _litho_at_res is not None:
-                            for _gid in np.unique(_litho_at_res[_wash_zone]):
-                                _gid = int(_gid)
-                                _bm_w = _wash_zone & (_litho_at_res == _gid)
-                                if not _bm_w.any():
-                                    continue
-                                if _gid == 0:
-                                    # Unpainted - per-biome
-                                    for _bname in np.unique(biome_grid[_bm_w]):
-                                        _bm_wfb = _bm_w & (biome_grid == _bname)
-                                        if not _bm_wfb.any():
-                                            continue
-                                        _wp = _wash_palette_for_biome(str(_bname))
-                                        _n_pix = int(_bm_wfb.sum())
-                                        _wp_arr = np.asarray(_wp, dtype=object)
-                                        _idx = _wash_rng.integers(0, len(_wp), size=_n_pix)
-                                        surface_blocks[_bm_wfb] = _wp_arr[_idx]
-                                        # Subsurface: independently sampled (less
-                                        # repetition on slopes) but same palette.
-                                        _idx_sub = _wash_rng.integers(0, len(_wp), size=_n_pix)
-                                        subsurface_blocks[_bm_wfb] = _wp_arr[_idx_sub]
-                                else:
-                                    _wp = _gid_to_wash.get(_gid, _DEFAULT_WASH_PAL)
-                                    _n_pix = int(_bm_w.sum())
-                                    _wp_arr = np.asarray(_wp, dtype=object)
-                                    _idx = _wash_rng.integers(0, len(_wp), size=_n_pix)
-                                    surface_blocks[_bm_w] = _wp_arr[_idx]
-                                    _idx_sub = _wash_rng.integers(0, len(_wp), size=_n_pix)
-                                    subsurface_blocks[_bm_w] = _wp_arr[_idx_sub]
-                        else:
-                            # No lithology mask - per-biome only
-                            for _bname in np.unique(biome_grid[_wash_zone]):
-                                _bm_w = _wash_zone & (biome_grid == _bname)
-                                if not _bm_w.any():
-                                    continue
-                                _wp = _wash_palette_for_biome(str(_bname))
-                                _n_pix = int(_bm_w.sum())
-                                _wp_arr = np.asarray(_wp, dtype=object)
-                                _idx = _wash_rng.integers(0, len(_wp), size=_n_pix)
-                                surface_blocks[_bm_w] = _wp_arr[_idx]
-                                _idx_sub = _wash_rng.integers(0, len(_wp), size=_n_pix)
-                                subsurface_blocks[_bm_w] = _wp_arr[_idx_sub]
-                        del _wash_rng
-                    del _wash_zone
-
+                # S88 walk #4b: wash painter MOVED to after strata-surface
+                # (see below this rock_px block).  Strata used to overwrite
+                # washes; now wash fires AFTER strata so wash overrides strata
+                # on flow-channel cells.  User-spec order:
+                #   rock_gap -> strata -> wash -> bedrock -> talus -> veins -> cap
                 del _rng, _scatter
 
             # ── S88 walk #2: STRATA SURFACE PAINT ──────────────────────────
@@ -2134,6 +2225,94 @@ def decorate_surface(
                 tile_x            = tile_x,
                 tile_y            = tile_y,
             )
+
+            # ── S88 walk #4b: WASH PAINTER (moved from inside rock_px) ─────
+            # Per user direction: rock_gap -> strata -> WASH -> bedrock -> talus
+            #                     -> veins -> cap.
+            # Strata-surface paints first on slope >= 28°.  Wash now fires
+            # AFTER and overrides strata on rock cells with high flow.
+            if flow_tile is not None and rock_px.any():
+                _wcfg = cfg.get("washes", {}) if isinstance(cfg, dict) else {}
+                _wash_min_flow = float(_wcfg.get("min_flow", 0.002))
+                _wash_dilation = int(_wcfg.get("dilation", 2))
+                _wash_fade_blocks = int(_wcfg.get("fade_blocks", 5))
+                _wash_zone_core = rock_px & (flow_tile > _wash_min_flow)
+                if _wash_dilation > 0 and _wash_zone_core.any():
+                    from scipy.ndimage import binary_dilation as _bd
+                    _wash_zone = _bd(_wash_zone_core, iterations=_wash_dilation) & rock_px
+                else:
+                    _wash_zone = _wash_zone_core
+                _wash_fade_prob = None
+                if _wash_fade_blocks > 0 and _wash_zone.any() and _wash_zone_core.any():
+                    from scipy.ndimage import distance_transform_edt as _dt
+                    _dist_from_core = _dt(~_wash_zone_core).astype(np.float32)
+                    _wash_fade_prob = np.clip(
+                        1.0 - _dist_from_core / float(_wash_fade_blocks),
+                        0.0, 1.0,
+                    )
+                if _wash_fade_prob is not None:
+                    _fade_rng = np.random.default_rng(
+                        tile_x * 17 ^ tile_y * 31 ^ 0xFADE)
+                    _fade_coin = _fade_rng.random((H, W)).astype(np.float32)
+                    _wash_zone = _wash_zone & (_fade_coin < _wash_fade_prob)
+                if _wash_zone.any():
+                    _DEFAULT_WASH_PAL = ["gravel", "coarse_dirt", "sand"]
+                    _wash_rng = np.random.default_rng(
+                        tile_x * 48271 ^ tile_y * 31337 ^ 0x4A5E)
+                    _gid_to_wash: dict[int, list] = {}
+                    for _gname, _gdata in _groups.items():
+                        _gid = int(_gdata.get("id", 0))
+                        _wp = _gdata.get("wash_palette") or _DEFAULT_WASH_PAL
+                        _gid_to_wash[_gid] = _wp
+
+                    def _wash_palette_for_biome(biome_name: str) -> list:
+                        g = _zone_to_group.get(biome_name)
+                        if g and g in _groups:
+                            wp = _groups[g].get("wash_palette")
+                            if wp:
+                                return wp
+                        return _DEFAULT_WASH_PAL
+
+                    if _litho_at_res is not None:
+                        for _gid in np.unique(_litho_at_res[_wash_zone]):
+                            _gid = int(_gid)
+                            _bm_w = _wash_zone & (_litho_at_res == _gid)
+                            if not _bm_w.any():
+                                continue
+                            if _gid == 0:
+                                for _bname in np.unique(biome_grid[_bm_w]):
+                                    _bm_wfb = _bm_w & (biome_grid == _bname)
+                                    if not _bm_wfb.any():
+                                        continue
+                                    _wp = _wash_palette_for_biome(str(_bname))
+                                    _n_pix = int(_bm_wfb.sum())
+                                    _wp_arr = np.asarray(_wp, dtype=object)
+                                    surface_blocks[_bm_wfb] = _wp_arr[
+                                        _wash_rng.integers(0, len(_wp), size=_n_pix)]
+                                    subsurface_blocks[_bm_wfb] = _wp_arr[
+                                        _wash_rng.integers(0, len(_wp), size=_n_pix)]
+                            else:
+                                _wp = _gid_to_wash.get(_gid, _DEFAULT_WASH_PAL)
+                                _n_pix = int(_bm_w.sum())
+                                _wp_arr = np.asarray(_wp, dtype=object)
+                                surface_blocks[_bm_w] = _wp_arr[
+                                    _wash_rng.integers(0, len(_wp), size=_n_pix)]
+                                subsurface_blocks[_bm_w] = _wp_arr[
+                                    _wash_rng.integers(0, len(_wp), size=_n_pix)]
+                    else:
+                        for _bname in np.unique(biome_grid[_wash_zone]):
+                            _bm_w = _wash_zone & (biome_grid == _bname)
+                            if not _bm_w.any():
+                                continue
+                            _wp = _wash_palette_for_biome(str(_bname))
+                            _n_pix = int(_bm_w.sum())
+                            _wp_arr = np.asarray(_wp, dtype=object)
+                            surface_blocks[_bm_w] = _wp_arr[
+                                _wash_rng.integers(0, len(_wp), size=_n_pix)]
+                            subsurface_blocks[_bm_w] = _wp_arr[
+                                _wash_rng.integers(0, len(_wp), size=_n_pix)]
+                    del _wash_rng
+                del _wash_zone
 
             # ── S88 terrain-derived painters ───────────────────────────────
             # bedrock_drainage / talus_apron / cliff_cap, in that order.
@@ -2267,6 +2446,25 @@ def decorate_surface(
                 exclusion_mask=_river_excl | _flood_excl,
                 rng_salt=0x7A1F,
                 default_palette=["cobblestone", "gravel", "coarse_dirt"],
+            )
+
+            # 2b. SURFACE VEINS (S88 walk #4b new).  Veins were basement-only
+            # before -- user noted "WHERE ARE THE VEINS" because surface had
+            # zero vein painting.  Now veins fire at slope >= surface_min_deg
+            # AND vein_field (laplacian + fault zero-crossing) cells, on top
+            # of strata, before cap.  Cap still wins on its mask cells.
+            _apply_strata_veins_surface(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                surface_y         = surface_y,
+                biome_grid        = biome_grid,
+                lithology_tile    = lithology_tile,
+                cliff_deg         = cliff_deg,
+                river_meta        = river_meta,
+                gap_mask          = _gap,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
             )
 
             # 3. cliff_cap — surface + sub (cap rock all the way down 1 layer)
