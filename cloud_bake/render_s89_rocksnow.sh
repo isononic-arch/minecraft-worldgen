@@ -58,10 +58,13 @@ prep_dispatch() {
   echo "[$ip] tiles: $list" | tee -a "$lf"
   ssh-keyscan -H "$ip" >> ~/.ssh/known_hosts 2>/dev/null
 
-  # 1. pull code
-  ssh root@"$ip" "cd /root/minecraft-worldgen && git fetch && \
-    (git checkout $BRANCH 2>/dev/null || git checkout -t origin/$BRANCH) && git pull && \
-    git checkout HEAD -- masks/hydro_region.png masks/lithology_region.png 2>/dev/null; \
+  # 1. pull code. HARD RESET to origin -- the flag-flip below dirties
+  # config/thresholds.json every run, which would make a plain `git pull`
+  # refuse on the next render. reset --hard discards that box-local edit so
+  # the box always lands exactly on origin/$BRANCH.
+  ssh root@"$ip" "cd /root/minecraft-worldgen && git fetch origin && \
+    (git checkout $BRANCH 2>/dev/null || git checkout -t origin/$BRANCH) && \
+    git reset --hard origin/$BRANCH && \
     git log --oneline -2" 2>&1 | tee -a "$lf"
 
   # 2. flip feature flags box-locally (NOT committed)
