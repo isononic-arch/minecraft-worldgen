@@ -247,7 +247,12 @@ def build_rock_layers_u(surface_y: np.ndarray, slope_deg: np.ndarray,
     organic instead of NEAREST-staircased.
     """
     H, W = slope_deg.shape
-    t1 = float(rl_cfg.get("t1_deg", 38.0))
+    # FIXED degree thresholds (user S89-v2): dark exposes at t1, mid at t2,
+    # light at t3 -- same for every lithology group (no percentile split).
+    t1 = float(rl_cfg.get("t1_deg", 45.0))
+    t2 = float(rl_cfg.get("t2_deg", 50.0))
+    t3 = float(rl_cfg.get("t3_deg", 55.0))
+    smax = float(rl_cfg.get("smax_deg", 90.0))
     wind_source = float(rl_cfg.get("wind_source_deg", 292.0))
     wind_delta = float(rl_cfg.get("wind_delta_deg", 6.0))
     groups_cfg = rl_cfg.get("groups", {})
@@ -258,6 +263,10 @@ def build_rock_layers_u(surface_y: np.ndarray, slope_deg: np.ndarray,
     wind_factor = _wind_factor(surface_y, wind_source)
     slope_eff = (slope_deg.astype(np.float32) + wind_factor * wind_delta)
 
+    # Piecewise map slope_eff -> u: <t1 -> not rock (<1); t1..t2 -> dark [1,2);
+    # t2..t3 -> mid [2,3); >=t3 -> light [3,4]. Tier boundaries dithered at 50k.
+    xp = np.array([0.0, t1, t2, t3, smax], dtype=np.float32)
+    fp = np.array([0.0, 1.0, 2.0, 3.0, 4.0], dtype=np.float32)
     u = np.zeros((H, W), dtype=np.float32)
     for gname, gdata in groups_cfg.items():
         gid = name_to_id.get(gname)
@@ -266,28 +275,10 @@ def build_rock_layers_u(surface_y: np.ndarray, slope_deg: np.ndarray,
         gmask = (lithology == gid)
         if not gmask.any():
             continue
-        in_rock = gmask & (slope_eff >= t1)
-        n = int(in_rock.sum())
-        if n == 0:
-            continue
-        split = gdata.get("split", [70, 20, 10])
-        d, m, l = float(split[0]), float(split[1]), float(split[2])
-        tot = max(1e-6, d + m + l)
-        vals = slope_eff[in_rock]
-        t2 = float(np.percentile(vals, 100.0 * d / tot))
-        t3 = float(np.percentile(vals, 100.0 * (d + m) / tot))
-        smax = float(vals.max())
-        # Strictly-ascending breakpoints for np.interp.
-        eps = 0.5
-        t2 = max(t2, t1 + eps)
-        t3 = max(t3, t2 + eps)
-        smax = max(smax, t3 + eps)
-        xp = np.array([0.0, t1, t2, t3, smax], dtype=np.float32)
-        fp = np.array([0.0, 1.0, 2.0, 3.0, 4.0], dtype=np.float32)
         u[gmask] = np.interp(slope_eff[gmask], xp, fp).astype(np.float32)
-        print(f"    {gname}(id{gid}): in-rock={n:>9d}  "
-              f"t1={t1:.0f} t2={t2:.1f} t3={t3:.1f} smax={smax:.1f}  "
-              f"split={split}")
+        print(f"    {gname}(id{gid}): pixels={int(gmask.sum()):>9d}  "
+              f"fixed t1/t2/t3={t1:.0f}/{t2:.0f}/{t3:.0f}  "
+              f">=t1 frac={float((u[gmask] >= 1).mean()):.3f}")
     return u
 
 
