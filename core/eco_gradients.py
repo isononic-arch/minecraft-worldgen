@@ -235,6 +235,7 @@ def compute_eco_gradients(
     wind_windthrow: np.ndarray | None = None,    # (H, W) float32 [0,1] — precomputed mask
     rock_gap: np.ndarray | None = None,            # (H, W) float32 [0,1] — Gaea slope-derived rock mask (S56)
     snow_gap: np.ndarray | None = None,            # (H, W) float32 [0,1] — Gaea dusting-derived snow mask (S56)
+    snow_gap_physics: np.ndarray | None = None,    # (H, W) float32 [0,1] — S89 physics snow (build_snow_physics)
     sand_dunes: np.ndarray | None = None,           # (H, W) float32 [0,1] — sand dune mask
     beach: np.ndarray | None = None,                # (H, W) float32 [0,1] — beach proximity mask
     override_tile: np.ndarray | None = None,        # (H, W) float32 [0,1] — raw override zone values (S57: zone 40 detection)
@@ -620,7 +621,15 @@ def compute_eco_gradients(
             del _local_min, _flat_micro
 
         # ── Snow gap with peak detector + ridge bias + height fade ──
-        if snow_gap is not None:
+        # S89: physics snow (build_snow_physics) already bakes the altitude line
+        # + slope-shed + curvature (fill bowls / strip ridges) + wind drift, so
+        # when enabled take it as the FINAL alpine snow extent and skip the
+        # legacy height/slope/peak/coin pass (which would double-thin it).
+        if bool(cfg.get("snow_physics", {}).get("enabled", False)) and snow_gap_physics is not None:
+            _snow_avail_p = land_mask & ~water_mask_re & (gap_mask != 4)
+            gap_mask[_snow_avail_p & (snow_gap_physics > 0.5)] = 7
+            del _snow_avail_p
+        elif snow_gap is not None:
             _sg = snow_gap > 0.001
             # Height ramp: 0 below SNOW_Y_FLOOR, 1 above SNOW_Y_CEIL
             _snow_height = np.clip((_sy_f - SNOW_Y_FLOOR) / (SNOW_Y_CEIL - SNOW_Y_FLOOR), 0.0, 1.0)

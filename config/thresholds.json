@@ -4360,23 +4360,93 @@
       "shallow_group_from_surface": true,
       "deep_default_group": "granitic"
     },
+    "rock_layers": {
+      "_comment": "S89 NEW system replacing rock_gap palette + strata surface paint. Three slope-banded tiers per lithology group (dark=gentlest in-rock band, light=steepest), topmost-tier-wins so steeper reads lighter. 2 blocks per tier, salt-and-pepper white-noise mix. t1_deg=rock floor with fade t1->fade_to. t2/t3 are NOT fixed degrees: per group they are computed at build time as percentiles of that group's in-rock slope to hit the per-group `split` [dark%,mid%,light%]. Uniform wind shift (all 3 thresholds -= wind_factor*wind_delta_deg, windward=wind_source_deg) => more stone on windward, gradient spacing preserved. dither_amp_deg jitters tier boundaries per-pixel (anti contour-banding). NOTE limestone is intentionally value-INVERTED: white in the dominant (dark/gentle) tier, darker on the exposed (light/steep) tier ('clean car / dirty car') so karst reads white-dominant. Scoured convex peak signature is handled by the evolved cliff_cap pass, NOT here. Feature-flag OFF until validated.",
+      "enabled": false,
+      "t1_deg": 38.0,
+      "fade_to_deg": 40.0,
+      "wind_source_deg": 292.0,
+      "wind_delta_deg": 6.0,
+      "dither_amp_deg": 3.0,
+      "groups": {
+        "granitic": {
+          "split": [55, 25, 20],
+          "dark":  ["granite", "rooted_dirt"],
+          "mid":   ["packed_mud", "brown_mushroom_block"],
+          "light": ["andesite", "dead_fire_coral_block"]
+        },
+        "arid_basaltic": {
+          "split": [85, 10, 5],
+          "dark":  ["basalt", "smooth_basalt"],
+          "mid":   ["deepslate", "cobbled_deepslate"],
+          "light": ["dripstone_block", "packed_mud"]
+        },
+        "temperate_basaltic": {
+          "split": [70, 22, 8],
+          "dark":  ["deepslate", "cobbled_deepslate"],
+          "mid":   ["tuff", "stone"],
+          "light": ["andesite", "light_gray_concrete_powder"]
+        },
+        "limestone": {
+          "split": [65, 25, 10],
+          "dark":  ["calcite", "white_concrete_powder"],
+          "mid":   ["diorite", "cobblestone"],
+          "light": ["andesite", "stone"]
+        },
+        "deepslate_metamorphic": {
+          "split": [75, 18, 7],
+          "dark":  ["tuff", "stone"],
+          "mid":   ["dead_horn_coral_block", "dead_bubble_coral_block"],
+          "light": ["raw_iron_block", "rooted_dirt"]
+        },
+        "mossy_temperate": {
+          "split": [75, 17, 8],
+          "dark":  ["tuff", "mossy_cobblestone"],
+          "mid":   ["cobblestone", "suspicious_gravel"],
+          "light": ["moss_block", "green_concrete_powder"]
+        }
+      }
+    },
     "cliff_cap": {
-      "_comment": "S88: resistant cap-rock palette painted on flat shelves above slope>=cliff_min_deg cliffs. NOT excluded from Phase 2A noise (hard-erosion category \u2014 block-scale weathering is realistic). search_blocks bumped 4 -> 8 so cap-fade has 2 pixels of gradation at 1:4 build scale.",
-      "search_blocks": 8,
-      "cliff_min_deg": 35.0,
-      "flat_max_deg": 28.0,
+      "_comment": "S89: CONVEXITY-EXPOSURE POLISH (was cliff-top 8-dir walk). build_cliff_cap intensity = convex_norm * (1 + wind_coeff*wind_factor) * elev_fade[elev_lo..elev_hi MC-Y]. Lights up convex crests/domes/knobs the rock_layers slope ladder misses, intensified on windward (wind_source_deg ~292) faces, alpine-only. When rock_layers enabled, _apply_cliff_cap paints the scoured per-group palette in .groups (salt-and-pepper) + suppresses trees + kills ground cover (bare wind-scoured peaks). intensity_threshold/dilate_blocks gate the paint + the tree/GC kill. Legacy search_blocks/cliff_min_deg/flat_max_deg no longer used.",
+      "convex_coeff": 1.0,
+      "wind_coeff": 0.5,
+      "elev_lo": 150.0,
+      "elev_hi": 220.0,
+      "wind_source_deg": 292.0,
+      "curv_smooth_blocks": 48.0,
       "intensity_threshold": 8,
-      "dilate_blocks": 12,
+      "dilate_blocks": 4,
       "suppress_trees": true,
-      "kill_ground_cover": true
+      "kill_ground_cover": true,
+      "groups": {
+        "granitic":              {"cap": ["stone", "cobblestone"]},
+        "arid_basaltic":         {"cap": ["soul_soil", "muddy_mangrove_roots"]},
+        "temperate_basaltic":    {"cap": ["gray_concrete_powder", "stone"]},
+        "limestone":             {"cap": ["smooth_quartz", "mushroom_stem"]},
+        "deepslate_metamorphic": {"cap": ["andesite", "stone"]},
+        "mossy_temperate":       {"cap": ["andesite", "smooth_stone"]}
+      }
     },
     "talus": {
-      "_comment": "S88: rubble apron palette painted on flat ground below slope>=cliff_min_deg cliffs. EXCLUDED from Phase 2A noise (soft/depositional \u2014 like washes, surface should be smooth).",
-      "search_blocks": 8,
+      "_comment": "S89: footslope debris apron below cliffs. Scree sits AT the angle of repose (apron_max_deg ~35) below slope>=cliff_min_deg faces; run-out taper decays over search_blocks; intensity boosted in concave gully mouths by gully_fan_coeff. When rock_layers is enabled, _apply_talus paints it with GRAIN SORTING (fine near base = high intensity, coarse at toe = low intensity) + DEPTH (subsurface blocks scale with intensity up to depth_max_blocks) using per-group fine/coarse palettes in .groups (fragmented host rock). intensity_threshold is the LEGACY generic-painter cutoff. EXCLUDED from Phase 2A noise (soft/depositional).",
+      "search_blocks": 80,
       "cliff_min_deg": 35.0,
-      "apron_max_deg": 25.0,
+      "apron_max_deg": 35.0,
+      "gully_fan_coeff": 0.6,
+      "depth_max_blocks": 3,
+      "coverage_floor": 0.10,
+      "depth_intensity": 0.55,
       "intensity_threshold": 64,
-      "phase2a_exclude": true
+      "phase2a_exclude": true,
+      "groups": {
+        "granitic":              {"fine": ["brown_concrete_powder", "gravel"],      "coarse": ["coarse_dirt", "cobblestone"]},
+        "arid_basaltic":         {"fine": ["black_concrete_powder", "coarse_dirt"], "coarse": ["soul_soil", "mud"]},
+        "temperate_basaltic":    {"fine": ["clay", "light_gray_concrete_powder"],   "coarse": ["basalt", "cobblestone"]},
+        "limestone":             {"fine": ["light_gray_concrete_powder", "clay"],   "coarse": ["gravel", "cobblestone"]},
+        "deepslate_metamorphic": {"fine": ["gravel", "muddy_mangrove_roots"],       "coarse": ["mud", "mossy_cobblestone"]},
+        "mossy_temperate":       {"fine": ["mud"],                                  "coarse": ["gravel"]}
+      }
     },
     "bedrock_drainage": {
       "_comment": "S88: water-cut polished rock palette painted on steep flow channels (flow>flow_threshold AND slope>=slope_min_deg). NOT excluded from Phase 2A noise (hard-erosion category). fade_blocks bumped 3 -> 6 so channel edges have visible gradation at 1:4 build scale.",
@@ -4516,6 +4586,24 @@
     "dusting_threshold_noise_seed": 44,
     "seed": 42,
     "blue_noise_size": 512
+  },
+  "snow_physics": {
+    "_comment": "S89 physics snow (tools/build_snow_physics.py). Redistributes an altitude base by terrain: snow = base(altitude fade snow_lo_y..snow_hi_y) * slope_gate(shed_lo..shed_hi: steep faces shed) * curv(1+a*signed_concavity: fill bowls/strip ridges) * lee(1+b*faces_downwind) + shelter(c*max(Sx,0): Winstral upwind-shelter drift tails). Single world wind: TRAVELS ESE wind_travel_deg ~112, SOURCE WNW wind_source_deg ~292. Output snow_gap_physics.tif (A/B vs Gaea snow_gap.tif); threshold+blue-noise dither at 50k. SBT/FROZEN_FLATS exemptions stay in the gap==7 consumer. sx_search_blocks is the dominant knob (~ridge-to-valley spacing). Build at --scale 8. Feature-flag OFF until validated; consumer swap (eco_gradients gap==7 source) is a separate integration step.",
+    "enabled": false,
+    "snow_lo_y": 430.0,
+    "snow_hi_y": 475.0,
+    "shed_lo_deg": 33.0,
+    "shed_hi_deg": 42.0,
+    "curvature_coeff": 0.35,
+    "leeward_coeff": 0.12,
+    "wind_travel_deg": 112.0,
+    "wind_source_deg": 292.0,
+    "sx_search_blocks": 700.0,
+    "sx_fan_rays": 5,
+    "sx_fan_half_deg": 12.0,
+    "shelter_coeff": 0.30,
+    "threshold": 0.5,
+    "dither_width": 0.15
   },
   "washes": {
     "min_flow": 0.001,

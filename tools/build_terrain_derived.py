@@ -81,6 +81,25 @@ def slope_deg_from_surface_y(surface_y: np.ndarray, scale: int,
     return np.degrees(np.arctan(grad_per_world_block)).astype(np.float32)
 
 
+def _wind_factor(surface_y: np.ndarray, wind_source_deg: float) -> np.ndarray:
+    """Windward exposure in [0,1]: 1 where the slope's downhill FACING points
+    straight into the wind SOURCE bearing, 0 leeward/across. Direct gradient .
+    wind-vector dot product in an explicit (east, north) frame (north = -row,
+    east = +col) — no aspect-angle convention to invert. Verified: source WNW
+    (292 deg) => west/WNW faces ~1.0, ESE faces 0. SHARED by rock_layers +
+    cliff_cap so the world wind is consistent and the sign lives in one place."""
+    sy = gaussian_filter(surface_y.astype(np.float32), sigma=1.5)
+    dy = sobel(sy, axis=0)   # d/d row (row+ = south)
+    dx = sobel(sy, axis=1)   # d/d col (col+ = east)
+    face_e = -dx
+    face_n = dy
+    mag = np.hypot(face_e, face_n) + 1e-6
+    s = np.radians(wind_source_deg)
+    return np.clip(
+        (face_e * float(np.sin(s)) + face_n * float(np.cos(s))) / mag, 0.0, 1.0
+    ).astype(np.float32)
+
+
 # ─── Mask builders (all at working scale) ────────────────────────────────
 
 def build_aspect(surface_y: np.ndarray, slope_deg: np.ndarray,
@@ -160,24 +179,116 @@ def _8direction_walk(seed: np.ndarray, surface_y: np.ndarray,
     return intensity.astype(np.uint8)
 
 
-def build_cliff_cap(surface_y: np.ndarray, slope_deg: np.ndarray,
-                     cliff_min_deg: float, flat_max_deg: float,
-                     search_pixels: int) -> np.ndarray:
-    cliff_face = slope_deg >= cliff_min_deg
-    return _8direction_walk(cliff_face, surface_y, slope_deg,
-                              search_pixels=search_pixels,
-                              slope_match_max_deg=flat_max_deg,
-                              uphill=True)
+def build_cliff_cap(surface_y: np.ndarray, convex_norm: np.ndarray,
+                     wind_factor: np.ndarray, cap_cfg: dict) -> np.ndarray:
+    """S89 convexity-exposure polish (was cliff-top 8-dir walk).
+
+    intensity = convex_norm * (1 + wind_coeff*wind_factor) * elev_fade, as
+    uint8 0-255 (continuous -> bilinear upscale). Lights up convex crests /
+    domes / knobs (the gentle convex tops the rock_layers slope ladder misses),
+    intensified on windward (WNW) faces, faded in only at alpine elevation
+    [elev_lo, elev_hi] MC-Y. Drives the scoured-cap palette + tree/ground-cover
+    suppression downstream."""
+    convex_coeff = float(cap_cfg.get("convex_coeff", 1.0))
+    wind_coeff = float(cap_cfg.get("wind_coeff", 0.5))
+    elev_lo = float(cap_cfg.get("elev_lo", 150.0))
+    elev_hi = float(cap_cfg.get("elev_hi", 220.0))
+    elev_fade = np.clip(
+        (surface_y.astype(np.float32) - elev_lo) / max(1.0, elev_hi - elev_lo),
+        0.0, 1.0,
+    )
+    base = np.clip(convex_norm.astype(np.float32) * convex_coeff, 0.0, 1.0)
+    wind_boost = 1.0 + wind_coeff * wind_factor.astype(np.float32)
+    inten = np.clip(base * wind_boost * elev_fade, 0.0, 1.0) * 255.0
+    return inten.astype(np.uint8)
 
 
 def build_talus_apron(surface_y: np.ndarray, slope_deg: np.ndarray,
                        cliff_min_deg: float, apron_max_deg: float,
-                       search_pixels: int) -> np.ndarray:
+                       search_pixels: int,
+                       concavity_pos_norm: np.ndarray | None = None,
+                       gully_fan_coeff: float = 0.0) -> np.ndarray:
+    """S89: debris apron below cliffs. Walk downhill from cliff faces with
+    run-out taper, gate to slope < apron_max_deg (angle of repose). Then
+    GULLY-FAN: multiply intensity by (1 + gully_fan_coeff * concavity_pos_norm)
+    so talus concentrates in concave footslopes (couloir/gully mouths) and
+    stays thin below planar faces."""
     cliff_face = slope_deg >= cliff_min_deg
-    return _8direction_walk(cliff_face, surface_y, slope_deg,
+    inten = _8direction_walk(cliff_face, surface_y, slope_deg,
                               search_pixels=search_pixels,
                               slope_match_max_deg=apron_max_deg,
-                              uphill=False)
+                              uphill=False).astype(np.float32)
+    if concavity_pos_norm is not None and gully_fan_coeff > 0.0:
+        fan = 1.0 + float(gully_fan_coeff) * concavity_pos_norm
+        inten = np.clip(inten * fan, 0.0, 255.0)
+    return inten.astype(np.uint8)
+
+
+def build_rock_layers_u(surface_y: np.ndarray, slope_deg: np.ndarray,
+                         lithology: np.ndarray, name_to_id: dict[str, int],
+                         rl_cfg: dict) -> np.ndarray:
+    """S89 rock_layers: build the CONTINUOUS per-group 'tier coordinate' field.
+
+    Returns float32 `u` (same shape as slope_deg) where, per lithology group,
+    slope_eff is piecewise-mapped through that group's percentile thresholds:
+        0 -> 0 (not rock) ... t1 -> 1 (floor) ... t2 -> 2 (dark/mid) ...
+        t3 -> 3 (mid/light) ... smax -> 4
+    t2/t3 are the slope values that split the group's in-rock pixels by its
+    `split` [dark%,mid%,light%] target (computed as percentiles HERE so the px
+    dominance is hit exactly, regardless of the distorted degree scale).
+
+    Wind: a uniform shift is folded into slope_eff (slope + wind_factor*delta),
+    windward faces (toward wind_source compass bearing) get MORE stone and
+    lighter tiers, with the dark/mid/light SPACING preserved (uniform shift).
+
+    NOTE: do NOT threshold or dither here. This continuous u is upscaled to 50k
+    and tier-thresholded + blue-noise-dithered at target res by
+    core.upscale.upscale_continuous_then_multitier_dither — keeps tier edges
+    organic instead of NEAREST-staircased.
+    """
+    H, W = slope_deg.shape
+    t1 = float(rl_cfg.get("t1_deg", 38.0))
+    wind_source = float(rl_cfg.get("wind_source_deg", 292.0))
+    wind_delta = float(rl_cfg.get("wind_delta_deg", 6.0))
+    groups_cfg = rl_cfg.get("groups", {})
+
+    # Wind: uniform shift folded into slope_eff (windward faces => more stone,
+    # gradient spacing preserved). World wind TRAVELS ESE (~112); SOURCE WNW
+    # (wind_source ~292). See _wind_factor for the verified frame.
+    wind_factor = _wind_factor(surface_y, wind_source)
+    slope_eff = (slope_deg.astype(np.float32) + wind_factor * wind_delta)
+
+    u = np.zeros((H, W), dtype=np.float32)
+    for gname, gdata in groups_cfg.items():
+        gid = name_to_id.get(gname)
+        if gid is None:
+            continue
+        gmask = (lithology == gid)
+        if not gmask.any():
+            continue
+        in_rock = gmask & (slope_eff >= t1)
+        n = int(in_rock.sum())
+        if n == 0:
+            continue
+        split = gdata.get("split", [70, 20, 10])
+        d, m, l = float(split[0]), float(split[1]), float(split[2])
+        tot = max(1e-6, d + m + l)
+        vals = slope_eff[in_rock]
+        t2 = float(np.percentile(vals, 100.0 * d / tot))
+        t3 = float(np.percentile(vals, 100.0 * (d + m) / tot))
+        smax = float(vals.max())
+        # Strictly-ascending breakpoints for np.interp.
+        eps = 0.5
+        t2 = max(t2, t1 + eps)
+        t3 = max(t3, t2 + eps)
+        smax = max(smax, t3 + eps)
+        xp = np.array([0.0, t1, t2, t3, smax], dtype=np.float32)
+        fp = np.array([0.0, 1.0, 2.0, 3.0, 4.0], dtype=np.float32)
+        u[gmask] = np.interp(slope_eff[gmask], xp, fp).astype(np.float32)
+        print(f"    {gname}(id{gid}): in-rock={n:>9d}  "
+              f"t1={t1:.0f} t2={t2:.1f} t3={t3:.1f} smax={smax:.1f}  "
+              f"split={split}")
+    return u
 
 
 # ─── Upscale + write ─────────────────────────────────────────────────────
@@ -261,6 +372,26 @@ def main() -> int:
           f">=35° pixels: {int((slope_deg >= 35).sum())}")
     print(f"  done in {time.perf_counter()-t:.1f}s")
 
+    # S89: shared concavity field (neighbour-mean - center; positive in
+    # bowls/valleys/gully mouths). Drives the talus gully-fan here; reused by
+    # the snow physics builder later.
+    from scipy.ndimage import uniform_filter as _uf
+    _sy_f = surface_y.astype(np.float32)
+    _nbr_mean = (_uf(_sy_f, size=3) * 9.0 - _sy_f) / 8.0
+    _concavity = _nbr_mean - _sy_f
+    _cmax = max(float(np.abs(_concavity).max()), 1e-6)
+    concavity_pos_norm = np.clip(_concavity / _cmax, 0.0, 1.0).astype(np.float32)
+    # Convex side (ridge crests / domes / knobs) for the cliff_cap polish pass.
+    # Computed at a COARSE (dome) scale, not the fine 3-block laplacian, so
+    # broad convex tops register instead of being dwarfed by sharp cliff-edge
+    # curvature; robustly normalized by the 95th percentile (extremes clip).
+    from scipy.ndimage import laplace as _lap
+    _cap_sigma_px = max(1.0, float(cap_cfg.get("curv_smooth_blocks", 48.0)) / scale)
+    _sy_sm = gaussian_filter(_sy_f, sigma=_cap_sigma_px)
+    _conv = np.clip(-_lap(_sy_sm), 0.0, None)
+    _cp = float(np.percentile(_conv[_conv > 0], 95)) if (_conv > 0).any() else 1.0
+    convex_norm = np.clip(_conv / max(_cp, 1e-6), 0.0, 1.0).astype(np.float32)
+
     def world_to_pixels(world_blocks: float) -> int:
         return max(1, int(round(world_blocks / scale)))
 
@@ -308,9 +439,11 @@ def main() -> int:
         talus_ds = build_talus_apron(
             surface_y, slope_deg,
             cliff_min_deg=float(talus_cfg.get("cliff_min_deg", 35.0)),
-            apron_max_deg=float(talus_cfg.get("apron_max_deg", 25.0)),
+            apron_max_deg=float(talus_cfg.get("apron_max_deg", 35.0)),
             search_pixels=world_to_pixels(
-                talus_cfg.get("search_blocks", 8)),
+                talus_cfg.get("search_blocks", 80)),
+            concavity_pos_norm=concavity_pos_norm,
+            gully_fan_coeff=float(talus_cfg.get("gully_fan_coeff", 0.0)),
         )
         print(f"  computed in {time.perf_counter()-t:.1f}s")
         emit("talus_apron", talus_ds, method="bilinear")
@@ -318,15 +451,40 @@ def main() -> int:
     if not only or "cap" in only:
         print("Building cliff_cap...")
         t = time.perf_counter()
-        cap_ds = build_cliff_cap(
-            surface_y, slope_deg,
-            cliff_min_deg=float(cap_cfg.get("cliff_min_deg", 35.0)),
-            flat_max_deg=float(cap_cfg.get("flat_max_deg", 20.0)),
-            search_pixels=world_to_pixels(
-                cap_cfg.get("search_blocks", 4)),
-        )
+        _cap_wf = _wind_factor(
+            surface_y, float(cap_cfg.get("wind_source_deg", 292.0)))
+        cap_ds = build_cliff_cap(surface_y, convex_norm, _cap_wf, cap_cfg)
         print(f"  computed in {time.perf_counter()-t:.1f}s")
         emit("cliff_cap", cap_ds, method="bilinear")
+
+    if not only or "rock_layers" in only:
+        print("Building rock_layers...")
+        t = time.perf_counter()
+        rl_cfg = litho.get("rock_layers", {})
+        litho_path = masks_dir / "lithology.tif"
+        if not rl_cfg.get("groups"):
+            print("  SKIP rock_layers: no lithology.rock_layers.groups in config")
+        elif not litho_path.exists():
+            print(f"  SKIP rock_layers: {litho_path} missing")
+        else:
+            name_to_id = {gn: int(gd.get("id", 0))
+                          for gn, gd in litho.get("groups", {}).items()}
+            litho_ds = read_at_scale(masks_dir, "lithology", ds_size,
+                                     Resampling.nearest)
+            u = build_rock_layers_u(surface_y, slope_deg, litho_ds,
+                                    name_to_id, rl_cfg)
+            from core.upscale import upscale_continuous_then_multitier_dither
+            rl_path = masks_dir / "rock_layers.tif"
+            upscale_continuous_then_multitier_dither(
+                u, rl_path,
+                levels=(1.0, 2.0, 3.0),
+                dither_u=float(rl_cfg.get("dither_u", 0.18)),
+                target_size=WORLD_50K,
+                interpolation="catmull_rom",
+            )
+            size_mb = rl_path.stat().st_size / (1024 * 1024)
+            print(f"  -> rock_layers.tif  ds_in_rock={int((u >= 1.0).sum())}  "
+                  f"file={size_mb:.1f} MB  in {time.perf_counter()-t:.1f}s")
 
     print(f"\nTotal time: {time.perf_counter() - t_total:.1f}s")
     return 0

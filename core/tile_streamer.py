@@ -38,6 +38,8 @@ MASK_NAMES = [
     "wind_windthrow",
     "rock_gap",
     "snow_gap",
+    # S89 physics snow A/B (built by tools/build_snow_physics.py)
+    "snow_gap_physics",
     "sand_dunes",
     "beach",
     # S88 terrain-derived masks (built by tools/build_terrain_derived.py)
@@ -45,6 +47,8 @@ MASK_NAMES = [
     "cliff_cap",
     "talus_apron",
     "bedrock_drainage",
+    # S89 rock_layers tier mask (0..3; built by build_terrain_derived.py --only rock_layers)
+    "rock_layers",
     # S88 walk #10/11: vein_field + varnish_field masks
     # (built by tools/build_vein_and_cap_masks.py)
     "vein_field",

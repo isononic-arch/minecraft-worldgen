@@ -1150,6 +1150,9 @@ def _apply_strata_surface(
     Exclusions: river_meta>0 (water), gap==4 (floodplain), gap==7 (snow).
     Operates IN-PLACE on surface_blocks + subsurface_blocks.
     """
+    # S89: superseded by _apply_rock_layers when rock_layers is enabled.
+    if cfg.get("lithology", {}).get("rock_layers", {}).get("enabled", False):
+        return
     if cliff_deg is None:
         return
     litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
@@ -1777,6 +1780,9 @@ def _apply_basaltic_joints(
     Gated to: gap_mask == 5 (rock_gap pixels) AND lithology in basaltic
     groups (gid 2 = arid_basaltic, gid 3 = temperate_basaltic).
     """
+    # S89: superseded by _apply_rock_layers when rock_layers is enabled.
+    if cfg.get("lithology", {}).get("rock_layers", {}).get("enabled", False):
+        return
     if gap_mask is None or lithology_tile is None or joint_pattern_tile is None:
         return
     rock_zone = (gap_mask == 5)
@@ -1829,6 +1835,266 @@ def _apply_basaltic_joints(
         _blk = gid_to_joint_block.get(_gid, "basalt")
         surface_blocks[_bm] = _blk
         subsurface_blocks[_bm] = _blk
+
+
+def _apply_rock_layers(
+    surface_blocks:    np.ndarray,
+    subsurface_blocks: np.ndarray,
+    lithology_tile:    np.ndarray | None,
+    rock_layers_tile:  np.ndarray | None,
+    cfg:               dict,
+    tile_x:            int,
+    tile_y:            int,
+) -> None:
+    """S89: paint rock_layers tiers (dark / mid / light) per lithology group.
+
+    Replaces the legacy rock_gap-palette + strata + basaltic-joints surface
+    passes when cfg.lithology.rock_layers.enabled.  `rock_layers_tile` is the
+    baked tier mask (0=not rock, 1=dark, 2=mid, 3=light) delivered normalised
+    [0,1] (uint8/255) -> recover the integer tier via round(*255).  Each tier
+    paints its 2 textures via per-pixel salt-and-pepper white noise on BOTH
+    surface and subsurface (coherent column).  This is the BASE rock paint;
+    veins / wash / talus / varnish / cliff_cap overlay it downstream.
+    """
+    rl_cfg = cfg.get("lithology", {}).get("rock_layers", {}) if isinstance(cfg, dict) else {}
+    if not rl_cfg.get("enabled", False):
+        return
+    if rock_layers_tile is None or lithology_tile is None:
+        return
+    groups_cfg = rl_cfg.get("groups", {})
+    if not groups_cfg:
+        return
+    H, W = surface_blocks.shape
+    tier = np.round(rock_layers_tile * 255.0).astype(np.int32)
+    if not (tier >= 1).any():
+        return
+
+    if lithology_tile.shape != (H, W):
+        from scipy.ndimage import zoom as _z_rl
+        litho = _z_rl(
+            lithology_tile,
+            (H / lithology_tile.shape[0], W / lithology_tile.shape[1]),
+            order=0,
+        )
+    else:
+        litho = lithology_tile
+
+    name_to_id = {
+        _gn: int(_gd.get("id", 0))
+        for _gn, _gd in cfg.get("lithology", {}).get("groups", {}).items()
+    }
+    rng = np.random.default_rng(
+        (tile_x * 73856093 ^ tile_y * 19349663 ^ 0x52CC15) & 0xFFFFFFFF
+    )
+    coin = rng.random((H, W), dtype=np.float32)
+    TIERS = ((1, "dark"), (2, "mid"), (3, "light"))
+    for gname, gdata in groups_cfg.items():
+        gid = name_to_id.get(gname)
+        if gid is None:
+            continue
+        gmask = (litho == gid)
+        if not gmask.any():
+            continue
+        for tval, key in TIERS:
+            pal = gdata.get(key)
+            if not pal:
+                continue
+            m = gmask & (tier == tval)
+            if not m.any():
+                continue
+            n = len(pal)
+            if n == 1:
+                surface_blocks[m] = pal[0]
+                subsurface_blocks[m] = pal[0]
+                continue
+            for i, blk in enumerate(pal):
+                bm = m & (coin >= i / n) & (coin < (i + 1) / n)
+                if bm.any():
+                    surface_blocks[bm] = blk
+                    subsurface_blocks[bm] = blk
+
+
+def _apply_talus(
+    surface_blocks:    np.ndarray,
+    subsurface_blocks: np.ndarray,
+    lithology_tile:    np.ndarray | None,
+    talus_apron_tile:  np.ndarray | None,
+    cfg:               dict,
+    tile_x:            int,
+    tile_y:            int,
+    river_meta:        np.ndarray | None = None,
+    gap_mask:          np.ndarray | None = None,
+) -> None:
+    """S89: paint the debris apron with GRAIN SORTING + DEPTH.
+
+    Rides with the new rock system (gated on lithology.rock_layers.enabled);
+    replaces the legacy generic talus painter.  `talus_apron_tile` is the
+    continuous run-out intensity in [0,1] (high at the cliff base, decaying to
+    the toe).  Effects, all derived from that single field:
+      - taper:  coverage probability ∝ intensity (sparse, scattered at the toe)
+      - grain:  P(fine) = intensity -> fine dust near the base (high intensity),
+                coarse clasts at the toe (low intensity); dithered boundary.
+      - depth:  where intensity >= depth_intensity, also paint the subsurface
+                block (thick apron at the base vs 1-block veneer at the toe).
+    Per-group fine/coarse palettes from cfg.lithology.talus.groups.  (Full
+    multi-block depth would need chunk_writer column support — deferred.)
+    """
+    litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
+    if not litho_cfg.get("rock_layers", {}).get("enabled", False):
+        return
+    if talus_apron_tile is None or lithology_tile is None:
+        return
+    t_cfg = litho_cfg.get("talus", {})
+    groups_cfg = t_cfg.get("groups", {})
+    if not groups_cfg:
+        return
+    H, W = surface_blocks.shape
+    inten = np.clip(talus_apron_tile.astype(np.float32), 0.0, 1.0)
+    if not (inten > 0).any():
+        return
+    floor = float(t_cfg.get("coverage_floor", 0.10))
+    depth_at = float(t_cfg.get("depth_intensity", 0.55))
+
+    excl = np.zeros((H, W), dtype=bool)
+    if river_meta is not None:
+        excl |= (river_meta > 0)
+    if gap_mask is not None:
+        excl |= (gap_mask == 4) | (gap_mask == 7)
+
+    if lithology_tile.shape != (H, W):
+        from scipy.ndimage import zoom as _z_t
+        litho = _z_t(
+            lithology_tile,
+            (H / lithology_tile.shape[0], W / lithology_tile.shape[1]),
+            order=0,
+        )
+    else:
+        litho = lithology_tile
+
+    name_to_id = {
+        _gn: int(_gd.get("id", 0))
+        for _gn, _gd in litho_cfg.get("groups", {}).items()
+    }
+    rng = np.random.default_rng(
+        (tile_x * 40503 ^ tile_y * 20011 ^ 0x7A1115) & 0xFFFFFFFF
+    )
+    cov_coin = rng.random((H, W), dtype=np.float32)
+    grain_coin = rng.random((H, W), dtype=np.float32)
+    tex_coin = rng.random((H, W), dtype=np.float32)  # within-tier salt-and-pepper
+
+    base_zone = (inten >= floor) & ~excl & (cov_coin < inten)
+    if not base_zone.any():
+        return
+    is_fine = grain_coin < inten  # high intensity -> mostly fine
+    deep = inten >= depth_at
+
+    for gname, gdata in groups_cfg.items():
+        gid = name_to_id.get(gname)
+        if gid is None:
+            continue
+        gmask = (litho == gid) & base_zone
+        if not gmask.any():
+            continue
+        fine = gdata.get("fine") or []
+        coarse = gdata.get("coarse") or []
+        if not fine or not coarse:
+            continue
+        # fine near the base (high intensity), coarse at the toe; within each
+        # tier the 1-2 textures are split salt-and-pepper by tex_coin.
+        for blocks, msk in ((fine, gmask & is_fine), (coarse, gmask & ~is_fine)):
+            if not msk.any():
+                continue
+            nb = len(blocks)
+            for i, blk in enumerate(blocks):
+                bm = msk if nb == 1 else (
+                    msk & (tex_coin >= i / nb) & (tex_coin < (i + 1) / nb)
+                )
+                if not bm.any():
+                    continue
+                surface_blocks[bm] = blk
+                dbm = bm & deep
+                if dbm.any():
+                    subsurface_blocks[dbm] = blk
+
+
+def _apply_cliff_cap(
+    surface_blocks:    np.ndarray,
+    subsurface_blocks: np.ndarray,
+    lithology_tile:    np.ndarray | None,
+    cliff_cap_tile:    np.ndarray | None,
+    cfg:               dict,
+    tile_x:            int,
+    tile_y:            int,
+    river_meta:        np.ndarray | None = None,
+    gap_mask:          np.ndarray | None = None,
+) -> None:
+    """S89: paint the scoured convex-peak cap (per-group palette, salt-and-pepper,
+    surface + subsurface).  Rides with lithology.rock_layers.enabled; replaces the
+    generic cap painter.  `cliff_cap_tile` is the convexity-exposure intensity
+    [0,1].  Tree + ground-cover suppression are handled separately (the GC-kill
+    block below in decorate_surface + schematic_placement)."""
+    litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
+    if not litho_cfg.get("rock_layers", {}).get("enabled", False):
+        return
+    if cliff_cap_tile is None or lithology_tile is None:
+        return
+    cc = litho_cfg.get("cliff_cap", {})
+    groups_cfg = cc.get("groups", {})
+    if not groups_cfg:
+        return
+    H, W = surface_blocks.shape
+    thr = int(cc.get("intensity_threshold", 8))
+    inten = (cliff_cap_tile * 255.0).astype(np.int32)
+    zone = inten >= thr
+    if river_meta is not None:
+        zone &= (river_meta <= 0)
+    if gap_mask is not None:
+        zone &= (gap_mask != 7)  # snow wins on the crest
+    if not zone.any():
+        return
+    dil = int(cc.get("dilate_blocks", 0))
+    if dil > 0:
+        from scipy.ndimage import binary_dilation as _bd_cc
+        zone = _bd_cc(zone, iterations=dil)
+        if river_meta is not None:
+            zone &= (river_meta <= 0)
+        if gap_mask is not None:
+            zone &= (gap_mask != 7)
+    if lithology_tile.shape != (H, W):
+        from scipy.ndimage import zoom as _z_cc
+        litho = _z_cc(
+            lithology_tile,
+            (H / lithology_tile.shape[0], W / lithology_tile.shape[1]),
+            order=0,
+        )
+    else:
+        litho = lithology_tile
+    name_to_id = {
+        _gn: int(_gd.get("id", 0))
+        for _gn, _gd in litho_cfg.get("groups", {}).items()
+    }
+    rng = np.random.default_rng(
+        (tile_x * 26244 ^ tile_y * 55001 ^ 0xCA9015) & 0xFFFFFFFF
+    )
+    coin = rng.random((H, W), dtype=np.float32)
+    for gname, gdata in groups_cfg.items():
+        gid = name_to_id.get(gname)
+        if gid is None:
+            continue
+        pal = gdata.get("cap") or []
+        if not pal:
+            continue
+        gm = (litho == gid) & zone
+        if not gm.any():
+            continue
+        nb = len(pal)
+        for i, blk in enumerate(pal):
+            bm = gm if nb == 1 else (
+                gm & (coin >= i / nb) & (coin < (i + 1) / nb)
+            )
+            if bm.any():
+                surface_blocks[bm] = blk
+                subsurface_blocks[bm] = blk
 
 
 def _apply_rock_zone_cleanup(
@@ -2308,6 +2574,7 @@ def decorate_surface(
     vein_field_tile: np.ndarray | None = None,        # (H, W) float32 [0,1] — vein detection (walk #10/11)
     varnish_field_tile: np.ndarray | None = None,     # (H, W) float32 [0,1] — varnish detection (walk #10/11)
     joint_pattern_tile: np.ndarray | None = None,     # (H, W) float32 [0,1] — basaltic columnar joints (walk #11)
+    rock_layers_tile: np.ndarray | None = None,       # (H, W) tiers 0..3 (uint8/255) — S89 rock_layers
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute surface and subsurface block arrays for a tile.
@@ -2727,8 +2994,21 @@ def decorate_surface(
                 else:
                     _litho_at_res = lithology_tile
 
+            # S89: when rock_layers is enabled its tier mask is the SOLE rock
+            # presence — swap gap==5 to the rock_layers extent so rock_px / wash
+            # / sand / snow / cleanup below all key off the new rock, and the
+            # legacy rock_gap extent is dropped.
+            _rl_enabled = bool(
+                cfg.get("lithology", {}).get("rock_layers", {}).get("enabled", False)
+            )
+            if _rl_enabled and rock_layers_tile is not None:
+                _rl_tier = np.round(rock_layers_tile * 255.0).astype(np.int32)
+                _gap[_gap == 5] = 0                       # drop old rock_gap extent
+                _gap[(_rl_tier >= 1) & (_gap == 0)] = 5   # claim new rock from 'none'
+                del _rl_tier
+
             rock_px = _gap == 5
-            if rock_px.any():
+            if rock_px.any() and not _rl_enabled:
                 _rng = np.random.default_rng(tile_x * 48271 ^ tile_y * 31337 ^ 0xB10C)
                 _scatter = _rng.random((H, W)).astype(np.float32)
                 _DEFAULT_PAL = ["stone", "andesite", "granite", "diorite"]
@@ -2774,6 +3054,21 @@ def decorate_surface(
                 # on flow-channel cells.  User-spec order:
                 #   rock_gap -> strata -> wash -> bedrock -> talus -> veins -> cap
                 del _rng, _scatter
+
+            # ── S89: ROCK_LAYERS tier paint (base rock) ────────────────────
+            # When enabled, this REPLACES the legacy rock_px palette block
+            # above + _apply_strata_surface + _apply_basaltic_joints below
+            # (all three early-return / are skipped under the flag). Veins /
+            # wash / talus / varnish / cliff_cap still overlay it downstream.
+            _apply_rock_layers(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                lithology_tile    = lithology_tile,
+                rock_layers_tile  = rock_layers_tile,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
+            )
 
             # ── S88 walk #2: STRATA SURFACE PAINT ──────────────────────────
             # Strata bands extend up through surface_blk + sub_blk on slopes
@@ -3036,15 +3331,29 @@ def decorate_surface(
                 default_palette=["andesite", "stone", "gravel"],
             )
 
-            # 2. talus_apron — surface only (debris layer over dirt)
+            # 2. talus_apron — surface only (debris layer over dirt).
+            # S89: when rock_layers is enabled the legacy generic painter is
+            # disabled (mask_tile=None) and _apply_talus (grain-sort + depth)
+            # runs instead.
             _s88_apply_painter(
-                mask_tile=talus_apron_tile,
+                mask_tile=(None if _rl_enabled else talus_apron_tile),
                 cfg_section=_s88_lcfg.get("talus", {}),
                 palette_key="talus_palette",
                 paint_subsurface=False,
                 exclusion_mask=_river_excl | _flood_excl,
                 rng_salt=0x7A1F,
                 default_palette=["cobblestone", "gravel", "coarse_dirt"],
+            )
+            _apply_talus(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                lithology_tile    = lithology_tile,
+                talus_apron_tile  = talus_apron_tile,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
+                river_meta        = river_meta,
+                gap_mask          = _gap,
             )
 
             # 2b. Walk #10.1: VEINS moved to BEFORE wash (between strata and
@@ -3093,15 +3402,29 @@ def decorate_surface(
                 varnish_field_tile= varnish_field_tile,
             )
 
-            # 3. cliff_cap — surface + sub (cap rock all the way down 1 layer)
+            # 3. cliff_cap — surface + sub (cap rock all the way down 1 layer).
+            # S89: when rock_layers enabled the legacy generic cap painter is
+            # disabled (mask_tile=None) and _apply_cliff_cap (convexity-exposure
+            # scoured palette) runs instead. The GC/tree kill below is unchanged.
             _s88_apply_painter(
-                mask_tile=cliff_cap_tile,
+                mask_tile=(None if _rl_enabled else cliff_cap_tile),
                 cfg_section=_s88_lcfg.get("cliff_cap", {}),
                 palette_key="cap_palette",
                 paint_subsurface=True,
                 exclusion_mask=_river_excl | _snow_excl,
                 rng_salt=0xCAFE,
                 default_palette=["tuff", "andesite", "cobblestone"],
+            )
+            _apply_cliff_cap(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                lithology_tile    = lithology_tile,
+                cliff_cap_tile    = cliff_cap_tile,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
+                river_meta        = river_meta,
+                gap_mask          = _gap,
             )
 
             # Walk #12: KILL GROUND_COVER on cap pixels (cap is bare rock,

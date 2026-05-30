@@ -255,6 +255,7 @@ def _process_tile(args: dict) -> dict:
         wind_windthrow = masks.get("wind_windthrow"),
         rock_gap = masks.get("rock_gap"),
         snow_gap = masks.get("snow_gap"),
+        snow_gap_physics = masks.get("snow_gap_physics"),
         sand_dunes = masks.get("sand_dunes"),
         beach = masks.get("beach"),
         override_tile = masks.get("override"),
@@ -573,6 +574,7 @@ def _process_tile(args: dict) -> dict:
         vein_field_tile = masks.get("vein_field"),
         varnish_field_tile = masks.get("varnish_field"),
         joint_pattern_tile = masks.get("joint_pattern"),
+        rock_layers_tile = masks.get("rock_layers"),
     )
 
     # ---- Step 8: Schematic placement ----

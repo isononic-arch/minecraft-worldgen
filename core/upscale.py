@@ -291,6 +291,110 @@ def upscale_continuous_then_threshold_dither(
             y_dst = y_dst_end
 
 
+def upscale_continuous_then_multitier_dither(
+    src_u: np.ndarray,
+    out_path: Path | str,
+    *,
+    levels: tuple[float, ...] = (1.0, 2.0, 3.0),
+    dither_u: float = 0.18,
+    target_size: int = FULL_SIZE,
+    interpolation: str = "catmull_rom",
+    chunk_rows: int = 512,
+    seed: int = 42,
+    blue_noise_size: int = 512,
+) -> None:
+    """Multi-tier generalization of `upscale_continuous_then_threshold_dither`.
+
+    `src_u` is a CONTINUOUS "tier coordinate" field (e.g. rock_layers: 0 = not
+    rock, 1 = floor/dark start, 2 = dark/mid cut, 3 = mid/light cut). Upscale it
+    continuously to `target_size`, then assign discrete tier indices at TARGET
+    resolution by counting how many ordered `levels` each pixel's jittered value
+    exceeds. The jitter is blue-noise of half-width `dither_u` (in u-units),
+    applied only at target res — so every tier boundary is salt-and-pepper
+    ragged with no staircasing or low-frequency clumping.
+
+    Output uint8: 0 below levels[0]; k where levels[k-1] <= u < levels[k];
+    len(levels) where u >= levels[-1].
+
+    Same continuous-through-upscale principle as the binary case (see module
+    docstring); this just thresholds against multiple ordered cuts instead of
+    one. Use for rock_layers (dark/mid/light tiers) so the tier edges read as
+    organic transitions, not 4-block NEAREST stamps.
+    """
+    if src_u.ndim != 2 or src_u.shape[0] != src_u.shape[1]:
+        raise ValueError(f"src_u must be square 2D; got shape {src_u.shape}")
+    valid = set(_INTERP_TO_ORDER) | _CUSTOM_INTERP
+    if interpolation not in valid:
+        raise ValueError(f"interpolation={interpolation!r} not in {sorted(valid)}")
+    levels = tuple(float(l) for l in levels)
+    if any(b <= a for a, b in zip(levels, levels[1:])):
+        raise ValueError(f"levels must be strictly ascending; got {levels}")
+    if len(levels) > 255:
+        raise ValueError("too many tier levels for uint8 output")
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    src_size = src_u.shape[0]
+    scale = target_size / src_size
+    order = _INTERP_TO_ORDER.get(interpolation, 3)
+    pad_src = max(order + 1, 4)
+
+    bn = make_blue_noise_tile(blue_noise_size, seed=seed)
+    levels_arr = np.asarray(levels, dtype=np.float32)
+
+    profile = {
+        "driver": "GTiff",
+        "width": target_size,
+        "height": target_size,
+        "count": 1,
+        "dtype": "uint8",
+        "compress": "lzw",
+        "tiled": True,
+        "blockxsize": 512,
+        "blockysize": 512,
+    }
+
+    with rasterio.open(str(out_path), "w", **profile) as dst:
+        y_dst = 0
+        while y_dst < target_size:
+            y_dst_end = min(y_dst + chunk_rows, target_size)
+            rows = y_dst_end - y_dst
+
+            y_src_start_f = y_dst / scale
+            y_src_end_f = y_dst_end / scale
+            y_src_start_i = max(0, int(np.floor(y_src_start_f)) - pad_src)
+            y_src_end_i = min(src_size, int(np.ceil(y_src_end_f)) + pad_src)
+
+            chunk_src = src_u[y_src_start_i:y_src_end_i].astype(np.float32, copy=False)
+            chunk_h = chunk_src.shape[0]
+            out_chunk_h = max(1, int(round(chunk_h * scale)))
+            zoomed = _zoom_or_custom(chunk_src, scale, interpolation,
+                                     out_h=out_chunk_h, out_w=target_size)
+
+            local_y_off = int(round(y_dst - y_src_start_i * scale))
+            local_y_off = max(0, min(local_y_off, zoomed.shape[0] - rows))
+            out_chunk = zoomed[local_y_off : local_y_off + rows, :target_size]
+
+            if out_chunk.shape[1] < target_size:
+                short = target_size - out_chunk.shape[1]
+                pad_col = np.repeat(out_chunk[:, -1:], short, axis=1)
+                out_chunk = np.concatenate([out_chunk, pad_col], axis=1)
+
+            # Blue-noise jitter at TARGET res: shift u by ±dither_u so tier
+            # boundaries become ragged instead of clean iso-u contours.
+            ys = (y_dst + np.arange(rows, dtype=np.int64))[:, None] % blue_noise_size
+            xs = np.arange(target_size, dtype=np.int64)[None, :] % blue_noise_size
+            bn_chunk = bn[ys, xs]
+            u_jit = out_chunk + (bn_chunk - 0.5) * (2.0 * float(dither_u))
+
+            # tier = count of levels exceeded (0..len(levels))
+            tier = (u_jit[..., None] >= levels_arr).sum(axis=-1).astype(np.uint8)
+
+            dst.write(tier, 1, window=Window(0, y_dst, target_size, rows))
+            y_dst = y_dst_end
+
+
 def upscale_continuous(
     src: np.ndarray,
     out_path: Path | str,
