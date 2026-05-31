@@ -4371,7 +4371,7 @@
       "wind_source_deg": 292.0,
       "wind_delta_deg": 2.0,
       "dither_amp_deg": 3.0,
-      "dither_u": 0.06,
+      "dither_u": 0.0,
       "layer_dither": 0.5,
       "overlays": {
         "_comment": "Legacy rock overlays that run ON TOP of rock_layers. Flip individually to add back. stone_fade = the S60 high-elevation grass->stone palette fade (500-580 MC-Y) -- a leftover fade band using the OLD stone palette.",
@@ -4628,9 +4628,9 @@
   },
   "washes": {
     "min_flow": 0.001,
-    "dilation": 2,
-    "fade_blocks": 5,
+    "dilation": 0,
+    "fade_blocks": 0,
     "fan_flow": 0.02,
-    "fan_dilation": 5
+    "fan_dilation": 0
   }
 }
