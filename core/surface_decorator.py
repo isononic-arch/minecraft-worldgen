@@ -3215,6 +3215,16 @@ def decorate_surface(
                         tile_x * 17 ^ tile_y * 31 ^ 0xFADE)
                     _fade_coin = _fade_rng.random((H, W)).astype(np.float32)
                     _wash_zone = _wash_zone & (_fade_coin < _wash_fade_prob)
+                # S89: FAN at the low -- where flow accumulates (the channel's
+                # low / outlet) the wash spreads wider like an alluvial fan.
+                # Added AFTER the channel fade so the fan stays solid.
+                _wash_fan_dilation = int(_wcfg.get("fan_dilation", 0))
+                if _wash_fan_dilation > 0:
+                    _wash_fan_core = _wash_zone_core & (flow_tile > float(_wcfg.get("fan_flow", 0.02)))
+                    if _wash_fan_core.any():
+                        from scipy.ndimage import binary_dilation as _bdf
+                        _wash_zone = _wash_zone | (
+                            _bdf(_wash_fan_core, iterations=_wash_fan_dilation) & rock_px)
                 if _wash_zone.any():
                     _DEFAULT_WASH_PAL = ["gravel", "coarse_dirt", "sand"]
                     _wash_rng = np.random.default_rng(
@@ -3805,7 +3815,7 @@ def decorate_surface(
     # them.  Snowgap (now applied to AT again per user direction) provides the
     # peak-snow visual where altitude/slope warrant it.
     _above = (surface_y >= _FADE_Y_START) & (biome_grid != "ARCTIC_TUNDRA")
-    if _above.any():
+    if _above.any() and not _overlay_off(cfg, "stone_fade"):
         _fade_prob = np.clip(
             (surface_y.astype(np.float32) - _FADE_Y_START) /
             max(1.0, float(_FADE_Y_FULL - _FADE_Y_START)),
