@@ -4373,6 +4373,14 @@
       "dither_amp_deg": 3.0,
       "dither_u": 0.06,
       "layer_dither": 0.04,
+      "overlays": {
+        "_comment": "Legacy rock overlays that run ON TOP of rock_layers. All OFF by default to isolate the new system; flip individually to add back.",
+        "veins": false,
+        "wash": false,
+        "varnish": false,
+        "bedrock_drainage": false,
+        "concavity": false
+      },
       "groups": {
         "granitic": {
           "split": [55, 25, 20],

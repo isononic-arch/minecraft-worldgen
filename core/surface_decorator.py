@@ -1471,6 +1471,8 @@ def _apply_strata_veins_surface(
     Multi-block vein_blocks list (1 or 2 blocks) -- per-cell uniform pick.
     Exclusions: river_meta>0, gap==4 (floodplain), gap==7 (snow).
     """
+    if _overlay_off(cfg, "veins"):
+        return
     if cliff_deg is None:
         return
     litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
@@ -1682,6 +1684,8 @@ def _apply_concavity_drainage(
     Per-pixel lithology via lithology_tile -> group bedrock_drainage_palette.
     Excludes water, floodplain, snow.
     """
+    if _overlay_off(cfg, "concavity"):
+        return
     cc = cfg.get("lithology", {}).get("concavity", {}) if isinstance(cfg, dict) else {}
     if not cc.get("enabled", False):
         return
@@ -1835,6 +1839,20 @@ def _apply_basaltic_joints(
         _blk = gid_to_joint_block.get(_gid, "basalt")
         surface_blocks[_bm] = _blk
         subsurface_blocks[_bm] = _blk
+
+
+def _overlay_off(cfg, name):
+    """S89-v6: True if the legacy rock overlay `name` should be SKIPPED.
+
+    When rock_layers is enabled, the legacy rock overlays (veins / wash /
+    varnish / bedrock_drainage / concavity) only run if explicitly turned on in
+    lithology.rock_layers.overlays. Default OFF so the new system shows bare
+    (rock_layers + talus + cliff_cap). When rock_layers is disabled, returns
+    False so the legacy path is unchanged."""
+    rl = cfg.get("lithology", {}).get("rock_layers", {}) if isinstance(cfg, dict) else {}
+    if not rl.get("enabled", False):
+        return False
+    return not rl.get("overlays", {}).get(name, False)
 
 
 def _paint_solid_dither(surface_blocks, subsurface_blocks, mask, blocks, coin,
@@ -2240,6 +2258,8 @@ def _apply_rock_varnish(
     shades darker than its rock_gap base in the same color family.
     """
     if lithology_tile is None:
+        return
+    if _overlay_off(cfg, "varnish"):
         return
     v_cfg = cfg.get("lithology", {}).get("varnish", {})
     if not v_cfg.get("enabled", False):
@@ -3171,7 +3191,7 @@ def decorate_surface(
             #                     -> veins -> cap.
             # Strata-surface paints first on slope >= 28°.  Wash now fires
             # AFTER and overrides strata on rock cells with high flow.
-            if flow_tile is not None and rock_px.any():
+            if flow_tile is not None and rock_px.any() and not _overlay_off(cfg, "wash"):
                 _wcfg = cfg.get("washes", {}) if isinstance(cfg, dict) else {}
                 _wash_min_flow = float(_wcfg.get("min_flow", 0.002))
                 _wash_dilation = int(_wcfg.get("dilation", 2))
@@ -3354,7 +3374,7 @@ def decorate_surface(
 
             # 1. bedrock_drainage — paints surface + sub (uniform rock column)
             _s88_apply_painter(
-                mask_tile=bedrock_drainage_tile,
+                mask_tile=(None if _overlay_off(cfg, "bedrock_drainage") else bedrock_drainage_tile),
                 cfg_section=_s88_lcfg.get("bedrock_drainage", {}),
                 palette_key="bedrock_drainage_palette",
                 paint_subsurface=True,
