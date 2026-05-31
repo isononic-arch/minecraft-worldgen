@@ -1837,6 +1837,36 @@ def _apply_basaltic_joints(
         subsurface_blocks[_bm] = _blk
 
 
+def _paint_solid_dither(surface_blocks, subsurface_blocks, mask, blocks, coin,
+                        dither, paint_sub=True):
+    """S89-v3: paint a layer SOLID with the first block, sprinkling the
+    remaining block(s) only on a thin `dither` fraction (~0.03-0.05) so each
+    layer reads as a solid band lightly flecked, not a 50/50 salt-and-pepper
+    static. blocks[0] dominates (1-dither of the mask); blocks[1:] share the
+    [0, dither) band of `coin`."""
+    if not mask.any() or not blocks:
+        return
+    if len(blocks) == 1:
+        surface_blocks[mask] = blocks[0]
+        if paint_sub:
+            subsurface_blocks[mask] = blocks[0]
+        return
+    dom = mask & (coin >= dither)
+    surface_blocks[dom] = blocks[0]
+    if paint_sub:
+        subsurface_blocks[dom] = blocks[0]
+    rest = blocks[1:]
+    nb = len(rest)
+    for j, blk in enumerate(rest):
+        lo = dither * j / nb
+        hi = dither * (j + 1) / nb
+        bm = mask & (coin >= lo) & (coin < hi)
+        if bm.any():
+            surface_blocks[bm] = blk
+            if paint_sub:
+                subsurface_blocks[bm] = blk
+
+
 def _apply_rock_layers(
     surface_blocks:    np.ndarray,
     subsurface_blocks: np.ndarray,
@@ -1887,6 +1917,7 @@ def _apply_rock_layers(
         (tile_x * 73856093 ^ tile_y * 19349663 ^ 0x52CC15) & 0xFFFFFFFF
     )
     coin = rng.random((H, W), dtype=np.float32)
+    layer_dither = float(rl_cfg.get("layer_dither", 0.04))
     TIERS = ((1, "dark"), (2, "mid"), (3, "light"))
     for gname, gdata in groups_cfg.items():
         gid = name_to_id.get(gname)
@@ -1902,16 +1933,8 @@ def _apply_rock_layers(
             m = gmask & (tier == tval)
             if not m.any():
                 continue
-            n = len(pal)
-            if n == 1:
-                surface_blocks[m] = pal[0]
-                subsurface_blocks[m] = pal[0]
-                continue
-            for i, blk in enumerate(pal):
-                bm = m & (coin >= i / n) & (coin < (i + 1) / n)
-                if bm.any():
-                    surface_blocks[bm] = blk
-                    subsurface_blocks[bm] = blk
+            _paint_solid_dither(surface_blocks, subsurface_blocks, m, pal,
+                                coin, layer_dither, paint_sub=True)
 
 
 def _apply_talus(
@@ -1980,12 +2003,26 @@ def _apply_talus(
     )
     cov_coin = rng.random((H, W), dtype=np.float32)
     grain_coin = rng.random((H, W), dtype=np.float32)
-    tex_coin = rng.random((H, W), dtype=np.float32)  # within-tier salt-and-pepper
+    tex_coin = rng.random((H, W), dtype=np.float32)  # within-band solid+dither
+    layer_dither = float(t_cfg.get("layer_dither", 0.04))
+    grain_cut = float(t_cfg.get("grain_cut", 0.5))
+    grain_dither = float(t_cfg.get("grain_dither", 0.06))
+    edge_band = float(t_cfg.get("edge_band", 0.10))
 
-    base_zone = (inten >= floor) & ~excl & (cov_coin < inten)
+    # Coverage: SOLID above floor+edge_band, with a thin dithered fringe only at
+    # the outer (toe) edge -- a solid apron with a soft edge, not a scatter.
+    _solid = inten >= (floor + edge_band)
+    _edge = (
+        (inten >= floor) & (inten < floor + edge_band)
+        & (cov_coin < (inten - floor) / max(1e-3, edge_band))
+    )
+    base_zone = (_solid | _edge) & ~excl
     if not base_zone.any():
         return
-    is_fine = grain_coin < inten  # high intensity -> mostly fine
+    # Grain STAGGERED by intensity (a clean band, lightly dithered at the cut):
+    # coarse near the cliff base (high intensity) wears down to fine at the toe.
+    _cut = grain_cut + (grain_coin - 0.5) * (2.0 * grain_dither)
+    is_coarse = inten >= _cut
     deep = inten >= depth_at
 
     for gname, gdata in groups_cfg.items():
@@ -1999,22 +2036,17 @@ def _apply_talus(
         coarse = gdata.get("coarse") or []
         if not fine or not coarse:
             continue
-        # fine near the base (high intensity), coarse at the toe; within each
-        # tier the 1-2 textures are split salt-and-pepper by tex_coin.
-        for blocks, msk in ((fine, gmask & is_fine), (coarse, gmask & ~is_fine)):
-            if not msk.any():
+        for blocks, band in ((coarse, gmask & is_coarse), (fine, gmask & ~is_coarse)):
+            if not band.any():
                 continue
-            nb = len(blocks)
-            for i, blk in enumerate(blocks):
-                bm = msk if nb == 1 else (
-                    msk & (tex_coin >= i / nb) & (tex_coin < (i + 1) / nb)
-                )
-                if not bm.any():
-                    continue
-                surface_blocks[bm] = blk
-                dbm = bm & deep
-                if dbm.any():
-                    subsurface_blocks[dbm] = blk
+            # surface: solid band + thin dither of the 2nd texture
+            _paint_solid_dither(surface_blocks, subsurface_blocks, band,
+                                blocks, tex_coin, layer_dither, paint_sub=False)
+            # depth: subsurface only where the apron is thick (near the base)
+            _dz = band & deep
+            if _dz.any():
+                _paint_solid_dither(surface_blocks, subsurface_blocks, _dz,
+                                    blocks, tex_coin, layer_dither, paint_sub=True)
 
 
 def _apply_cliff_cap(
@@ -2082,6 +2114,7 @@ def _apply_cliff_cap(
         (tile_x * 26244 ^ tile_y * 55001 ^ 0xCA9015) & 0xFFFFFFFF
     )
     coin = rng.random((H, W), dtype=np.float32)
+    layer_dither = float(cc.get("layer_dither", 0.04))
     for gname, gdata in groups_cfg.items():
         gid = name_to_id.get(gname)
         if gid is None:
@@ -2092,14 +2125,8 @@ def _apply_cliff_cap(
         gm = (litho == gid) & zone
         if not gm.any():
             continue
-        nb = len(pal)
-        for i, blk in enumerate(pal):
-            bm = gm if nb == 1 else (
-                gm & (coin >= i / nb) & (coin < (i + 1) / nb)
-            )
-            if bm.any():
-                surface_blocks[bm] = blk
-                subsurface_blocks[bm] = blk
+        _paint_solid_dither(surface_blocks, subsurface_blocks, gm, pal,
+                            coin, layer_dither, paint_sub=True)
 
 
 def _apply_rock_zone_cleanup(

@@ -4371,6 +4371,8 @@
       "wind_source_deg": 292.0,
       "wind_delta_deg": 2.0,
       "dither_amp_deg": 3.0,
+      "dither_u": 0.06,
+      "layer_dither": 0.04,
       "groups": {
         "granitic": {
           "split": [55, 25, 20],
@@ -4420,7 +4422,8 @@
       "curv_smooth_blocks": 48.0,
       "intensity_threshold": 110,
       "dilate_blocks": 0,
-      "cap_dither": 12.0,
+      "cap_dither": 5.0,
+      "layer_dither": 0.04,
       "suppress_trees": true,
       "kill_ground_cover": true,
       "groups": {
@@ -4441,6 +4444,10 @@
       "depth_max_blocks": 3,
       "coverage_floor": 0.10,
       "depth_intensity": 0.55,
+      "edge_band": 0.10,
+      "grain_cut": 0.5,
+      "grain_dither": 0.06,
+      "layer_dither": 0.04,
       "intensity_threshold": 64,
       "phase2a_exclude": true,
       "groups": {
