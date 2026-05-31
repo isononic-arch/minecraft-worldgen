@@ -4383,14 +4383,36 @@ def _apply_ecotone_dither(
     # swap pixels onto a small linear set of neighbor cells along the
     # boundary - those cells happen to share blocks and produce a stripe
     # parallel to the boundary.  Random sample restores per-pixel variation.
+    # S89 fix (36,15 "fade band on the karst forest floor"): the ecotone
+    # sample SOURCE must exclude gap-driven feature pixels, not just the swap
+    # TARGET (line ~4308). Previously the sample pool was the WHOLE neighbour
+    # biome — including its rock faces (gap==5, painted with rock_layers tiers
+    # + wash). At any biome boundary touching a rock massif, the wide
+    # (width_px=100) ramp random-sampled cliff stone/concrete blocks and copied
+    # them onto the neighbouring forest/steppe floor up to 100 blocks out,
+    # reading as a scattered "band" of andesite/diorite/cobblestone/calcite/
+    # concrete-powder on flat ground. Restrict sampling to the neighbour
+    # biome's NATURAL soil/vegetation surface: drop rock(5)/alpine(6)/snow(7)/
+    # dune(8)/beach(9) — the same gradient-driven gaps excluded as targets.
+    _sampleable = np.ones((H, W), dtype=bool)
+    if gap_mask is not None:
+        _sampleable &= (
+            (gap_mask != 5) & (gap_mask != 6) & (gap_mask != 7)
+            & (gap_mask != 8) & (gap_mask != 9)
+        )
+
     nb_at_swap = neighbour_biome[swap_r, swap_c]
     for bname in biome_names:
         bname_mask = nb_at_swap == bname
         if not bname_mask.any():
             continue
 
-        _biome_mask = biome_grid == bname
+        _biome_mask = (biome_grid == bname) & _sampleable
         biome_pixels_r, biome_pixels_c = np.where(_biome_mask)
+        if len(biome_pixels_r) == 0:
+            # Neighbour biome is entirely gap-driven here (all rock/snow/etc).
+            # Fall back to its unfiltered pixels rather than skip the swap.
+            biome_pixels_r, biome_pixels_c = np.where(biome_grid == bname)
         if len(biome_pixels_r) == 0:
             continue  # neighbor biome not present in this tile padded region
 

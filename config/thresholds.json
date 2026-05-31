@@ -3678,16 +3678,8 @@
           "rooted_dirt"
         ],
         "wash_palette": [
-          "dead_bubble_coral_block",
-          "dead_bubble_coral_block",
-          "dead_bubble_coral_block",
-          "dead_bubble_coral_block",
-          "dead_bubble_coral_block",
-          "dead_horn_coral_block",
-          "dead_horn_coral_block",
-          "dead_horn_coral_block",
-          "dead_horn_coral_block",
-          "dead_horn_coral_block"
+          "andesite",
+          "stone"
         ],
         "description": "Intrusive igneous basement \u2014 default temperate highland. S60 palette. S85: weighted distribution (~23% each granite/dripstone/packed_mud/rooted_dirt + ~8% raw_iron_block as rare accent).",
         "cap_palette": [
@@ -3795,16 +3787,8 @@
           "smooth_basalt"
         ],
         "wash_palette": [
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "gray_concrete_powder",
-          "cobbled_deepslate",
-          "cobbled_deepslate",
-          "cobbled_deepslate",
-          "cobbled_deepslate",
-          "cobbled_deepslate"
+          "brown_concrete_powder",
+          "brown_mushroom_block"
         ],
         "description": "Arid/semi-arid mafic \u2014 dune + steppe + karst margins. S60 renamed from sedimentary.",
         "cap_palette": [
@@ -4023,16 +4007,8 @@
           "diorite"
         ],
         "wash_palette": [
-          "white_concrete_powder",
-          "white_concrete_powder",
-          "white_concrete_powder",
-          "white_concrete_powder",
-          "white_concrete_powder",
           "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder",
-          "light_gray_concrete_powder"
+          "clay"
         ],
         "description": "S85: full repaint \u00e2\u20ac\u201d calcite (~45%) dominant + diorite (~36%) slightly less, dead_horn_coral_block (~9%) + light_gray_concrete_powder (~9%) as rare accents. Karst barrens + cave-prone carbonate.",
         "cap_palette": [
@@ -4132,16 +4108,8 @@
           "stone"
         ],
         "wash_palette": [
-          "tuff",
-          "tuff",
-          "tuff",
-          "tuff",
-          "tuff",
           "pale_moss_block",
-          "pale_moss_block",
-          "pale_moss_block",
-          "pale_moss_block",
-          "pale_moss_block"
+          "gravel"
         ],
         "description": "High-alpine / arctic basement. S60 palette. S85: removed tuff per user (was 16.7%, now redistributed to remaining 5 blocks at 20% each).",
         "cap_palette": [
@@ -4233,15 +4201,7 @@
           "mossy_cobblestone"
         ],
         "wash_palette": [
-          "moss_block",
-          "moss_block",
-          "moss_block",
-          "moss_block",
-          "moss_block",
-          "brown_concrete_powder",
-          "brown_concrete_powder",
-          "brown_concrete_powder",
-          "brown_concrete_powder",
+          "soul_soil",
           "brown_concrete_powder"
         ],
         "description": "Wet temperate rainforest regolith. S60 palette.",
@@ -4365,9 +4325,8 @@
       "enabled": false,
       "t1_deg": 38.0,
       "t2_deg": 45.0,
-      "t3_deg": 55.0,
+      "t3_deg": 50.0,
       "smax_deg": 90.0,
-      "fade_to_deg": 47.0,
       "wind_source_deg": 292.0,
       "wind_delta_deg": 2.0,
       "dither_amp_deg": 3.0,
@@ -4385,40 +4344,118 @@
       },
       "groups": {
         "granitic": {
-          "split": [55, 25, 20],
-          "dark":  ["granite", "rooted_dirt"],
-          "mid":   ["packed_mud", "brown_mushroom_block"],
-          "light": ["andesite", "dead_fire_coral_block"]
+          "split": [
+            55,
+            25,
+            20
+          ],
+          "dark": [
+            "dead_fire_coral_block",
+            "tuff"
+          ],
+          "mid": [
+            "granite",
+            "dripstone_block"
+          ],
+          "light": [
+            "packed_mud",
+            "brown_mushroom_block"
+          ]
         },
         "arid_basaltic": {
-          "split": [85, 10, 5],
-          "dark":  ["basalt", "smooth_basalt"],
-          "mid":   ["deepslate", "cobbled_deepslate"],
-          "light": ["dripstone_block", "packed_mud"]
+          "split": [
+            85,
+            10,
+            5
+          ],
+          "dark": [
+            "basalt",
+            "smooth_basalt"
+          ],
+          "mid": [
+            "dead_horn_coral_block",
+            "suspicious_gravel"
+          ],
+          "light": [
+            "dripstone_block",
+            "granite"
+          ]
         },
         "temperate_basaltic": {
-          "split": [70, 22, 8],
-          "dark":  ["deepslate", "cobbled_deepslate"],
-          "mid":   ["tuff", "stone"],
-          "light": ["andesite", "light_gray_concrete_powder"]
+          "split": [
+            70,
+            22,
+            8
+          ],
+          "dark": [
+            "deepslate",
+            "cobbled_deepslate"
+          ],
+          "mid": [
+            "tuff",
+            "dead_horn_coral_block"
+          ],
+          "light": [
+            "light_gray_concrete_powder",
+            "andesite"
+          ]
         },
         "limestone": {
-          "split": [65, 25, 10],
-          "dark":  ["andesite", "stone"],
-          "mid":   ["diorite", "cobblestone"],
-          "light": ["calcite", "white_concrete_powder"]
+          "split": [
+            65,
+            25,
+            10
+          ],
+          "dark": [
+            "andesite",
+            "stone"
+          ],
+          "mid": [
+            "diorite",
+            "cobblestone"
+          ],
+          "light": [
+            "calcite",
+            "white_concrete_powder"
+          ]
         },
         "deepslate_metamorphic": {
-          "split": [75, 18, 7],
-          "dark":  ["tuff", "stone"],
-          "mid":   ["dead_horn_coral_block", "dead_bubble_coral_block"],
-          "light": ["raw_iron_block", "rooted_dirt"]
+          "split": [
+            75,
+            18,
+            7
+          ],
+          "dark": [
+            "tuff",
+            "stone"
+          ],
+          "mid": [
+            "andesite",
+            "cobblestone"
+          ],
+          "light": [
+            "mossy_cobblestone",
+            "moss_block"
+          ]
         },
         "mossy_temperate": {
-          "split": [75, 17, 8],
-          "dark":  ["tuff", "mossy_cobblestone"],
-          "mid":   ["cobblestone", "suspicious_gravel"],
-          "light": ["moss_block", "green_concrete_powder"]
+          "split": [
+            75,
+            17,
+            8
+          ],
+          "dark": [
+            "tuff",
+            "pale_moss_block"
+          ],
+          "mid": [
+            "mossy_cobblestone",
+            "cobblestone"
+          ],
+          "light": [
+            "moss_block",
+            "green_concrete_powder"
+          ]
         }
       }
     },
@@ -4437,12 +4474,42 @@
       "suppress_trees": true,
       "kill_ground_cover": true,
       "groups": {
-        "granitic":              {"cap": ["stone", "cobblestone"]},
-        "arid_basaltic":         {"cap": ["soul_soil", "muddy_mangrove_roots"]},
-        "temperate_basaltic":    {"cap": ["gray_concrete_powder", "stone"]},
-        "limestone":             {"cap": ["smooth_quartz", "mushroom_stem"]},
-        "deepslate_metamorphic": {"cap": ["andesite", "stone"]},
-        "mossy_temperate":       {"cap": ["andesite", "smooth_stone"]}
+        "granitic": {
+          "cap": [
+            "cobblestone",
+            "dead_horn_coral_block"
+          ]
+        },
+        "arid_basaltic": {
+          "cap": [
+            "brown_mushroom_block",
+            "packed_mud"
+          ]
+        },
+        "temperate_basaltic": {
+          "cap": [
+            "cobblestone",
+            "stone"
+          ]
+        },
+        "limestone": {
+          "cap": [
+            "smooth_quartz",
+            "mushroom_stem"
+          ]
+        },
+        "deepslate_metamorphic": {
+          "cap": [
+            "andesite",
+            "stone"
+          ]
+        },
+        "mossy_temperate": {
+          "cap": [
+            "andesite",
+            "smooth_stone"
+          ]
+        }
       }
     },
     "talus": {
@@ -4452,7 +4519,7 @@
       "apron_max_deg": 35.0,
       "gully_fan_coeff": 0.1,
       "depth_max_blocks": 3,
-      "coverage_floor": 0.10,
+      "coverage_floor": 0.1,
       "depth_intensity": 0.55,
       "edge_band": 0.35,
       "grain_cut": 0.5,
@@ -4461,12 +4528,66 @@
       "intensity_threshold": 64,
       "phase2a_exclude": true,
       "groups": {
-        "granitic":              {"fine": ["brown_concrete_powder", "gravel"],      "coarse": ["coarse_dirt", "cobblestone"]},
-        "arid_basaltic":         {"fine": ["black_concrete_powder", "coarse_dirt"], "coarse": ["soul_soil", "mud"]},
-        "temperate_basaltic":    {"fine": ["clay", "light_gray_concrete_powder"],   "coarse": ["basalt", "cobblestone"]},
-        "limestone":             {"fine": ["light_gray_concrete_powder", "clay"],   "coarse": ["gravel", "cobblestone"]},
-        "deepslate_metamorphic": {"fine": ["gravel", "muddy_mangrove_roots"],       "coarse": ["mud", "mossy_cobblestone"]},
-        "mossy_temperate":       {"fine": ["mud"],                                  "coarse": ["gravel"]}
+        "granitic": {
+          "fine": [
+            "sand",
+            "suspicious_sand"
+          ],
+          "coarse": [
+            "raw_iron_block",
+            "coarse_dirt"
+          ]
+        },
+        "arid_basaltic": {
+          "fine": [
+            "brown_concrete_powder",
+            "brown_mushroom_block"
+          ],
+          "coarse": [
+            "coarse_dirt",
+            "rooted_dirt"
+          ]
+        },
+        "temperate_basaltic": {
+          "fine": [
+            "stone",
+            "gravel"
+          ],
+          "coarse": [
+            "dead_tube_coral_block",
+            "suspicious_gravel"
+          ]
+        },
+        "limestone": {
+          "fine": [
+            "light_gray_concrete_powder",
+            "clay"
+          ],
+          "coarse": [
+            "gravel",
+            "cobblestone"
+          ]
+        },
+        "deepslate_metamorphic": {
+          "fine": [
+            "gravel",
+            "pale_moss_block"
+          ],
+          "coarse": [
+            "suspicious_gravel",
+            "dead_tube_coral_block"
+          ]
+        },
+        "mossy_temperate": {
+          "fine": [
+            "soul_soil",
+            "brown_concrete_powder"
+          ],
+          "coarse": [
+            "rooted_dirt",
+            "coarse_dirt"
+          ]
+        }
       }
     },
     "bedrock_drainage": {
@@ -4622,7 +4743,7 @@
     "sx_search_blocks": 700.0,
     "sx_fan_rays": 5,
     "sx_fan_half_deg": 12.0,
-    "shelter_coeff": 0.30,
+    "shelter_coeff": 0.3,
     "threshold": 0.5,
     "dither_width": 0.15
   },
