@@ -1981,7 +1981,12 @@ def _apply_talus(
     multi-block depth would need chunk_writer column support — deferred.)
     """
     litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
-    if not litho_cfg.get("rock_layers", {}).get("enabled", False):
+    _rl = litho_cfg.get("rock_layers", {})
+    if not _rl.get("enabled", False):
+        return
+    # S89: talus toggle (default ON). Set rock_layers.overlays.talus=false to
+    # disable the apron for a diagnostic render.
+    if not _rl.get("overlays", {}).get("talus", True):
         return
     if talus_apron_tile is None or lithology_tile is None:
         return

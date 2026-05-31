@@ -4380,7 +4380,8 @@
         "varnish": false,
         "bedrock_drainage": false,
         "concavity": false,
-        "stone_fade": false
+        "stone_fade": false,
+        "talus": false
       },
       "groups": {
         "granitic": {
