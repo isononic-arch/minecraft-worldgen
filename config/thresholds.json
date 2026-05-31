@@ -3667,15 +3667,9 @@
         "id": 1,
         "palette": [
           "granite",
-          "granite",
-          "granite",
-          "granite",
-          "granite",
-          "rooted_dirt",
-          "rooted_dirt",
-          "rooted_dirt",
-          "rooted_dirt",
-          "rooted_dirt"
+          "dripstone_block",
+          "dead_bubble_coral_block",
+          "andesite"
         ],
         "wash_palette": [
           "raw_iron_block",
@@ -3776,15 +3770,9 @@
         "id": 2,
         "palette": [
           "basalt",
-          "basalt",
-          "basalt",
-          "basalt",
-          "basalt",
           "smooth_basalt",
-          "smooth_basalt",
-          "smooth_basalt",
-          "smooth_basalt",
-          "smooth_basalt"
+          "tuff",
+          "deepslate"
         ],
         "wash_palette": [
           "brown_concrete_powder",
@@ -3886,15 +3874,9 @@
         "id": 3,
         "palette": [
           "deepslate",
-          "deepslate",
-          "deepslate",
-          "deepslate",
-          "deepslate",
           "cobbled_deepslate",
-          "cobbled_deepslate",
-          "cobbled_deepslate",
-          "deepslate_coal_ore",
-          "deepslate_coal_ore"
+          "tuff",
+          "dead_horn_coral_block"
         ],
         "wash_palette": [
           "gray_concrete_powder",
@@ -3995,16 +3977,10 @@
       "limestone": {
         "id": 4,
         "palette": [
-          "calcite",
-          "calcite",
-          "calcite",
-          "calcite",
-          "calcite",
+          "andesite",
+          "stone",
           "diorite",
-          "diorite",
-          "diorite",
-          "diorite",
-          "diorite"
+          "cobblestone"
         ],
         "wash_palette": [
           "light_gray_concrete_powder",
@@ -4096,16 +4072,10 @@
       "deepslate_metamorphic": {
         "id": 5,
         "palette": [
-          "andesite",
-          "andesite",
-          "andesite",
-          "andesite",
-          "andesite",
+          "tuff",
           "stone",
-          "stone",
-          "stone",
-          "stone",
-          "stone"
+          "andesite",
+          "cobblestone"
         ],
         "wash_palette": [
           "pale_moss_block",
@@ -4189,16 +4159,10 @@
       "mossy_temperate": {
         "id": 6,
         "palette": [
-          "cobblestone",
-          "cobblestone",
-          "cobblestone",
-          "cobblestone",
-          "cobblestone",
+          "tuff",
+          "pale_moss_block",
           "mossy_cobblestone",
-          "mossy_cobblestone",
-          "mossy_cobblestone",
-          "mossy_cobblestone",
-          "mossy_cobblestone"
+          "cobblestone"
         ],
         "wash_palette": [
           "soul_soil",
@@ -4377,8 +4341,8 @@
             "deepslate"
           ],
           "light": [
-            "dead_bubble_coral_block",
-            "andesite"
+            "pale_moss_block",
+            "cobblestone"
           ]
         },
         "temperate_basaltic": {
@@ -4461,9 +4425,11 @@
       "edge_fade_blocks": 3,
       "relief": {
         "enabled": true,
-        "amp_blocks": 2.0,
+        "amp_blocks": 2.5,
         "scale_blocks": 7.0,
-        "edge_fade_blocks": 8.0
+        "edge_fade_blocks": 8.0,
+        "amp2_blocks": 1.5,
+        "tier2_min": 2
       }
     },
     "cliff_cap": {
@@ -4522,7 +4488,7 @@
     },
     "talus": {
       "_comment": "S89: footslope debris apron below cliffs. Scree sits AT the angle of repose (apron_max_deg ~35) below slope>=cliff_min_deg faces; run-out taper decays over search_blocks; intensity boosted in concave gully mouths by gully_fan_coeff. When rock_layers is enabled, _apply_talus paints it with GRAIN SORTING (fine near base = high intensity, coarse at toe = low intensity) + DEPTH (subsurface blocks scale with intensity up to depth_max_blocks) using per-group fine/coarse palettes in .groups (fragmented host rock). intensity_threshold is the LEGACY generic-painter cutoff. EXCLUDED from Phase 2A noise (soft/depositional).",
-      "search_blocks": 16,
+      "search_blocks": 20,
       "cliff_min_deg": 35.0,
       "apron_max_deg": 35.0,
       "gully_fan_coeff": 0.1,
@@ -4596,7 +4562,9 @@
             "coarse_dirt"
           ]
         }
-      }
+      },
+      "fade_lo": 0.14,
+      "fade_hi": 0.35
     },
     "bedrock_drainage": {
       "_comment": "S88: water-cut polished rock palette painted on steep flow channels (flow>flow_threshold AND slope>=slope_min_deg). NOT excluded from Phase 2A noise (hard-erosion category). fade_blocks bumped 3 -> 6 so channel edges have visible gradation at 1:4 build scale.",

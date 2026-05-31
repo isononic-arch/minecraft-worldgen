@@ -2053,14 +2053,17 @@ def _apply_talus(
     grain_dither = float(t_cfg.get("grain_dither", 0.06))
     edge_band = float(t_cfg.get("edge_band", 0.10))
 
-    # Coverage: SOLID above floor+edge_band, with a thin dithered fringe only at
-    # the outer (toe) edge -- a solid apron with a soft edge, not a scatter.
-    _solid = inten >= (floor + edge_band)
-    _edge = (
-        (inten >= floor) & (inten < floor + edge_band)
-        & (cov_coin < (inten - floor) / max(1e-3, edge_band))
-    )
-    base_zone = (_solid | _edge) & ~excl
+    # Coverage: SOLID (100%) at/above fade_hi, then a TIGHT STEPPED toe fade
+    # 100 -> 75 -> 50 -> 25 -> 0 over the compact [fade_lo, fade_hi] intensity
+    # window (S89: was a single linear 100->0 ramp over a wide band, which read
+    # as an unnatural slow fade). Smaller window = tighter footprint; the 4
+    # discrete steps read as a natural scree taper.
+    _fade_lo = float(t_cfg.get("fade_lo", floor))
+    _fade_hi = float(t_cfg.get("fade_hi", floor + edge_band))
+    _t = np.clip((inten - _fade_lo) / max(1e-3, _fade_hi - _fade_lo), 0.0, 1.0)
+    _cov = np.ceil(_t * 4.0) / 4.0          # 0, .25, .5, .75, 1.0 (stepped)
+    _cov = np.where(_t >= 1.0, 1.0, _cov)
+    base_zone = (_cov > 0.0) & (cov_coin < _cov) & ~excl
     if not base_zone.any():
         return
     # Grain STAGGERED by intensity (a clean band, lightly dithered at the cut):
@@ -2693,6 +2696,17 @@ def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y):
     ys = (tile_y * H + np.arange(H, dtype=np.float64)) / scale
     n = gen.noise2array(xs, ys).astype(np.float32)   # (H, W) in [-1, 1]
     relief = amp * n * fade
+    # S89: SECOND pass over the steep cores only (tier>=tier2_min, i.e. 45/50)
+    # with extra amplitude, faded over the SAME edge_fade_blocks at the
+    # tier-1/tier-2 boundary so the steeper rock reads rougher without a seam.
+    amp2 = float(rcfg.get("amp2_blocks", 0.0))
+    tier2_min = int(rcfg.get("tier2_min", 2))
+    if amp2 > 0.0:
+        rock2 = tier >= tier2_min
+        if rock2.any():
+            dist2 = _edt_r(rock2).astype(np.float32)
+            fade2 = np.clip(dist2 / efb, 0.0, 1.0)
+            relief = relief + amp2 * n * fade2
     delta = np.round(np.where(rock, relief, 0.0)).astype(surface_y.dtype)
     surface_y += delta
 

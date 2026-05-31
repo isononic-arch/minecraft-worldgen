@@ -2435,6 +2435,21 @@ def write_tile(
     """
     H, W = surface_y.shape
 
+    # S89: tree/schematic anchoring OVERRIDES surface-decorator ground cover.
+    # Clear ground_cover in a small box at each placement anchor BEFORE the
+    # column build writes it, so no grass / snow_carpet / tall veg sits at the
+    # trunk base (the "floating tree on snow/vegetation" regression). The stamp
+    # already overwrites the trunk column itself; this also clears the immediate
+    # base ring so nothing pokes out beside a sunk trunk.
+    if placements:
+        for _p in placements:
+            _lx = int(getattr(_p, "world_x", 0)) - tile_world_x
+            _lz = int(getattr(_p, "world_z", 0)) - tile_world_z
+            _z0 = max(0, _lz - 2); _z1 = min(H, _lz + 3)
+            _x0 = max(0, _lx - 2); _x1 = min(W, _lx + 3)
+            if _z1 > _z0 and _x1 > _x0:
+                ground_cover[_z0:_z1, _x0:_x1] = ""
+
     # Check whether the geology feature flag is ON
     _lith_cfg = (cfg or {}).get("lithology", {})
     _use_geo  = bool(_lith_cfg.get("feature_flag_enabled", False))

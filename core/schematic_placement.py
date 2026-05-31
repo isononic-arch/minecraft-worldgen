@@ -868,8 +868,19 @@ def place_schematics(
             "MANGROVE_COAST",
         )
         floodplain_ok = (gap == 4) & np.isin(biome_grid, list(_FLOODPLAIN_OK_BIOMES))
+        # S89: DARK-tier rock (gap==5 but slope < t2, ~40-45 deg) keeps SPARSE
+        # trees -- only mid/light rock (45 deg+) is bare. Fixes "no trees on
+        # slopes in dither zones": the new 40-deg rock cutoff was hard-killing
+        # trees on moderately-steep slopes that previously held them. Density on
+        # the surviving dark-tier pixels is already thinned by the 30->55 slope
+        # penalty downstream, so they read as sparse, not forested.
+        _rl_on_sp = bool(cfg.get("lithology", {}).get("rock_layers", {}).get("enabled", False)) if isinstance(cfg, dict) else False
+        _rock_sup = (gap == 5)
+        if _rl_on_sp and cliff_deg is not None:
+            _t2_sp = float(cfg.get("lithology", {}).get("rock_layers", {}).get("t2_deg", 45.0))
+            _rock_sup = (gap == 5) & (cliff_deg >= _t2_sp)
         full_suppress = (
-            ((gap == 1) | (gap == 2) | (gap == 4) | (gap == 5)
+            ((gap == 1) | (gap == 2) | (gap == 4) | _rock_sup
              | (gap == 7) | (gap == 8))
             & ~sand_dune_in_desert & ~snow_in_arctic & ~floodplain_ok
         )
