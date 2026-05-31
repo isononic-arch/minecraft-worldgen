@@ -991,7 +991,13 @@ def place_schematics(
     # (alpine meadow threshold).  Above 0.3 is gap_mask==6 (alpine meadow)
     # where only sparse krummholz survives, and above 0.7 is gap_mask==5
     # (bare rock, fully suppressed above).
-    if eco_grads is not None and hasattr(eco_grads, 'rock_exposure_gradient'):
+    # S89: when rock_layers drives rock (gap==5 = slope tier>=1), the OLD Gaea
+    # rock_exposure_gradient is a stale, WIDER footprint that wrongly thinned
+    # trees to 5% on slopes the new system doesn't call rocky -> "trees not
+    # generating on slopes where they should be". Rock tree-exclusion is now
+    # fully handled by gap==5 (hard stop) + the slope penalty (30->55 fade).
+    _rl_on = bool(cfg.get("lithology", {}).get("rock_layers", {}).get("enabled", False)) if isinstance(cfg, dict) else False
+    if (not _rl_on) and eco_grads is not None and hasattr(eco_grads, 'rock_exposure_gradient'):
         re_grad = eco_grads.rock_exposure_gradient
         if re_grad.max() > 0.01:
             # Subalpine thinning: 1.0 at grad=0, 0.05 at grad=0.3

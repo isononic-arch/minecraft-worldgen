@@ -1936,6 +1936,19 @@ def _apply_rock_layers(
     )
     coin = rng.random((H, W), dtype=np.float32)
     layer_dither = float(rl_cfg.get("layer_dither", 0.04))
+    # S89: 2-3 block fade-OUT per tier. Each tier bleeds `edge_fade_blocks`
+    # downslope (into LOWER tiers + tier-0 land of the SAME lithology) with a
+    # linear-fade coin, so every rock edge feathers instead of being a hard
+    # slope contour. Painted in tier order (dark->mid->light) so a higher
+    # tier's solid core overwrites a lower tier's bleed -> crisp where it
+    # matters, soft at the outer rock/land boundary. Talus is exempt (own bounds).
+    _edge_fade = int(rl_cfg.get("edge_fade_blocks", 0))
+    _fade_coin = None
+    if _edge_fade > 0:
+        from scipy.ndimage import distance_transform_edt as _edt_rl
+        _fr = np.random.default_rng(
+            (tile_x * 2654435761 ^ tile_y * 40503 ^ 0xED6EFADE) & 0xFFFFFFFF)
+        _fade_coin = _fr.random((H, W), dtype=np.float32)
     TIERS = ((1, "dark"), (2, "mid"), (3, "light"))
     for gname, gdata in groups_cfg.items():
         gid = name_to_id.get(gname)
@@ -1948,9 +1961,17 @@ def _apply_rock_layers(
             pal = gdata.get(key)
             if not pal:
                 continue
-            m = gmask & (tier == tval)
-            if not m.any():
+            core = gmask & (tier == tval)
+            if not core.any():
                 continue
+            m = core
+            if _edge_fade > 0:
+                # distance from this tier's core, outward
+                _dist = _edt_rl(~core).astype(np.float32)
+                _ring = gmask & (tier < tval) & (_dist > 0) & (_dist <= _edge_fade)
+                if _ring.any():
+                    _fade = np.clip(1.0 - _dist / float(_edge_fade), 0.0, 1.0)
+                    m = core | (_ring & (_fade_coin < _fade))
             _paint_solid_dither(surface_blocks, subsurface_blocks, m, pal,
                                 coin, layer_dither, paint_sub=True)
 
@@ -2082,6 +2103,7 @@ def _apply_cliff_cap(
     tile_y:            int,
     river_meta:        np.ndarray | None = None,
     gap_mask:          np.ndarray | None = None,
+    rock_layers_tile:  np.ndarray | None = None,
 ) -> None:
     """S89: paint the scoured convex-peak cap (per-group palette, salt-and-pepper,
     surface + subsurface).  Rides with lithology.rock_layers.enabled; replaces the
@@ -2110,6 +2132,13 @@ def _apply_cliff_cap(
         zone &= (river_meta <= 0)
     if gap_mask is not None:
         zone &= (gap_mask != 7)  # snow wins on the crest
+    # S89: HIGH SLOPE PAINTS OVER CAPS. Cap is for the gentle convex crown;
+    # where a peak's flank is steep (rock tier >= 2 = mid/light) the rock
+    # ladder wins, so exclude those pixels from the cap zone entirely.
+    _tier_cc = None
+    if rock_layers_tile is not None:
+        _tier_cc = np.round(rock_layers_tile * 255.0).astype(np.int32)
+        zone &= (_tier_cc < 2)
     if not zone.any():
         return
     dil = int(cc.get("dilate_blocks", 0))
@@ -2120,6 +2149,26 @@ def _apply_cliff_cap(
             zone &= (river_meta <= 0)
         if gap_mask is not None:
             zone &= (gap_mask != 7)
+        if _tier_cc is not None:
+            zone &= (_tier_cc < 2)
+    # S89: 2-3 block fade-OUT on the cap edge (same intent as the rock tiers).
+    _cc_fade = int(cc.get("edge_fade_blocks", 0))
+    if _cc_fade > 0 and zone.any():
+        from scipy.ndimage import distance_transform_edt as _edt_cc
+        _cd = _edt_cc(~zone).astype(np.float32)
+        _cring = (_cd > 0) & (_cd <= _cc_fade)
+        if river_meta is not None:
+            _cring &= (river_meta <= 0)
+        if gap_mask is not None:
+            _cring &= (gap_mask != 7)
+        if _tier_cc is not None:
+            _cring &= (_tier_cc < 2)
+        if _cring.any():
+            _ccoin = np.random.default_rng(
+                (tile_x * 9176 ^ tile_y * 3251 ^ 0xCCFADE) & 0xFFFFFFFF
+            ).random((H, W), dtype=np.float32)
+            _cfade = np.clip(1.0 - _cd / float(_cc_fade), 0.0, 1.0)
+            zone = zone | (_cring & (_ccoin < _cfade))
     if lithology_tile.shape != (H, W):
         from scipy.ndimage import zoom as _z_cc
         litho = _z_cc(
@@ -2606,6 +2655,48 @@ def _smooth_biome_boundary_y(
     surface_y[:] = np.round(sy_f).astype(surface_y.dtype)
 
 
+def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y):
+    """S89: un-smooth rocky terrain. The Gaea -> upscale -> MC pipeline leaves
+    rock faces too smooth; add low-amplitude, spatially-coherent height noise
+    INSIDE rock (tier>=1), with amplitude fading to 0 over the outer
+    `edge_fade_blocks` at the rock/land boundary (photoshop inner-stroke) so
+    there is NO step-seam against the smooth surrounding land. Mutates
+    surface_y IN PLACE at the top of decorate_surface — post Step-9 smoothing,
+    pre paint/schematic/column — so blocks, trees and columns all drape over
+    the same bumps. World-coord OpenSimplex => seam-free across tiles."""
+    rl = cfg.get("lithology", {}).get("rock_layers", {}) if isinstance(cfg, dict) else {}
+    if not rl.get("enabled", False) or rock_layers_tile is None:
+        return
+    rcfg = rl.get("relief", {})
+    if not rcfg.get("enabled", False):
+        return
+    amp = float(rcfg.get("amp_blocks", 2.0))
+    if amp <= 0.0:
+        return
+    scale = max(1.0, float(rcfg.get("scale_blocks", 7.0)))
+    efb   = max(1.0, float(rcfg.get("edge_fade_blocks", 8.0)))
+    H, W = surface_y.shape
+    tier = np.round(rock_layers_tile * 255.0).astype(np.int32)
+    rock = tier >= 1
+    if not rock.any():
+        return
+    try:
+        import opensimplex
+        from scipy.ndimage import distance_transform_edt as _edt_r
+    except Exception:
+        return
+    # amplitude ramps 0 (at boundary) -> 1 (>= efb blocks inside rock)
+    dist_in = _edt_r(rock).astype(np.float32)
+    fade = np.clip(dist_in / efb, 0.0, 1.0)
+    gen = opensimplex.OpenSimplex(seed=0x5E11EF)
+    xs = (tile_x * W + np.arange(W, dtype=np.float64)) / scale
+    ys = (tile_y * H + np.arange(H, dtype=np.float64)) / scale
+    n = gen.noise2array(xs, ys).astype(np.float32)   # (H, W) in [-1, 1]
+    relief = amp * n * fade
+    delta = np.round(np.where(rock, relief, 0.0)).astype(surface_y.dtype)
+    surface_y += delta
+
+
 def decorate_surface(
     surface_y:    np.ndarray,   # (H, W) int16
     biome_grid:   np.ndarray,   # (H, W) object (str)
@@ -2650,6 +2741,12 @@ def decorate_surface(
     bm_cfg   = cfg["block_mixing"]
     px_off   = tile_x * W
     py_off   = tile_y * H
+
+    # S89: ROCK RELIEF — un-smooth rocky terrain BEFORE any paint so blocks,
+    # trees and columns all drape over the same bumps. Mutates surface_y in
+    # place; no-op unless rock_layers + relief are enabled. (Runs here, at the
+    # post-Step-9 top of decorate, to satisfy the surface_y-locking antipattern.)
+    _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y)
 
     # S69: Flatten Gaea's raw dune bumps BEFORE the universal boundary
     # smoother.  Root-cause fix for the sand/biome seams that drove S68 to
@@ -3492,6 +3589,7 @@ def decorate_surface(
                 tile_y            = tile_y,
                 river_meta        = river_meta,
                 gap_mask          = _gap,
+                rock_layers_tile  = rock_layers_tile,
             )
 
             # Walk #12: KILL GROUND_COVER on cap pixels (cap is bare rock,
