@@ -2072,6 +2072,8 @@ def _chunk_to_nbt_bytes(
     biome_grid: np.ndarray,     # (tile_h, tile_w) Vandir biome name strings
     tile_world_x: int, tile_world_z: int,
     tile_h: int, tile_w: int,
+    gap_mask: np.ndarray | None = None,   # (tile_h, tile_w) gap_mask — stony_peaks rock-snow suppression
+    cfg: dict | None = None,
 ) -> bytes:
     """Return zlib-compressed NBT bytes for one 16×16-column chunk."""
     import nbtlib
@@ -2132,6 +2134,39 @@ def _chunk_to_nbt_bytes(
         return BIOME_TO_MC_SKY.get(str(b),
                BIOME_TO_MC.get(str(b), BIOME_TO_MC["_DEFAULT"]))
     sky_q = np.vectorize(_sky_of)(biome_vandir_q)  # (4, 4)
+
+    # S89: STONY_PEAKS runtime-snow suppression. MC re-snows bare rock during
+    # weather (coldEnoughToSnow at altitude), undoing the bare cliffs we kept
+    # snow-free. Emit minecraft:stony_peaks (temp 1.0 -> never cold enough to
+    # snow even at peak altitude) for cells whose surface is rock (gap==5 + a
+    # small adjacency) AND whose Vandir biome is snowy. Tightly gated so the
+    # (unavoidable) 4x4 biome tint only appears in the immediate snowy-rock
+    # footprint. Overrides BOTH ground+sky so the precipitation query (sky cell
+    # at surface+1) and the fast path both read stony_peaks.
+    if gap_mask is not None and cfg is not None:
+        _sp_cfg = cfg.get("snow_physics", {}) if isinstance(cfg, dict) else {}
+        _sp_biome = _sp_cfg.get("rock_runtime_biome", "")
+        _snowy = set(_sp_cfg.get("runtime_snowy_biomes", []))
+        if _sp_biome and _snowy:
+            _gap_zx = np.zeros((CHUNK_SZ, CHUNK_SZ), dtype=np.uint8)
+            if bx_hi > bx_lo and bz_hi > bz_lo:
+                _gap_zx[lz_lo:lz_hi, lx_lo:lx_hi] = gap_mask[bz_lo:bz_hi, bx_lo:bx_hi]
+            _rock = (_gap_zx == 5)
+            if _rock.any():
+                _dil = int(_sp_cfg.get("rock_runtime_dilate", 2))
+                if _dil > 0:
+                    from scipy.ndimage import binary_dilation as _bd_sp
+                    _rock = _bd_sp(_rock, iterations=_dil)
+                # cell (4x4) is rock if ANY rock-adjacent pixel falls in it
+                _rock_q = _rock.reshape(4, 4, 4, 4).any(axis=(1, 3))   # (4, 4)
+                _snowy_q = np.array(
+                    [[str(biome_vandir_q[i, j]) in _snowy for j in range(4)]
+                     for i in range(4)], dtype=bool)
+                _sp_cells = _rock_q & _snowy_q
+                if _sp_cells.any():
+                    ground_q = ground_q.copy(); sky_q = sky_q.copy()
+                    ground_q[_sp_cells] = _sp_biome
+                    sky_q[_sp_cells] = _sp_biome
 
     # Fast path: if every 4×4 patch has sky == ground (no BOREAL_ALPINE etc.
     # in this chunk), skip the per-cell Y split entirely.
@@ -2322,6 +2357,8 @@ def write_tile_to_region(
     output_dir:   Path,
     tile_h:       int,
     tile_w:       int,
+    gap_mask:     np.ndarray | None = None,   # (H, W) uint8 gap_mask — for stony_peaks rock-snow suppression
+    cfg:          dict | None = None,
 ) -> list[str]:
     """
     Write the tile volume to a .mca region file.
@@ -2367,6 +2404,7 @@ def write_tile_to_region(
                 compressed = _chunk_to_nbt_bytes(
                     cx, cz, vol, pal, biome_grid,
                     tile_world_x, tile_world_z, tile_h, tile_w,
+                    gap_mask=gap_mask, cfg=cfg,
                 )
             except Exception as _exc:
                 tb = _traceback.format_exc()
@@ -2617,6 +2655,7 @@ def write_tile(
         vol, pal, biome_grid,
         tile_world_x, tile_world_z,
         output_dir, H, W,
+        gap_mask=gap_mask, cfg=cfg,
     )
 
 

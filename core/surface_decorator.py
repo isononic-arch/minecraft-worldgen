@@ -3348,12 +3348,18 @@ def decorate_surface(
                     from scipy.ndimage import distance_transform_edt as _dt
                     _w_min = float(_wcfg.get("width_min", 1.0))      # ~3 wide at summit
                     _w_max = float(_wcfg.get("width_max", 5.0))      # ~11 wide at base
-                    _w_flow_ref = max(1e-6, float(_wcfg.get("width_flow_ref", 0.08)))
+                    # flow_tile is RAW uint16 accumulation (0..65535), heavily
+                    # log-skewed -> ramp width on LOG(flow) between flow_lo (summit,
+                    # low accumulation -> width_min) and flow_hi (base, high
+                    # accumulation -> width_max). Linear-on-raw saturated instantly.
+                    _f_lo = max(1.0, float(_wcfg.get("width_flow_lo", 30.0)))
+                    _f_hi = max(_f_lo + 1.0, float(_wcfg.get("width_flow_hi", 5000.0)))
                     _dist, _idx = _dt(~_wash_zone_core, return_indices=True)
                     _dist = _dist.astype(np.float32)
-                    _near_flow = flow_tile[_idx[0], _idx[1]]
-                    _w_rad = (_w_min + (_w_max - _w_min)
-                              * np.clip(_near_flow / _w_flow_ref, 0.0, 1.0)).astype(np.float32)
+                    _near_flow = flow_tile[_idx[0], _idx[1]].astype(np.float32)
+                    _lf = np.log(np.maximum(_near_flow, 1.0))
+                    _wt = np.clip((_lf - np.log(_f_lo)) / (np.log(_f_hi) - np.log(_f_lo)), 0.0, 1.0)
+                    _w_rad = (_w_min + (_w_max - _w_min) * _wt).astype(np.float32)
                     _wash_zone = (_dist <= _w_rad) & rock_px
                     # soft salt-and-pepper edge in the outer `edge_softness` blocks
                     _edge_soft = float(_wcfg.get("edge_softness", 1.0))

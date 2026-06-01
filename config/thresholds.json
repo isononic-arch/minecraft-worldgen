@@ -4721,13 +4721,22 @@
     "shelter_coeff": 0.5,
     "threshold": 0.5,
     "dither_width": 0.15,
-    "base_floor": 0.3
+    "base_floor": 0.3,
+    "rock_runtime_biome": "minecraft:stony_peaks",
+    "runtime_snowy_biomes": [
+      "SNOWY_BOREAL_TAIGA",
+      "ARCTIC_TUNDRA",
+      "FROZEN_FLATS",
+      "BOREAL_ALPINE"
+    ],
+    "rock_runtime_dilate": 2
   },
   "washes": {
-    "min_flow": 0.0005,
+    "min_flow": 200.0,
     "width_min": 1.0,
     "width_max": 5.0,
-    "width_flow_ref": 0.08,
-    "edge_softness": 1.0
+    "edge_softness": 1.0,
+    "width_flow_lo": 200.0,
+    "width_flow_hi": 8000.0
   }
 }
