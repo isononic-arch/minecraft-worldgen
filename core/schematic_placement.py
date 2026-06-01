@@ -886,10 +886,19 @@ def place_schematics(
         )
         # Walk #12: also suppress trees on cliff_cap pixels (bare peak tops
         # shouldn't have trees growing on them).
+        # S89: the suppression zone MUST match the PAINTED cap extent, which the
+        # painter (_apply_cliff_cap) widens two ways the raw threshold misses:
+        #   (a) cap_dither (+/-N byte) jitters the threshold, so pixels down to
+        #       (threshold - cap_dither) get painted -> lower the suppression
+        #       threshold by the same margin.
+        #   (b) edge_fade_blocks adds a soft ring beyond dilate_blocks -> dilate
+        #       the suppression by dilate_blocks + edge_fade_blocks.
+        # Without this, trees grew on the cap's ragged dithered edge + fade ring.
         _cc_cfg = cfg.get("lithology", {}).get("cliff_cap", {}) if isinstance(cfg, dict) else {}
         if cliff_cap_tile is not None and _cc_cfg.get("suppress_trees", False):
-            _cc_thr = int(_cc_cfg.get("intensity_threshold", 8))
-            _cc_dil = int(_cc_cfg.get("dilate_blocks", 0))
+            _cc_dither = int(round(float(_cc_cfg.get("cap_dither", 0.0))))
+            _cc_thr = int(_cc_cfg.get("intensity_threshold", 8)) - _cc_dither
+            _cc_dil = int(_cc_cfg.get("dilate_blocks", 0)) + int(round(float(_cc_cfg.get("edge_fade_blocks", 0))))
             _cc_intensity_byte = (cliff_cap_tile * 255.0).astype(np.int32)
             _cap_pixels = _cc_intensity_byte >= _cc_thr
             if _cc_dil > 0 and _cap_pixels.any():

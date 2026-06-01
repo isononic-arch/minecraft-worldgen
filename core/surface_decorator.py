@@ -2691,10 +2691,21 @@ def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y):
     # amplitude ramps 0 (at boundary) -> 1 (>= efb blocks inside rock)
     dist_in = _edt_r(rock).astype(np.float32)
     fade = np.clip(dist_in / efb, 0.0, 1.0)
-    gen = opensimplex.OpenSimplex(seed=0x5E11EF)
-    xs = (tile_x * W + np.arange(W, dtype=np.float64)) / scale
-    ys = (tile_y * H + np.arange(H, dtype=np.float64)) / scale
-    n = gen.noise2array(xs, ys).astype(np.float32)   # (H, W) in [-1, 1]
+    # Multi-octave fractal noise: octave 0 = coherent `scale`-block bumps,
+    # each further octave halves the wavelength + scales amp by `octave_gain`,
+    # adding finer craggy detail. Low `scale` (~3-4) + 2 octaves reads as rough
+    # rock everywhere instead of broad gentle swells. World-coord => seam-free.
+    octaves = max(1, int(rcfg.get("octaves", 1)))
+    gain    = float(rcfg.get("octave_gain", 0.5))
+    _wx = tile_x * W + np.arange(W, dtype=np.float64)
+    _wy = tile_y * H + np.arange(H, dtype=np.float64)
+    n = np.zeros((H, W), np.float32)
+    _a, _s, _asum = 1.0, scale, 0.0
+    for _o in range(octaves):
+        _g = opensimplex.OpenSimplex(seed=0x5E11EF + _o * 101)
+        n += (_a * _g.noise2array(_wx / _s, _wy / _s)).astype(np.float32)
+        _asum += _a; _a *= gain; _s *= 0.5
+    n /= max(_asum, 1e-6)                              # back to ~[-1, 1]
     relief = amp * n * fade
     # S89: SECOND pass over the steep cores only (tier>=tier2_min, i.e. 45/50)
     # with extra amplitude, faded over the SAME edge_fade_blocks at the
@@ -3331,16 +3342,29 @@ def decorate_surface(
                         tile_x * 17 ^ tile_y * 31 ^ 0xFADE)
                     _fade_coin = _fade_rng.random((H, W)).astype(np.float32)
                     _wash_zone = _wash_zone & (_fade_coin < _wash_fade_prob)
-                # S89: FAN at the low -- where flow accumulates (the channel's
-                # low / outlet) the wash spreads wider like an alluvial fan.
-                # Added AFTER the channel fade so the fan stays solid.
-                _wash_fan_dilation = int(_wcfg.get("fan_dilation", 0))
-                if _wash_fan_dilation > 0:
-                    _wash_fan_core = _wash_zone_core & (flow_tile > float(_wcfg.get("fan_flow", 0.02)))
-                    if _wash_fan_core.any():
-                        from scipy.ndimage import binary_dilation as _bdf
-                        _wash_zone = _wash_zone | (
-                            _bdf(_wash_fan_core, iterations=_wash_fan_dilation) & rock_px)
+                # S89: GRADUAL FAN -- the wash widens PROGRESSIVELY as flow
+                # accumulates downhill. `fan_tiers` = [[flow_thr, dilation], ...]
+                # ordered low->high flow: a slight fan engages high up the
+                # channel (low flow) and each higher-flow band adds more width,
+                # so it reads as a gentle cone rather than one abrupt fan at the
+                # outlet. Falls back to the single fan_dilation/fan_flow knob.
+                from scipy.ndimage import binary_dilation as _bdf
+                _fan_tiers = _wcfg.get("fan_tiers")
+                if _fan_tiers:
+                    for _ft in _fan_tiers:
+                        _fthr = float(_ft[0]); _fdil = int(_ft[1])
+                        if _fdil <= 0:
+                            continue
+                        _fc = _wash_zone_core & (flow_tile > _fthr)
+                        if _fc.any():
+                            _wash_zone = _wash_zone | (_bdf(_fc, iterations=_fdil) & rock_px)
+                else:
+                    _wash_fan_dilation = int(_wcfg.get("fan_dilation", 0))
+                    if _wash_fan_dilation > 0:
+                        _wash_fan_core = _wash_zone_core & (flow_tile > float(_wcfg.get("fan_flow", 0.02)))
+                        if _wash_fan_core.any():
+                            _wash_zone = _wash_zone | (
+                                _bdf(_wash_fan_core, iterations=_wash_fan_dilation) & rock_px)
                 if _wash_zone.any():
                     _DEFAULT_WASH_PAL = ["gravel", "coarse_dirt", "sand"]
                     _wash_rng = np.random.default_rng(
