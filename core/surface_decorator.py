@@ -3335,50 +3335,33 @@ def decorate_surface(
             if flow_tile is not None and rock_px.any() and not _overlay_off(cfg, "wash"):
                 _wcfg = cfg.get("washes", {}) if isinstance(cfg, dict) else {}
                 _wash_min_flow = float(_wcfg.get("min_flow", 0.002))
-                _wash_dilation = int(_wcfg.get("dilation", 2))
-                _wash_fade_blocks = int(_wcfg.get("fade_blocks", 5))
                 _wash_zone_core = rock_px & (flow_tile > _wash_min_flow)
-                if _wash_dilation > 0 and _wash_zone_core.any():
-                    from scipy.ndimage import binary_dilation as _bd
-                    _wash_zone = _bd(_wash_zone_core, iterations=_wash_dilation) & rock_px
-                else:
+                if not _wash_zone_core.any():
                     _wash_zone = _wash_zone_core
-                _wash_fade_prob = None
-                if _wash_fade_blocks > 0 and _wash_zone.any() and _wash_zone_core.any():
-                    from scipy.ndimage import distance_transform_edt as _dt
-                    _dist_from_core = _dt(~_wash_zone_core).astype(np.float32)
-                    _wash_fade_prob = np.clip(
-                        1.0 - _dist_from_core / float(_wash_fade_blocks),
-                        0.0, 1.0,
-                    )
-                if _wash_fade_prob is not None:
-                    _fade_rng = np.random.default_rng(
-                        tile_x * 17 ^ tile_y * 31 ^ 0xFADE)
-                    _fade_coin = _fade_rng.random((H, W)).astype(np.float32)
-                    _wash_zone = _wash_zone & (_fade_coin < _wash_fade_prob)
-                # S89: GRADUAL FAN -- the wash widens PROGRESSIVELY as flow
-                # accumulates downhill. `fan_tiers` = [[flow_thr, dilation], ...]
-                # ordered low->high flow: a slight fan engages high up the
-                # channel (low flow) and each higher-flow band adds more width,
-                # so it reads as a gentle cone rather than one abrupt fan at the
-                # outlet. Falls back to the single fan_dilation/fan_flow knob.
-                from scipy.ndimage import binary_dilation as _bdf
-                _fan_tiers = _wcfg.get("fan_tiers")
-                if _fan_tiers:
-                    for _ft in _fan_tiers:
-                        _fthr = float(_ft[0]); _fdil = int(_ft[1])
-                        if _fdil <= 0:
-                            continue
-                        _fc = _wash_zone_core & (flow_tile > _fthr)
-                        if _fc.any():
-                            _wash_zone = _wash_zone | (_bdf(_fc, iterations=_fdil) & rock_px)
                 else:
-                    _wash_fan_dilation = int(_wcfg.get("fan_dilation", 0))
-                    if _wash_fan_dilation > 0:
-                        _wash_fan_core = _wash_zone_core & (flow_tile > float(_wcfg.get("fan_flow", 0.02)))
-                        if _wash_fan_core.any():
-                            _wash_zone = _wash_zone | (
-                                _bdf(_wash_fan_core, iterations=_wash_fan_dilation) & rock_px)
+                    # S89: FLOW-PROPORTIONAL WIDTH. Each wash pixel's half-width is
+                    # set by the FLOW at its NEAREST channel cell, so the wash is
+                    # ~2-3 wide at the summit (low flow) and widens NATURALLY toward
+                    # the base (high flow) like a real drainage -- replacing the old
+                    # fixed dilation + stepped fan. width_min/max are radii (blocks);
+                    # diameter ~= 2*radius+1.
+                    from scipy.ndimage import distance_transform_edt as _dt
+                    _w_min = float(_wcfg.get("width_min", 1.0))      # ~3 wide at summit
+                    _w_max = float(_wcfg.get("width_max", 5.0))      # ~11 wide at base
+                    _w_flow_ref = max(1e-6, float(_wcfg.get("width_flow_ref", 0.08)))
+                    _dist, _idx = _dt(~_wash_zone_core, return_indices=True)
+                    _dist = _dist.astype(np.float32)
+                    _near_flow = flow_tile[_idx[0], _idx[1]]
+                    _w_rad = (_w_min + (_w_max - _w_min)
+                              * np.clip(_near_flow / _w_flow_ref, 0.0, 1.0)).astype(np.float32)
+                    _wash_zone = (_dist <= _w_rad) & rock_px
+                    # soft salt-and-pepper edge in the outer `edge_softness` blocks
+                    _edge_soft = float(_wcfg.get("edge_softness", 1.0))
+                    if _edge_soft > 0.0 and _wash_zone.any():
+                        _fade_rng = np.random.default_rng(tile_x * 17 ^ tile_y * 31 ^ 0xFADE)
+                        _coin = _fade_rng.random((H, W)).astype(np.float32)
+                        _edge = _wash_zone & (_dist > (_w_rad - _edge_soft)) & (_dist > 0)
+                        _wash_zone = _wash_zone & ~(_edge & (_coin > 0.5))
                 if _wash_zone.any():
                     _DEFAULT_WASH_PAL = ["gravel", "coarse_dirt", "sand"]
                     _wash_rng = np.random.default_rng(

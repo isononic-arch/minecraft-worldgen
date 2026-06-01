@@ -3932,17 +3932,17 @@
           "noise_amp_blocks": 0,
           "intersperse": 0.0,
           "band_a": {
-            "primary": "light_gray_concrete_powder",
+            "primary": "light_gray_concrete",
             "secondary": "andesite",
             "primary_pct": 50
           },
           "band_b": {
             "primary": "andesite",
-            "secondary": "light_gray_concrete_powder",
+            "secondary": "light_gray_concrete",
             "primary_pct": 50
           },
           "speckle_blocks": [
-            "light_gray_concrete_powder"
+            "light_gray_concrete"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
@@ -4028,11 +4028,11 @@
           "intersperse": 0.15,
           "band_a": {
             "primary": "calcite",
-            "secondary": "white_concrete_powder",
+            "secondary": "white_concrete",
             "primary_pct": 50
           },
           "band_b": {
-            "primary": "white_concrete_powder",
+            "primary": "white_concrete",
             "secondary": "calcite",
             "primary_pct": 50
           },
@@ -4041,7 +4041,7 @@
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "white_concrete_powder"
+            "white_concrete"
           ],
           "vein_amp": 0.1,
           "_comment": "Sedimentary \u2014 1-14 block bands (highly variable), mild 6\u00b0/100 tilt @ 15\u00b0, 80/20 calcite/diorite with andesite speckle."
@@ -4208,11 +4208,11 @@
           "intersperse": 0.3,
           "band_a": {
             "primary": "moss_block",
-            "secondary": "green_concrete_powder",
+            "secondary": "green_concrete",
             "primary_pct": 50
           },
           "band_b": {
-            "primary": "green_concrete_powder",
+            "primary": "green_concrete",
             "secondary": "moss_block",
             "primary_pct": 50
           },
@@ -4221,7 +4221,7 @@
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "green_concrete_powder"
+            "green_concrete"
           ],
           "vein_amp": 0.1,
           "_comment": "Wet temperate \u2014 8-18 block bands, mild 4\u00b0/100 tilt, 60/40 cobblestone/mossy split with triple speckle (tuff+moss+andesite)."
@@ -4413,7 +4413,7 @@
           ]
         }
       },
-      "edge_fade_blocks": 3,
+      "edge_fade_blocks": 6,
       "relief": {
         "enabled": true,
         "amp_blocks": 2.5,
@@ -4707,40 +4707,27 @@
   "snow_physics": {
     "_comment": "S89 physics snow (tools/build_snow_physics.py). Redistributes an altitude base by terrain: snow = base(altitude fade snow_lo_y..snow_hi_y) * slope_gate(shed_lo..shed_hi: steep faces shed) * curv(1+a*signed_concavity: fill bowls/strip ridges) * lee(1+b*faces_downwind) + shelter(c*max(Sx,0): Winstral upwind-shelter drift tails). Single world wind: TRAVELS ESE wind_travel_deg ~112, SOURCE WNW wind_source_deg ~292. Output snow_gap_physics.tif (A/B vs Gaea snow_gap.tif); threshold+blue-noise dither at 50k. SBT/FROZEN_FLATS exemptions stay in the gap==7 consumer. sx_search_blocks is the dominant knob (~ridge-to-valley spacing). Build at --scale 8. Feature-flag OFF until validated; consumer swap (eco_gradients gap==7 source) is a separate integration step.",
     "enabled": false,
-    "snow_lo_y": 430.0,
-    "snow_hi_y": 475.0,
+    "snow_lo_y": 400.0,
+    "snow_hi_y": 465.0,
     "shed_lo_deg": 33.0,
     "shed_hi_deg": 42.0,
-    "curvature_coeff": 0.35,
-    "leeward_coeff": 0.12,
+    "curvature_coeff": 0.7,
+    "leeward_coeff": 0.2,
     "wind_travel_deg": 112.0,
     "wind_source_deg": 292.0,
     "sx_search_blocks": 700.0,
     "sx_fan_rays": 5,
     "sx_fan_half_deg": 12.0,
-    "shelter_coeff": 0.3,
+    "shelter_coeff": 0.5,
     "threshold": 0.5,
-    "dither_width": 0.15
+    "dither_width": 0.15,
+    "base_floor": 0.3
   },
   "washes": {
     "min_flow": 0.0005,
-    "dilation": 1,
-    "fade_blocks": 3,
-    "fan_flow": 0.02,
-    "fan_dilation": 4,
-    "fan_tiers": [
-      [
-        0.01,
-        2
-      ],
-      [
-        0.03,
-        3
-      ],
-      [
-        0.07,
-        5
-      ]
-    ]
+    "width_min": 1.0,
+    "width_max": 5.0,
+    "width_flow_ref": 0.08,
+    "edge_softness": 1.0
   }
 }

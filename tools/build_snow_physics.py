@@ -107,8 +107,15 @@ def build_snow_potential(surface_y: np.ndarray, slope_deg: np.ndarray,
 
     syf = surface_y.astype(np.float32)
 
-    # 1. altitude base (the snow line, feathered)
+    # 1. altitude base (the snow line, feathered). `base_floor` lifts the floor
+    # below the line so it's NOT a hard altitude cutoff -- the curvature/shelter
+    # physics can then deposit snow in sheltered bowls/lee below the line and
+    # strip it from exposed ridges above, i.e. drifts drive placement, not a flat
+    # contour. base in [base_floor, 1].
     base = _smoothstep(snow_lo, snow_hi, syf)
+    base_floor = float(cfg_sp.get("base_floor", 0.0))
+    if base_floor > 0.0:
+        base = (base_floor + (1.0 - base_floor) * base).astype(np.float32)
 
     # 2. slope gate — steep faces shed
     slope_gate = (1.0 - _smoothstep(shed_lo, shed_hi, slope_deg)).astype(np.float32)
