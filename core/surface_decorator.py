@@ -2061,7 +2061,8 @@ def _apply_talus(
     _fade_lo = float(t_cfg.get("fade_lo", floor))
     _fade_hi = float(t_cfg.get("fade_hi", floor + edge_band))
     _t = np.clip((inten - _fade_lo) / max(1e-3, _fade_hi - _fade_lo), 0.0, 1.0)
-    _cov = np.ceil(_t * 4.0) / 4.0          # 0, .25, .5, .75, 1.0 (stepped)
+    _steps = max(1, int(t_cfg.get("coverage_steps", 4)))  # higher = smoother/more consistent gradient
+    _cov = np.ceil(_t * _steps) / _steps
     _cov = np.where(_t >= 1.0, 1.0, _cov)
     base_zone = (_cov > 0.0) & (cov_coin < _cov) & ~excl
     if not base_zone.any():
@@ -2676,8 +2677,7 @@ def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y):
     amp = float(rcfg.get("amp_blocks", 2.0))
     if amp <= 0.0:
         return
-    scale = max(1.0, float(rcfg.get("scale_blocks", 7.0)))
-    efb   = max(1.0, float(rcfg.get("edge_fade_blocks", 8.0)))
+    scale = max(1.0, float(rcfg.get("scale_blocks", 3.0)))
     H, W = surface_y.shape
     tier = np.round(rock_layers_tile * 255.0).astype(np.int32)
     rock = tier >= 1
@@ -2685,16 +2685,36 @@ def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y):
         return
     try:
         import opensimplex
-        from scipy.ndimage import distance_transform_edt as _edt_r
+        from scipy.ndimage import gaussian_filter as _gf_r
     except Exception:
         return
-    # amplitude ramps 0 (at boundary) -> 1 (>= efb blocks inside rock)
-    dist_in = _edt_r(rock).astype(np.float32)
-    fade = np.clip(dist_in / efb, 0.0, 1.0)
-    # Multi-octave fractal noise: octave 0 = coherent `scale`-block bumps,
-    # each further octave halves the wavelength + scales amp by `octave_gain`,
-    # adding finer craggy detail. Low `scale` (~3-4) + 2 octaves reads as rough
-    # rock everywhere instead of broad gentle swells. World-coord => seam-free.
+    sy_f = surface_y.astype(np.float32)
+    # ── ADAPTIVE amplitude = base * slope_gain * smooth_gain ──────────────
+    # (1) SLOPE gain (per tier): MORE relief on steep rock, LESS on gentle.
+    #     tier1 (40-45) low, tier2 (45-50) mid, tier3 (50+) full. Doubles as
+    #     the seam guard -- gentle rock stays low-amplitude so there's no step
+    #     against flat land (replaces the old distance edge-fade, which was
+    #     zeroing thin/steep faces -> "noise not applying in some zones").
+    _sg = rcfg.get("slope_gain_by_tier", [0.25, 0.6, 1.0])
+    slope_gain = np.zeros((H, W), np.float32)
+    slope_gain[tier == 1] = float(_sg[0])
+    slope_gain[tier == 2] = float(_sg[1])
+    slope_gain[tier >= 3] = float(_sg[2])
+    # (2) SMOOTH gain: MORE relief where terrain is ALREADY smooth, LESS where
+    #     it is already craggy -- fill in missing roughness, don't pile onto
+    #     natural roughness. existing high-freq roughness = |sy - gaussian(sy)|.
+    _rsig = float(rcfg.get("roughness_sigma", 4.0))
+    _rref = max(0.1, float(rcfg.get("roughness_ref", 2.0)))
+    existing_rough = np.abs(sy_f - _gf_r(sy_f, sigma=_rsig))
+    smooth_gain = np.clip(1.0 - existing_rough / _rref, 0.0, 1.0).astype(np.float32)
+    # (3) optional distance edge-fade (default OFF now; slope_gain handles seams)
+    efb = float(rcfg.get("edge_fade_blocks", 0.0))
+    if efb > 0.0:
+        from scipy.ndimage import distance_transform_edt as _edt_r
+        fade = np.clip(_edt_r(rock).astype(np.float32) / efb, 0.0, 1.0)
+    else:
+        fade = np.float32(1.0)
+    # Multi-octave fractal noise (low `scale` + 2 octaves = craggy). Seam-free.
     octaves = max(1, int(rcfg.get("octaves", 1)))
     gain    = float(rcfg.get("octave_gain", 0.5))
     _wx = tile_x * W + np.arange(W, dtype=np.float64)
@@ -2706,18 +2726,8 @@ def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y):
         n += (_a * _g.noise2array(_wx / _s, _wy / _s)).astype(np.float32)
         _asum += _a; _a *= gain; _s *= 0.5
     n /= max(_asum, 1e-6)                              # back to ~[-1, 1]
-    relief = amp * n * fade
-    # S89: SECOND pass over the steep cores only (tier>=tier2_min, i.e. 45/50)
-    # with extra amplitude, faded over the SAME edge_fade_blocks at the
-    # tier-1/tier-2 boundary so the steeper rock reads rougher without a seam.
-    amp2 = float(rcfg.get("amp2_blocks", 0.0))
-    tier2_min = int(rcfg.get("tier2_min", 2))
-    if amp2 > 0.0:
-        rock2 = tier >= tier2_min
-        if rock2.any():
-            dist2 = _edt_r(rock2).astype(np.float32)
-            fade2 = np.clip(dist2 / efb, 0.0, 1.0)
-            relief = relief + amp2 * n * fade2
+    amp_eff = amp * slope_gain * smooth_gain * fade
+    relief = amp_eff * n
     delta = np.round(np.where(rock, relief, 0.0)).astype(surface_y.dtype)
     surface_y += delta
 

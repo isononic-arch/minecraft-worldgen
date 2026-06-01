@@ -4418,11 +4418,16 @@
         "enabled": true,
         "amp_blocks": 2.5,
         "scale_blocks": 3.0,
-        "edge_fade_blocks": 3.0,
-        "amp2_blocks": 1.5,
-        "tier2_min": 2,
+        "edge_fade_blocks": 0.0,
         "octaves": 2,
-        "octave_gain": 0.5
+        "octave_gain": 0.5,
+        "slope_gain_by_tier": [
+          0.2,
+          0.55,
+          1.0
+        ],
+        "roughness_ref": 2.0,
+        "roughness_sigma": 4.0
       }
     },
     "cliff_cap": {
@@ -4481,7 +4486,7 @@
     },
     "talus": {
       "_comment": "S89: footslope debris apron below cliffs. Scree sits AT the angle of repose (apron_max_deg ~35) below slope>=cliff_min_deg faces; run-out taper decays over search_blocks; intensity boosted in concave gully mouths by gully_fan_coeff. When rock_layers is enabled, _apply_talus paints it with GRAIN SORTING (fine near base = high intensity, coarse at toe = low intensity) + DEPTH (subsurface blocks scale with intensity up to depth_max_blocks) using per-group fine/coarse palettes in .groups (fragmented host rock). intensity_threshold is the LEGACY generic-painter cutoff. EXCLUDED from Phase 2A noise (soft/depositional).",
-      "search_blocks": 25,
+      "search_blocks": 40,
       "cliff_min_deg": 35.0,
       "apron_max_deg": 35.0,
       "gully_fan_coeff": 0.1,
@@ -4556,8 +4561,9 @@
           ]
         }
       },
-      "fade_lo": 0.14,
-      "fade_hi": 0.5
+      "fade_lo": 0.06,
+      "fade_hi": 0.5,
+      "coverage_steps": 8
     },
     "bedrock_drainage": {
       "_comment": "S88: water-cut polished rock palette painted on steep flow channels (flow>flow_threshold AND slope>=slope_min_deg). NOT excluded from Phase 2A noise (hard-erosion category). fade_blocks bumped 3 -> 6 so channel edges have visible gradation at 1:4 build scale.",
