@@ -113,7 +113,7 @@ BASE_DENSITY: dict[str, float] = {
     "RAINFOREST_COAST":        0.32,   # S87w3 was 0.24 — user: slightly up
     "RIPARIAN_WOODLAND":       0.18,
     "DRY_OAK_SAVANNA":         0.15,
-    "KARST_BARRENS":           0.35,
+    "KARST_BARRENS":           0.70,   # S89: ~2x per user (ref "Mountain rock exposure in valley")
     "BIRCH_FOREST":            0.65,   # S87w3 was 0.50 — user: closer to TRF
     "EASTERN_TEMPERATE_COAST": 0.06,
     "MIXED_FOREST":            0.32,
@@ -936,7 +936,8 @@ def place_schematics(
         # Edge transitions with noisy dither into forest
         # Windthrow/meadow: wider ragged edge (6px, noise-driven suppression)
         gap_soft = (gap == 1) | (gap == 2)  # meadow, windthrow
-        gap_sharp = (gap == 4) | (gap == 5) | (gap == 7) | (gap == 8)  # floodplain, rock, snow, sand
+        gap_sharp = (gap == 4) | (gap == 7) | (gap == 8)  # floodplain, snow, sand
+        gap_rock  = (gap == 5)              # rock — softened separately below
         if gap_soft.any():
             # 6px edge zone, suppression probability varies with world-space noise
             edge_nf = _bd_place(gap_soft, iterations=6) & ~(gap > 0)
@@ -949,6 +950,17 @@ def place_schematics(
         if gap_sharp.any():
             edge_sh = _bd_place(gap_sharp, iterations=2) & ~(gap > 0)
             land_mask = land_mask & ~(edge_sh & (np_rng.random((H, W)) < 0.7))
+        # S89: SOFTENED rock-edge suppression -- let conifers crowd right up to
+        # the cliffs (reference: dense forest meeting bare rock). Was 2px / 0.7
+        # (a wide thin halo around every outcrop, which gutted density on rocky
+        # tiles). Now config-driven, default 1px / 0.3.
+        if gap_rock.any():
+            _ep_re = cfg.get("eco_placement", {}) if isinstance(cfg, dict) else {}
+            _rpx = int(_ep_re.get("rock_edge_suppress_px", 1))
+            _rprob = float(_ep_re.get("rock_edge_suppress_prob", 0.3))
+            if _rpx > 0 and _rprob > 0.0:
+                edge_rk = _bd_place(gap_rock, iterations=_rpx) & ~(gap > 0)
+                land_mask = land_mask & ~(edge_rk & (np_rng.random((H, W)) < _rprob))
 
     # Build decoration noise tile (vectorised via noise2array)
     try:
@@ -1199,6 +1211,18 @@ def place_schematics(
         # Dither is best-effort — failure doesn't break placement.
         _seam_swap_grid = None
 
+    # S89: don't let the ecotone swap DRAIN trees into a much-sparser neighbour.
+    # The swap sets biome_str=neighbour then drops the candidate if that biome
+    # has no entries -- so a conifer/KARST candidate swapping toward CONTINENTAL_
+    # STEPPE (density 0.0005) just vanishes, thinning forests at transition seams
+    # (user-observed on the limestone/karst tile). Only swap toward a biome with
+    # >= this fraction of the CURRENT biome's base density: comparable forests
+    # still mix species, but trees no longer disappear at forest/near-treeless
+    # seams.
+    _swap_density_floor = float(
+        cfg.get("eco_placement", {}).get("ecotone_swap_density_floor", 0.5)
+    ) if isinstance(cfg, dict) else 0.5
+
     # Split index into trees and bushes per biome
     def _filter_entries(entries, schem_type):
         return [e for e in entries if e.schem_type == schem_type]
@@ -1240,7 +1264,9 @@ def place_schematics(
                 _alt = str(_seam_nb[row, col])
                 if (_alt and _alt in index
                         and _alt not in _NO_SWAP_BIOMES
-                        and frozenset({biome_str, _alt}) not in ECOTONE_DENY_PAIRS):
+                        and frozenset({biome_str, _alt}) not in ECOTONE_DENY_PAIRS
+                        and BASE_DENSITY.get(_alt, 0.0)
+                            >= BASE_DENSITY.get(biome_str, 0.0) * _swap_density_floor):
                     biome_str = _alt
                     swap_active = True
             all_entries = index.get(biome_str)
