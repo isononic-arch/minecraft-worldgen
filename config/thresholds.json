@@ -2344,7 +2344,6 @@
     "slope_penalty_full_deg": 75.0,
     "habitat_score_floor": 0.05,
     "_comment_s87w3": "S87 walk #3 back-off: 38/55 was too forgiving and let trees creep up real mountain faces (34,9 walk). Back off to 35/50.",
-    "ecotone_swap_density_floor": 0.5,
     "rock_edge_suppress_px": 1,
     "rock_edge_suppress_prob": 0.3
   },
@@ -4735,11 +4734,11 @@
     "rock_runtime_dilate": 2
   },
   "washes": {
-    "min_flow": 200.0,
+    "min_flow": 0.003,
     "width_min": 1.0,
-    "width_max": 5.0,
+    "width_max": 4.0,
     "edge_softness": 1.0,
-    "width_flow_lo": 200.0,
-    "width_flow_hi": 8000.0
+    "width_flow_lo": 0.003,
+    "width_flow_hi": 0.018
   }
 }

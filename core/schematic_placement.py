@@ -1211,17 +1211,6 @@ def place_schematics(
         # Dither is best-effort — failure doesn't break placement.
         _seam_swap_grid = None
 
-    # S89: don't let the ecotone swap DRAIN trees into a much-sparser neighbour.
-    # The swap sets biome_str=neighbour then drops the candidate if that biome
-    # has no entries -- so a conifer/KARST candidate swapping toward CONTINENTAL_
-    # STEPPE (density 0.0005) just vanishes, thinning forests at transition seams
-    # (user-observed on the limestone/karst tile). Only swap toward a biome with
-    # >= this fraction of the CURRENT biome's base density: comparable forests
-    # still mix species, but trees no longer disappear at forest/near-treeless
-    # seams.
-    _swap_density_floor = float(
-        cfg.get("eco_placement", {}).get("ecotone_swap_density_floor", 0.5)
-    ) if isinstance(cfg, dict) else 0.5
 
     # Split index into trees and bushes per biome
     def _filter_entries(entries, schem_type):
@@ -1264,9 +1253,7 @@ def place_schematics(
                 _alt = str(_seam_nb[row, col])
                 if (_alt and _alt in index
                         and _alt not in _NO_SWAP_BIOMES
-                        and frozenset({biome_str, _alt}) not in ECOTONE_DENY_PAIRS
-                        and BASE_DENSITY.get(_alt, 0.0)
-                            >= BASE_DENSITY.get(biome_str, 0.0) * _swap_density_floor):
+                        and frozenset({biome_str, _alt}) not in ECOTONE_DENY_PAIRS):
                     biome_str = _alt
                     swap_active = True
             all_entries = index.get(biome_str)
