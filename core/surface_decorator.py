@@ -2777,12 +2777,6 @@ def decorate_surface(
     px_off   = tile_x * W
     py_off   = tile_y * H
 
-    # S89: ROCK RELIEF — un-smooth rocky terrain BEFORE any paint so blocks,
-    # trees and columns all drape over the same bumps. Mutates surface_y in
-    # place; no-op unless rock_layers + relief are enabled. (Runs here, at the
-    # post-Step-9 top of decorate, to satisfy the surface_y-locking antipattern.)
-    _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y)
-
     # S69: Flatten Gaea's raw dune bumps BEFORE the universal boundary
     # smoother.  Root-cause fix for the sand/biome seams that drove S68 to
     # crank the boundary smoother to sigma=16 × 6 passes (which then smeared
@@ -2821,6 +2815,16 @@ def decorate_surface(
                 sigma=float(_sds_cfg.get("coast_sigma", 6.0)),
                 passes=int(_sds_cfg.get("coast_passes", 2)),
             )
+
+    # S89: ROCK RELIEF — un-smooth rocky terrain. MUST run AFTER the dune-flatten
+    # + biome-boundary Y-smoothers above: those run a sigma-8 x3 gaussian on
+    # surface_y across a 24-block buffer at EVERY biome boundary, and mountain
+    # cliffs routinely sit on biome boundaries -> they were wiping the relief on
+    # exactly the rock near boundaries ("zero noise" on cliffs). Applied here it
+    # is the LAST surface_y change in decorate, so paint/schematic/column all
+    # drape over the bumps and nothing smooths them back out. Mutates in place;
+    # no-op unless rock_layers + relief enabled.
+    _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y)
 
     # --- Build noise arrays ------------------------------------------------
     den_cfg  = cfg["decoration_density_noise"]
