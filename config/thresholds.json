@@ -2343,9 +2343,7 @@
     "slope_penalty_start_deg": 55.0,
     "slope_penalty_full_deg": 75.0,
     "habitat_score_floor": 0.05,
-    "_comment_s87w3": "S87 walk #3 back-off: 38/55 was too forgiving and let trees creep up real mountain faces (34,9 walk). Back off to 35/50.",
-    "rock_edge_suppress_px": 1,
-    "rock_edge_suppress_prob": 0.3
+    "_comment_s87w3": "S87 walk #3 back-off: 38/55 was too forgiving and let trees creep up real mountain faces (34,9 walk). Back off to 35/50."
   },
   "species_habitats": {
     "_doc": "Per-species habitat curves. Each gradient: [center, width] for sigmoid. cliff_deg_max: hard slope cutoff.",
@@ -4739,6 +4737,11 @@
     "width_max": 4.0,
     "edge_softness": 1.0,
     "width_flow_lo": 0.003,
-    "width_flow_hi": 0.018
+    "width_flow_hi": 0.018,
+    "foliated": {
+      "enabled": true,
+      "min_flow": 0.0012,
+      "dilate": 1
+    }
   }
 }

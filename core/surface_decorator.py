@@ -3327,6 +3327,42 @@ def decorate_surface(
                 vein_field_tile   = vein_field_tile,
             )
 
+            # ── S89: FOLIATED GULLY layer (rib/flute rock texture) ─────────
+            # A DENSE, THIN (~2-3) network of fine drainage gullies on the rock,
+            # painted with each lithology group's MID tier, UNDER the washes
+            # (washes overlay where they coincide). LOWER flow threshold than the
+            # wash => far more frequent, connecting all over the rock; the grooves
+            # read as mid-color fluting against the slope-tier ribs. flow_tile is
+            # NORMALIZED [0,1].
+            if (flow_tile is not None and rock_px.any()
+                    and not _overlay_off(cfg, "wash")
+                    and cfg.get("washes", {}).get("foliated", {}).get("enabled", True)):
+                _fcfg = cfg.get("washes", {}).get("foliated", {})
+                _fol_core = rock_px & (flow_tile > float(_fcfg.get("min_flow", 0.0012)))
+                if _fol_core.any():
+                    _fol_dil = int(_fcfg.get("dilate", 1))
+                    if _fol_dil > 0:
+                        from scipy.ndimage import binary_dilation as _bd_fol
+                        _fol_zone = _bd_fol(_fol_core, iterations=_fol_dil) & rock_px
+                    else:
+                        _fol_zone = _fol_core
+                    _fol_coin = np.random.default_rng(
+                        (tile_x * 99991 ^ tile_y * 49993 ^ 0xF0117ED) & 0xFFFFFFFF
+                    ).random((H, W)).astype(np.float32)
+                    _fol_groups = cfg.get("lithology", {}).get("rock_layers", {}).get("groups", {})
+                    _fol_n2id = {gn: int(gd.get("id", 0))
+                                 for gn, gd in cfg.get("lithology", {}).get("groups", {}).items()}
+                    for _fgn, _fgd in _fol_groups.items():
+                        _fmid = _fgd.get("mid")
+                        _fgid = _fol_n2id.get(_fgn)
+                        if not _fmid or _fgid is None:
+                            continue
+                        _fbm = (_fol_zone & (_litho_at_res == _fgid)
+                                if _litho_at_res is not None else _fol_zone)
+                        if _fbm.any():
+                            _paint_solid_dither(surface_blocks, subsurface_blocks,
+                                                _fbm, _fmid, _fol_coin, 0.5, paint_sub=True)
+
             # ── S88 walk #4b: WASH PAINTER (moved from inside rock_px) ─────
             # Per user direction: rock_gap -> strata -> WASH -> bedrock -> talus
             #                     -> veins -> cap.

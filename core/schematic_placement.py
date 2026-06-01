@@ -936,8 +936,7 @@ def place_schematics(
         # Edge transitions with noisy dither into forest
         # Windthrow/meadow: wider ragged edge (6px, noise-driven suppression)
         gap_soft = (gap == 1) | (gap == 2)  # meadow, windthrow
-        gap_sharp = (gap == 4) | (gap == 7) | (gap == 8)  # floodplain, snow, sand
-        gap_rock  = (gap == 5)              # rock — softened separately below
+        gap_sharp = (gap == 4) | (gap == 5) | (gap == 7) | (gap == 8)  # floodplain, rock, snow, sand
         if gap_soft.any():
             # 6px edge zone, suppression probability varies with world-space noise
             edge_nf = _bd_place(gap_soft, iterations=6) & ~(gap > 0)
@@ -950,17 +949,6 @@ def place_schematics(
         if gap_sharp.any():
             edge_sh = _bd_place(gap_sharp, iterations=2) & ~(gap > 0)
             land_mask = land_mask & ~(edge_sh & (np_rng.random((H, W)) < 0.7))
-        # S89: SOFTENED rock-edge suppression -- let conifers crowd right up to
-        # the cliffs (reference: dense forest meeting bare rock). Was 2px / 0.7
-        # (a wide thin halo around every outcrop, which gutted density on rocky
-        # tiles). Now config-driven, default 1px / 0.3.
-        if gap_rock.any():
-            _ep_re = cfg.get("eco_placement", {}) if isinstance(cfg, dict) else {}
-            _rpx = int(_ep_re.get("rock_edge_suppress_px", 1))
-            _rprob = float(_ep_re.get("rock_edge_suppress_prob", 0.3))
-            if _rpx > 0 and _rprob > 0.0:
-                edge_rk = _bd_place(gap_rock, iterations=_rpx) & ~(gap > 0)
-                land_mask = land_mask & ~(edge_rk & (np_rng.random((H, W)) < _rprob))
 
     # Build decoration noise tile (vectorised via noise2array)
     try:
