@@ -4417,9 +4417,9 @@
       "relief": {
         "enabled": true,
         "amp_blocks": 2.5,
-        "scale_blocks": 3.0,
+        "scale_blocks": 7.0,
         "edge_fade_blocks": 0.0,
-        "octaves": 2,
+        "octaves": 1,
         "octave_gain": 0.5,
         "slope_gain_by_tier": [
           0.2,
