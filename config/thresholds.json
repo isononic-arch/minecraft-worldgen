@@ -3722,23 +3722,22 @@
           "intersperse": 0.7,
           "band_a": {
             "primary": "granite",
-            "secondary": "rooted_dirt",
+            "secondary": "dripstone_block",
             "primary_pct": 80
           },
           "band_b": {
-            "primary": "granite",
-            "secondary": "rooted_dirt",
+            "primary": "dead_bubble_coral_block",
+            "secondary": "andesite",
             "primary_pct": 80
           },
           "speckle_blocks": [
-            "raw_iron_block"
+            "packed_mud"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "muddy_mangrove_roots",
-            "mud"
+            "brown_mushroom_block"
           ],
-          "vein_amp": 0.18,
+          "vein_amp": 0.1,
           "_comment": "Massive intrusive \u2014 80-160 block bands, crazy 30\u00b0/100 tilt, 75/25 granite/dripstone mix with iron speckle."
         },
         "varnish_palette": [
@@ -3824,24 +3823,22 @@
           "intersperse": 0.0,
           "band_a": {
             "primary": "basalt",
-            "secondary": "gray_concrete_powder",
+            "secondary": "smooth_basalt",
             "primary_pct": 85
           },
           "band_b": {
-            "primary": "smooth_basalt",
-            "secondary": "tuff",
+            "primary": "tuff",
+            "secondary": "deepslate",
             "primary_pct": 85
           },
           "speckle_blocks": [
-            "mud"
+            "pale_moss_block"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "iron_block",
-            "dripstone_block",
-            "soul_soil"
+            "cobblestone"
           ],
-          "vein_amp": 0.18,
+          "vein_amp": 0.1,
           "_comment": "S88 walk #4c: bands restructured -- A=basalt/gray_concrete_powder, B=smooth_basalt/tuff.  speckle=[mud] (was [deepslate]).",
           "col_hash_mode": "diagonal"
         },
@@ -3935,25 +3932,23 @@
           "noise_amp_blocks": 0,
           "intersperse": 0.0,
           "band_a": {
-            "primary": "cobbled_deepslate",
-            "secondary": "deepslate",
+            "primary": "deepslate",
+            "secondary": "cobbled_deepslate",
             "primary_pct": 85
           },
           "band_b": {
-            "primary": "dead_horn_coral_block",
-            "secondary": "suspicious_gravel",
+            "primary": "tuff",
+            "secondary": "dead_horn_coral_block",
             "primary_pct": 85
           },
           "speckle_blocks": [
-            "dripstone_block",
-            "packed_mud"
+            "light_gray_concrete_powder"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "black_concrete_powder",
-            "tuff"
+            "andesite"
           ],
-          "vein_amp": 0.18,
+          "vein_amp": 0.1,
           "_comment": "S88 walk #4c: bands restructured -- A=cobbled_deepslate/deepslate, B=dead_horn_coral_block/suspicious_gravel (latter two are vein-exception blocks outside the temperate palette set, per user permission).  speckle unchanged (deepslate_coal_ore + smooth_basalt) but rate dropped to 0.02.",
           "col_hash_mode": "diagonal"
         },
@@ -4032,24 +4027,23 @@
           "noise_amp_blocks": 2,
           "intersperse": 0.15,
           "band_a": {
-            "primary": "calcite",
-            "secondary": "diorite",
+            "primary": "andesite",
+            "secondary": "stone",
             "primary_pct": 80
           },
           "band_b": {
             "primary": "diorite",
-            "secondary": "calcite",
+            "secondary": "cobblestone",
             "primary_pct": 80
           },
           "speckle_blocks": [
-            "andesite"
+            "calcite"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "dead_horn_coral_block",
-            "dead_fire_coral_block"
+            "white_concrete_powder"
           ],
-          "vein_amp": 0.18,
+          "vein_amp": 0.1,
           "_comment": "Sedimentary \u2014 1-14 block bands (highly variable), mild 6\u00b0/100 tilt @ 15\u00b0, 80/20 calcite/diorite with andesite speckle."
         },
         "varnish_palette": [
@@ -4127,24 +4121,23 @@
           "noise_amp_blocks": 4,
           "intersperse": 0.2,
           "band_a": {
-            "primary": "andesite",
+            "primary": "tuff",
             "secondary": "stone",
             "primary_pct": 90
           },
           "band_b": {
-            "primary": "stone",
-            "secondary": "andesite",
+            "primary": "andesite",
+            "secondary": "cobblestone",
             "primary_pct": 90
           },
           "speckle_blocks": [
-            "tuff"
+            "mossy_cobblestone"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "basalt",
-            "smooth_basalt"
+            "moss_block"
           ],
-          "vein_amp": 0.18,
+          "vein_amp": 0.1,
           "_comment": "Folded mountain metamorphic \u2014 6-16 block bands, STRONG 25\u00b0/100 tilt @ 30\u00b0, 90/10 andesite/stone with tuff speckle."
         },
         "varnish_palette": [
@@ -4214,8 +4207,8 @@
           "noise_amp_blocks": 3,
           "intersperse": 0.3,
           "band_a": {
-            "primary": "cobblestone",
-            "secondary": "mossy_cobblestone",
+            "primary": "tuff",
+            "secondary": "pale_moss_block",
             "primary_pct": 60
           },
           "band_b": {
@@ -4224,15 +4217,13 @@
             "primary_pct": 60
           },
           "speckle_blocks": [
-            "tuff",
-            "moss_block",
-            "andesite"
+            "moss_block"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "moss_block"
+            "green_concrete_powder"
           ],
-          "vein_amp": 0.18,
+          "vein_amp": 0.1,
           "_comment": "Wet temperate \u2014 8-18 block bands, mild 4\u00b0/100 tilt, 60/40 cobblestone/mossy split with triple speckle (tuff+moss+andesite)."
         },
         "varnish_palette": [
@@ -4427,7 +4418,7 @@
         "enabled": true,
         "amp_blocks": 2.5,
         "scale_blocks": 7.0,
-        "edge_fade_blocks": 8.0,
+        "edge_fade_blocks": 3.0,
         "amp2_blocks": 1.5,
         "tier2_min": 2
       }
