@@ -1151,6 +1151,12 @@ def _apply_depth_snow(
     carpet_biomes = set(dcfg.get("carpet_biomes",
                                  ["SNOWY_BOREAL_TAIGA", "ARCTIC_TUNDRA",
                                   "FROZEN_FLATS"]))
+    # Snow caps/drifts ONLY on snowy biomes (so a warm biome that happens to
+    # reach alpine altitude does NOT get capped); within them snow covers
+    # everything (rock, grass, ledges).
+    snowy_biomes = set(dcfg.get("snowy_biomes",
+                                ["SNOWY_BOREAL_TAIGA", "ARCTIC_TUNDRA",
+                                 "FROZEN_FLATS", "BOREAL_ALPINE"]))
 
     P = potential.astype(np.float32)
     H, W = P.shape
@@ -1163,6 +1169,12 @@ def _apply_depth_snow(
     # Steep faces stay bare (snow can't hold on near-vertical rock).
     if cliff_deg is not None:
         elig &= (cliff_deg < slope_max)
+    # Restrict ALL snow placement to snowy biomes.
+    if snowy_biomes:
+        _snowy = np.zeros((H, W), dtype=bool)
+        for b in snowy_biomes:
+            _snowy |= (biome_grid == b)
+        elig &= _snowy
 
     # Cold-lowland carpet biomes get a clean baseline even where alpine
     # potential is ~0 (preserves Tundra Valley scattered-snow look).
@@ -3618,6 +3630,21 @@ def decorate_surface(
                     _wt = np.clip((_lf - np.log(_f_lo)) / (np.log(_f_hi) - np.log(_f_lo)), 0.0, 1.0)
                     _w_rad = (_w_min + (_w_max - _w_min) * _wt).astype(np.float32)
                     _wash_zone = (_dist <= _w_rad) & rock_px
+                    # S89: slight HORIZONTAL wander (~3-4 blocks) so the channel
+                    # meanders instead of running dead-straight. Smooth world-coord
+                    # displacement field warps the zone left/right via map_coordinates.
+                    _wob = float(_wcfg.get("dither_blocks", 0.0))
+                    if _wob > 0.0 and _wash_zone.any():
+                        from scipy.ndimage import map_coordinates as _mc_wash
+                        _wdx = (_noise_tile(_ecotone_meander_gen(cfg), H, W,
+                                            px_off, py_off, scale=40.0, octaves=2)
+                                - 0.5) * 2.0 * _wob
+                        _yy, _xx = np.mgrid[0:H, 0:W]
+                        _sx = np.clip(_xx.astype(np.float32) - _wdx, 0, W - 1)
+                        _wash_zone = _mc_wash(_wash_zone.astype(np.float32),
+                                              [_yy.astype(np.float32), _sx],
+                                              order=1, mode="nearest") > 0.4
+                        _wash_zone &= rock_px
                     # soft salt-and-pepper edge in the outer `edge_softness` blocks
                     _edge_soft = float(_wcfg.get("edge_softness", 1.0))
                     if _edge_soft > 0.0 and _wash_zone.any():

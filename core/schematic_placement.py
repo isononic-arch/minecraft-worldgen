@@ -1210,6 +1210,24 @@ def place_schematics(
     # share the same tracker so cross-type clusters also get varied rotations.
     _rotation_grid: dict[tuple[int, int], list[int]] = {}
 
+    # S89 krummholz: stunted trees on/near rock.  Where rock_gap (gap==5) fires
+    # on or within rock_dilate_blocks of a TREE candidate, OR at/above
+    # min_elevation_y, restrict selection to the smallest (size=="sm") variants
+    # so high mountain trees cap small near the rock — preserving the COUNT
+    # (we still place a tree, just a small one).
+    _kr_cfg = cfg.get("krummholz", {}) if isinstance(cfg, dict) else {}
+    _kr_on = bool(_kr_cfg.get("enabled", False))
+    _kr_min_y = float(_kr_cfg.get("min_elevation_y", 1e9))
+    _kr_rock_near = None
+    if _kr_on and eco_grads is not None and hasattr(eco_grads, "gap_mask"):
+        _kr_rg = (eco_grads.gap_mask == 5)
+        if _kr_rg.any():
+            from scipy.ndimage import binary_dilation as _bd_kr
+            _kr_rock_near = _bd_kr(
+                _kr_rg, iterations=int(_kr_cfg.get("rock_dilate_blocks", 3)))
+        else:
+            _kr_rock_near = _kr_rg
+
     for pass_type in ("tree", "bush"):
         # Bushes get their own exclusion grid (smaller radius, independent of trees)
         if pass_type == "bush":
@@ -1251,6 +1269,17 @@ def place_schematics(
             entries = _filter_entries(all_entries, pass_type)
             if not entries:
                 continue
+
+            # S89 krummholz: small-tree restriction near rock / high elevation.
+            if _kr_on and pass_type == "tree":
+                _kr_small = (
+                    (_kr_rock_near is not None and bool(_kr_rock_near[row, col]))
+                    or (float(surface_y[row, col]) >= _kr_min_y)
+                )
+                if _kr_small:
+                    _kr_sm = [e for e in entries if e.size == "sm"]
+                    if _kr_sm:
+                        entries = _kr_sm
 
             # S70 Item M: palm distance gate for LUSH_RAINFOREST_COAST.
             # S71: extended to RAINFOREST_COAST per user walk — palms only

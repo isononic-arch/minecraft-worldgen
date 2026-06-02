@@ -4741,6 +4741,12 @@
         "SNOWY_BOREAL_TAIGA",
         "ARCTIC_TUNDRA",
         "FROZEN_FLATS"
+      ],
+      "snowy_biomes": [
+        "SNOWY_BOREAL_TAIGA",
+        "ARCTIC_TUNDRA",
+        "FROZEN_FLATS",
+        "BOREAL_ALPINE"
       ]
     }
   },
@@ -4752,11 +4758,12 @@
     "edge_softness": 1.0,
     "width_flow_lo": 0.003,
     "width_flow_hi": 0.018,
+    "dither_blocks": 3.5,
     "foliated": {
-      "_comment": "Foliation ribs = REAL flow lines from the flow mask (not procedural), filtered to the FINE tributaries that TRAVERSE the slope. Band: flow in [min_flow, washes.min_flow) keeps them below the trunk washes. cross_cos = |cos(grad flow, grad height)| threshold: HIGH = channel runs across the fall line (cross-cutting), LOW = plunges straight down. Raise cross_cos for stricter cross-cutting (fewer, more horizontal ribs); lower for more lines. smooth_sigma denoises the flow gradient. layer_dither = fraction of rib pixels actually painted mid-tier.",
+      "_comment": "Foliation ribs = REAL flow lines from the flow mask (not procedural), filtered to the FINE tributaries that TRAVERSE the slope. Band: flow in [min_flow, washes.min_flow) keeps them below the trunk washes. cross_cos = |cos(grad flow, grad height)| threshold: HIGH = channel runs across the fall line (cross-cutting), LOW = plunges straight down. LOWER cross_cos -> MORE ribs (keeps straighter channels too, which on sharp slopes run naturally downhill); raise for stricter cross-cutting. LOWER min_flow -> catches finer tributaries (more, thinner ribs). smooth_sigma denoises the flow gradient. layer_dither = fraction of rib pixels actually painted mid-tier.",
       "enabled": true,
-      "min_flow": 0.0008,
-      "cross_cos": 0.5,
+      "min_flow": 0.0005,
+      "cross_cos": 0.35,
       "smooth_sigma": 1.0,
       "min_slope_deg": 0.0,
       "layer_dither": 0.6
@@ -4783,5 +4790,11 @@
       "DESERT_STEPPE_TRANSITION",
       "DRY_WOODLAND_MAQUIS"
     ]
+  },
+  "krummholz": {
+    "_comment": "S89 stunted high-mountain trees. Where rock_gap (gap==5) fires on or within rock_dilate_blocks of a TREE candidate, OR at/above min_elevation_y, restrict selection to the smallest (size=='sm') variants -> small trees near/on rock. Preserves the tree COUNT (still places, just a small variant); falls back to the full pool if the biome has no sm trees. min_elevation_y caps high-elevation trees small regardless of rock proximity.",
+    "enabled": true,
+    "rock_dilate_blocks": 3,
+    "min_elevation_y": 540
   }
 }
