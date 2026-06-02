@@ -3413,29 +3413,35 @@ def decorate_surface(
                 vein_field_tile   = vein_field_tile,
             )
 
-            # ── S89: FOLIATION RIBS (thin cross-cutting rock fluting) ──────
-            # THIN, DENSE ribs running ACROSS the fall line (contour-parallel),
-            # so they CROSS-CUT the downhill washes ("x to the y flows") instead
-            # of overlapping them. Phase = surface_y (post-relief) -> ribs follow
-            # contours + wrap the terrain; a world-coord simplex warp bends them
-            # so they're not dead-level. period_blocks/width_frac set spacing +
-            # thickness (small => many, thin). Painted with each group's MID tier,
-            # UNDER the washes (washes overlay at the crossings). Geologically this
-            # IS foliation: parallel metamorphic/bedding banding.
-            if (rock_px.any() and not _overlay_off(cfg, "wash")
+            # ── S89: FOLIATION RIBS (real cross-cutting flow lines) ────────
+            # Ribs follow ACTUAL drainage from the flow mask -- NOT procedural --
+            # but only the FINE tributaries that TRAVERSE the slope (run across it),
+            # never the trunk washes that plunge straight down. Discriminator:
+            #   a channel runs along accumulation ridges, perp to grad(flow);
+            #   a straight-DOWN channel keeps grad(flow) PERP to the fall line
+            #     grad(height) -> |cos(grad flow, grad height)| LOW;
+            #   a TRAVERSING channel has grad(flow) PARALLEL to grad(height)
+            #     -> |cos| HIGH.  Keep high-cos channel pixels.
+            # Band-limited to flow in [min_flow, wash_min_flow) so ribs live
+            # BETWEEN the washes. Painted thin with each group's MID tier.
+            if (flow_tile is not None and rock_px.any() and not _overlay_off(cfg, "wash")
                     and cfg.get("washes", {}).get("foliated", {}).get("enabled", True)):
                 _fcfg = cfg.get("washes", {}).get("foliated", {})
-                _period = max(1.5, float(_fcfg.get("period_blocks", 4.0)))
-                _duty   = float(_fcfg.get("width_frac", 0.32))
-                _warp_b = float(_fcfg.get("warp_blocks", 3.0))
-                _warp_sc = float(_fcfg.get("warp_scale", 60.0))
-                # world-coord low-freq warp (~[0,1] -> centered) bends the ribs
-                _wn = _noise_tile(_ecotone_meander_gen(cfg), H, W, px_off, py_off,
-                                  scale=_warp_sc, octaves=2)
-                _phase = (surface_y.astype(np.float32)
-                          + (_wn - 0.5) * 2.0 * _warp_b) / _period
-                _band = _phase - np.floor(_phase)         # 0..1 sawtooth
-                _fol_zone = rock_px & (_band < _duty)
+                _fol_lo = float(_fcfg.get("min_flow", 0.0008))
+                _fol_hi = float(cfg.get("washes", {}).get("min_flow", 0.003))
+                _cos_thr = float(_fcfg.get("cross_cos", 0.5))
+                _fsig = float(_fcfg.get("smooth_sigma", 1.0))
+                from scipy.ndimage import gaussian_filter as _gf_fol
+                _ff = flow_tile.astype(np.float32)
+                _chan = rock_px & (_ff > _fol_lo) & (_ff < _fol_hi)
+                # gradient alignment: |cos(grad(flow), grad(height))|
+                _gfy, _gfx = np.gradient(_gf_fol(_ff, _fsig))
+                _ghy, _ghx = np.gradient(surface_y.astype(np.float32))
+                _dot = _gfy * _ghy + _gfx * _ghx
+                _mag = np.sqrt((_gfy * _gfy + _gfx * _gfx)
+                               * (_ghy * _ghy + _ghx * _ghx)) + 1e-6
+                _cos = np.abs(_dot / _mag)
+                _fol_zone = _chan & (_cos > _cos_thr)
                 _fol_min_deg = float(_fcfg.get("min_slope_deg", 0.0))
                 if _fol_min_deg > 0.0 and cliff_deg is not None:
                     _fol_zone &= (cliff_deg >= _fol_min_deg)

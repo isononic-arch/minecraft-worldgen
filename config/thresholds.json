@@ -4753,13 +4753,13 @@
     "width_flow_lo": 0.003,
     "width_flow_hi": 0.018,
     "foliated": {
+      "_comment": "Foliation ribs = REAL flow lines from the flow mask (not procedural), filtered to the FINE tributaries that TRAVERSE the slope. Band: flow in [min_flow, washes.min_flow) keeps them below the trunk washes. cross_cos = |cos(grad flow, grad height)| threshold: HIGH = channel runs across the fall line (cross-cutting), LOW = plunges straight down. Raise cross_cos for stricter cross-cutting (fewer, more horizontal ribs); lower for more lines. smooth_sigma denoises the flow gradient. layer_dither = fraction of rib pixels actually painted mid-tier.",
       "enabled": true,
-      "period_blocks": 4.0,
-      "width_frac": 0.32,
-      "warp_blocks": 3.0,
-      "warp_scale": 60.0,
+      "min_flow": 0.0008,
+      "cross_cos": 0.5,
+      "smooth_sigma": 1.0,
       "min_slope_deg": 0.0,
-      "layer_dither": 0.5
+      "layer_dither": 0.6
     }
   }
 }
