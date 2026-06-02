@@ -1195,6 +1195,102 @@ def _apply_depth_snow(
     return True
 
 
+def _apply_grass_terraces(
+    surface_blocks:    np.ndarray,
+    subsurface_blocks: np.ndarray,
+    ground_cover:      np.ndarray,
+    surface_y:         np.ndarray,
+    cliff_deg:         np.ndarray | None,
+    rock_px:           np.ndarray,
+    biome_grid:        np.ndarray,
+    flow_tile:         np.ndarray | None,
+    river_meta:        np.ndarray | None,
+    snow_potential:    np.ndarray | None,
+    cfg:               dict,
+    tile_x:            int,
+    tile_y:            int,
+) -> None:
+    """S89: grassy terraces/ledges on rocky slopes where soil realistically lands.
+
+    A bench is a pixel that is LOCALLY FLAT (cliff_deg < bench_max_deg) yet
+    SURROUNDED BY STEEP rock (neighbourhood max slope >= surround_min_deg) — i.e.
+    a ledge on a cliff, not open meadow. Soil + seeds collect on these, plus the
+    concave micro-catchments (positive curvature), so they green up while the
+    steep faces between stay bare. Excludes active drainage (water cuts through),
+    rivers, and arid/sand biomes. Coverage-capped + edge-dithered so it reads as
+    organic patches, never a re-greened cliff. Runs AFTER the rock painters and
+    BEFORE snow, so depth-snow overrides benches above the line (grassy bench
+    dusted with snow, or solid cap higher up).
+    """
+    tcfg = cfg.get("grass_terraces", {})
+    if not tcfg.get("enabled", False) or cliff_deg is None:
+        return
+    excl_biomes = set(tcfg.get("exclude_biomes", [
+        "SAND_DUNE_DESERT", "SEMI_ARID_SHRUBLAND", "DESERT_STEPPE_TRANSITION",
+        "DRY_WOODLAND_MAQUIS",
+    ]))
+    bench_max     = float(tcfg.get("bench_max_deg", 22.0))
+    surround_min  = float(tcfg.get("surround_min_deg", 32.0))
+    surround_rad  = int(tcfg.get("surround_radius_blocks", 4))
+    conc_sigma    = float(tcfg.get("concavity_sigma", 3.0))
+    conc_min      = float(tcfg.get("concavity_min", -0.3))  # >=this (blocks); <0 allows mild convex
+    coverage      = float(tcfg.get("coverage", 0.6))
+    rock_dilate   = int(tcfg.get("rock_dilate_blocks", 2))
+    snow_handoff  = float(tcfg.get("snow_handoff_potential", 0.45))
+    surf_blk      = tcfg.get("surface_block", "grass_block")
+    sub_blk       = tcfg.get("subsurface_block", "dirt")
+    gc_block      = tcfg.get("ground_cover", "short_grass")
+    gc_prob       = float(tcfg.get("ground_cover_prob", 0.5))
+
+    H, W = surface_y.shape
+    from scipy.ndimage import maximum_filter, binary_dilation, gaussian_filter
+
+    # locally flat, but on a cliff (neighbourhood is steep)
+    flat = cliff_deg < bench_max
+    nbr_steep = maximum_filter(cliff_deg.astype(np.float32),
+                               size=2 * surround_rad + 1) >= surround_min
+    bench = flat & nbr_steep
+    # within / adjacent to the rock zone (it's a rock ledge)
+    bench &= binary_dilation(rock_px, iterations=max(0, rock_dilate))
+    if not bench.any():
+        return
+
+    # concavity: soil collects in concave catchments. conc>0 = basin.
+    conc = gaussian_filter(surface_y.astype(np.float32), conc_sigma) \
+        - surface_y.astype(np.float32)
+    bench &= (conc >= conc_min)
+
+    # exclude active drainage (water keeps the channel bare) + rivers
+    if flow_tile is not None:
+        _wash_min = float(cfg.get("washes", {}).get("min_flow", 0.003))
+        bench &= (flow_tile < _wash_min)
+    if river_meta is not None:
+        bench &= (river_meta == 0)
+    # hand off to snow above the line
+    if snow_potential is not None:
+        bench &= (snow_potential < snow_handoff)
+    # arid/sand biomes don't green up
+    for b in excl_biomes:
+        bench &= (biome_grid != b)
+    if not bench.any():
+        return
+
+    # coverage cap + organic dither (world-seeded)
+    rng = np.random.default_rng(
+        (tile_x * 70207 ^ tile_y * 19937 ^ 0x6A455) & 0xFFFFFFFF)
+    coin = rng.random((H, W)).astype(np.float32)
+    bench &= (coin < coverage)
+    if not bench.any():
+        return
+
+    surface_blocks[bench] = surf_blk
+    subsurface_blocks[bench] = sub_blk
+    if gc_block and gc_prob > 0.0:
+        gc_sel = bench & (ground_cover == "") & (coin < coverage * gc_prob)
+        if gc_sel.any():
+            ground_cover[gc_sel] = gc_block
+
+
 def _apply_strata_surface(
     surface_blocks:    np.ndarray,
     subsurface_blocks: np.ndarray,
@@ -3825,6 +3921,25 @@ def decorate_surface(
                 subsurface_blocks = subsurface_blocks,
                 lithology_tile    = lithology_tile,
                 gap_mask          = _gap,
+                cfg               = cfg,
+                tile_x            = tile_x,
+                tile_y            = tile_y,
+            )
+
+            # ── S89: GRASS TERRACES — soil/grass on flat ledges of rocky
+            # slopes (after the rock painters, before snow). Greens up the
+            # benches where soil realistically lands; steep faces stay bare.
+            _apply_grass_terraces(
+                surface_blocks    = surface_blocks,
+                subsurface_blocks = subsurface_blocks,
+                ground_cover      = ground_cover,
+                surface_y         = surface_y,
+                cliff_deg         = cliff_deg,
+                rock_px           = rock_px,
+                biome_grid        = biome_grid,
+                flow_tile         = flow_tile,
+                river_meta        = river_meta,
+                snow_potential    = snow_potential_tile,
                 cfg               = cfg,
                 tile_x            = tile_x,
                 tile_y            = tile_y,

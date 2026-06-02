@@ -4761,5 +4761,27 @@
       "min_slope_deg": 0.0,
       "layer_dither": 0.6
     }
+  },
+  "grass_terraces": {
+    "_comment": "S89 grassy terraces/ledges on rocky slopes where soil realistically lands. A bench = locally flat (cliff_deg < bench_max_deg) but SURROUNDED by steep rock (neighbourhood max slope >= surround_min_deg within surround_radius_blocks) -> a ledge on a cliff, not open meadow. concavity_min keeps soil-collecting concave pockets (gaussian(surface_y,sigma)-surface_y >= concavity_min, blocks; negative allows mild convex). Excludes active drainage (flow >= washes.min_flow), rivers, and exclude_biomes (arid/sand). coverage caps it so the cliff never fully re-greens. Hands off to snow above snow_handoff_potential (depth-snow then dusts/caps the bench). Runs after rock painters, before snow.",
+    "enabled": true,
+    "bench_max_deg": 22.0,
+    "surround_min_deg": 32.0,
+    "surround_radius_blocks": 4,
+    "concavity_sigma": 3.0,
+    "concavity_min": -0.3,
+    "coverage": 0.6,
+    "rock_dilate_blocks": 2,
+    "snow_handoff_potential": 0.45,
+    "surface_block": "grass_block",
+    "subsurface_block": "dirt",
+    "ground_cover": "short_grass",
+    "ground_cover_prob": 0.5,
+    "exclude_biomes": [
+      "SAND_DUNE_DESERT",
+      "SEMI_ARID_SHRUBLAND",
+      "DESERT_STEPPE_TRANSITION",
+      "DRY_WOODLAND_MAQUIS"
+    ]
   }
 }
