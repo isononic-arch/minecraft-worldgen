@@ -688,6 +688,8 @@ def main() -> int:
         lithology_tile = lithology_tile if _use_sp else None,
         clearing_field = clearing_field,
         biome_grid_padded = biome_grid_padded,
+        rock_layers_tile = masks.get("rock_layers"),
+        snow_potential_tile = masks.get("snow_potential"),
     )
     checks.append(chk_no_bare_dirt_surface(surface_blk, biome_grid))
     checks.append(chk_surface_block_variety(surface_blk, biome_grid))

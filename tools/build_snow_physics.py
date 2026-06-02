@@ -189,7 +189,10 @@ def main() -> int:
     print(f"  snow potential: >0 frac {float((snow>0).mean()):.3f}, "
           f">0.5 frac {float((snow>0.5).mean()):.3f} [{time.perf_counter()-t:.1f}s]")
 
-    from core.upscale import upscale_continuous_then_threshold_dither
+    from core.upscale import (
+        upscale_continuous_then_threshold_dither,
+        upscale_continuous,
+    )
     out_path = masks_dir / f"{args.out}.tif"
     t = time.perf_counter()
     upscale_continuous_then_threshold_dither(
@@ -201,6 +204,24 @@ def main() -> int:
     )
     size_mb = out_path.stat().st_size / (1024 * 1024)
     print(f"  -> {out_path.name}  file={size_mb:.1f} MB "
+          f"[{time.perf_counter()-t:.1f}s]")
+
+    # S89 depth-snow: ALSO write the continuous potential (pre-threshold) so the
+    # decorator can drive snow DEPTH (bare / snow[layers=N] / snow_block cap)
+    # off the physics field instead of a flat binary snow_block.  uint16 carries
+    # P*65535; tile_streamer normalizes back to [0,1].  catmull_rom matches the
+    # binary mask's upscaler so the two stay spatially aligned.
+    pot_path = masks_dir / "snow_potential.tif"
+    t = time.perf_counter()
+    upscale_continuous(
+        (np.clip(snow, 0.0, 1.0) * 65535.0).astype(np.float32),
+        pot_path,
+        target_size=WORLD_50K,
+        interpolation="catmull_rom",
+        dtype="uint16",
+    )
+    pot_mb = pot_path.stat().st_size / (1024 * 1024)
+    print(f"  -> {pot_path.name}  file={pot_mb:.1f} MB "
           f"[{time.perf_counter()-t:.1f}s]")
     print(f"Total {time.perf_counter()-t0:.1f}s")
     return 0

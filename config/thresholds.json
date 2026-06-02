@@ -4729,7 +4729,20 @@
       "FROZEN_FLATS",
       "BOREAL_ALPINE"
     ],
-    "rock_runtime_dilate": 2
+    "rock_runtime_dilate": 2,
+    "depth": {
+      "_comment": "S89 depth-snow. Drives snow DEPTH off the continuous snow_potential.tif (built by build_snow_physics alongside the binary gap) instead of a flat snow_block + 95%-dappled carpet. P>=t_block -> snow_block CAP; t_layer<=P<t_block -> snow[layers=N] DRIFT (N scales 1..max_layers, deepening toward the cap); P<t_layer -> bare rock. carpet_biomes keep a clean layers=1 baseline below the alpine line (Tundra Valley). slope_max_deg keeps steep faces bare. Shape comes from terrain (physics curvature concentrates P in concave gullies, strips convex ridges) -- no dither coin. Set enabled=false to fall back to the legacy dappled carpet.",
+      "enabled": true,
+      "t_layer": 0.35,
+      "t_block": 0.62,
+      "max_layers": 7,
+      "slope_max_deg": 38.0,
+      "carpet_biomes": [
+        "SNOWY_BOREAL_TAIGA",
+        "ARCTIC_TUNDRA",
+        "FROZEN_FLATS"
+      ]
+    }
   },
   "washes": {
     "min_flow": 0.003,

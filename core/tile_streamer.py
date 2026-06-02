@@ -40,6 +40,8 @@ MASK_NAMES = [
     "snow_gap",
     # S89 physics snow A/B (built by tools/build_snow_physics.py)
     "snow_gap_physics",
+    # S89 depth-snow: continuous pre-threshold potential (drives snow DEPTH)
+    "snow_potential",
     "sand_dunes",
     "beach",
     # S88 terrain-derived masks (built by tools/build_terrain_derived.py)

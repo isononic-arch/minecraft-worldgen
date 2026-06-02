@@ -1110,6 +1110,91 @@ def _apply_snow_carpet(
         ground_cover[place_snow] = "snow[layers=1]"
 
 
+def _apply_depth_snow(
+    surface_blocks: np.ndarray,
+    ground_cover:   np.ndarray,
+    biome_grid:     np.ndarray,
+    potential:      np.ndarray,      # (H,W) float32 [0,1] continuous snow potential
+    gap_mask:       np.ndarray | None,
+    cliff_deg:      np.ndarray | None,
+    cfg:            dict,
+) -> bool:
+    """S89 depth-snow: paint snow DEPTH from the continuous physics potential.
+
+    Replaces the flat snow_block + 95%-dappled snow[layers=1] carpet with a
+    deterministic, potential-driven gradient that reads as real snowpack:
+
+        P >= t_block         -> snow_block CAP (solid; high bowls + summits)
+        t_layer <= P < t_block-> snow[layers=N] DRIFT  (N scales 1..max_layers)
+        P <  t_layer          -> bare  (convex/steep/below-line rock shows)
+
+    The snow_physics field already concentrates P in concave gullies (drifts
+    finger down) and strips convex ridges + steep faces (slope_gate + curvature),
+    so no dither coin is needed — the shape comes from terrain, not noise.
+
+    Cold lowland biomes (carpet_biomes) below the alpine line keep a clean
+    baseline snow[layers=1] so the Tundra-Valley / SBT-forest look survives.
+
+    Returns True if it ran (so the caller skips the legacy carpet/flat-snow),
+    False if disabled or the potential field is empty (legacy fallback).
+    """
+    dcfg = cfg.get("snow_physics", {}).get("depth", {})
+    if not dcfg.get("enabled", False):
+        return False
+    if potential is None or float(potential.max()) <= 0.0:
+        return False  # mask missing / not built -> legacy path
+
+    t_layer   = float(dcfg.get("t_layer", 0.35))
+    t_block   = float(dcfg.get("t_block", 0.62))
+    max_layers= int(dcfg.get("max_layers", 7))
+    slope_max = float(dcfg.get("slope_max_deg", 38.0))
+    carpet_biomes = set(dcfg.get("carpet_biomes",
+                                 ["SNOWY_BOREAL_TAIGA", "ARCTIC_TUNDRA",
+                                  "FROZEN_FLATS"]))
+
+    P = potential.astype(np.float32)
+    H, W = P.shape
+
+    # Eligible surface: not water/ice/lava/air (snow needs solid ground).
+    _NOT_SNOW_ON = ("water", "lava", "air", "ice", "packed_ice", "blue_ice")
+    elig = np.ones((H, W), dtype=bool)
+    for blk in _NOT_SNOW_ON:
+        elig &= (surface_blocks != blk)
+    # Steep faces stay bare (snow can't hold on near-vertical rock).
+    if cliff_deg is not None:
+        elig &= (cliff_deg < slope_max)
+
+    # Cold-lowland carpet biomes get a clean baseline even where alpine
+    # potential is ~0 (preserves Tundra Valley scattered-snow look).
+    carpet = np.zeros((H, W), dtype=bool)
+    for b in carpet_biomes:
+        carpet |= (biome_grid == b)
+
+    # ── CAP: solid snow_block where potential is high ──────────────────
+    cap = elig & (P >= t_block)
+    if cap.any():
+        surface_blocks[cap] = "snow_block"
+
+    # ── DRIFT: snow[layers=N] where potential is mid (N deepens with P) ─
+    drift = elig & (P >= t_layer) & (P < t_block) & (ground_cover == "")
+    if drift.any():
+        denom = max(1e-3, t_block - t_layer)
+        # N in 1..max_layers, deepening toward the cap.
+        n = 1 + np.floor((P - t_layer) / denom * max_layers).astype(np.int32)
+        n = np.clip(n, 1, max_layers)
+        for lv in range(1, max_layers + 1):
+            sel = drift & (n == lv)
+            if sel.any():
+                ground_cover[sel] = f"snow[layers={lv}]"
+
+    # ── CARPET: clean layers=1 on cold lowland below the alpine line ────
+    base = elig & carpet & (P < t_layer) & (ground_cover == "")
+    if base.any():
+        ground_cover[base] = "snow[layers=1]"
+
+    return True
+
+
 def _apply_strata_surface(
     surface_blocks:    np.ndarray,
     subsurface_blocks: np.ndarray,
@@ -2758,6 +2843,7 @@ def decorate_surface(
     varnish_field_tile: np.ndarray | None = None,     # (H, W) float32 [0,1] — varnish detection (walk #10/11)
     joint_pattern_tile: np.ndarray | None = None,     # (H, W) float32 [0,1] — basaltic columnar joints (walk #11)
     rock_layers_tile: np.ndarray | None = None,       # (H, W) tiers 0..3 (uint8/255) — S89 rock_layers
+    snow_potential_tile: np.ndarray | None = None,    # (H, W) float32 [0,1] — S89 continuous snow potential (depth-snow)
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute surface and subsurface block arrays for a tile.
@@ -3716,7 +3802,15 @@ def decorate_surface(
             # provides the snowy visual on top.  FF is the Tundra Valley design
             # (grass_block + scattered snow_carpet); forcing snow_block here would
             # break the Tundra Valley palette + nuke its rich GC palette.
-            snow_px = _gap == 7
+            # S89 depth-snow: when enabled, the potential-driven _apply_depth_snow
+            # pass (later) owns ALL snow placement (caps + drifts + carpet) so the
+            # flat snow_block here would wrongly bury drift pixels under solid snow.
+            # Skip the legacy flat fill; fall through only when depth is OFF.
+            _depth_on = bool(cfg.get("snow_physics", {})
+                                .get("depth", {}).get("enabled", False)) \
+                        and snow_potential_tile is not None \
+                        and float(np.asarray(snow_potential_tile).max()) > 0.0
+            snow_px = (_gap == 7) & (not _depth_on)
             if snow_px.any():
                 _snow_exempt = (
                     (biome_grid == "SNOWY_BOREAL_TAIGA") |
@@ -4327,10 +4421,24 @@ def decorate_surface(
     # dither aesthetic.  Runs before the ocean pass so ocean decoration
     # can still overwrite ground_cover on ocean pixels.
     # ──────────────────────────────────────────────────────────────────
-    _apply_snow_carpet(
-        surface_blocks, ground_cover, biome_grid, cfg, tile_x, tile_y,
-        cliff_deg=cliff_deg,  # S88: slope cap (skip snow on steep faces)
-    )
+    # S89 depth-snow: potential-driven depth (caps + drifts + clean carpet).
+    # Owns ALL snow when enabled; returns False (disabled / mask missing) to
+    # fall back to the legacy 95%-dappled snow[layers=1] carpet.
+    _depth_ran = False
+    if snow_potential_tile is not None:
+        _depth_ran = _apply_depth_snow(
+            surface_blocks, ground_cover, biome_grid,
+            snow_potential_tile,
+            gap_mask=(eco_grads.gap_mask if (eco_grads is not None
+                      and hasattr(eco_grads, "gap_mask")) else None),
+            cliff_deg=cliff_deg,
+            cfg=cfg,
+        )
+    if not _depth_ran:
+        _apply_snow_carpet(
+            surface_blocks, ground_cover, biome_grid, cfg, tile_x, tile_y,
+            cliff_deg=cliff_deg,  # S88: slope cap (skip snow on steep faces)
+        )
 
     # ──────────────────────────────────────────────────────────────────
     # S62: OCEAN DECORATION PASS

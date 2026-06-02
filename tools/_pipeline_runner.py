@@ -356,6 +356,7 @@ def run_tile_prelude(
         clearing_field = clearing_field,
         biome_grid_padded = biome_grid_padded,
         rock_layers_tile = masks.get("rock_layers"),
+        snow_potential_tile = masks.get("snow_potential"),
     )
 
     # ---- Step 8 (optional): schematic placement ----
