@@ -2343,7 +2343,26 @@
     "slope_penalty_start_deg": 55.0,
     "slope_penalty_full_deg": 75.0,
     "habitat_score_floor": 0.05,
-    "_comment_s87w3": "S87 walk #3 back-off: 38/55 was too forgiving and let trees creep up real mountain faces (34,9 walk). Back off to 35/50."
+    "_comment_s87w3": "S87 walk #3 back-off: 38/55 was too forgiving and let trees creep up real mountain faces (34,9 walk). Back off to 35/50.",
+    "_comment_ecotone_blend": "S89 Option C: at ecotone-swapped pixels, 'max' holds the denser side's density into the seam (dense forests stay dense, sparse side gains); 'mean' = legacy averaging (dense forests thinned at the transition).",
+    "ecotone_density_blend": "max"
+  },
+  "tree_spacing": {
+    "_comment": "S89 Option A: per-biome canopy exclusion radius = the TRUE forest-density ceiling (past BASE_DENSITY ~0.5 the forest is packing-limited, not probability-limited). radius_mult_by_biome scales CANOPY_RADIUS (sm3/md5/lg8): <1 packs trees tighter (DENSER forest), >1 spreads them out. Clamped to log_safe_floor_by_size so two trunks/logs never share a column -- leaf-canopy clipping is fine, trunk clipping is not. default_radius_mult applies to biomes not listed. Lower the floors to push density further (at trunk-clip risk).",
+    "default_radius_mult": 1.0,
+    "log_safe_floor_by_size": {
+      "sm": 2,
+      "md": 3,
+      "lg": 4
+    },
+    "radius_mult_by_biome": {
+      "BOREAL_TAIGA": 0.6,
+      "SNOWY_BOREAL_TAIGA": 0.6,
+      "BOREAL_ALPINE": 0.7,
+      "TEMPERATE_RAINFOREST": 0.6,
+      "DRY_PINE_BARRENS": 0.7,
+      "MIXED_FOREST": 0.8
+    }
   },
   "species_habitats": {
     "_doc": "Per-species habitat curves. Each gradient: [center, width] for sigmoid. cliff_deg_max: hard slope cutoff.",

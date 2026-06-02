@@ -95,6 +95,23 @@ CANOPY_RADIUS: dict[str, int] = {
     "lg": 8,
 }
 
+# S89 Option A: per-biome canopy-radius control. The exclusion radius is the
+# TRUE density ceiling (past BASE_DENSITY ~0.5 the forest is packing-limited,
+# not probability-limited). radius_mult < 1 packs trees tighter (denser forest);
+# clamped to a per-size LOG-SAFE FLOOR so trunks never share a column (leaf
+# canopy clipping is fine, trunk clipping is not).
+_LOG_SAFE_FLOOR: dict[str, int] = {"sm": 2, "md": 3, "lg": 4}
+
+
+def _biome_canopy_radius(size: str, biome: str, cfg: dict) -> int:
+    base = CANOPY_RADIUS.get(size, 4)
+    tcfg = cfg.get("tree_spacing", {}) if isinstance(cfg, dict) else {}
+    mult = float(tcfg.get("radius_mult_by_biome", {}).get(
+        biome, tcfg.get("default_radius_mult", 1.0)))
+    floor = int(tcfg.get("log_safe_floor_by_size", {}).get(
+        size, _LOG_SAFE_FLOOR.get(size, 2)))
+    return max(floor, int(round(base * mult)))
+
 # Base placement density per biome (probability a candidate pixel is attempted)
 # Tuned conservatively — final density also multiplied by decoration noise
 BASE_DENSITY: dict[str, float] = {
@@ -1310,10 +1327,17 @@ def place_schematics(
             # the transition reads as a gradient instead of a density spike
             # caused by neighbor's higher BASE_DENSITY suddenly taking over.
             if swap_active:
-                base_d = 0.5 * (
-                    BASE_DENSITY.get(orig_biome_str, 0.05)
-                    + BASE_DENSITY.get(biome_str, 0.05)
-                )
+                # S89 Option C: at an ecotone-swapped pixel, hold the DENSER
+                # side's density (max) instead of averaging the two -- so a
+                # dense forest keeps its density into the transition and only
+                # the sparse side gains trees, never the reverse. "mean" keeps
+                # the old averaging behaviour.
+                _d_orig = BASE_DENSITY.get(orig_biome_str, 0.05)
+                _d_nbr = BASE_DENSITY.get(biome_str, 0.05)
+                _blend = cfg.get("eco_placement", {}).get(
+                    "ecotone_density_blend", "max")
+                base_d = (max(_d_orig, _d_nbr) if _blend == "max"
+                          else 0.5 * (_d_orig + _d_nbr))
             else:
                 base_d = BASE_DENSITY.get(biome_str, 0.05)
             final_d = base_d * float(density_mult[row, col])
@@ -1423,7 +1447,9 @@ def place_schematics(
             # S87 walk #1 #2 (26,10): bush placements must respect TREE
             # exclusion grid in addition to bush exclusion, so bushes don't
             # land inside tree footprints and overwrite tree blocks.
-            radius = CANOPY_RADIUS.get(entry.size, 4)
+            # S89 Option A: per-biome canopy radius (density ceiling lever).
+            # Same `radius` feeds both is_clear AND the mark below.
+            radius = _biome_canopy_radius(entry.size, biome_str, cfg)
             if pass_type == "tree":
                 if not exclusion.is_clear(row, col, radius):
                     continue
