@@ -4343,8 +4343,8 @@
             8
           ],
           "dark": [
-            "deepslate",
-            "cobbled_deepslate"
+            "cobbled_deepslate",
+            "smooth_basalt"
           ],
           "mid": [
             "tuff",
@@ -4745,16 +4745,21 @@
     }
   },
   "washes": {
+    "_comment": "Washes = downhill drainage channels (flow-proportional width: thin at summit, wider at base). width_min/max are RADII in blocks; diameter ~= 2*r+1. width_min=0 -> ~1px summit lines. flow_tile is NORMALIZED [0,1]. foliated = thin CONTOUR-PARALLEL ribs (foliation banding) that cross-cut the washes: period_blocks=spacing, width_frac=duty (thickness fraction of each period), warp_blocks/scale bend the ribs off-level, layer_dither=fraction of rib pixels actually painted mid-tier.",
     "min_flow": 0.003,
-    "width_min": 1.0,
-    "width_max": 4.0,
+    "width_min": 0.0,
+    "width_max": 2.0,
     "edge_softness": 1.0,
     "width_flow_lo": 0.003,
     "width_flow_hi": 0.018,
     "foliated": {
       "enabled": true,
-      "min_flow": 0.0012,
-      "dilate": 1
+      "period_blocks": 4.0,
+      "width_frac": 0.32,
+      "warp_blocks": 3.0,
+      "warp_scale": 60.0,
+      "min_slope_deg": 0.0,
+      "layer_dither": 0.5
     }
   }
 }

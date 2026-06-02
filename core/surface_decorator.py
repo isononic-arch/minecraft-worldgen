@@ -3413,28 +3413,37 @@ def decorate_surface(
                 vein_field_tile   = vein_field_tile,
             )
 
-            # ── S89: FOLIATED GULLY layer (rib/flute rock texture) ─────────
-            # A DENSE, THIN (~2-3) network of fine drainage gullies on the rock,
-            # painted with each lithology group's MID tier, UNDER the washes
-            # (washes overlay where they coincide). LOWER flow threshold than the
-            # wash => far more frequent, connecting all over the rock; the grooves
-            # read as mid-color fluting against the slope-tier ribs. flow_tile is
-            # NORMALIZED [0,1].
-            if (flow_tile is not None and rock_px.any()
-                    and not _overlay_off(cfg, "wash")
+            # ── S89: FOLIATION RIBS (thin cross-cutting rock fluting) ──────
+            # THIN, DENSE ribs running ACROSS the fall line (contour-parallel),
+            # so they CROSS-CUT the downhill washes ("x to the y flows") instead
+            # of overlapping them. Phase = surface_y (post-relief) -> ribs follow
+            # contours + wrap the terrain; a world-coord simplex warp bends them
+            # so they're not dead-level. period_blocks/width_frac set spacing +
+            # thickness (small => many, thin). Painted with each group's MID tier,
+            # UNDER the washes (washes overlay at the crossings). Geologically this
+            # IS foliation: parallel metamorphic/bedding banding.
+            if (rock_px.any() and not _overlay_off(cfg, "wash")
                     and cfg.get("washes", {}).get("foliated", {}).get("enabled", True)):
                 _fcfg = cfg.get("washes", {}).get("foliated", {})
-                _fol_core = rock_px & (flow_tile > float(_fcfg.get("min_flow", 0.0012)))
-                if _fol_core.any():
-                    _fol_dil = int(_fcfg.get("dilate", 1))
-                    if _fol_dil > 0:
-                        from scipy.ndimage import binary_dilation as _bd_fol
-                        _fol_zone = _bd_fol(_fol_core, iterations=_fol_dil) & rock_px
-                    else:
-                        _fol_zone = _fol_core
+                _period = max(1.5, float(_fcfg.get("period_blocks", 4.0)))
+                _duty   = float(_fcfg.get("width_frac", 0.32))
+                _warp_b = float(_fcfg.get("warp_blocks", 3.0))
+                _warp_sc = float(_fcfg.get("warp_scale", 60.0))
+                # world-coord low-freq warp (~[0,1] -> centered) bends the ribs
+                _wn = _noise_tile(_ecotone_meander_gen(cfg), H, W, px_off, py_off,
+                                  scale=_warp_sc, octaves=2)
+                _phase = (surface_y.astype(np.float32)
+                          + (_wn - 0.5) * 2.0 * _warp_b) / _period
+                _band = _phase - np.floor(_phase)         # 0..1 sawtooth
+                _fol_zone = rock_px & (_band < _duty)
+                _fol_min_deg = float(_fcfg.get("min_slope_deg", 0.0))
+                if _fol_min_deg > 0.0 and cliff_deg is not None:
+                    _fol_zone &= (cliff_deg >= _fol_min_deg)
+                if _fol_zone.any():
                     _fol_coin = np.random.default_rng(
                         (tile_x * 99991 ^ tile_y * 49993 ^ 0xF0117ED) & 0xFFFFFFFF
                     ).random((H, W)).astype(np.float32)
+                    _fol_dither = float(_fcfg.get("layer_dither", 0.5))
                     _fol_groups = cfg.get("lithology", {}).get("rock_layers", {}).get("groups", {})
                     _fol_n2id = {gn: int(gd.get("id", 0))
                                  for gn, gd in cfg.get("lithology", {}).get("groups", {}).items()}
@@ -3447,7 +3456,8 @@ def decorate_surface(
                                 if _litho_at_res is not None else _fol_zone)
                         if _fbm.any():
                             _paint_solid_dither(surface_blocks, subsurface_blocks,
-                                                _fbm, _fmid, _fol_coin, 0.5, paint_sub=True)
+                                                _fbm, _fmid, _fol_coin, _fol_dither,
+                                                paint_sub=True)
 
             # ── S88 walk #4b: WASH PAINTER (moved from inside rock_px) ─────
             # Per user direction: rock_gap -> strata -> WASH -> bedrock -> talus
