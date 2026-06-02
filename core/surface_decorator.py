@@ -3450,17 +3450,40 @@ def decorate_surface(
                         (tile_x * 99991 ^ tile_y * 49993 ^ 0xF0117ED) & 0xFFFFFFFF
                     ).random((H, W)).astype(np.float32)
                     _fol_dither = float(_fcfg.get("layer_dither", 0.5))
+                    # CONTRAST SWAP: a rib defaults to its group's MID tier, but
+                    # where it crosses a pixel whose NATIVE rock_layers tier is
+                    # already MID (mid-on-mid = invisible), swap to DARK so the
+                    # rib always contrasts the rock it cuts across. tier: 1=dark,
+                    # 2=mid, 3=light.
+                    _fol_tier = (np.round(rock_layers_tile.astype(np.float32) * 255.0
+                                          ).astype(np.int32)
+                                 if rock_layers_tile is not None else None)
                     _fol_groups = cfg.get("lithology", {}).get("rock_layers", {}).get("groups", {})
                     _fol_n2id = {gn: int(gd.get("id", 0))
                                  for gn, gd in cfg.get("lithology", {}).get("groups", {}).items()}
                     for _fgn, _fgd in _fol_groups.items():
                         _fmid = _fgd.get("mid")
+                        _fdark = _fgd.get("dark")
                         _fgid = _fol_n2id.get(_fgn)
                         if not _fmid or _fgid is None:
                             continue
                         _fbm = (_fol_zone & (_litho_at_res == _fgid)
                                 if _litho_at_res is not None else _fol_zone)
-                        if _fbm.any():
+                        if not _fbm.any():
+                            continue
+                        if _fol_tier is not None and _fdark:
+                            # native MID -> paint DARK; everything else -> MID
+                            _fbm_dk = _fbm & (_fol_tier == 2)
+                            _fbm_md = _fbm & (_fol_tier != 2)
+                            if _fbm_dk.any():
+                                _paint_solid_dither(surface_blocks, subsurface_blocks,
+                                                    _fbm_dk, _fdark, _fol_coin,
+                                                    _fol_dither, paint_sub=True)
+                            if _fbm_md.any():
+                                _paint_solid_dither(surface_blocks, subsurface_blocks,
+                                                    _fbm_md, _fmid, _fol_coin,
+                                                    _fol_dither, paint_sub=True)
+                        else:
                             _paint_solid_dither(surface_blocks, subsurface_blocks,
                                                 _fbm, _fmid, _fol_coin, _fol_dither,
                                                 paint_sub=True)
