@@ -575,6 +575,7 @@ def _process_tile(args: dict) -> dict:
         varnish_field_tile = masks.get("varnish_field"),
         joint_pattern_tile = masks.get("joint_pattern"),
         rock_layers_tile = masks.get("rock_layers"),
+        snow_potential_tile = masks.get("snow_potential"),
     )
 
     # ---- Step 8: Schematic placement ----
