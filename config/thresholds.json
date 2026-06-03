@@ -4457,7 +4457,7 @@
         "roughness_sigma": 4.0,
         "peak": {
           "_comment": "S89: VERY SUBTLE extra relief across the SNOW ZONE (surface_y >= per-biome snow line), GRADUALLY fading to ZERO at the bottom of the snowline so terrain looks natural below the snow. weight = clip((sy - snow_line)/snowline_fade_blocks, 0, 1); snow is placed OVER it. Raise amp_blocks for more crag, snowline_fade_blocks for a longer fade.",
-          "enabled": true,
+          "enabled": false,
           "amp_blocks": 1.2,
           "scale_blocks": 6.0,
           "snowline_fade_blocks": 120
@@ -4474,7 +4474,6 @@
       "curv_smooth_blocks": 48.0,
       "intensity_threshold": 90,
       "dilate_blocks": 2,
-      "cap_dither": 0.0,
       "layer_dither": 0.5,
       "suppress_trees": true,
       "kill_ground_cover": true,

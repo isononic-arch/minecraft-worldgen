@@ -2436,12 +2436,10 @@ def _apply_cliff_cap(
         return
     H, W = surface_blocks.shape
     thr = int(cc.get("intensity_threshold", 8))
-    cap_dither = float(cc.get("cap_dither", 0.0))
+    # S89 walk3: cap noise pass removed (was cap_dither threshold jitter) — it
+    # only raggedized the cap/snow boundary; the cap follows the clean convexity
+    # contour now.
     inten = (cliff_cap_tile * 255.0).astype(np.float32)
-    if cap_dither > 0.0:
-        _drng = np.random.default_rng(
-            (tile_x * 12347 ^ tile_y * 7919 ^ 0xCAFE2) & 0xFFFFFFFF)
-        inten = inten + (_drng.random((H, W), dtype=np.float32) - 0.5) * (2.0 * cap_dither)
     zone = inten >= thr
     if river_meta is not None:
         zone &= (river_meta <= 0)
