@@ -1110,16 +1110,26 @@ def _apply_snow_carpet(
         ground_cover[place_snow] = "snow[layers=1]"
 
 
-def _build_snow_line(biome_grid: np.ndarray, cfg: dict) -> np.ndarray:
+def _build_snow_line(biome_grid: np.ndarray, cfg: dict,
+                     surface_y: np.ndarray | None = None) -> np.ndarray:
     """Per-pixel snow-line altitude (MC-Y) from cfg.snow_lines. Snowy biomes get
     LOW lines (snow starts low); dry biomes HIGH lines (peaks only). Unlisted ->
-    _default."""
+    _default. With surface_y + convexity_coeff>0, the line GOES HIGHER on convex
+    ground (wind-scoured ridges shed snow) and LOWER in concave ground (gullies/
+    bowls collect it)."""
     sl = cfg.get("snow_lines", {}) if isinstance(cfg, dict) else {}
     out = np.full(biome_grid.shape, float(sl.get("_default", 485.0)), np.float32)
     for b, y in sl.items():
         if isinstance(b, str) and b.startswith("_"):
             continue
         out[biome_grid == b] = float(y)
+    cc = float(sl.get("convexity_coeff", 0.0))
+    if cc > 0.0 and surface_y is not None:
+        from scipy.ndimage import gaussian_filter as _gf_sl
+        syf = surface_y.astype(np.float32)
+        conv = _gf_sl(syf, float(sl.get("convexity_sigma", 6.0))) - syf
+        # conv > 0 = concave -> lower line (more snow); conv < 0 = convex -> higher.
+        out = (out - cc * conv).astype(np.float32)
     return out
 
 
@@ -1206,7 +1216,7 @@ def _apply_depth_snow(
             # gullies (high P from curvature/shelter) finger snow up to
             # gully_drop_blocks BELOW it. Per-pixel coin softens the edge into a
             # dithered, wandering snowline (no ruler-straight contour).
-            ridge = _build_snow_line(biome_grid, cfg)
+            ridge = _build_snow_line(biome_grid, cfg, surface_y)
             drop = float(dcfg.get("gully_drop_blocks", 45.0))
             feather = max(1.0, float(dcfg.get("gully_feather_blocks", 10.0)))
             g = np.clip((P - t_block) / max(1e-3, 1.0 - t_block), 0.0, 1.0)
@@ -2909,7 +2919,7 @@ def _smooth_biome_boundary_y(
 
 
 def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y,
-                       cliff_cap_tile=None):
+                       cliff_cap_tile=None, biome_grid=None):
     """S89: un-smooth rocky terrain. The Gaea -> upscale -> MC pipeline leaves
     rock faces too smooth; add low-amplitude, spatially-coherent height noise
     INSIDE rock (tier>=1), with amplitude fading to 0 over the outer
@@ -2981,23 +2991,22 @@ def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y,
     delta = np.round(np.where(rock, relief, 0.0)).astype(surface_y.dtype)
     surface_y += delta
 
-    # ── S89: SUBTLE extra relief ONLY on the ROCK CAP mask ───────────────
-    # Adds a little terrain variation under the cap rock (so snow-capped peaks
-    # aren't smooth domes), gated strictly to the cliff_cap mask. Subtle amp.
-    # Separate noise stream. No-op if cliff_cap_tile is absent.
+    # ── S89: VERY SUBTLE extra relief across the SNOW ZONE, fading out at the
+    # snowline. Adds a little terrain variation under the snow so caps aren't
+    # smooth domes, but GRADUALLY fades to ZERO at the bottom of the snowline
+    # (back to natural-looking terrain). Weight = clip((sy - snow_line) / fade).
+    # Snow is placed OVER this later. Separate noise stream. Needs biome_grid.
     _pk = rcfg.get("peak", {})
-    if _pk.get("enabled", False) and cliff_cap_tile is not None:
-        pk_amp = float(_pk.get("amp_blocks", 2.0))
+    if _pk.get("enabled", False) and biome_grid is not None:
+        pk_amp = float(_pk.get("amp_blocks", 1.2))
         pk_scale = max(1.0, float(_pk.get("scale_blocks", scale)))
-        pk_cap_intensity = int(_pk.get("cap_intensity", 90))
-        peak_mask = (np.asarray(cliff_cap_tile, dtype=np.float32) * 255.0
-                     >= pk_cap_intensity)
-        if peak_mask.any() and pk_amp > 0.0:
+        pk_fade = max(1.0, float(_pk.get("snowline_fade_blocks", 120.0)))
+        _snow_line = _build_snow_line(biome_grid, cfg, sy_f)
+        _alt_w = np.clip((sy_f - _snow_line) / pk_fade, 0.0, 1.0).astype(np.float32)
+        if pk_amp > 0.0 and (_alt_w > 0.0).any():
             _g2 = opensimplex.OpenSimplex(seed=0x9EA70 + 7)
             _pn = _g2.noise2array(_wx / pk_scale, _wy / pk_scale).astype(np.float32)
-            pk_delta = np.round(
-                np.where(peak_mask, pk_amp * _pn, 0.0)
-            ).astype(surface_y.dtype)
+            pk_delta = np.round(pk_amp * _alt_w * _pn).astype(surface_y.dtype)
             surface_y += pk_delta
 
 
@@ -3095,7 +3104,7 @@ def decorate_surface(
     # drape over the bumps and nothing smooths them back out. Mutates in place;
     # no-op unless rock_layers + relief enabled.
     _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y,
-                       cliff_cap_tile=cliff_cap_tile)
+                       cliff_cap_tile=cliff_cap_tile, biome_grid=biome_grid)
 
     # --- Build noise arrays ------------------------------------------------
     den_cfg  = cfg["decoration_density_noise"]
@@ -4089,7 +4098,7 @@ def decorate_surface(
             # S89 PER-BIOME snow line: a cell only snows above its biome's altitude
             # (snowy biomes low, dry biomes 520-550 -> peaks only).
             if snow_px.any():
-                _snow_line_px = _build_snow_line(biome_grid, cfg)
+                _snow_line_px = _build_snow_line(biome_grid, cfg, surface_y)
                 snow_px &= (surface_y.astype(np.float32) >= _snow_line_px)
             if snow_px.any():
                 surface_blocks[snow_px] = "snow_block"

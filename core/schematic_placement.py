@@ -734,6 +734,15 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
             if e.schem_type == "bush"
         ]
 
+    # S89 GLOBAL REJECT: drop bad schematics everywhere by path substring.
+    # dpine_tree_scotsp_b_sm uses stripped_dark_oak_log/wood (a light stripped-
+    # oak trunk + bundled spruce leaves) -- reads as a broadleaf, not a conifer.
+    _GLOBAL_REJECT_STEMS = ("dpine_tree_scotsp_b_sm",)
+    if _GLOBAL_REJECT_STEMS:
+        for _bk in list(grouped.keys()):
+            grouped[_bk] = [e for e in grouped[_bk]
+                            if not any(s in e.path for s in _GLOBAL_REJECT_STEMS)]
+
     return grouped
 
 

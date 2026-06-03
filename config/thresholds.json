@@ -4448,11 +4448,11 @@
         "roughness_ref": 2.0,
         "roughness_sigma": 4.0,
         "peak": {
-          "_comment": "S89: SUBTLE extra relief gated STRICTLY to the rock cap mask (cliff_cap_tile*255 >= cap_intensity, matching the cliff_cap painter's intensity_threshold). Adds a little terrain variation under the cap rock so snow-capped peaks aren't smooth domes. Separate noise stream.",
+          "_comment": "S89: VERY SUBTLE extra relief across the SNOW ZONE (surface_y >= per-biome snow line), GRADUALLY fading to ZERO at the bottom of the snowline so terrain looks natural below the snow. weight = clip((sy - snow_line)/snowline_fade_blocks, 0, 1); snow is placed OVER it. Raise amp_blocks for more crag, snowline_fade_blocks for a longer fade.",
           "enabled": true,
-          "amp_blocks": 2.0,
+          "amp_blocks": 1.2,
           "scale_blocks": 6.0,
-          "cap_intensity": 90
+          "snowline_fade_blocks": 120
         }
       }
     },
@@ -4782,7 +4782,9 @@
     }
   },
   "snow_lines": {
-    "_comment": "S89 PER-BIOME snow altitude line (MC-Y, world max ~703). A cell only gets snow_block if surface_y >= its biome's line. SNOWY biomes (SBT/ARCTIC/FROZEN) stay LOW (~400, lots of snow); BOREAL_ALPINE/BOREAL_TAIGA 525-625; temperate 625-650; dry/warm 650+ (peaks only). Unlisted -> _default. Within the depth snowy_biomes the gully fingers still pull snow BELOW the line down concave gullies. SNOW_Y_FLOOR=395 so the Gaea dusting reaches the ~400 snowy lines.",
+    "_comment": "S89 PER-BIOME snow altitude line (MC-Y, world max ~703). A cell only gets snow_block if surface_y >= its biome's line. SNOWY biomes (SBT/ARCTIC/FROZEN) stay LOW (~400, lots of snow); BOREAL_ALPINE/BOREAL_TAIGA 525-625; temperate 625-650; dry/warm 650+ (peaks only). convexity_coeff: line goes HIGHER on convex (wind-scoured ridges shed snow) and LOWER in concave (gullies collect it) by convexity_coeff*(gaussian(sy,sigma)-sy). Unlisted -> _default. SNOW_Y_FLOOR=395 so Gaea dusting reaches the ~400 snowy lines.",
+    "convexity_coeff": 3.5,
+    "convexity_sigma": 6.0,
     "_default": 635,
     "SNOWY_BOREAL_TAIGA": 400,
     "ARCTIC_TUNDRA": 400,
@@ -4863,6 +4865,6 @@
       "ppine",
       "scotsp"
     ],
-    "max_height_blocks": 10
+    "max_height_blocks": 7
   }
 }
