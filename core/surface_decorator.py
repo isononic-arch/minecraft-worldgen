@@ -1119,6 +1119,8 @@ def _apply_depth_snow(
     cliff_deg:      np.ndarray | None,
     cfg:            dict,
     surface_y:      np.ndarray | None = None,  # (H,W) — for gully_only altitude gate
+    tile_x:         int = 0,
+    tile_y:         int = 0,
 ) -> bool:
     """S89 depth-snow: paint snow DEPTH from the continuous physics potential.
 
@@ -1185,8 +1187,21 @@ def _apply_depth_snow(
     # keeps the potential ~0 outside gullies/below the line.
     if bool(dcfg.get("gully_only", False)):
         if surface_y is not None:
-            elig &= (surface_y.astype(np.float32)
-                     >= float(dcfg.get("gully_min_y", 440.0)))
+            syf = surface_y.astype(np.float32)
+            # FEATHERED, GULLY-BIASED floor (no flat 440 line). The minimum snow
+            # altitude DROPS in gullies: ridge cells (P just at threshold) hold a
+            # high floor; deep gullies (high P from curvature/shelter) let snow
+            # finger MUCH lower. Per-pixel coin softens the edge into a dithered,
+            # wandering snowline rather than a ruler-straight contour.
+            ridge_y = float(dcfg.get("gully_floor_ridge_y", 460.0))
+            deep_y  = float(dcfg.get("gully_floor_deep_y", 390.0))
+            feather = max(1.0, float(dcfg.get("gully_feather_blocks", 10.0)))
+            g = np.clip((P - t_block) / max(1e-3, 1.0 - t_block), 0.0, 1.0)
+            floor_y = ridge_y - (ridge_y - deep_y) * g
+            prob = np.clip((syf - floor_y) / feather + 0.5, 0.0, 1.0)
+            _rng_g = np.random.default_rng(
+                (tile_x * 2654435761 ^ tile_y * 40503 ^ 0x5A0FEA) & 0xFFFFFFFF)
+            elig &= (_rng_g.random((H, W)).astype(np.float32) < prob)
         cap = elig & (P >= t_block)
         if cap.any():
             surface_blocks[cap] = "snow_block"
@@ -4678,6 +4693,8 @@ def decorate_surface(
             cliff_deg=cliff_deg,
             cfg=cfg,
             surface_y=surface_y,
+            tile_x=tile_x,
+            tile_y=tile_y,
         )
     # In gully_only mode the depth pass only adds high-gully fingers, so the
     # original Gaea snow_carpet (SBT/FF/AT/BA dappled layers) still runs too.

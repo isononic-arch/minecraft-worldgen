@@ -88,6 +88,18 @@ ECOTONE_DENY_PAIRS: frozenset[frozenset[str]] = frozenset({
     frozenset({"TEMPERATE_RAINFOREST", "RAINFOREST_COAST"}),
 })
 
+# S89: snowy/conifer biomes that must NEVER receive BROADLEAF trees via the
+# ecotone seam swap (birch from a BIRCH_FOREST/MIXED_FOREST neighbour was landing
+# in the snow). When a cell of one of these swaps to a neighbour, only conifer
+# species survive (matched by substring). Conifer-conifer mixing is preserved.
+_CONIFER_SNOWY_BIOMES: frozenset[str] = frozenset({
+    "SNOWY_BOREAL_TAIGA", "BOREAL_TAIGA", "BOREAL_ALPINE",
+    "ARCTIC_TUNDRA", "FROZEN_FLATS",
+})
+_CONIFER_SPECIES_SUBSTR: tuple[str, ...] = (
+    "spruce", "fir", "pine", "tamarack", "larch", "scotsp", "cedar", "hemlock",
+)
+
 # Canopy overlap exclusion radii (pixels) per size code
 CANOPY_RADIUS: dict[str, int] = {
     "sm": 3,
@@ -1357,6 +1369,16 @@ def place_schematics(
             entries = _filter_entries(all_entries, pass_type)
             if not entries:
                 continue
+
+            # S89: a snowy/conifer cell that swapped to a broadleaf neighbour keeps
+            # ONLY conifer species (no birch/oak/etc in the snow). Uses the ORIGINAL
+            # biome so conifer-conifer mixing still works.
+            if (swap_active and pass_type == "tree"
+                    and orig_biome_str in _CONIFER_SNOWY_BIOMES):
+                entries = [e for e in entries
+                           if any(s in e.species for s in _CONIFER_SPECIES_SUBSTR)]
+                if not entries:
+                    continue
 
             # S89 krummholz: feathered small-tree restriction. Rock proximity =
             # always small; altitude ramps the probability over [lo,hi] so the
