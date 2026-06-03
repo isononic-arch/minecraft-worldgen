@@ -578,6 +578,15 @@ def _process_tile(args: dict) -> dict:
         snow_potential_tile = masks.get("snow_potential"),
     )
 
+    # S89 floating-tree fix: snapshot surface_y AFTER decorate (post rock-relief /
+    # grass-terrace).  Schematics (Step 8) anchor on THIS surface; Step 9's
+    # water/bank/bed smoothing then perturbs surface_y and -- with peak_crunch
+    # OFF the old crunch-lock is inactive -- chunk_writer would build columns at
+    # the lowered Y, leaving trunks floating.  We restore this snapshot at LAND
+    # cells away from water just before write_tile so columns match the anchors;
+    # water/bank cells keep Step 9's fixes.
+    _post_decorate_y = surface_y.copy()
+
     # ---- Step 8: Schematic placement ----
     try:
         schem_index = core_placement.load_index(_Path(args["schem_index_path"]))
@@ -1196,6 +1205,24 @@ def _process_tile(args: dict) -> dict:
                 _final_mask = _crunch_rock_mask & ~_river_zone_lock
                 del _river_zone_lock
             surface_y[_final_mask] = _crunch_lock_y[_final_mask]
+
+        # S89 floating-tree lock: restore the post-decorate surface_y on LAND
+        # cells away from water so chunk_writer's columns match the schematic
+        # anchors (Step 9 only legitimately reshapes water/bank cells; restoring
+        # land there is safe and stops trunks floating).  Exclude a dilated water
+        # zone so river/lake bank smoothing survives.
+        if _post_decorate_y is not None:
+            _land_lock = surface_y >= 63
+            if river_meta is not None and (river_meta > 0).any() or (surface_y < 63).any():
+                from scipy.ndimage import binary_dilation as _bd_lk2
+                _water_zone = _bd_lk2(
+                    (river_meta > 0) | (surface_y < 63)
+                    if river_meta is not None else (surface_y < 63),
+                    iterations=14,
+                )
+                _land_lock &= ~_water_zone
+                del _water_zone
+            surface_y[_land_lock] = _post_decorate_y[_land_lock]
 
         core_chunk.write_tile(
             surface_y    = surface_y,

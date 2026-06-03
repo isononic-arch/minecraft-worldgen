@@ -1254,6 +1254,22 @@ def place_schematics(
                 _kr_rg, iterations=int(_kr_cfg.get("rock_dilate_blocks", 3)))
         else:
             _kr_rock_near = _kr_rg
+    # Krummholz uses a FIXED pool of specific tiny-pine schematics (user-picked),
+    # forced at triggered cells regardless of biome. Built by scanning the whole
+    # index for matching path stems (dedup by path).
+    _kr_whitelist = list(_kr_cfg.get("schematics", []))
+    _kr_pool = []
+    if _kr_on and _kr_whitelist:
+        _kr_seen = set()
+        for _blist in index.values():
+            for _e in _blist:
+                if getattr(_e, "schem_type", "tree") != "tree":
+                    continue
+                if _e.path in _kr_seen:
+                    continue
+                if any(_w in _e.path for _w in _kr_whitelist):
+                    _kr_seen.add(_e.path)
+                    _kr_pool.append(_e)
 
     for pass_type in ("tree", "bush"):
         # Bushes get their own exclusion grid (smaller radius, independent of trees)
@@ -1312,9 +1328,12 @@ def place_schematics(
                         _kr_p = (_y - _kr_feather_lo) / max(
                             1.0, _kr_feather_hi - _kr_feather_lo)
                 if _kr_p > 0.0 and rng.random() < _kr_p:
-                    _kr_sm = [e for e in entries if e.size == "sm"]
-                    if _kr_sm:
-                        entries = _kr_sm
+                    if _kr_pool:
+                        entries = _kr_pool          # force the tiny-pine pool
+                    else:
+                        _kr_sm = [e for e in entries if e.size == "sm"]
+                        if _kr_sm:
+                            entries = _kr_sm
 
             # S70 Item M: palm distance gate for LUSH_RAINFOREST_COAST.
             # S71: extended to RAINFOREST_COAST per user walk — palms only

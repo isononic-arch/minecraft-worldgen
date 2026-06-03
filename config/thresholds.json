@@ -4737,16 +4737,16 @@
     "enabled": false,
     "snow_lo_y": 400.0,
     "snow_hi_y": 465.0,
-    "shed_lo_deg": 33.0,
-    "shed_hi_deg": 42.0,
+    "shed_lo_deg": 40.0,
+    "shed_hi_deg": 52.0,
     "curvature_coeff": 0.7,
-    "leeward_coeff": 0.2,
+    "leeward_coeff": 0.35,
     "wind_travel_deg": 112.0,
     "wind_source_deg": 292.0,
     "sx_search_blocks": 700.0,
     "sx_fan_rays": 5,
     "sx_fan_half_deg": 12.0,
-    "shelter_coeff": 0.5,
+    "shelter_coeff": 0.7,
     "threshold": 0.5,
     "dither_width": 0.15,
     "base_floor": 0.3,
@@ -4763,9 +4763,9 @@
       "_comment": "S89 depth-snow. Drives snow DEPTH off the continuous snow_potential.tif (built by build_snow_physics alongside the binary gap) instead of a flat snow_block + 95%-dappled carpet. P>=t_block -> snow_block CAP; t_layer<=P<t_block -> snow[layers=N] DRIFT (N scales 1..max_layers, deepening toward the cap); P<t_layer -> bare rock. carpet_biomes keep a clean layers=1 baseline below the alpine line (Tundra Valley). slope_max_deg keeps steep faces bare. Shape comes from terrain (physics curvature concentrates P in concave gullies, strips convex ridges) -- no dither coin. Set enabled=false to fall back to the legacy dappled carpet.",
       "enabled": true,
       "t_layer": 0.35,
-      "t_block": 0.62,
+      "t_block": 0.50,
       "max_layers": 7,
-      "slope_max_deg": 38.0,
+      "slope_max_deg": 46.0,
       "carpet_biomes": [
         "SNOWY_BOREAL_TAIGA",
         "ARCTIC_TUNDRA",
@@ -4792,8 +4792,8 @@
     "foliated": {
       "_comment": "Foliation ribs = REAL flow lines from the flow mask (not procedural), filtered to the FINE tributaries that TRAVERSE the slope. Band: flow in [min_flow, washes.min_flow) keeps them below the trunk washes. cross_cos = |cos(grad flow, grad height)| threshold: HIGH = channel runs across the fall line (cross-cutting), LOW = plunges straight down. LOWER cross_cos -> MORE ribs (keeps straighter channels too, which on sharp slopes run naturally downhill); raise for stricter cross-cutting. LOWER min_flow -> catches finer tributaries (more, thinner ribs). smooth_sigma denoises the flow gradient. layer_dither = fraction of rib pixels actually painted mid-tier.",
       "enabled": true,
-      "min_flow": 0.0005,
-      "cross_cos": 0.35,
+      "min_flow": 0.0003,
+      "cross_cos": 0.22,
       "smooth_sigma": 1.0,
       "min_slope_deg": 0.0,
       "layer_dither": 0.6
@@ -4802,12 +4802,12 @@
   "grass_terraces": {
     "_comment": "S89 grassy terraces/ledges on rocky slopes where soil realistically lands. A bench = locally flat (cliff_deg < bench_max_deg) but SURROUNDED by steep rock (neighbourhood max slope >= surround_min_deg within surround_radius_blocks) -> a ledge on a cliff, not open meadow. concavity_min keeps soil-collecting concave pockets (gaussian(surface_y,sigma)-surface_y >= concavity_min, blocks; negative allows mild convex). Excludes active drainage (flow >= washes.min_flow), rivers, and exclude_biomes (arid/sand). coverage caps it so the cliff never fully re-greens. Hands off to snow above snow_handoff_potential (depth-snow then dusts/caps the bench). Runs after rock painters, before snow.",
     "enabled": true,
-    "bench_max_deg": 22.0,
-    "surround_min_deg": 32.0,
-    "surround_radius_blocks": 4,
+    "bench_max_deg": 26.0,
+    "surround_min_deg": 24.0,
+    "surround_radius_blocks": 6,
     "concavity_sigma": 3.0,
-    "concavity_min": -0.3,
-    "coverage": 0.6,
+    "concavity_min": -1.0,
+    "coverage": 0.85,
     "rock_dilate_blocks": 2,
     "edge_fade_blocks": 3.0,
     "snow_handoff_potential": 0.45,
@@ -4823,10 +4823,16 @@
     ]
   },
   "krummholz": {
-    "_comment": "S89 stunted high-mountain trees. Rock proximity (gap==5 within rock_dilate_blocks) ALWAYS forces size=='sm'. Altitude is FEATHERED: P(force small) ramps 0 at feather_lo_y -> 1 at feather_hi_y, so the krummholz band fades in instead of a hard cutoff. Preserves the tree COUNT (still places, just a small variant); falls back to the full pool if the biome has no sm trees.",
+    "_comment": "S89 stunted high-mountain trees. Rock proximity (gap==5 within rock_dilate_blocks) ALWAYS forces the krummholz pool; altitude is FEATHERED: P(force) ramps 0 at feather_lo_y -> 1 at feather_hi_y. At triggered cells the biome's tree pool is REPLACED by the fixed `schematics` whitelist (matched by path substring, scanned across the whole index) -- user-picked tiny pines. Falls back to size=='sm' if none of the whitelist is loaded. Preserves the tree COUNT (still places, just the tiny variant).",
     "enabled": true,
     "rock_dilate_blocks": 3,
     "feather_lo_y": 550,
-    "feather_hi_y": 600
+    "feather_hi_y": 600,
+    "schematics": [
+      "ppine_d_md",
+      "ppine_e_md",
+      "scotsp_a_sm",
+      "scotsp_e_lg"
+    ]
   }
 }
