@@ -1111,7 +1111,8 @@ def _apply_snow_carpet(
 
 
 def _build_snow_line(biome_grid: np.ndarray, cfg: dict,
-                     surface_y: np.ndarray | None = None) -> np.ndarray:
+                     surface_y: np.ndarray | None = None,
+                     north_factor: np.ndarray | None = None) -> np.ndarray:
     """Per-pixel snow-line altitude (MC-Y) from cfg.snow_lines. Snowy biomes get
     LOW lines (snow starts low); dry biomes HIGH lines (peaks only). Unlisted ->
     _default. With surface_y + convexity_coeff>0, the line GOES HIGHER on convex
@@ -1130,6 +1131,11 @@ def _build_snow_line(biome_grid: np.ndarray, cfg: dict,
         conv = _gf_sl(syf, float(sl.get("convexity_sigma", 6.0))) - syf
         # conv > 0 = concave -> lower line (more snow); conv < 0 = convex -> higher.
         out = (out - cc * conv).astype(np.float32)
+    # ASPECT: south-facing (sunny, north_factor->0) RAISES the line (snow melts);
+    # north-facing (shaded, north_factor->1) LOWERS it (snow persists).
+    ac = float(sl.get("aspect_coeff", 0.0))
+    if ac > 0.0 and north_factor is not None:
+        out = (out + ac * (0.5 - north_factor.astype(np.float32))).astype(np.float32)
     return out
 
 
@@ -1144,6 +1150,7 @@ def _apply_depth_snow(
     surface_y:      np.ndarray | None = None,  # (H,W) — for gully_only altitude gate
     tile_x:         int = 0,
     tile_y:         int = 0,
+    north_factor:   np.ndarray | None = None,  # (H,W) — aspect for the snow line
 ) -> bool:
     """S89 depth-snow: paint snow DEPTH from the continuous physics potential.
 
@@ -1216,7 +1223,7 @@ def _apply_depth_snow(
             # gullies (high P from curvature/shelter) finger snow up to
             # gully_drop_blocks BELOW it. Per-pixel coin softens the edge into a
             # dithered, wandering snowline (no ruler-straight contour).
-            ridge = _build_snow_line(biome_grid, cfg, surface_y)
+            ridge = _build_snow_line(biome_grid, cfg, surface_y, north_factor)
             drop = float(dcfg.get("gully_drop_blocks", 45.0))
             feather = max(1.0, float(dcfg.get("gully_feather_blocks", 10.0)))
             g = np.clip((P - t_block) / max(1e-3, 1.0 - t_block), 0.0, 1.0)
@@ -2919,7 +2926,7 @@ def _smooth_biome_boundary_y(
 
 
 def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y,
-                       cliff_cap_tile=None, biome_grid=None):
+                       cliff_cap_tile=None, biome_grid=None, north_factor=None):
     """S89: un-smooth rocky terrain. The Gaea -> upscale -> MC pipeline leaves
     rock faces too smooth; add low-amplitude, spatially-coherent height noise
     INSIDE rock (tier>=1), with amplitude fading to 0 over the outer
@@ -3001,7 +3008,7 @@ def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y,
         pk_amp = float(_pk.get("amp_blocks", 1.2))
         pk_scale = max(1.0, float(_pk.get("scale_blocks", scale)))
         pk_fade = max(1.0, float(_pk.get("snowline_fade_blocks", 120.0)))
-        _snow_line = _build_snow_line(biome_grid, cfg, sy_f)
+        _snow_line = _build_snow_line(biome_grid, cfg, sy_f, north_factor)
         _alt_w = np.clip((sy_f - _snow_line) / pk_fade, 0.0, 1.0).astype(np.float32)
         if pk_amp > 0.0 and (_alt_w > 0.0).any():
             _g2 = opensimplex.OpenSimplex(seed=0x9EA70 + 7)
@@ -3104,7 +3111,9 @@ def decorate_surface(
     # drape over the bumps and nothing smooths them back out. Mutates in place;
     # no-op unless rock_layers + relief enabled.
     _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y,
-                       cliff_cap_tile=cliff_cap_tile, biome_grid=biome_grid)
+                       cliff_cap_tile=cliff_cap_tile, biome_grid=biome_grid,
+                       north_factor=(eco_grads.north_factor if (eco_grads is not None
+                                     and hasattr(eco_grads, "north_factor")) else None))
 
     # --- Build noise arrays ------------------------------------------------
     den_cfg  = cfg["decoration_density_noise"]
@@ -4095,11 +4104,33 @@ def decorate_surface(
                     (biome_grid == "FROZEN_FLATS")
                 )
                 snow_px = snow_px & ~_snow_exempt
-            # S89 PER-BIOME snow line: a cell only snows above its biome's altitude
-            # (snowy biomes low, dry biomes 520-550 -> peaks only).
+            # S89 PER-BIOME snow line + PATCHY TRANSITION BAND. Instead of a hard
+            # altitude cutoff, snow survival across a +/-transition_blocks band is
+            # decided by MICRO-TERRAIN, not a coin: lingers in fine hollows (curv),
+            # shade (north aspect) and physics drifts/couloirs (snow_potential =
+            # wind-shelter Sx + curvature); melts on bumps, sun, scoured ground.
+            # The biome base line stays dominant -> climate ordering preserved.
             if snow_px.any():
-                _snow_line_px = _build_snow_line(biome_grid, cfg, surface_y)
-                snow_px &= (surface_y.astype(np.float32) >= _snow_line_px)
+                _nf_sl = (eco_grads.north_factor if (eco_grads is not None
+                          and hasattr(eco_grads, "north_factor")) else None)
+                _eff_line = _build_snow_line(biome_grid, cfg, surface_y, _nf_sl)
+                _slc = cfg.get("snow_lines", {})
+                _band = max(1.0, float(_slc.get("transition_blocks", 25.0)))
+                _syf = surface_y.astype(np.float32)
+                _t = np.clip((_syf - _eff_line + _band) / (2.0 * _band), 0.0, 1.0)
+                from scipy.ndimage import gaussian_filter as _gf_band
+                _fine = _gf_band(_syf, 1.5) - _syf            # +concave / -convex
+                _micro = (float(_slc.get("micro_curv_coeff", 0.40))
+                          * np.clip(_fine / float(_slc.get("micro_curv_ref", 2.0)),
+                                    -1.0, 1.0)).astype(np.float32)
+                if _nf_sl is not None:
+                    _micro = _micro + float(_slc.get("micro_aspect_coeff", 0.25)) \
+                             * (_nf_sl.astype(np.float32) - 0.5) * 2.0
+                if (snow_potential_tile is not None
+                        and float(np.asarray(snow_potential_tile).max()) > 0.0):
+                    _micro = _micro + float(_slc.get("micro_potential_coeff", 0.30)) \
+                             * (np.asarray(snow_potential_tile, np.float32) * 2.0 - 1.0)
+                snow_px &= ((_t + 0.5 * _micro) > 0.5)
             if snow_px.any():
                 surface_blocks[snow_px] = "snow_block"
                 # S84: powder_snow generation removed — was placed in concavities
@@ -4719,6 +4750,8 @@ def decorate_surface(
             surface_y=surface_y,
             tile_x=tile_x,
             tile_y=tile_y,
+            north_factor=(eco_grads.north_factor if (eco_grads is not None
+                          and hasattr(eco_grads, "north_factor")) else None),
         )
     # In gully_only mode the depth pass only adds high-gully fingers, so the
     # original Gaea snow_carpet (SBT/FF/AT/BA dappled layers) still runs too.
