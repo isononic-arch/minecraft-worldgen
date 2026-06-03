@@ -110,26 +110,34 @@ def apply_flow_erosion(
         # 0 below fmin, ramp to 1 by ~fmin+8, hold to fmax, off above (vertical)
         _slope_w = np.clip((_slope_deg - _fmin) / 8.0, 0.0, 1.0) \
             * np.clip((_fmax - _slope_deg) / 8.0 + 1.0, 0.0, 1.0)
-        # local roughness: deviation from a smoothed surface (high = already varied)
-        _rsig = float(fcfg.get("face_rough_sigma", 4.0))
-        _rref = max(0.1, float(fcfg.get("face_rough_ref", 3.0)))
+        # MACRO roughness: deviation from a LARGE-sigma smoothed surface so MC's
+        # block-level staircase steps DON'T count as "rough" -- only real gully/
+        # ridge variation (the stuff we want to leave alone) suppresses the face.
+        # A macro-planar cliff face reads SMOOTH here even though it's staircased.
+        _rsig = float(fcfg.get("face_rough_sigma", 16.0))
+        _rref = max(0.1, float(fcfg.get("face_rough_ref", 5.0)))
         _rough = np.abs(sy - _gf_face(sy, _rsig))
         _smooth_w = np.clip(1.0 - _rough / _rref, 0.0, 1.0)       # high on flat faces
         _face = (_slope_w * _smooth_w).astype(np.float32)
+        # FLOW-INDEPENDENT carve: a big planar face sheds water (~0 flow), so the
+        # deepening must NOT be flow-gated (the old `* incise` left open faces
+        # untouched). Carve the ridged gully pattern into the face directly:
+        # face_extra_incise = uniform face recession, face_extra_gully = gully
+        # channel depth. edge-fade + smooth downstream keep it clean.
+        try:
+            from opensimplex import OpenSimplex as _OSf
+            _wsc = max(2.0, float(fcfg.get("face_gully_scale_blocks", 40.0)))
+            _osf = _OSf(seed=int(fcfg.get("seed", 1337)) + 991)
+            _fxs = (tile_x * W + np.arange(W, dtype=np.float64)) / _wsc
+            _fys = (tile_y * H + np.arange(H, dtype=np.float64)) / _wsc
+            _fn = _osf.noise2array(_fxs, _fys).astype(np.float32)
+            _fridged = (1.0 - np.abs(_fn)) ** float(fcfg.get("gully_sharpness", 2.0))
+        except Exception:
+            _fridged = np.zeros((H, W), np.float32)
         if face_extra_incise > 0.0:
-            dy = dy - face_extra_incise * _face * incise
+            dy = dy - face_extra_incise * _face                  # uniform recession
         if face_extra_gully > 0.0:
-            try:
-                from opensimplex import OpenSimplex as _OSf
-                _wsc = max(2.0, float(fcfg.get("face_gully_scale_blocks", 40.0)))
-                _osf = _OSf(seed=int(fcfg.get("seed", 1337)) + 991)
-                _fxs = (tile_x * W + np.arange(W, dtype=np.float64)) / _wsc
-                _fys = (tile_y * H + np.arange(H, dtype=np.float64)) / _wsc
-                _fn = _osf.noise2array(_fxs, _fys).astype(np.float32)
-                _fridged = (1.0 - np.abs(_fn)) ** float(fcfg.get("gully_sharpness", 2.0))
-                dy = dy - face_extra_gully * _face * _fridged
-            except Exception:
-                pass
+            dy = dy - face_extra_gully * _face * _fridged        # gully channels
 
     # ---- Anti-artifact: EDGE FADE + SMOOTH the erosion delta ----
     # The ridged gully + face terms are sharp per-cell; applied raw they make
