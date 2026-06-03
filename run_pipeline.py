@@ -108,6 +108,7 @@ def _process_tile(args: dict) -> dict:
     core_schem_loader   = importlib.import_module("core.schematic_loader")
     core_eco            = importlib.import_module("core.eco_gradients")
     core_clearing       = importlib.import_module("core.meadow_clearing_field")
+    core_flow_erosion   = importlib.import_module("core.flow_erosion")
 
     t0 = time.perf_counter()
 
@@ -228,6 +229,16 @@ def _process_tile(args: dict) -> dict:
     if _sdd_river.any():
         surface_y[_sdd_river]  = pre_carve_y[_sdd_river]
         river_meta[_sdd_river] = 0
+
+    # ---- Step 6b.0 (S89 walk3): FLOW EROSION — dissect blobby rock massifs ----
+    # Cut a drainage texture into rock terrain BEFORE cliff_deg so slope-driven
+    # decoration (ground cover, schematic reject) and the written columns all
+    # follow the eroded shape. Gated to rock_layers tier>=1, excludes carved
+    # rivers. No-op unless cfg.flow_erosion.enabled.
+    surface_y = core_flow_erosion.apply_flow_erosion(
+        surface_y, masks.get("flow"), masks.get("rock_layers"),
+        river_meta, cfg, tile_x, tile_y,
+    )
 
     # ---- Step 6b: Ecological gradients ----
     # Use Gaussian-smoothed cliff_deg (sigma=1.5) to eliminate 45° spikes at

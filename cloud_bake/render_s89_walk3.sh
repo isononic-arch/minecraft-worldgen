@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# render_s89_walk3.sh — S89 walk-3 targeted re-render (15 tiles).
+# render_s89_walk3.sh — S89 walk-3 targeted re-render (17 tiles).
 #
-# Only tiles relevant to the walk-3 change batch: the 6 litho test tiles + the
-# called-out biomes + tiles touched by pending biome changes.
+# Tiles relevant to the walk-3 change batch: the 6 litho test tiles + the 2 OLD
+# blobby litho tiles (24,80)/(89,52) for FLOW EROSION comparison + the called-out
+# biomes + tiles touched by pending biome changes.
+#   - FLOW EROSION dissection of blobby rock massifs (all 8 rock/mountain tiles)
 #   - deep-strata + TIER-SPECIFIC ribs + rock edge-stroke talus-gap fix (6 rock)
 #   - krummholz SPARSE fix (rock_temperate_basaltic, SBT, deepslate)
 #   - ARCTIC_TUNDRA<625 -> SNOWY_BOREAL_TAIGA remap (ARCTIC + rock peaks)
@@ -39,6 +41,8 @@ TILES=(
   "29:20:rock_arid_basaltic"
   "29:12:rock_temperate_basaltic"
   "72:68:rock_mossy_temperate"
+  "24:80:rock_arid_basaltic_OLDBLOB"
+  "89:52:rock_temperate_basaltic_OLDBLOB"
   "32:13:ARCTIC_TUNDRA"
   "30:10:SNOWY_BOREAL_TAIGA"
   "21:23:BOREAL_ALPINE"
@@ -59,6 +63,8 @@ TP_LIST=(
   "rock_arid_basaltic          /tp @s 15108 692 10700   # ribs(mid=light), edge stroke"
   "rock_temperate_basaltic     /tp @s 15276 683 6580    # KRUMMHOLZ sparse fix, ribs(mid=dark), strata"
   "rock_mossy_temperate        /tp @s 37284 361 35012   # ribs(mid=dark), edge stroke"
+  "rock_arid_basaltic_OLDBLOB  /tp @s 12796 522 41340   # FLOW EROSION on the OLD blobby arid tile"
+  "rock_temperate_basaltic_OLDBLOB /tp @s 45572 587 26796 # FLOW EROSION on the OLD blobby temperate tile"
   "ARCTIC_TUNDRA               /tp @s 16636 670 6908    # tundra<625 -> SBT remap, snow edge stroke"
   "SNOWY_BOREAL_TAIGA          /tp @s 15612 525 5372    # krummholz sparse, no trees-on-snow (reverted)"
   "BOREAL_ALPINE               /tp @s 11004 147 12028   # talus/rock fade gap fix + more short grass"

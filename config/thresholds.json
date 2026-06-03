@@ -4883,5 +4883,21 @@
       "scotsp"
     ],
     "max_height_blocks": 7
+  },
+  "flow_erosion": {
+    "_comment": "S89 walk3: dissect blobby upscaled rock massifs. Gated to rock_layers tier>=min_rock_tier, excludes carved rivers, applied to surface_y BEFORE cliff_deg so slope-driven decoration + written columns follow. flow incision (band-limited tributary flow) + ridged-simplex synthetic gully network (world-coord, seam-safe) + convex ridge sharpening. Test on (24,80)/(89,52) old blob litho tiles + (29,20)/(29,12) high rock tiles. OFF until validated.",
+    "enabled": true,
+    "min_rock_tier": 1,
+    "flow_lo": 0.001,
+    "flow_hi": 0.02,
+    "max_incise_blocks": 10.0,
+    "incise_gamma": 0.6,
+    "gully_amp_blocks": 4.0,
+    "gully_scale_blocks": 24.0,
+    "gully_sharpness": 2.0,
+    "ridge_amp_blocks": 3.0,
+    "ridge_sigma": 4.0,
+    "ridge_ref_blocks": 3.0,
+    "seed": 1337
   }
 }
