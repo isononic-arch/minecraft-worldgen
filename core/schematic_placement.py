@@ -1315,6 +1315,16 @@ def place_schematics(
                 _kr_rg, iterations=int(_kr_cfg.get("rock_dilate_blocks", 3)))
         else:
             _kr_rock_near = _kr_rg
+    # S89: SNOW-CAP proximity -> krummholz. Trees rendering within snowcap_dilate
+    # blocks of a snow_block cap (i.e. at the upper treeline, against the snow)
+    # become the tiny krummholz pines -- stunted trees clinging below the snow.
+    _kr_snow_near = None
+    if _kr_on and surface_blocks is not None:
+        _kr_sc = (surface_blocks == "snow_block")
+        if _kr_sc.any():
+            from scipy.ndimage import binary_dilation as _bd_krs
+            _kr_snow_near = _bd_krs(
+                _kr_sc, iterations=int(_kr_cfg.get("snowcap_dilate_blocks", 30)))
     # Krummholz uses a FIXED pool of specific tiny-pine schematics (user-picked),
     # forced at triggered cells regardless of biome. Built by scanning the whole
     # index for matching path stems (dedup by path).
@@ -1394,7 +1404,9 @@ def place_schematics(
             # band fades in instead of a hard line.
             if _kr_on and pass_type == "tree":
                 _kr_p = 0.0
-                if _kr_rock_near is not None and bool(_kr_rock_near[row, col]):
+                if ((_kr_rock_near is not None and bool(_kr_rock_near[row, col]))
+                        or (_kr_snow_near is not None
+                            and bool(_kr_snow_near[row, col]))):
                     _kr_p = 1.0
                 else:
                     _y = float(surface_y[row, col])
