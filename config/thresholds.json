@@ -4473,7 +4473,7 @@
       "curv_smooth_blocks": 48.0,
       "intensity_threshold": 90,
       "dilate_blocks": 2,
-      "cap_dither": 5.0,
+      "cap_dither": 0.0,
       "layer_dither": 0.5,
       "suppress_trees": true,
       "kill_ground_cover": true,
