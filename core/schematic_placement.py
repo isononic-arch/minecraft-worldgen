@@ -183,7 +183,7 @@ BASE_DENSITY: dict[str, float] = {
     "RIPARIAN_WOODLAND":       0.18,
     "DRY_OAK_SAVANNA":         0.25,   # S89 walk: user — up a bit, too sparse (was 0.15)
     "KARST_BARRENS":           0.70,   # S89: ~2x per user (ref "Mountain rock exposure in valley")
-    "BIRCH_FOREST":            0.85,   # S89 walk: user — much closer to BOREAL_ALPINE (was 0.65)
+    "BIRCH_FOREST":            1.00,   # S89 walk2: user — way denser; real lever was canopy radius (0.55), BASE saturates
     "EASTERN_TEMPERATE_COAST": 0.06,
     "MIXED_FOREST":            0.32,
     "CONTINENTAL_STEPPE":      0.0005,
@@ -225,7 +225,7 @@ BUSH_DENSITY_ABS: dict[str, float] = {
     "KARST_BARRENS":            0.70,  # benchmark
     "DESERT_STEPPE_TRANSITION": 0.65,  # user: ~karst amount, keep trees the same
     "SCRUBBY_HEATHLAND":        0.55,  # user: much closer to karst
-    "SEMI_ARID_SHRUBLAND":      0.45,  # user: less than desert steppe but more bushes
+    "SEMI_ARID_SHRUBLAND":      0.22,  # S89 walk2: ~halfway back from 0.45 (too many)
     "DRY_WOODLAND_MAQUIS":      0.50,  # user: way more generic (non-pine) bush
 }
 
@@ -1184,19 +1184,6 @@ def place_schematics(
         snow_surface_mask = (snow_surface_mask
                              & (biome_grid != "ARCTIC_TUNDRA")
                              & (biome_grid != "FROZEN_FLATS"))
-        # S89 walk: SNOWY_BOREAL_TAIGA trees may grow THROUGH fallen snow on
-        # GENTLE slopes — snowy conifer forest is natural on flats, and on low
-        # grade the snow layer is thin enough that the trunk still reaches
-        # ground (no floating). Steep snow caps still reject (that's where
-        # floating-on-cap happens). Only the snow LAYERS are exempted, not ice.
-        if cliff_deg is not None:
-            _sbt_max_slope = float(cfg.get("eco_placement", {}).get(
-                "sbt_snow_tree_max_slope_deg", 22.0))
-            _sbt_snow_ok = (
-                (biome_grid == "SNOWY_BOREAL_TAIGA")
-                & ((surface_blocks == "snow_block") | (surface_blocks == "snow"))
-                & (cliff_deg <= _sbt_max_slope))
-            snow_surface_mask = snow_surface_mask & ~_sbt_snow_ok
         if snow_surface_mask.any():
             land_mask = land_mask & ~snow_surface_mask
 
@@ -1360,6 +1347,9 @@ def place_schematics(
     # index for matching path stems (dedup by path).
     _kr_whitelist = list(_kr_cfg.get("schematics", []))
     _kr_max_h = int(_kr_cfg.get("max_height_blocks", 10))
+    # S89 walk: density multiplier applied to krummholz cells so the band is
+    # SPARSE (stunted treeline scatter) rather than a full-density tiny-pine fill.
+    _kr_density_mult = float(_kr_cfg.get("density_mult", 0.2))
     _kr_pool = []
     if _kr_on and _kr_whitelist:
         _kr_seen = set()
@@ -1432,6 +1422,7 @@ def place_schematics(
             # S89 krummholz: feathered small-tree restriction. Rock proximity =
             # always small; altitude ramps the probability over [lo,hi] so the
             # band fades in instead of a hard line.
+            _kr_hit = False
             if _kr_on and pass_type == "tree":
                 _kr_p = 0.0
                 if ((_kr_rock_near is not None and bool(_kr_rock_near[row, col]))
@@ -1446,6 +1437,7 @@ def place_schematics(
                         _kr_p = (_y - _kr_feather_lo) / max(
                             1.0, _kr_feather_hi - _kr_feather_lo)
                 if _kr_p > 0.0 and rng.random() < _kr_p:
+                    _kr_hit = True               # thinned in the density step below
                     if _kr_pool:
                         entries = _kr_pool          # force the tiny-pine pool
                     else:
@@ -1534,6 +1526,13 @@ def place_schematics(
                 # pixel ≈ ~6-12 small spruces per tile.
                 if biome_str == "FROZEN_FLATS":
                     final_d *= 0.03
+                # S89 walk fix: krummholz is a SPARSE stunted band, not a fill.
+                # The force-small logic above doesn't reduce COUNT, so on a
+                # high-density biome (SBT BASE=1.0) every candidate near rock/snow
+                # became a tiny pine -> dense carpet. Thin krummholz cells hard so
+                # they read as scattered wind-pruned trees at the treeline.
+                if _kr_hit:
+                    final_d *= _kr_density_mult
 
             if rng.random() >= final_d:
                 continue
@@ -1657,18 +1656,23 @@ def place_schematics(
             # used in nearby 4x4-cell neighborhoods and prefer a rotation that
             # differs from neighbors.  Applies to *any* adjacent tree
             # schematics (not just same species — user clarified).
+            # S89 walk2: widen the neighborhood from +/-1 to +/-2 cells (4-block
+            # cells -> ~20-block span) so adjacent trees are far more likely to
+            # get distinct rotations -- the +/-1 window saturated in dense forest
+            # and let close pairs share a rotation ("cloned trees").
             _cell_r = jittered_row // 4
             _cell_c = jittered_col // 4
+            _NB = (-2, -1, 0, 1, 2)
             _used = set()
-            for _dr in (-1, 0, 1):
-                for _dc in (-1, 0, 1):
+            for _dr in _NB:
+                for _dc in _NB:
                     _used.update(_rotation_grid.get((_cell_r + _dr, _cell_c + _dc), ()))
             _candidates = [r for r in (0, 1, 2, 3) if r not in _used]
             if not _candidates:
                 # Saturated cell: pick the least-used rotation among neighbors
                 _counts = {r: 0 for r in (0, 1, 2, 3)}
-                for _dr in (-1, 0, 1):
-                    for _dc in (-1, 0, 1):
+                for _dr in _NB:
+                    for _dc in _NB:
                         for _r in _rotation_grid.get((_cell_r + _dr, _cell_c + _dc), ()):
                             _counts[_r] += 1
                 _min = min(_counts.values())

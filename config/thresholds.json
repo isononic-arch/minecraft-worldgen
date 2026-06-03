@@ -1655,8 +1655,8 @@
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
-        "coverage": 0.42,
-        "scale": 25,
+        "coverage": 0.28,
+        "scale": 10,
         "seed": 43,
         "is_base": false
       },
@@ -1688,8 +1688,8 @@
         "enabled": true,
         "block": "podzol",
         "sub": "dirt",
-        "coverage": 0.44,
-        "scale": 20,
+        "coverage": 0.28,
+        "scale": 8,
         "seed": 44,
         "is_base": false
       },
@@ -1699,8 +1699,8 @@
         "enabled": true,
         "block": "coarse_dirt",
         "sub": "dirt",
-        "coverage": 0.45,
-        "scale": 64,
+        "coverage": 0.25,
+        "scale": 16,
         "seed": 243,
         "is_base": false
       }
@@ -2098,7 +2098,7 @@
         "enabled": true,
         "block": "gravel",
         "sub": "dirt",
-        "coverage": 0.24,
+        "coverage": 0.05,
         "scale": 5,
         "seed": 42,
         "is_base": false
@@ -2361,7 +2361,9 @@
       "BOREAL_ALPINE": 0.7,
       "TEMPERATE_RAINFOREST": 0.6,
       "DRY_PINE_BARRENS": 0.7,
-      "MIXED_FOREST": 0.8
+      "MIXED_FOREST": 0.7,
+      "BIRCH_FOREST": 0.55,
+      "TEMPERATE_DECIDUOUS": 0.8
     }
   },
   "species_habitats": {
@@ -4320,6 +4322,7 @@
       },
       "groups": {
         "granitic": {
+          "rib_mid_contrast": "light",
           "split": [
             55,
             25,
@@ -4339,6 +4342,7 @@
           ]
         },
         "arid_basaltic": {
+          "rib_mid_contrast": "light",
           "split": [
             85,
             10,
@@ -4396,6 +4400,7 @@
           ]
         },
         "deepslate_metamorphic": {
+          "rib_mid_contrast": "light",
           "split": [
             75,
             18,
@@ -4869,7 +4874,8 @@
     "_comment": "S89 stunted high-mountain trees. Rock proximity (gap==5 within rock_dilate_blocks) ALWAYS forces the krummholz pool; altitude is FEATHERED: P(force) ramps 0 at feather_lo_y -> 1 at feather_hi_y. At triggered cells the biome's tree pool is REPLACED by the fixed `schematics` whitelist (matched by path substring, scanned across the whole index) -- user-picked tiny pines. Falls back to size=='sm' if none of the whitelist is loaded. Preserves the tree COUNT (still places, just the tiny variant).",
     "enabled": true,
     "rock_dilate_blocks": 3,
-    "snowcap_dilate_blocks": 30,
+    "snowcap_dilate_blocks": 12,
+    "density_mult": 0.2,
     "feather_lo_y": 550,
     "feather_hi_y": 600,
     "schematics": [

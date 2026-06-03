@@ -276,6 +276,16 @@ def _process_tile(args: dict) -> dict:
         amplitude_px=40.0, scale=200.0, octaves=2,
     )
 
+    # ---- Step 6c.6 (S89 walk): tundra floor -> snowy taiga ----
+    # ARCTIC_TUNDRA only reads right as the bare cap band; below the floor it
+    # looks better as SNOWY_BOREAL_TAIGA. surface_y-gated, applied before the
+    # padded grid is built so the cross-tile ecotone + all downstream consumers
+    # (decorate, schematics, MC tag) see the remapped biome.
+    _TUNDRA_FLOOR_Y = 625
+    _at_low = (biome_grid == "ARCTIC_TUNDRA") & (surface_y < _TUNDRA_FLOOR_Y)
+    if _at_low.any():
+        biome_grid[_at_low] = "SNOWY_BOREAL_TAIGA"
+
     # ---- Step 6c2: Padded biome_grid for cross-tile ecotone (S58 Phase 3b) ----
     # Two different halo widths used here:
     #   INHERITANCE_PAD_PX=256 — wider context for downslope alpine inheritance,

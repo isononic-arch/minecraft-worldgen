@@ -564,7 +564,7 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     ],
     "SEMI_ARID_SHRUBLAND": [
         ("short_dry_grass", 0.17), ("tall_dry_grass", 0.09),
-        ("dead_bush", 0.02), ("bush", 0.08), ("short_grass", 0.09),
+        ("dead_bush", 0.02), ("bush", 0.08), ("short_grass", 0.40),  # S89 walk2: living grass up
         ("tall_grass", 0.01),
         # S60 desert-bloom wildflowers (very rare)
         ("dandelion", 0.008), ("poppy", 0.008),
@@ -2159,6 +2159,7 @@ def _apply_rock_layers(
     cfg:               dict,
     tile_x:            int,
     tile_y:            int,
+    talus_apron_tile:  np.ndarray | None = None,
 ) -> None:
     """S89: paint rock_layers tiers (dark / mid / light) per lithology group.
 
@@ -2195,11 +2196,24 @@ def _apply_rock_layers(
     _estroke_amp = float(rl_cfg.get("edge_stroke_amp", 0.40))
     if _estroke >= 1 and _estroke_amp > 0.0:
         _rock = tier >= 1
-        if _rock.any() and not _rock.all():
+        # S89 walk2: treat TALUS as part of the solid rock-debris extent so the
+        # boundary is the OUTER talus edge, not the rock/talus seam. Otherwise the
+        # stroke bites rock->land right where talus butts the cliff, opening a
+        # grassy gap between talus and rock. Fade should only be at the talus
+        # bottom (talus meets land), which the combined mask gives for free.
+        _talus_m = None
+        if talus_apron_tile is not None:
+            _ta = talus_apron_tile
+            if _ta.shape != (H, W):
+                from scipy.ndimage import zoom as _z_ta
+                _ta = _z_ta(_ta, (H / _ta.shape[0], W / _ta.shape[1]), order=0)
+            _talus_m = _ta > 0.0
+        _solid = _rock | _talus_m if _talus_m is not None else _rock
+        if _solid.any() and not _solid.all():
             from scipy.ndimage import distance_transform_edt as _edt_rs
-            _din = _edt_rs(_rock).astype(np.float32)
-            _dout = _edt_rs(~_rock).astype(np.float32)
-            _ed = np.where(_rock, _din, _dout)          # ~1 at boundary
+            _din = _edt_rs(_solid).astype(np.float32)
+            _dout = _edt_rs(~_solid).astype(np.float32)
+            _ed = np.where(_solid, _din, _dout)         # ~1 at the outer solid edge
             _ring = _ed <= _estroke
             if _ring.any():
                 _amp = (_estroke_amp
@@ -2207,12 +2221,14 @@ def _apply_rock_layers(
                 _ers = np.random.default_rng(
                     (tile_x * 48271 ^ tile_y * 31337 ^ 0x52C3) & 0xFFFFFFFF)
                 _ec = _ers.random((H, W), dtype=np.float32)
+                # bite only rock that sits at the outer solid edge (rock meeting
+                # true land); grow onto true land only (never onto talus).
                 _bite = _rock & _ring & (_ec < _amp)
-                _grow = (~_rock) & _ring & (_ec < _amp)
+                _grow = (~_solid) & _ring & (_ec < _amp)
                 tier[_bite] = 0
                 tier[_grow] = 1
                 del _din, _dout, _ed, _ring, _amp, _ers, _ec, _bite, _grow
-            del _rock
+            del _rock, _solid
 
     if lithology_tile.shape != (H, W):
         from scipy.ndimage import zoom as _z_rl
@@ -3581,6 +3597,7 @@ def decorate_surface(
                 cfg               = cfg,
                 tile_x            = tile_x,
                 tile_y            = tile_y,
+                talus_apron_tile  = talus_apron_tile,
             )
 
             # ── S88 walk #2: STRATA SURFACE PAINT ──────────────────────────
@@ -3698,6 +3715,7 @@ def decorate_surface(
                     for _fgn, _fgd in _fol_groups.items():
                         _fmid = _fgd.get("mid")
                         _fdark = _fgd.get("dark")
+                        _flight = _fgd.get("light")
                         _fgid = _fol_n2id.get(_fgn)
                         if not _fmid or _fgid is None:
                             continue
@@ -3705,18 +3723,23 @@ def decorate_surface(
                                 if _litho_at_res is not None else _fol_zone)
                         if not _fbm.any():
                             continue
-                        if _fol_tier is not None and _fdark:
-                            # native MID -> paint DARK; everything else -> MID
-                            _fbm_dk = _fbm & (_fol_tier == 2)
-                            _fbm_md = _fbm & (_fol_tier != 2)
-                            if _fbm_dk.any():
-                                _paint_solid_dither(surface_blocks, subsurface_blocks,
-                                                    _fbm_dk, _fdark, _fol_coin,
-                                                    _fol_dither, paint_sub=True)
-                            if _fbm_md.any():
-                                _paint_solid_dither(surface_blocks, subsurface_blocks,
-                                                    _fbm_md, _fmid, _fol_coin,
-                                                    _fol_dither, paint_sub=True)
+                        if _fol_tier is not None:
+                            # S89 walk: TIER-SPECIFIC rib so it always reads against
+                            # the rock it crosses. DARK zone -> LIGHT rib; LIGHT zone
+                            # -> DARK rib; MID zone -> the most-contrasting tier for
+                            # that palette (per-group `rib_mid_contrast` = dark|light).
+                            _mid_rib = (_flight
+                                        if _fgd.get("rib_mid_contrast", "dark") == "light"
+                                        else _fdark)
+                            for _msk, _pal in (
+                                (_fbm & (_fol_tier == 1), _flight),   # dark zone
+                                (_fbm & (_fol_tier == 2), _mid_rib),  # mid zone
+                                (_fbm & (_fol_tier >= 3), _fdark),    # light zone
+                            ):
+                                if _pal and _msk.any():
+                                    _paint_solid_dither(surface_blocks, subsurface_blocks,
+                                                        _msk, _pal, _fol_coin,
+                                                        _fol_dither, paint_sub=True)
                         else:
                             _paint_solid_dither(surface_blocks, subsurface_blocks,
                                                 _fbm, _fmid, _fol_coin, _fol_dither,
