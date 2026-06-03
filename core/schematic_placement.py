@@ -103,6 +103,46 @@ CANOPY_RADIUS: dict[str, int] = {
 _LOG_SAFE_FLOOR: dict[str, int] = {"sm": 2, "md": 3, "lg": 4}
 
 
+_KR_HEIGHT_CACHE: dict[str, "int | None"] = {}
+
+
+def _krummholz_tree_height(path: str) -> "int | None":
+    """Tree height in blocks from the LOWEST log to the highest solid block
+    (i.e. the real silhouette height). Cached per path. The schematic SIZE codes
+    (sm/md/lg) are unreliable -- e.g. dpine_tree_ppine_d_md is 42 tall -- so the
+    krummholz gate measures the actual geometry instead. Returns None if the
+    schematic can't be loaded (caller then keeps the entry rather than dropping)."""
+    if path in _KR_HEIGHT_CACHE:
+        return _KR_HEIGHT_CACHE[path]
+    h = None
+    try:
+        from core import schematic_loader as _sl
+        sd = _sl.load_schem(Path(path))
+        b = sd.blocks  # (Y, Z, X) object str
+        low_log = -1
+        top = -1
+        for yi in range(b.shape[0]):
+            plane = b[yi].ravel()
+            has_log = False
+            has_solid = False
+            for c in plane:
+                if isinstance(c, str) and "air" not in c:
+                    has_solid = True
+                    if "_log" in c:
+                        has_log = True
+                        break
+            if has_solid:
+                top = yi
+            if has_log and low_log < 0:
+                low_log = yi
+        if low_log >= 0 and top >= low_log:
+            h = top - low_log + 1
+    except Exception:
+        h = None
+    _KR_HEIGHT_CACHE[path] = h
+    return h
+
+
 def _biome_canopy_radius(size: str, biome: str, cfg: dict) -> int:
     base = CANOPY_RADIUS.get(size, 4)
     tcfg = cfg.get("tree_spacing", {}) if isinstance(cfg, dict) else {}
@@ -1258,6 +1298,7 @@ def place_schematics(
     # forced at triggered cells regardless of biome. Built by scanning the whole
     # index for matching path stems (dedup by path).
     _kr_whitelist = list(_kr_cfg.get("schematics", []))
+    _kr_max_h = int(_kr_cfg.get("max_height_blocks", 10))
     _kr_pool = []
     if _kr_on and _kr_whitelist:
         _kr_seen = set()
@@ -1269,6 +1310,10 @@ def place_schematics(
                     continue
                 if any(_w in _e.path for _w in _kr_whitelist):
                     _kr_seen.add(_e.path)
+                    # HEIGHT GATE: drop mislabeled tall variants (size codes lie).
+                    _kr_h = _krummholz_tree_height(_e.path)
+                    if _kr_h is not None and _kr_h > _kr_max_h:
+                        continue
                     _kr_pool.append(_e)
 
     for pass_type in ("tree", "bush"):

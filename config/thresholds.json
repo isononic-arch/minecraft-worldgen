@@ -4832,10 +4832,9 @@
     "feather_lo_y": 550,
     "feather_hi_y": 600,
     "schematics": [
-      "ppine_d_md",
-      "ppine_e_md",
-      "scotsp_a_sm",
-      "scotsp_e_lg"
-    ]
+      "ppine",
+      "scotsp"
+    ],
+    "max_height_blocks": 10
   }
 }
