@@ -29,3 +29,15 @@ __pycache__/
 *.pyc
 .venv/
 logs_*.log
+
+# S85+ session render logs + per-session output dirs (cloud_bake)
+*.log
+output_*/
+# Diagnostic scratch arrays + mask backups
+*.npy
+*.npz
+masks/*.pre_*
+masks/*.pre_s86
+tier_patch.npy
+# Agent worktrees
+.claude/worktrees/
