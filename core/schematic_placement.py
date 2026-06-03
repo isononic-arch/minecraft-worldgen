@@ -1365,6 +1365,26 @@ def place_schematics(
     # S89 walk: density multiplier applied to krummholz cells so the band is
     # SPARSE (stunted treeline scatter) rather than a full-density tiny-pine fill.
     _kr_density_mult = float(_kr_cfg.get("density_mult", 0.2))
+    # S89 walk3: krummholz density FADES from ~regular-SBT density at the lower
+    # treeline edge down to FROZEN_FLATS sparseness over `fade_blocks`, measured
+    # as distance INTO the krummholz zone. So the band thins gradually (WAY
+    # sparser high up) instead of a uniform mult. far_density_mult ~= FF's
+    # effective rate (FF BASE 0.04 * 0.03 ~= 0.0012 vs SBT BASE 1.0).
+    _kr_fade_blocks = float(_kr_cfg.get("fade_blocks", 30.0))
+    _kr_near = float(_kr_cfg.get("near_density_mult", 1.0))
+    _kr_far = float(_kr_cfg.get("far_density_mult", 0.0015))
+    _kr_dens = None
+    if _kr_on and _kr_fade_blocks > 0.0:
+        _kr_zone = (surface_y >= _kr_feather_lo)
+        if _kr_rock_near is not None:
+            _kr_zone = _kr_zone | _kr_rock_near
+        if _kr_snow_near is not None:
+            _kr_zone = _kr_zone | _kr_snow_near
+        if _kr_zone.any():
+            from scipy.ndimage import distance_transform_edt as _edt_kr
+            _kr_dist = _edt_kr(_kr_zone).astype(np.float32)
+            _kr_t = np.clip(_kr_dist / _kr_fade_blocks, 0.0, 1.0)
+            _kr_dens = (_kr_near + (_kr_far - _kr_near) * _kr_t).astype(np.float32)
     _kr_pool = []
     if _kr_on and _kr_whitelist:
         _kr_seen = set()
@@ -1547,7 +1567,8 @@ def place_schematics(
                 # became a tiny pine -> dense carpet. Thin krummholz cells hard so
                 # they read as scattered wind-pruned trees at the treeline.
                 if _kr_hit:
-                    final_d *= _kr_density_mult
+                    final_d *= (float(_kr_dens[row, col]) if _kr_dens is not None
+                                else _kr_density_mult)
 
             if rng.random() >= final_d:
                 continue

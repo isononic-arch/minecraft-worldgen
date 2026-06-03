@@ -4800,6 +4800,8 @@
     "micro_potential_coeff": 0.3,
     "drift_fill_blocks": 4,
     "drift_fill_sigma": 7.0,
+    "override_rock": true,
+    "override_rock_max_slope_deg": 38.0,
     "edge_stroke_blocks": 2.0,
     "edge_stroke_amp": 0.45,
     "_default": 635,
@@ -4878,6 +4880,9 @@
     "rock_dilate_blocks": 3,
     "snowcap_dilate_blocks": 12,
     "density_mult": 0.2,
+    "fade_blocks": 30,
+    "near_density_mult": 1.0,
+    "far_density_mult": 0.0015,
     "feather_lo_y": 550,
     "feather_hi_y": 600,
     "schematics": [
@@ -4900,6 +4905,13 @@
     "ridge_amp_blocks": 3.0,
     "ridge_sigma": 4.0,
     "ridge_ref_blocks": 3.0,
+    "face_extra_incise_blocks": 14.0,
+    "face_extra_gully_blocks": 8.0,
+    "face_gully_scale_blocks": 40.0,
+    "face_min_slope_deg": 28.0,
+    "face_max_slope_deg": 60.0,
+    "face_rough_sigma": 4.0,
+    "face_rough_ref": 3.0,
     "seed": 1337
   }
 }

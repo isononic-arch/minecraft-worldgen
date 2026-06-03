@@ -4213,6 +4213,21 @@ def decorate_surface(
                         snow_px[_grow] = True
                         del (_ergn, _ecoin, _amp, _d_in, _d_out, _edge_d,
                              _ring, _bite, _grow)
+                # S89 walk3: SNOW OVER ROCK + flat crests (measured, gated). Above
+                # the per-biome line, GENTLE cells (rock or bare biome surface)
+                # that pass the SAME patchy survival become snow too -- high flat
+                # crests stop showing bare dirt and gentle rock gets blanketed,
+                # while the slope cap + convex/aspect survival keep steep faces and
+                # scoured ridges BARE (never 100% coverage).
+                if cfg.get("snow_lines", {}).get("override_rock", True):
+                    _or_slope = float(_slc.get("override_rock_max_slope_deg", 38.0))
+                    _or_cand = ((surface_y >= _eff_line)
+                                & (_gap != 4) & (_gap != 8) & (_gap != 9)
+                                & (surface_y > 63))
+                    if cliff_deg is not None:
+                        _or_cand = _or_cand & (cliff_deg < _or_slope)
+                    snow_px = snow_px | (_or_cand & ((_t + 0.5 * _micro) > 0.5))
+                    del _or_cand
                 del _snow_cand
             if snow_px.any():
                 surface_blocks[snow_px] = "snow_block"

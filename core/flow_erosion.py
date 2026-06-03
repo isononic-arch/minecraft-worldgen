@@ -92,6 +92,45 @@ def apply_flow_erosion(
         ref = max(0.5, float(fcfg.get("ridge_ref_blocks", 3.0)))
         dy = dy + ridge_amp * np.clip(conv / ref, 0.0, 1.0)
 
+    # ---- 4. FACE deepening: deepen+widen gullies ONLY on the big SMOOTH sloped
+    # cliff faces (the blobby planar faces), NOT where the terrain already has
+    # lots of natural variation. face_weight = smoothness(low local roughness) x
+    # slope-in-face-range. Adds extra incision + a WIDER (larger-scale) gully on
+    # those faces so they get carved hard, while already-rough terrain is left
+    # alone (avoids piling erosion onto natural detail). ---------------------
+    face_extra_incise = float(fcfg.get("face_extra_incise_blocks", 0.0))
+    face_extra_gully = float(fcfg.get("face_extra_gully_blocks", 0.0))
+    if face_extra_incise > 0.0 or face_extra_gully > 0.0:
+        from scipy.ndimage import gaussian_filter as _gf_face
+        # local slope from surface_y (1 block/px at tile res -> rise/run direct)
+        _gy, _gx = np.gradient(sy)
+        _slope_deg = np.degrees(np.arctan(np.sqrt(_gy * _gy + _gx * _gx)))
+        _fmin = float(fcfg.get("face_min_slope_deg", 28.0))
+        _fmax = float(fcfg.get("face_max_slope_deg", 60.0))
+        # 0 below fmin, ramp to 1 by ~fmin+8, hold to fmax, off above (vertical)
+        _slope_w = np.clip((_slope_deg - _fmin) / 8.0, 0.0, 1.0) \
+            * np.clip((_fmax - _slope_deg) / 8.0 + 1.0, 0.0, 1.0)
+        # local roughness: deviation from a smoothed surface (high = already varied)
+        _rsig = float(fcfg.get("face_rough_sigma", 4.0))
+        _rref = max(0.1, float(fcfg.get("face_rough_ref", 3.0)))
+        _rough = np.abs(sy - _gf_face(sy, _rsig))
+        _smooth_w = np.clip(1.0 - _rough / _rref, 0.0, 1.0)       # high on flat faces
+        _face = (_slope_w * _smooth_w).astype(np.float32)
+        if face_extra_incise > 0.0:
+            dy = dy - face_extra_incise * _face * incise
+        if face_extra_gully > 0.0:
+            try:
+                from opensimplex import OpenSimplex as _OSf
+                _wsc = max(2.0, float(fcfg.get("face_gully_scale_blocks", 40.0)))
+                _osf = _OSf(seed=int(fcfg.get("seed", 1337)) + 991)
+                _fxs = (tile_x * W + np.arange(W, dtype=np.float64)) / _wsc
+                _fys = (tile_y * H + np.arange(H, dtype=np.float64)) / _wsc
+                _fn = _osf.noise2array(_fxs, _fys).astype(np.float32)
+                _fridged = (1.0 - np.abs(_fn)) ** float(fcfg.get("gully_sharpness", 2.0))
+                dy = dy - face_extra_gully * _face * _fridged
+            except Exception:
+                pass
+
     # ---- Gate + clamp ----
     dy[~rock] = 0.0
     if river_meta is not None:
