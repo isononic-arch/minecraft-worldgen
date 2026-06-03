@@ -1453,7 +1453,12 @@ def stamp_schematic(
         PLACE_MAX_FLOAT_BUSH = 3   # bush: max gap before reject
         TRUNK_RUN_MIN        = 2   # S70-f5 reverted from 1 back to 2 — single-log columns getting flagged as trunks caused branch-extension artifacts on bigger trees.  Original behavior: ≥2 consecutive logs = trunk.
         TRUNK_FIRST_MAX_Y    = 3   # lowest log sy must be ≤ this (else it's a branch)
-        MAX_TRUNK_EXT        = 6   # max blocks the extension will fill
+        # S89: was 6 -> floated trees on slopes (trunk anchors uphill of its own
+        # column; 5-7 block gaps rejected/skip-filled, leaving floaters). User:
+        # extend trunks down DRAMATICALLY rather than touch the (perfected) anchor
+        # logic. 30 lets sloped trees grow a long bare trunk down to real ground
+        # instead of floating/being rejected.
+        MAX_TRUNK_EXT        = 30  # max blocks the extension will fill
         if surface_y is not None:
             col_reject = np.zeros((sl, sw), dtype=bool)
             col_desink = np.full((sl, sw), -(1 << 30), dtype=np.int64)
