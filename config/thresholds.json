@@ -4913,7 +4913,7 @@
     "face_max_slope_deg": 60.0,
     "face_rough_sigma": 16.0,
     "face_rough_ref": 5.0,
-    "edge_fade_blocks": 6.0,
+    "edge_fade_blocks": 16.0,
     "smooth_sigma": 3.0,
     "river_fade_blocks": 16.0,
     "seed": 1337
