@@ -65,6 +65,32 @@ ARCTIC_TUNDRA high peak (reaches Y699) — covered by the deepslate rock tile (3
 
 ---
 
+## TUNING IDEAS
+
+- **✅ IMPLEMENTED 2026-06-03 — Edge-localized "noisy stroke" at the snow/rock border (user).**
+  Lives in `core/surface_decorator.py` right after the patchy-band cut
+  (`snow_px &= (_t + 0.5*_micro) > 0.5`): captures the pre-band gap==7 candidate
+  pool, finds the post-band snow boundary via EDT, and in a ring `edge_stroke_blocks`
+  wide flips pixels with prob `edge_stroke_amp` (fading to 0 at ring edge) —
+  biting rock flecks INTO snow, growing snow flecks OUT onto candidate cells.
+  Config: `snow_lines.edge_stroke_blocks=2.0`, `edge_stroke_amp=0.45` (ON). Set
+  amp=0 to disable. NOT in the first sweep render (predates it) — shows next render.
+  Original idea text below.
+
+- **Edge-localized "noisy stroke" at the snow/rock border (2026-06-03, user).**
+  The jagged look the user likes (ref: Building-101 mountain screenshot) reads
+  most strongly *right at the snow/bare-rock boundary*. Idea: on TOP of the
+  existing wide stochastic transition band (`transition_blocks=25`), add a narrow
+  **2-3 block-wide stroke of INTENSIFIED salt-and-pepper dither hugging the snow
+  edge itself** — i.e. detect the snow-presence boundary, dilate ±2-3 blocks, and
+  crank the per-pixel snow/rock coin probability inside that thin ring so the very
+  fade-line is maximally ragged. Distinct from `transition_blocks` (which controls
+  the *width* of the gradual band); this is an edge-following high-frequency
+  accent. Likely lives near the patchy-band survival calc in
+  `core/surface_decorator.py` (snow assignment) — compute snow_edge via
+  binary_dilation(snow) XOR binary_erosion(snow) or EDT, then boost coin amp in
+  that ring. Pending in-world review of current edge first.
+
 ## STRAGGLERS — investigated and RULED OUT (don't waste render time)
 
 - **Dry/warm-biome high snowcaps (the handoff's "desert @760") = NON-EVENT.**

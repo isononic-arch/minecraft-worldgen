@@ -1228,15 +1228,18 @@ def build_column_array(
             _sg_norm = _sg_hash / 255.0
             water_depth = (river_water_y - surface_y).astype(np.int32)
 
-            # ~20% of river pixels with depth >= 2 get seagrass
-            sg_place = river_px & (_sg_norm < 0.20) & (water_depth >= 2)
+            # S89 walk fix: ~20% of river pixels with depth >= 1 get seagrass.
+            # Was depth >= 2 + "water above" — but above-sea river channels are
+            # mostly 1 block deep, so the old gate excluded ~all rivers and they
+            # read as bare. Seagrass is a submerged 1-block plant, so it's valid
+            # in the bed-level water block itself (depth 1). Place it where the
+            # bed-top block (surface_y+1) is actually river water.
+            sg_place = river_px & (_sg_norm < 0.20) & (water_depth >= 1)
             sg_rows, sg_cols = np.where(sg_place)
             for r, c in zip(sg_rows, sg_cols):
                 bed_yi = int(surface_y[r, c]) + 1 - Y_MIN
-                # Only place seagrass if the block above is actually water
-                if 0 <= bed_yi < Y_RANGE and bed_yi + 1 < Y_RANGE:
-                    if vol[bed_yi + 1, r, c] == WATER_IDX:
-                        vol[bed_yi, r, c] = SEAGRASS_IDX
+                if 0 <= bed_yi < Y_RANGE and vol[bed_yi, r, c] == WATER_IDX:
+                    vol[bed_yi, r, c] = SEAGRASS_IDX
 
         # Safety: ensure no air pockets in river water columns
         # Any non-water, non-seagrass block between surface and water_y → water

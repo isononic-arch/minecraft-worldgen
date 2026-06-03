@@ -179,11 +179,11 @@ BASE_DENSITY: dict[str, float] = {
     "ARCTIC_TUNDRA":           0.04,
     "FROZEN_FLATS":            0.04,
     "TEMPERATE_DECIDUOUS":     0.22,
-    "RAINFOREST_COAST":        0.32,   # S87w3 was 0.24 — user: slightly up
+    "RAINFOREST_COAST":        0.80,   # S89 walk: user — up much closer to BA (was 0.32)
     "RIPARIAN_WOODLAND":       0.18,
-    "DRY_OAK_SAVANNA":         0.15,
+    "DRY_OAK_SAVANNA":         0.25,   # S89 walk: user — up a bit, too sparse (was 0.15)
     "KARST_BARRENS":           0.70,   # S89: ~2x per user (ref "Mountain rock exposure in valley")
-    "BIRCH_FOREST":            0.65,   # S87w3 was 0.50 — user: closer to TRF
+    "BIRCH_FOREST":            0.85,   # S89 walk: user — much closer to BOREAL_ALPINE (was 0.65)
     "EASTERN_TEMPERATE_COAST": 0.06,
     "MIXED_FOREST":            0.32,
     "CONTINENTAL_STEPPE":      0.0005,
@@ -210,6 +210,23 @@ BUSH_DENSITY_MULT: dict[str, float] = {
     "DESERT_STEPPE_TRANSITION":1.5,    # user: more short veg + bushes
     "ARCTIC_TUNDRA":           0.5,    # user: sparse bushes but present (33,13)
     "BOREAL_ALPINE":           1.3,    # user: differentiate BA from BT/SBT
+}
+
+
+# S89 walk: ABSOLUTE per-biome bush density target (probability per candidate
+# pixel). When present, REPLACES the BASE_DENSITY×0.4×MULT chain for the bush
+# pass. Rationale: deserts/scrub have near-zero TREE density, so anchoring bush
+# density to tree density (the old BUSH_DENSITY_MULT scheme) can't reach the
+# heavy bush fill the user wants ("fill in empty spaces"). These set the bush
+# rate directly; placement noise + eco modulation still apply for organic
+# variation, and the canopy-radius packing limit still caps actual placements.
+# Reference: KARST_BARRENS ≈ 0.70 (the "lots of bushes" benchmark).
+BUSH_DENSITY_ABS: dict[str, float] = {
+    "KARST_BARRENS":            0.70,  # benchmark
+    "DESERT_STEPPE_TRANSITION": 0.65,  # user: ~karst amount, keep trees the same
+    "SCRUBBY_HEATHLAND":        0.55,  # user: much closer to karst
+    "SEMI_ARID_SHRUBLAND":      0.45,  # user: less than desert steppe but more bushes
+    "DRY_WOODLAND_MAQUIS":      0.50,  # user: way more generic (non-pine) bush
 }
 
 
@@ -1167,6 +1184,19 @@ def place_schematics(
         snow_surface_mask = (snow_surface_mask
                              & (biome_grid != "ARCTIC_TUNDRA")
                              & (biome_grid != "FROZEN_FLATS"))
+        # S89 walk: SNOWY_BOREAL_TAIGA trees may grow THROUGH fallen snow on
+        # GENTLE slopes — snowy conifer forest is natural on flats, and on low
+        # grade the snow layer is thin enough that the trunk still reaches
+        # ground (no floating). Steep snow caps still reject (that's where
+        # floating-on-cap happens). Only the snow LAYERS are exempted, not ice.
+        if cliff_deg is not None:
+            _sbt_max_slope = float(cfg.get("eco_placement", {}).get(
+                "sbt_snow_tree_max_slope_deg", 22.0))
+            _sbt_snow_ok = (
+                (biome_grid == "SNOWY_BOREAL_TAIGA")
+                & ((surface_blocks == "snow_block") | (surface_blocks == "snow"))
+                & (cliff_deg <= _sbt_max_slope))
+            snow_surface_mask = snow_surface_mask & ~_sbt_snow_ok
         if snow_surface_mask.any():
             land_mask = land_mask & ~snow_surface_mask
 
@@ -1471,31 +1501,29 @@ def place_schematics(
             if eco_density_tile is not None:
                 final_d *= float(eco_density_tile[row, col])
 
-            # Bush density scaling: 40% of tree density
+            # Bush density scaling
             if pass_type == "bush":
-                final_d *= 0.4
-                if biome_str in SPARSE_BUSH_BIOMES:
-                    final_d *= 0.5
-                # S86 Item 3C: per-biome bush multiplier on top of base.
-                # Allows tuning bush density independently of tree density.
-                final_d *= BUSH_DENSITY_MULT.get(biome_str, 1.0)
-                # S70 Item N: karst bush clustering — simplex modulation
-                # at scale 60 blocks creates grove patches rather than
-                # uniform sprinkle.  Multiplier ranges [0.3, 1.7], mean 1.0.
-                if biome_str == "KARST_BARRENS":
-                    final_d *= float(karst_density_mult[row, col])
-                # S71: shrubland bush boost.  SEMI_ARID_SHRUBLAND's BASE_DENSITY
-                # was halved this session to thin trees; bushes need a
-                # compensating boost so the shrubland still reads as "lots of
-                # bushes" per user walk feedback.  S71-2: bumped 6x → 12x to
-                # match further tree-thinning (BASE 0.015 → 0.003).
-                if biome_str == "SEMI_ARID_SHRUBLAND":
-                    final_d *= 12.0
-                # S71-2: CONTINENTAL_STEPPE bush boost — user wants ~half the
-                # trees replaced with bushes.  4x bush mult on top of the
-                # halved BASE_DENSITY 0.001 gives ~0.0016 effective bush rate.
-                if biome_str == "CONTINENTAL_STEPPE":
-                    final_d *= 4.0
+                _abs_bush = BUSH_DENSITY_ABS.get(biome_str)
+                if _abs_bush is not None:
+                    # S89 walk: ABSOLUTE bush target. final_d currently carries
+                    # base_d × noise × eco; rescale base_d → target to keep that
+                    # organic modulation while hitting the requested rate.
+                    final_d *= (_abs_bush / max(base_d, 1e-9))
+                    if biome_str in SPARSE_BUSH_BIOMES:
+                        final_d *= 0.5
+                    # KARST grove clustering still applies (scale-60 simplex).
+                    if biome_str == "KARST_BARRENS":
+                        final_d *= float(karst_density_mult[row, col])
+                else:
+                    final_d *= 0.4
+                    if biome_str in SPARSE_BUSH_BIOMES:
+                        final_d *= 0.5
+                    # S86 Item 3C: per-biome bush multiplier on top of base.
+                    final_d *= BUSH_DENSITY_MULT.get(biome_str, 1.0)
+                    # S71-2: CONTINENTAL_STEPPE bush boost — user wants ~half the
+                    # trees replaced with bushes.  4x on the halved BASE_DENSITY.
+                    if biome_str == "CONTINENTAL_STEPPE":
+                        final_d *= 4.0
             else:  # tree pass
                 # S71-3: ARCTIC_TUNDRA tree thinning — "VERY VERY sparse"
                 # smallest pines.  AT BASE 0.005 × 0.05 = ~0.00025.

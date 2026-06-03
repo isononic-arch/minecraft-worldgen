@@ -392,7 +392,7 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # Vegetation: bumped existing flowers modestly + short_grass + fern.
     "BOREAL_ALPINE": [
         ("fern", 0.28), ("leaf_litter", 0.16), ("bush", 0.20),
-        ("short_grass", 0.30), ("dead_bush", 0.02),
+        ("short_grass", 0.60), ("dead_bush", 0.02),   # S89 walk: user — way more short grass (was 0.30)
         # S60 dry grass for alpine wind-pruned look
         ("short_dry_grass", 0.10), ("tall_dry_grass", 0.10),
         # S86: green moss accent for warmer look vs SBT
@@ -2182,6 +2182,37 @@ def _apply_rock_layers(
     tier = np.round(rock_layers_tile * 255.0).astype(np.int32)
     if not (tier >= 1).any():
         return
+
+    # S89 walk: EDGE STROKE on the outer rock/land boundary. Roughen the rock
+    # extent over a ~4-5 block ring so the rock margin reads jagged (salt-and-
+    # pepper) instead of a smooth tier contour — grow dark-tier specks OUT onto
+    # adjacent land, bite land specks INTO the rock edge; amp fades to 0 at the
+    # ring edge. Grown cells get tier 1 (dark) and are painted by whatever
+    # lithology group owns them (unpainted gid=0 cells stay land). Mirrors the
+    # snow edge stroke. Runs before the tier paint loop so the whole rock paint
+    # follows the jagged boundary.
+    _estroke = int(rl_cfg.get("edge_stroke_blocks", 4))
+    _estroke_amp = float(rl_cfg.get("edge_stroke_amp", 0.40))
+    if _estroke >= 1 and _estroke_amp > 0.0:
+        _rock = tier >= 1
+        if _rock.any() and not _rock.all():
+            from scipy.ndimage import distance_transform_edt as _edt_rs
+            _din = _edt_rs(_rock).astype(np.float32)
+            _dout = _edt_rs(~_rock).astype(np.float32)
+            _ed = np.where(_rock, _din, _dout)          # ~1 at boundary
+            _ring = _ed <= _estroke
+            if _ring.any():
+                _amp = (_estroke_amp
+                        * np.clip(1.0 - (_ed - 1.0) / _estroke, 0.0, 1.0))
+                _ers = np.random.default_rng(
+                    (tile_x * 48271 ^ tile_y * 31337 ^ 0x52C3) & 0xFFFFFFFF)
+                _ec = _ers.random((H, W), dtype=np.float32)
+                _bite = _rock & _ring & (_ec < _amp)
+                _grow = (~_rock) & _ring & (_ec < _amp)
+                tier[_bite] = 0
+                tier[_grow] = 1
+                del _din, _dout, _ed, _ring, _amp, _ers, _ec, _bite, _grow
+            del _rock
 
     if lithology_tile.shape != (H, W):
         from scipy.ndimage import zoom as _z_rl
@@ -4111,6 +4142,7 @@ def decorate_surface(
             # wind-shelter Sx + curvature); melts on bumps, sun, scoured ground.
             # The biome base line stays dominant -> climate ordering preserved.
             if snow_px.any():
+                _snow_cand = snow_px.copy()   # gap==7 candidate pool, pre-band
                 _nf_sl = (eco_grads.north_factor if (eco_grads is not None
                           and hasattr(eco_grads, "north_factor")) else None)
                 _eff_line = _build_snow_line(biome_grid, cfg, surface_y, _nf_sl)
@@ -4131,6 +4163,38 @@ def decorate_surface(
                     _micro = _micro + float(_slc.get("micro_potential_coeff", 0.30)) \
                              * (np.asarray(snow_potential_tile, np.float32) * 2.0 - 1.0)
                 snow_px &= ((_t + 0.5 * _micro) > 0.5)
+
+                # S89 EDGE STROKE: on TOP of the wide patchy band, hug the actual
+                # snow/rock boundary with a thin (~2-3 block) ring of INTENSIFIED
+                # salt-and-pepper so the fade-LINE itself is maximally ragged
+                # (user ref: Building-101 mountain — jaggedness reads at the
+                # border specifically). Symmetric: bite bare-rock flecks INTO the
+                # snow edge, push snow flecks OUT onto candidate (gap==7) cells the
+                # band just cut. Amp fades to 0 at the stroke edge. Restricting the
+                # "grow" side to _snow_cand keeps it physical — no snow appears on
+                # non-snow-source cells or in warm valleys.
+                _stroke = float(_slc.get("edge_stroke_blocks", 2.0))
+                _stroke_amp = float(_slc.get("edge_stroke_amp", 0.45))
+                if _stroke >= 1.0 and _stroke_amp > 0.0 and snow_px.any() \
+                        and not snow_px.all():
+                    from scipy.ndimage import distance_transform_edt as _edt_stroke
+                    _d_in = _edt_stroke(snow_px).astype(np.float32)
+                    _d_out = _edt_stroke(~snow_px).astype(np.float32)
+                    _edge_d = np.where(snow_px, _d_in, _d_out)   # ~1 at boundary
+                    _ring = _edge_d <= _stroke
+                    if _ring.any():
+                        _amp = (_stroke_amp
+                                * np.clip(1.0 - (_edge_d - 1.0) / _stroke, 0.0, 1.0))
+                        _ergn = np.random.default_rng(
+                            tile_x * 48271 ^ tile_y * 31337 ^ 0x5E0E)
+                        _ecoin = _ergn.random((H, W)).astype(np.float32)
+                        _bite = snow_px & _ring & (_ecoin < _amp)
+                        _grow = (~snow_px) & _snow_cand & _ring & (_ecoin < _amp)
+                        snow_px[_bite] = False
+                        snow_px[_grow] = True
+                        del (_ergn, _ecoin, _amp, _d_in, _d_out, _edge_d,
+                             _ring, _bite, _grow)
+                del _snow_cand
             if snow_px.any():
                 surface_blocks[snow_px] = "snow_block"
                 # S84: powder_snow generation removed — was placed in concavities

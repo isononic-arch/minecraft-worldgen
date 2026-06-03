@@ -2094,7 +2094,7 @@
       },
       {
         "name": "calcite (noise)",
-        "noise": "simplex_fbm",
+        "noise": "white",
         "enabled": true,
         "block": "gravel",
         "sub": "dirt",
@@ -3841,21 +3841,21 @@
           "noise_amp_blocks": 0,
           "intersperse": 0.0,
           "band_a": {
-            "primary": "pale_moss_block",
-            "secondary": "cobblestone",
+            "primary": "basalt",
+            "secondary": "smooth_basalt",
             "primary_pct": 50
           },
           "band_b": {
-            "primary": "cobblestone",
-            "secondary": "pale_moss_block",
+            "primary": "smooth_basalt",
+            "secondary": "basalt",
             "primary_pct": 50
           },
           "speckle_blocks": [
-            "pale_moss_block"
+            "basalt"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "cobblestone"
+            "smooth_basalt"
           ],
           "vein_amp": 0.1,
           "_comment": "S88 walk #4c: bands restructured -- A=basalt/gray_concrete_powder, B=smooth_basalt/tuff.  speckle=[mud] (was [deepslate]).",
@@ -3951,21 +3951,21 @@
           "noise_amp_blocks": 0,
           "intersperse": 0.0,
           "band_a": {
-            "primary": "light_gray_concrete",
-            "secondary": "andesite",
+            "primary": "deepslate",
+            "secondary": "cobbled_deepslate",
             "primary_pct": 50
           },
           "band_b": {
-            "primary": "andesite",
-            "secondary": "light_gray_concrete",
+            "primary": "cobbled_deepslate",
+            "secondary": "deepslate",
             "primary_pct": 50
           },
           "speckle_blocks": [
-            "light_gray_concrete"
+            "deepslate"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "andesite"
+            "cobbled_deepslate"
           ],
           "vein_amp": 0.1,
           "_comment": "S88 walk #4c: bands restructured -- A=cobbled_deepslate/deepslate, B=dead_horn_coral_block/suspicious_gravel (latter two are vein-exception blocks outside the temperate palette set, per user permission).  speckle unchanged (deepslate_coal_ore + smooth_basalt) but rate dropped to 0.02.",
@@ -4046,21 +4046,21 @@
           "noise_amp_blocks": 2,
           "intersperse": 0.15,
           "band_a": {
-            "primary": "calcite",
-            "secondary": "white_concrete",
-            "primary_pct": 50
-          },
-          "band_b": {
-            "primary": "white_concrete",
+            "primary": "diorite",
             "secondary": "calcite",
             "primary_pct": 50
           },
+          "band_b": {
+            "primary": "calcite",
+            "secondary": "diorite",
+            "primary_pct": 50
+          },
           "speckle_blocks": [
-            "calcite"
+            "diorite"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "white_concrete"
+            "calcite"
           ],
           "vein_amp": 0.1,
           "_comment": "Sedimentary \u2014 1-14 block bands (highly variable), mild 6\u00b0/100 tilt @ 15\u00b0, 80/20 calcite/diorite with andesite speckle."
@@ -4140,21 +4140,21 @@
           "noise_amp_blocks": 4,
           "intersperse": 0.2,
           "band_a": {
-            "primary": "mossy_cobblestone",
-            "secondary": "moss_block",
+            "primary": "stone",
+            "secondary": "tuff",
             "primary_pct": 50
           },
           "band_b": {
-            "primary": "moss_block",
-            "secondary": "mossy_cobblestone",
+            "primary": "tuff",
+            "secondary": "stone",
             "primary_pct": 50
           },
           "speckle_blocks": [
-            "mossy_cobblestone"
+            "stone"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "moss_block"
+            "tuff"
           ],
           "vein_amp": 0.1,
           "_comment": "Folded mountain metamorphic \u2014 6-16 block bands, STRONG 25\u00b0/100 tilt @ 30\u00b0, 90/10 andesite/stone with tuff speckle."
@@ -4226,21 +4226,21 @@
           "noise_amp_blocks": 3,
           "intersperse": 0.3,
           "band_a": {
-            "primary": "moss_block",
-            "secondary": "green_concrete",
+            "primary": "stone",
+            "secondary": "mossy_cobblestone",
             "primary_pct": 50
           },
           "band_b": {
-            "primary": "green_concrete",
-            "secondary": "moss_block",
+            "primary": "mossy_cobblestone",
+            "secondary": "stone",
             "primary_pct": 50
           },
           "speckle_blocks": [
-            "moss_block"
+            "stone"
           ],
           "speckle_rate": 0.02,
           "vein_blocks": [
-            "green_concrete"
+            "mossy_cobblestone"
           ],
           "vein_amp": 0.1,
           "_comment": "Wet temperate \u2014 8-18 block bands, mild 4\u00b0/100 tilt, 60/40 cobblestone/mossy split with triple speckle (tuff+moss+andesite)."
@@ -4306,6 +4306,8 @@
       "dither_amp_deg": 3.0,
       "dither_u": 0.0,
       "layer_dither": 0.5,
+      "edge_stroke_blocks": 4,
+      "edge_stroke_amp": 0.4,
       "overlays": {
         "_comment": "Legacy rock overlays that run ON TOP of rock_layers. Flip individually to add back. stone_fade = the S60 high-elevation grass->stone palette fade (500-580 MC-Y) -- a leftover fade band using the OLD stone palette.",
         "veins": false,
@@ -4675,11 +4677,11 @@
       "fade_blocks": 100
     },
     "BOREAL_TAIGA": {
-      "y_top": 600,
+      "y_top": 700,
       "fade_blocks": 100
     },
     "SNOWY_BOREAL_TAIGA": {
-      "y_top": 600,
+      "y_top": 700,
       "fade_blocks": 100
     },
     "BIRCH_FOREST": {
@@ -4791,6 +4793,8 @@
     "micro_curv_ref": 2.0,
     "micro_aspect_coeff": 0.25,
     "micro_potential_coeff": 0.3,
+    "edge_stroke_blocks": 2.0,
+    "edge_stroke_amp": 0.45,
     "_default": 635,
     "SNOWY_BOREAL_TAIGA": 400,
     "ARCTIC_TUNDRA": 400,
