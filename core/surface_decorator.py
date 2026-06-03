@@ -2184,36 +2184,32 @@ def _apply_rock_layers(
     if not (tier >= 1).any():
         return
 
-    # S89 walk: EDGE STROKE on the outer rock/land boundary. Roughen the rock
-    # extent over a ~4-5 block ring so the rock margin reads jagged (salt-and-
-    # pepper) instead of a smooth tier contour — grow dark-tier specks OUT onto
-    # adjacent land, bite land specks INTO the rock edge; amp fades to 0 at the
-    # ring edge. Grown cells get tier 1 (dark) and are painted by whatever
-    # lithology group owns them (unpainted gid=0 cells stay land). Mirrors the
-    # snow edge stroke. Runs before the tier paint loop so the whole rock paint
-    # follows the jagged boundary.
+    # TALUS mask (computed once; used to keep talus clean of rock fade below).
+    # The talus apron has its own fine/coarse palette and must NOT receive rock
+    # fade bleed (edge stroke OR per-tier edge fade) -- that's the "extra fade
+    # zone on talus" the user flagged.
+    _talus_m = None
+    if talus_apron_tile is not None:
+        _ta = talus_apron_tile
+        if _ta.shape != (H, W):
+            from scipy.ndimage import zoom as _z_ta
+            _ta = _z_ta(_ta, (H / _ta.shape[0], W / _ta.shape[1]), order=0)
+        _talus_m = _ta > 0.0
+
+    # S89 walk: EDGE STROKE on the rock/land boundary (ORIGINAL behaviour —
+    # boundary at the rock edge). Roughen the rock margin over a ~4-5 block ring:
+    # grow dark-tier specks OUT onto adjacent land, bite land specks INTO the
+    # rock edge; amp fades to 0 at the ring edge. EXCEPTION: never grow onto
+    # talus cells, so the apron stays clean.
     _estroke = int(rl_cfg.get("edge_stroke_blocks", 4))
     _estroke_amp = float(rl_cfg.get("edge_stroke_amp", 0.40))
     if _estroke >= 1 and _estroke_amp > 0.0:
         _rock = tier >= 1
-        # S89 walk2: treat TALUS as part of the solid rock-debris extent so the
-        # boundary is the OUTER talus edge, not the rock/talus seam. Otherwise the
-        # stroke bites rock->land right where talus butts the cliff, opening a
-        # grassy gap between talus and rock. Fade should only be at the talus
-        # bottom (talus meets land), which the combined mask gives for free.
-        _talus_m = None
-        if talus_apron_tile is not None:
-            _ta = talus_apron_tile
-            if _ta.shape != (H, W):
-                from scipy.ndimage import zoom as _z_ta
-                _ta = _z_ta(_ta, (H / _ta.shape[0], W / _ta.shape[1]), order=0)
-            _talus_m = _ta > 0.0
-        _solid = _rock | _talus_m if _talus_m is not None else _rock
-        if _solid.any() and not _solid.all():
+        if _rock.any() and not _rock.all():
             from scipy.ndimage import distance_transform_edt as _edt_rs
-            _din = _edt_rs(_solid).astype(np.float32)
-            _dout = _edt_rs(~_solid).astype(np.float32)
-            _ed = np.where(_solid, _din, _dout)         # ~1 at the outer solid edge
+            _din = _edt_rs(_rock).astype(np.float32)
+            _dout = _edt_rs(~_rock).astype(np.float32)
+            _ed = np.where(_rock, _din, _dout)          # ~1 at the rock/land boundary
             _ring = _ed <= _estroke
             if _ring.any():
                 _amp = (_estroke_amp
@@ -2221,14 +2217,14 @@ def _apply_rock_layers(
                 _ers = np.random.default_rng(
                     (tile_x * 48271 ^ tile_y * 31337 ^ 0x52C3) & 0xFFFFFFFF)
                 _ec = _ers.random((H, W), dtype=np.float32)
-                # bite only rock that sits at the outer solid edge (rock meeting
-                # true land); grow onto true land only (never onto talus).
                 _bite = _rock & _ring & (_ec < _amp)
-                _grow = (~_solid) & _ring & (_ec < _amp)
+                _grow = (~_rock) & _ring & (_ec < _amp)
+                if _talus_m is not None:                # keep talus clean
+                    _grow &= ~_talus_m
                 tier[_bite] = 0
                 tier[_grow] = 1
                 del _din, _dout, _ed, _ring, _amp, _ers, _ec, _bite, _grow
-            del _rock, _solid
+            del _rock
 
     if lithology_tile.shape != (H, W):
         from scipy.ndimage import zoom as _z_rl
@@ -2282,6 +2278,8 @@ def _apply_rock_layers(
                 # distance from this tier's core, outward
                 _dist = _edt_rl(~core).astype(np.float32)
                 _ring = gmask & (tier < tval) & (_dist > 0) & (_dist <= _edge_fade)
+                if _talus_m is not None:        # talus exempt: no rock fade bleed
+                    _ring = _ring & ~_talus_m
                 if _ring.any():
                     _fade = np.clip(1.0 - _dist / float(_edge_fade), 0.0, 1.0)
                     m = core | (_ring & (_fade_coin < _fade))
