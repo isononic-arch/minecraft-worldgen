@@ -4906,13 +4906,15 @@
     "ridge_amp_blocks": 3.0,
     "ridge_sigma": 4.0,
     "ridge_ref_blocks": 3.0,
-    "face_extra_incise_blocks": 14.0,
-    "face_extra_gully_blocks": 8.0,
+    "face_extra_incise_blocks": 7.0,
+    "face_extra_gully_blocks": 4.0,
     "face_gully_scale_blocks": 40.0,
     "face_min_slope_deg": 28.0,
     "face_max_slope_deg": 60.0,
     "face_rough_sigma": 4.0,
     "face_rough_ref": 3.0,
+    "edge_fade_blocks": 6.0,
+    "smooth_sigma": 2.0,
     "seed": 1337
   }
 }

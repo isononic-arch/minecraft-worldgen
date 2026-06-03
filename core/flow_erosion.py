@@ -131,6 +131,22 @@ def apply_flow_erosion(
             except Exception:
                 pass
 
+    # ---- Anti-artifact: EDGE FADE + SMOOTH the erosion delta ----
+    # The ridged gully + face terms are sharp per-cell; applied raw they make
+    # jagged 1-block columns and the face on/off boundary makes hard seamlines.
+    # (1) taper dy to 0 within edge_fade_blocks of the rock boundary so there's
+    #     no step against the surrounding land (the seam fix), then
+    # (2) gaussian-smooth dy so the gullies are smooth valleys, not staircases.
+    from scipy.ndimage import gaussian_filter as _gf_smooth
+    _efb = float(fcfg.get("edge_fade_blocks", 6.0))
+    if _efb > 0.0:
+        from scipy.ndimage import distance_transform_edt as _edt_fe
+        _rfade = np.clip(_edt_fe(rock).astype(np.float32) / _efb, 0.0, 1.0)
+        dy = dy * _rfade
+    _ssig = float(fcfg.get("smooth_sigma", 2.0))
+    if _ssig > 0.0:
+        dy = _gf_smooth(dy, _ssig, mode="nearest")
+
     # ---- Gate + clamp ----
     dy[~rock] = 0.0
     if river_meta is not None:
