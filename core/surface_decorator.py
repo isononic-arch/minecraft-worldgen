@@ -446,9 +446,10 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
         ("azure_bluet", 0.008),
     ],
     "BIRCH_FOREST": [
-        ("short_grass", 0.48), ("tall_grass", 0.08), ("leaf_litter", 0.18),
-        ("bush", 0.20), ("fern", 0.10),
-        ("lily_of_the_valley", 0.02), ("azalea", 0.04),
+        # S89 walk3: user — crazy-lush birch floor.
+        ("short_grass", 0.90), ("tall_grass", 0.35), ("leaf_litter", 0.45),
+        ("bush", 0.38), ("fern", 0.45),
+        ("lily_of_the_valley", 0.05), ("azalea", 0.07),
     ],
     "MIXED_FOREST": [
         ("leaf_litter", 0.40), ("short_grass", 0.50), ("tall_grass", 0.15),
@@ -499,11 +500,12 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     ],
     # S87 walk #3: bumped across the board per user (13,82) walk.
     "RAINFOREST_COAST": [
-        ("fern", 0.60), ("large_fern", 0.22), ("tall_grass", 0.10),
-        ("bush", 0.18), ("short_grass", 0.20), ("moss_carpet", 0.28),
-        ("leaf_litter", 0.25),
+        # S89 walk3: user — WAY more (jungle-floor lush).
+        ("fern", 0.95), ("large_fern", 0.48), ("tall_grass", 0.35),
+        ("bush", 0.42), ("short_grass", 0.45), ("moss_carpet", 0.58),
+        ("leaf_litter", 0.45),
         # S60 damp-woodland flowers (very rare)
-        ("azure_bluet", 0.005), ("lily_of_the_valley", 0.005),
+        ("azure_bluet", 0.01), ("lily_of_the_valley", 0.01),
     ],
     # ── Dry / Arid ───────────────────────────────────────────────────────
     # S60: up density of all + very rare prairie wildflowers per user.

@@ -2364,7 +2364,8 @@
       "DRY_PINE_BARRENS": 0.7,
       "MIXED_FOREST": 0.7,
       "BIRCH_FOREST": 0.55,
-      "TEMPERATE_DECIDUOUS": 0.8
+      "TEMPERATE_DECIDUOUS": 0.8,
+      "RAINFOREST_COAST": 0.6
     }
   },
   "species_habitats": {
