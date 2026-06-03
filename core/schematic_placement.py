@@ -1184,6 +1184,21 @@ def place_schematics(
         snow_surface_mask = (snow_surface_mask
                              & (biome_grid != "ARCTIC_TUNDRA")
                              & (biome_grid != "FROZEN_FLATS"))
+        # S89 walk3: SNOWY_BOREAL_TAIGA keeps a SPARSE snowy treeline on its high
+        # snow-covered massifs. Without this the snow_block surface excludes ALL
+        # trees and the high SBT tile reads as ZERO trees. Allow SBT trees on
+        # snow on low-to-moderate slopes; krummholz density_mult (0.2) keeps the
+        # count a sparse scatter (NOT the old carpet -- that was a density bug,
+        # not this exemption), and chunk_writer sink/reject roots them on the
+        # snow (no floaters). Steep caps still reject. Snow LAYERS only, not ice.
+        if cliff_deg is not None:
+            _sbt_max_slope = float(cfg.get("eco_placement", {}).get(
+                "sbt_snow_tree_max_slope_deg", 30.0))
+            _sbt_snow_ok = (
+                (biome_grid == "SNOWY_BOREAL_TAIGA")
+                & ((surface_blocks == "snow_block") | (surface_blocks == "snow"))
+                & (cliff_deg <= _sbt_max_slope))
+            snow_surface_mask = snow_surface_mask & ~_sbt_snow_ok
         if snow_surface_mask.any():
             land_mask = land_mask & ~snow_surface_mask
 

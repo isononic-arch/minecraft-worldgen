@@ -2330,6 +2330,7 @@
     "moisture_stringer_strength": 0.3
   },
   "eco_placement": {
+    "sbt_snow_tree_max_slope_deg": 30.0,
     "eco_density_weights": {
       "soil_depth": 0.3,
       "moisture_index": 0.4,
