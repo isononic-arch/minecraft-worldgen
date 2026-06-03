@@ -4222,6 +4222,31 @@ def decorate_surface(
                 # but powder_snow is a hazard ("pest block") that traps players.
                 # All snow now renders as snow_block.
 
+                # S89 walk3: SNOW DRIFT FILL — pack snow into the eroded gully/
+                # cirque hollows so the bowl reads as a deep SMOOTH snowfield
+                # (ref image) while convex ridges stay bare rock. Raise surface_y
+                # in concave snow cells by the local concavity (capped), measured
+                # from the ERODED surface so the drifts follow the NEW gullies.
+                # This gives the snow actual volume/amplitude and smooths the
+                # couloir/bowl floors flush. Runs in decorate so it persists via
+                # _post_decorate_y; convex cells (concavity<=0) are untouched.
+                _df_max = float(_slc.get("drift_fill_blocks", 0.0))
+                if _df_max > 0.0:
+                    from scipy.ndimage import gaussian_filter as _gf_df
+                    _syf_d = surface_y.astype(np.float32)
+                    _concav = (_gf_df(_syf_d, float(_slc.get("drift_fill_sigma", 7.0)))
+                               - _syf_d)                      # >0 in hollows
+                    _fill = np.clip(_concav, 0.0, _df_max)
+                    _dcells = snow_px & (_fill >= 1.0)
+                    if _dcells.any():
+                        from core.column_generator import MC_Y_MAX as _MCMAX_D
+                        _raised = np.clip(_syf_d + _fill, None,
+                                          float(_MCMAX_D - 1))
+                        surface_y[_dcells] = np.round(
+                            _raised[_dcells]).astype(surface_y.dtype)
+                        surface_blocks[_dcells] = "snow_block"
+                        del _syf_d, _concav, _fill, _dcells, _raised
+
             # ── Sand dunes (gap==8): pure sand ───────────────────────────
             sand_px = _gap == 8
             if sand_px.any():
