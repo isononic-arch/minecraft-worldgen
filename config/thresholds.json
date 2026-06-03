@@ -4749,7 +4749,8 @@
     "shelter_coeff": 0.7,
     "threshold": 0.5,
     "dither_width": 0.15,
-    "base_floor": 0.3,
+    "gap_source": "gaea",
+    "base_floor": 0.0,
     "_comment_runtime_biome": "S89: was minecraft:stony_peaks (temp 1.0) which MELTED our placed snow on leeward rock benches (snow too light). Swapped to a COLD peaks biome so our snow PERSISTS (and MC tops up flat rock faces; vertical faces stay bare). Applies ONLY to the same gap==5 rock cells in snowy biomes the override already targeted.",
     "rock_runtime_biome": "minecraft:frozen_peaks",
     "runtime_snowy_biomes": [
@@ -4762,6 +4763,8 @@
     "depth": {
       "_comment": "S89 depth-snow. Drives snow DEPTH off the continuous snow_potential.tif (built by build_snow_physics alongside the binary gap) instead of a flat snow_block + 95%-dappled carpet. P>=t_block -> snow_block CAP; t_layer<=P<t_block -> snow[layers=N] DRIFT (N scales 1..max_layers, deepening toward the cap); P<t_layer -> bare rock. carpet_biomes keep a clean layers=1 baseline below the alpine line (Tundra Valley). slope_max_deg keeps steep faces bare. Shape comes from terrain (physics curvature concentrates P in concave gullies, strips convex ridges) -- no dither coin. Set enabled=false to fall back to the legacy dappled carpet.",
       "enabled": true,
+      "gully_only": true,
+      "gully_min_y": 440,
       "t_layer": 0.35,
       "t_block": 0.50,
       "max_layers": 7,

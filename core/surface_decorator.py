@@ -1118,6 +1118,7 @@ def _apply_depth_snow(
     gap_mask:       np.ndarray | None,
     cliff_deg:      np.ndarray | None,
     cfg:            dict,
+    surface_y:      np.ndarray | None = None,  # (H,W) — for gully_only altitude gate
 ) -> bool:
     """S89 depth-snow: paint snow DEPTH from the continuous physics potential.
 
@@ -1175,6 +1176,21 @@ def _apply_depth_snow(
         for b in snowy_biomes:
             _snowy |= (biome_grid == b)
         elig &= _snowy
+
+    # ── GULLY-ONLY mode (S89 walk-3) ───────────────────────────────────
+    # When the base snow is the Gaea mask (gap==7), depth-snow's job shrinks to
+    # ONLY the high-gully fingers: solid snow_block in concave/sheltered gullies
+    # at or above gully_min_y (the physics potential already pools there). No
+    # drifts/carpet, no low-altitude snow. base_floor=0 in build_snow_physics
+    # keeps the potential ~0 outside gullies/below the line.
+    if bool(dcfg.get("gully_only", False)):
+        if surface_y is not None:
+            elig &= (surface_y.astype(np.float32)
+                     >= float(dcfg.get("gully_min_y", 440.0)))
+        cap = elig & (P >= t_block)
+        if cap.any():
+            surface_blocks[cap] = "snow_block"
+        return True
 
     # Cold-lowland carpet biomes get a clean baseline even where alpine
     # potential is ~0 (preserves Tundra Valley scattered-snow look).
@@ -4030,11 +4046,15 @@ def decorate_surface(
             # pass (later) owns ALL snow placement (caps + drifts + carpet) so the
             # flat snow_block here would wrongly bury drift pixels under solid snow.
             # Skip the legacy flat fill; fall through only when depth is OFF.
-            _depth_on = bool(cfg.get("snow_physics", {})
-                                .get("depth", {}).get("enabled", False)) \
+            _dcfg_gap = cfg.get("snow_physics", {}).get("depth", {})
+            _depth_on = bool(_dcfg_gap.get("enabled", False)) \
                         and snow_potential_tile is not None \
                         and float(np.asarray(snow_potential_tile).max()) > 0.0
-            snow_px = (_gap == 7) & (not _depth_on)
+            # In gully_only mode the Gaea gap==7 is the BASE snow, so this
+            # consumer must run (depth-snow only adds high-gully fingers).
+            _gully_only_gap = bool(_dcfg_gap.get("gully_only", False))
+            _run_gaea_gap = (not _depth_on) or _gully_only_gap
+            snow_px = (_gap == 7) & _run_gaea_gap
             if snow_px.any():
                 _snow_exempt = (
                     (biome_grid == "SNOWY_BOREAL_TAIGA") |
@@ -4657,8 +4677,13 @@ def decorate_surface(
                       and hasattr(eco_grads, "gap_mask")) else None),
             cliff_deg=cliff_deg,
             cfg=cfg,
+            surface_y=surface_y,
         )
-    if not _depth_ran:
+    # In gully_only mode the depth pass only adds high-gully fingers, so the
+    # original Gaea snow_carpet (SBT/FF/AT/BA dappled layers) still runs too.
+    _gully_mode = bool(cfg.get("snow_physics", {})
+                          .get("depth", {}).get("gully_only", False))
+    if (not _depth_ran) or _gully_mode:
         _apply_snow_carpet(
             surface_blocks, ground_cover, biome_grid, cfg, tile_x, tile_y,
             cliff_deg=cliff_deg,  # S88: slope cap (skip snow on steep faces)

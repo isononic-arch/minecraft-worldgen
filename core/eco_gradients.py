@@ -625,7 +625,14 @@ def compute_eco_gradients(
         # + slope-shed + curvature (fill bowls / strip ridges) + wind drift, so
         # when enabled take it as the FINAL alpine snow extent and skip the
         # legacy height/slope/peak/coin pass (which would double-thin it).
-        if bool(cfg.get("snow_physics", {}).get("enabled", False)) and snow_gap_physics is not None:
+        # S89: gap_source="gaea" reverts the gap==7 SOURCE to the original Gaea
+        # dusting mask (snow_gap), altitude-gated -- the physics snow_gap_physics
+        # was snowing low sheltered gullies below the line. The continuous
+        # snow_potential is still built for the depth-snow GULLY fingers (handled
+        # in surface_decorator), but the base extent is Gaea again.
+        _sp_cfg_g = cfg.get("snow_physics", {})
+        if (bool(_sp_cfg_g.get("enabled", False)) and snow_gap_physics is not None
+                and _sp_cfg_g.get("gap_source", "physics") != "gaea"):
             _snow_avail_p = land_mask & ~water_mask_re & (gap_mask != 4)
             gap_mask[_snow_avail_p & (snow_gap_physics > 0.5)] = 7
             del _snow_avail_p

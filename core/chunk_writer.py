@@ -1453,12 +1453,14 @@ def stamp_schematic(
         PLACE_MAX_FLOAT_BUSH = 3   # bush: max gap before reject
         TRUNK_RUN_MIN        = 2   # S70-f5 reverted from 1 back to 2 — single-log columns getting flagged as trunks caused branch-extension artifacts on bigger trees.  Original behavior: ≥2 consecutive logs = trunk.
         TRUNK_FIRST_MAX_Y    = 3   # lowest log sy must be ≤ this (else it's a branch)
-        # S89: was 6 -> floated trees on slopes (trunk anchors uphill of its own
-        # column; 5-7 block gaps rejected/skip-filled, leaving floaters). User:
-        # extend trunks down DRAMATICALLY rather than touch the (perfected) anchor
-        # logic. 30 lets sloped trees grow a long bare trunk down to real ground
-        # instead of floating/being rejected.
-        MAX_TRUNK_EXT        = 30  # max blocks the extension will fill
+        # S89 walk-3: trees on slopes float because the anchor sits uphill of the
+        # trunk's own column. The fix is to SINK the whole tree (like bushes) so
+        # the lowest trunk meets the real ground and the CANOPY drops with it --
+        # NOT to extend a long pole up to the high anchor (that pushed crowns sky-
+        # high, worse on tall trees). MAX_TRUNK_EXT is now just the small residual
+        # fill after the sink; MAX_TREE_SINK is how far we'll seat before reject.
+        MAX_TRUNK_EXT        = 8   # residual downhill fill after sink
+        MAX_TREE_SINK        = 16  # max gap we'll seat by sinking; reject beyond
         if surface_y is not None:
             col_reject = np.zeros((sl, sw), dtype=bool)
             col_desink = np.full((sl, sw), -(1 << 30), dtype=np.int64)
@@ -1572,7 +1574,8 @@ def stamp_schematic(
             if _uwater_hit:
                 return
             if has_trunks:
-                # Strategy A — trunk extension. Compute worst trunk gap.
+                # Strategy A — SINK then small extension. Compute worst trunk gap
+                # (how far the lowest trunk floats above its own column ground).
                 # S70-f5: reverted f4 — back to original (skip col_reject).
                 max_trunk_gap = 0
                 for _sz in range(sl):
@@ -1584,8 +1587,15 @@ def stamp_schematic(
                         gap = log_wy - ls
                         if gap > max_trunk_gap:
                             max_trunk_gap = gap
-                if max_trunk_gap > MAX_TRUNK_EXT:
-                    return  # too far to extend cleanly — reject
+                if max_trunk_gap > MAX_TREE_SINK:
+                    return  # slope too steep to seat the tree cleanly — reject
+                # S89 walk-3: SINK the whole schematic so the lowest trunk drops to
+                # ~1 above ground and the CANOPY comes down with it (no flagpole).
+                # Uphill blocks that now fall below their column ground are hidden
+                # by the per-column underground cull in the stamp loop. A small
+                # residual gap is closed by the trunk extension fill below.
+                if max_trunk_gap > 1:
+                    place_y -= (max_trunk_gap - 1)
                 # Pick primary log type for canopy-only-column fallback.
                 # Bare name (no axis) → MC defaults to axis=y (vertical).
                 if log_bare_counts:
