@@ -213,12 +213,20 @@ def main() -> int:
     # binary mask's upscaler so the two stay spatially aligned.
     pot_path = masks_dir / "snow_potential.tif"
     t = time.perf_counter()
+    # S89: the continuous shelter (Sx) term is nonzero over ~70% of the world, so
+    # an uint16 field is incompressible (~2.8 GB). The consumers only need the
+    # high values (gully P>=t_block, the patchy-band drift bias), so ZERO below a
+    # floor (-> sparse, LZW-friendly) and 8-bit quantize. tile_streamer reads
+    # uint8 /255 back to [0,1]. Drops the file to a few hundred MB.
+    _pot_floor = float(cfg_sp.get("potential_store_floor", 0.12))
+    _snow_store = np.where(snow < _pot_floor, 0.0,
+                           np.clip(snow, 0.0, 1.0)).astype(np.float32)
     upscale_continuous(
-        (np.clip(snow, 0.0, 1.0) * 65535.0).astype(np.float32),
+        _snow_store * 255.0,
         pot_path,
         target_size=WORLD_50K,
         interpolation="catmull_rom",
-        dtype="uint16",
+        dtype="uint8",
     )
     pot_mb = pot_path.stat().st_size / (1024 * 1024)
     print(f"  -> {pot_path.name}  file={pot_mb:.1f} MB "
