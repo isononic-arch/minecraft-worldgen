@@ -1110,6 +1110,19 @@ def _apply_snow_carpet(
         ground_cover[place_snow] = "snow[layers=1]"
 
 
+def _build_snow_line(biome_grid: np.ndarray, cfg: dict) -> np.ndarray:
+    """Per-pixel snow-line altitude (MC-Y) from cfg.snow_lines. Snowy biomes get
+    LOW lines (snow starts low); dry biomes HIGH lines (peaks only). Unlisted ->
+    _default."""
+    sl = cfg.get("snow_lines", {}) if isinstance(cfg, dict) else {}
+    out = np.full(biome_grid.shape, float(sl.get("_default", 485.0)), np.float32)
+    for b, y in sl.items():
+        if isinstance(b, str) and b.startswith("_"):
+            continue
+        out[biome_grid == b] = float(y)
+    return out
+
+
 def _apply_depth_snow(
     surface_blocks: np.ndarray,
     ground_cover:   np.ndarray,
@@ -1188,16 +1201,16 @@ def _apply_depth_snow(
     if bool(dcfg.get("gully_only", False)):
         if surface_y is not None:
             syf = surface_y.astype(np.float32)
-            # FEATHERED, GULLY-BIASED floor (no flat 440 line). The minimum snow
-            # altitude DROPS in gullies: ridge cells (P just at threshold) hold a
-            # high floor; deep gullies (high P from curvature/shelter) let snow
-            # finger MUCH lower. Per-pixel coin softens the edge into a dithered,
-            # wandering snowline rather than a ruler-straight contour.
-            ridge_y = float(dcfg.get("gully_floor_ridge_y", 460.0))
-            deep_y  = float(dcfg.get("gully_floor_deep_y", 390.0))
+            # FEATHERED, GULLY-BIASED floor anchored on the PER-BIOME snow line.
+            # ridge cells (P just at threshold) snow at the biome's line; deep
+            # gullies (high P from curvature/shelter) finger snow up to
+            # gully_drop_blocks BELOW it. Per-pixel coin softens the edge into a
+            # dithered, wandering snowline (no ruler-straight contour).
+            ridge = _build_snow_line(biome_grid, cfg)
+            drop = float(dcfg.get("gully_drop_blocks", 45.0))
             feather = max(1.0, float(dcfg.get("gully_feather_blocks", 10.0)))
             g = np.clip((P - t_block) / max(1e-3, 1.0 - t_block), 0.0, 1.0)
-            floor_y = ridge_y - (ridge_y - deep_y) * g
+            floor_y = ridge - drop * g
             prob = np.clip((syf - floor_y) / feather + 0.5, 0.0, 1.0)
             _rng_g = np.random.default_rng(
                 (tile_x * 2654435761 ^ tile_y * 40503 ^ 0x5A0FEA) & 0xFFFFFFFF)
@@ -2967,27 +2980,28 @@ def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y):
     delta = np.round(np.where(rock, relief, 0.0)).astype(surface_y.dtype)
     surface_y += delta
 
-    # ── S89: EXTRA relief pass on PEAKS only (2-3 blocks) ────────────────
-    # More crag on the high convex summits. Separate noise stream so it doesn't
-    # correlate with the base pass, and faded over `edge_fade_blocks` from the
-    # peak-zone interior so it blends out (no step/"layer" where it stops).
+    # ── S89: EXTRA relief on the CAP ZONE (the snow-cap altitudes) ────────
+    # More terrain variation UNDER the snow caps so they're not smooth white
+    # domes. FIRES ON SLOPES (not just convex tops -- the old rock+convex gate
+    # was why "noise on caps didn't work"): applies to ALL high cells above
+    # min_y, weighted toward steeper ground (so faces get the crag, flat tops a
+    # little). Separate noise stream.
     _pk = rcfg.get("peak", {})
     if _pk.get("enabled", False):
-        pk_amp = float(_pk.get("amp_blocks", 2.5))
-        pk_min_y = float(_pk.get("min_y", 560.0))
-        pk_fade = max(1.0, float(_pk.get("edge_fade_blocks", 8.0)))
+        pk_amp = float(_pk.get("amp_blocks", 4.0))
+        pk_min_y = float(_pk.get("min_y", 500.0))
         pk_scale = max(1.0, float(_pk.get("scale_blocks", scale)))
-        pk_convex_max = float(_pk.get("convex_max", 0.5))
-        # convexity from pre-relief field: gaussian(sy)-sy < 0 => convex (peak)
-        _conv = _gf_r(sy_f, sigma=_rsig) - sy_f
-        peak_mask = rock & (sy_f >= pk_min_y) & (_conv <= pk_convex_max)
+        pk_slope_floor = float(_pk.get("slope_floor", 0.25))
+        pk_slope_ref = max(0.1, float(_pk.get("slope_ref", 1.2)))
+        peak_mask = (sy_f >= pk_min_y)
         if peak_mask.any() and pk_amp > 0.0:
-            from scipy.ndimage import distance_transform_edt as _edt_pk
-            pk_w = np.clip(_edt_pk(peak_mask).astype(np.float32) / pk_fade, 0.0, 1.0)
+            _gy, _gx = np.gradient(sy_f)
+            _slope_w = np.clip(np.hypot(_gy, _gx) / pk_slope_ref,
+                               pk_slope_floor, 1.0).astype(np.float32)
             _g2 = opensimplex.OpenSimplex(seed=0x9EA70 + 7)
             _pn = _g2.noise2array(_wx / pk_scale, _wy / pk_scale).astype(np.float32)
             pk_delta = np.round(
-                np.where(peak_mask, pk_amp * pk_w * _pn, 0.0)
+                np.where(peak_mask, pk_amp * _slope_w * _pn, 0.0)
             ).astype(surface_y.dtype)
             surface_y += pk_delta
 
@@ -4076,6 +4090,11 @@ def decorate_surface(
                     (biome_grid == "FROZEN_FLATS")
                 )
                 snow_px = snow_px & ~_snow_exempt
+            # S89 PER-BIOME snow line: a cell only snows above its biome's altitude
+            # (snowy biomes low, dry biomes 520-550 -> peaks only).
+            if snow_px.any():
+                _snow_line_px = _build_snow_line(biome_grid, cfg)
+                snow_px &= (surface_y.astype(np.float32) >= _snow_line_px)
             if snow_px.any():
                 surface_blocks[snow_px] = "snow_block"
                 # S84: powder_snow generation removed — was placed in concavities

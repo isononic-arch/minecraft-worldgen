@@ -500,7 +500,10 @@ def compute_eco_gradients(
         # but kept for documentation.
         ROCK_Y_FLOOR = 150.0
         ROCK_Y_CEIL = 200.0
-        SNOW_Y_FLOOR = 430.0
+        # S89: lowered so the Gaea dusting mask can REACH the snowiest biomes'
+        # low snow line (~400); the PER-BIOME snow_lines gate in surface_decorator
+        # then raises temperate/dry biomes back up (dry peaks 650+).
+        SNOW_Y_FLOOR = 395.0
         SNOW_Y_CEIL = 475.0
         SNOW_SLOPE_BIAS_MIN = 8.0   # degrees — below this, slope factor = 0.1
         SNOW_SLOPE_BIAS_MAX = 30.0  # degrees — above this, slope factor = 1.0

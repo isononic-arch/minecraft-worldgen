@@ -4448,13 +4448,13 @@
         "roughness_ref": 2.0,
         "roughness_sigma": 4.0,
         "peak": {
-          "_comment": "S89: EXTRA relief pass on high convex SUMMITS only (on top of the base relief). Separate noise stream; amp_blocks 2-3; gated to rock above min_y that is convex (gaussian(sy)-sy <= convex_max). Faded over edge_fade_blocks from the peak-zone interior so it blends out with no step/layer where it stops.",
+          "_comment": "S89: EXTRA relief on the CAP ZONE (snow-cap altitudes), so caps aren't smooth white domes. FIRES ON SLOPES (all cells above min_y, weighted toward steeper ground by slope_w in [slope_floor,1] = |grad(sy)|/slope_ref). Separate noise stream. Raise amp_blocks for more crag.",
           "enabled": true,
-          "amp_blocks": 2.5,
-          "min_y": 560,
-          "convex_max": 0.5,
+          "amp_blocks": 4.0,
+          "min_y": 500,
           "scale_blocks": 6.0,
-          "edge_fade_blocks": 8.0
+          "slope_floor": 0.25,
+          "slope_ref": 1.2
         }
       }
     },
@@ -4764,8 +4764,7 @@
       "_comment": "S89 depth-snow. Drives snow DEPTH off the continuous snow_potential.tif (built by build_snow_physics alongside the binary gap) instead of a flat snow_block + 95%-dappled carpet. P>=t_block -> snow_block CAP; t_layer<=P<t_block -> snow[layers=N] DRIFT (N scales 1..max_layers, deepening toward the cap); P<t_layer -> bare rock. carpet_biomes keep a clean layers=1 baseline below the alpine line (Tundra Valley). slope_max_deg keeps steep faces bare. Shape comes from terrain (physics curvature concentrates P in concave gullies, strips convex ridges) -- no dither coin. Set enabled=false to fall back to the legacy dappled carpet.",
       "enabled": true,
       "gully_only": true,
-      "gully_floor_ridge_y": 460,
-      "gully_floor_deep_y": 390,
+      "gully_drop_blocks": 45,
       "gully_feather_blocks": 10,
       "t_layer": 0.35,
       "t_block": 0.50,
@@ -4783,6 +4782,35 @@
         "BOREAL_ALPINE"
       ]
     }
+  },
+  "snow_lines": {
+    "_comment": "S89 PER-BIOME snow altitude line (MC-Y, world max ~703). A cell only gets snow_block if surface_y >= its biome's line. SNOWY biomes (SBT/ARCTIC/FROZEN) stay LOW (~400, lots of snow); BOREAL_ALPINE/BOREAL_TAIGA 525-625; temperate 625-650; dry/warm 650+ (peaks only). Unlisted -> _default. Within the depth snowy_biomes the gully fingers still pull snow BELOW the line down concave gullies. SNOW_Y_FLOOR=395 so the Gaea dusting reaches the ~400 snowy lines.",
+    "_default": 635,
+    "SNOWY_BOREAL_TAIGA": 400,
+    "ARCTIC_TUNDRA": 400,
+    "FROZEN_FLATS": 400,
+    "BOREAL_ALPINE": 540,
+    "BOREAL_TAIGA": 600,
+    "TEMPERATE_RAINFOREST": 625,
+    "BIRCH_FOREST": 635,
+    "MIXED_FOREST": 635,
+    "COASTAL_HEATH": 640,
+    "EASTERN_TEMPERATE_COAST": 640,
+    "RIPARIAN_WOODLAND": 640,
+    "TEMPERATE_DECIDUOUS": 645,
+    "SCRUBBY_HEATHLAND": 645,
+    "LUSH_RAINFOREST_COAST": 650,
+    "RAINFOREST_COAST": 650,
+    "TIDAL_JUNGLE_FRINGE": 655,
+    "MANGROVE_COAST": 660,
+    "DRY_PINE_BARRENS": 655,
+    "KARST_BARRENS": 665,
+    "CONTINENTAL_STEPPE": 675,
+    "DRY_WOODLAND_MAQUIS": 680,
+    "DRY_OAK_SAVANNA": 690,
+    "SEMI_ARID_SHRUBLAND": 705,
+    "DESERT_STEPPE_TRANSITION": 720,
+    "SAND_DUNE_DESERT": 760
   },
   "washes": {
     "_comment": "Washes = downhill drainage channels (flow-proportional width: thin at summit, wider at base). width_min/max are RADII in blocks; diameter ~= 2*r+1. width_min=0 -> ~1px summit lines. flow_tile is NORMALIZED [0,1]. foliated = thin CONTOUR-PARALLEL ribs (foliation banding) that cross-cut the washes: period_blocks=spacing, width_frac=duty (thickness fraction of each period), warp_blocks/scale bend the ribs off-level, layer_dither=fraction of rib pixels actually painted mid-tier.",
