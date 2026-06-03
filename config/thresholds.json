@@ -4448,13 +4448,11 @@
         "roughness_ref": 2.0,
         "roughness_sigma": 4.0,
         "peak": {
-          "_comment": "S89: EXTRA relief on the CAP ZONE (snow-cap altitudes), so caps aren't smooth white domes. FIRES ON SLOPES (all cells above min_y, weighted toward steeper ground by slope_w in [slope_floor,1] = |grad(sy)|/slope_ref). Separate noise stream. Raise amp_blocks for more crag.",
+          "_comment": "S89: SUBTLE extra relief gated STRICTLY to the rock cap mask (cliff_cap_tile*255 >= cap_intensity, matching the cliff_cap painter's intensity_threshold). Adds a little terrain variation under the cap rock so snow-capped peaks aren't smooth domes. Separate noise stream.",
           "enabled": true,
-          "amp_blocks": 4.0,
-          "min_y": 500,
+          "amp_blocks": 2.0,
           "scale_blocks": 6.0,
-          "slope_floor": 0.25,
-          "slope_ref": 1.2
+          "cap_intensity": 90
         }
       }
     },

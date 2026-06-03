@@ -2908,7 +2908,8 @@ def _smooth_biome_boundary_y(
     surface_y[:] = np.round(sy_f).astype(surface_y.dtype)
 
 
-def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y):
+def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y,
+                       cliff_cap_tile=None):
     """S89: un-smooth rocky terrain. The Gaea -> upscale -> MC pipeline leaves
     rock faces too smooth; add low-amplitude, spatially-coherent height noise
     INSIDE rock (tier>=1), with amplitude fading to 0 over the outer
@@ -2980,28 +2981,22 @@ def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y):
     delta = np.round(np.where(rock, relief, 0.0)).astype(surface_y.dtype)
     surface_y += delta
 
-    # ── S89: EXTRA relief on the CAP ZONE (the snow-cap altitudes) ────────
-    # More terrain variation UNDER the snow caps so they're not smooth white
-    # domes. FIRES ON SLOPES (not just convex tops -- the old rock+convex gate
-    # was why "noise on caps didn't work"): applies to ALL high cells above
-    # min_y, weighted toward steeper ground (so faces get the crag, flat tops a
-    # little). Separate noise stream.
+    # ── S89: SUBTLE extra relief ONLY on the ROCK CAP mask ───────────────
+    # Adds a little terrain variation under the cap rock (so snow-capped peaks
+    # aren't smooth domes), gated strictly to the cliff_cap mask. Subtle amp.
+    # Separate noise stream. No-op if cliff_cap_tile is absent.
     _pk = rcfg.get("peak", {})
-    if _pk.get("enabled", False):
-        pk_amp = float(_pk.get("amp_blocks", 4.0))
-        pk_min_y = float(_pk.get("min_y", 500.0))
+    if _pk.get("enabled", False) and cliff_cap_tile is not None:
+        pk_amp = float(_pk.get("amp_blocks", 2.0))
         pk_scale = max(1.0, float(_pk.get("scale_blocks", scale)))
-        pk_slope_floor = float(_pk.get("slope_floor", 0.25))
-        pk_slope_ref = max(0.1, float(_pk.get("slope_ref", 1.2)))
-        peak_mask = (sy_f >= pk_min_y)
+        pk_cap_intensity = int(_pk.get("cap_intensity", 90))
+        peak_mask = (np.asarray(cliff_cap_tile, dtype=np.float32) * 255.0
+                     >= pk_cap_intensity)
         if peak_mask.any() and pk_amp > 0.0:
-            _gy, _gx = np.gradient(sy_f)
-            _slope_w = np.clip(np.hypot(_gy, _gx) / pk_slope_ref,
-                               pk_slope_floor, 1.0).astype(np.float32)
             _g2 = opensimplex.OpenSimplex(seed=0x9EA70 + 7)
             _pn = _g2.noise2array(_wx / pk_scale, _wy / pk_scale).astype(np.float32)
             pk_delta = np.round(
-                np.where(peak_mask, pk_amp * _slope_w * _pn, 0.0)
+                np.where(peak_mask, pk_amp * _pn, 0.0)
             ).astype(surface_y.dtype)
             surface_y += pk_delta
 
@@ -3099,7 +3094,8 @@ def decorate_surface(
     # is the LAST surface_y change in decorate, so paint/schematic/column all
     # drape over the bumps and nothing smooths them back out. Mutates in place;
     # no-op unless rock_layers + relief enabled.
-    _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y)
+    _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y,
+                       cliff_cap_tile=cliff_cap_tile)
 
     # --- Build noise arrays ------------------------------------------------
     den_cfg  = cfg["decoration_density_noise"]
