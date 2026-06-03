@@ -1792,7 +1792,7 @@
         "block": "podzol",
         "sub": "dirt",
         "coverage": 0.46,
-        "scale": 60,
+        "scale": 26,
         "seed": 42,
         "is_base": false
       },
@@ -1803,7 +1803,7 @@
         "block": "grass_block",
         "sub": "dirt",
         "coverage": 0.72,
-        "scale": 116,
+        "scale": 50,
         "seed": 44,
         "is_base": false
       }
@@ -4446,7 +4446,16 @@
           1.0
         ],
         "roughness_ref": 2.0,
-        "roughness_sigma": 4.0
+        "roughness_sigma": 4.0,
+        "peak": {
+          "_comment": "S89: EXTRA relief pass on high convex SUMMITS only (on top of the base relief). Separate noise stream; amp_blocks 2-3; gated to rock above min_y that is convex (gaussian(sy)-sy <= convex_max). Faded over edge_fade_blocks from the peak-zone interior so it blends out with no step/layer where it stops.",
+          "enabled": true,
+          "amp_blocks": 2.5,
+          "min_y": 560,
+          "convex_max": 0.5,
+          "scale_blocks": 6.0,
+          "edge_fade_blocks": 8.0
+        }
       }
     },
     "cliff_cap": {
@@ -4741,7 +4750,8 @@
     "threshold": 0.5,
     "dither_width": 0.15,
     "base_floor": 0.3,
-    "rock_runtime_biome": "minecraft:stony_peaks",
+    "_comment_runtime_biome": "S89: was minecraft:stony_peaks (temp 1.0) which MELTED our placed snow on leeward rock benches (snow too light). Swapped to a COLD peaks biome so our snow PERSISTS (and MC tops up flat rock faces; vertical faces stay bare). Applies ONLY to the same gap==5 rock cells in snowy biomes the override already targeted.",
+    "rock_runtime_biome": "minecraft:frozen_peaks",
     "runtime_snowy_biomes": [
       "SNOWY_BOREAL_TAIGA",
       "ARCTIC_TUNDRA",
@@ -4778,6 +4788,7 @@
     "width_flow_lo": 0.003,
     "width_flow_hi": 0.018,
     "dither_blocks": 3.5,
+    "edge_fade_blocks": 3.0,
     "foliated": {
       "_comment": "Foliation ribs = REAL flow lines from the flow mask (not procedural), filtered to the FINE tributaries that TRAVERSE the slope. Band: flow in [min_flow, washes.min_flow) keeps them below the trunk washes. cross_cos = |cos(grad flow, grad height)| threshold: HIGH = channel runs across the fall line (cross-cutting), LOW = plunges straight down. LOWER cross_cos -> MORE ribs (keeps straighter channels too, which on sharp slopes run naturally downhill); raise for stricter cross-cutting. LOWER min_flow -> catches finer tributaries (more, thinner ribs). smooth_sigma denoises the flow gradient. layer_dither = fraction of rib pixels actually painted mid-tier.",
       "enabled": true,
@@ -4798,6 +4809,7 @@
     "concavity_min": -0.3,
     "coverage": 0.6,
     "rock_dilate_blocks": 2,
+    "edge_fade_blocks": 3.0,
     "snow_handoff_potential": 0.45,
     "surface_block": "grass_block",
     "subsurface_block": "dirt",
@@ -4811,9 +4823,10 @@
     ]
   },
   "krummholz": {
-    "_comment": "S89 stunted high-mountain trees. Where rock_gap (gap==5) fires on or within rock_dilate_blocks of a TREE candidate, OR at/above min_elevation_y, restrict selection to the smallest (size=='sm') variants -> small trees near/on rock. Preserves the tree COUNT (still places, just a small variant); falls back to the full pool if the biome has no sm trees. min_elevation_y caps high-elevation trees small regardless of rock proximity.",
+    "_comment": "S89 stunted high-mountain trees. Rock proximity (gap==5 within rock_dilate_blocks) ALWAYS forces size=='sm'. Altitude is FEATHERED: P(force small) ramps 0 at feather_lo_y -> 1 at feather_hi_y, so the krummholz band fades in instead of a hard cutoff. Preserves the tree COUNT (still places, just a small variant); falls back to the full pool if the biome has no sm trees.",
     "enabled": true,
     "rock_dilate_blocks": 3,
-    "min_elevation_y": 540
+    "feather_lo_y": 550,
+    "feather_hi_y": 600
   }
 }

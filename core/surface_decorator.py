@@ -1287,11 +1287,23 @@ def _apply_grass_terraces(
     if not bench.any():
         return
 
-    # coverage cap + organic dither (world-seeded)
+    # S89 EDGE salt & pepper paint-out (~edge_fade_blocks): speckle the terrace
+    # rim so it dissolves into the surrounding rock instead of a hard border.
+    # Computed on the SOLID patch (before the coverage dither) so the distance
+    # is meaningful. keep-prob ramps 0 at the edge -> 1 at fade_blocks inward.
+    edge_fade = float(tcfg.get("edge_fade_blocks", 3.0))
+    if edge_fade > 0.0 and bench.any():
+        from scipy.ndimage import distance_transform_edt as _edt_t
+        _edist = _edt_t(bench).astype(np.float32)   # dist to nearest non-bench
+        _edge_keep = np.clip(_edist / edge_fade, 0.0, 1.0)
+    else:
+        _edge_keep = np.ones((H, W), dtype=np.float32)
+
+    # coverage cap + organic dither (world-seeded) folded with the edge ramp
     rng = np.random.default_rng(
         (tile_x * 70207 ^ tile_y * 19937 ^ 0x6A455) & 0xFFFFFFFF)
     coin = rng.random((H, W)).astype(np.float32)
-    bench &= (coin < coverage)
+    bench &= (coin < (coverage * _edge_keep))
     if not bench.any():
         return
 
@@ -2924,6 +2936,30 @@ def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y):
     delta = np.round(np.where(rock, relief, 0.0)).astype(surface_y.dtype)
     surface_y += delta
 
+    # ── S89: EXTRA relief pass on PEAKS only (2-3 blocks) ────────────────
+    # More crag on the high convex summits. Separate noise stream so it doesn't
+    # correlate with the base pass, and faded over `edge_fade_blocks` from the
+    # peak-zone interior so it blends out (no step/"layer" where it stops).
+    _pk = rcfg.get("peak", {})
+    if _pk.get("enabled", False):
+        pk_amp = float(_pk.get("amp_blocks", 2.5))
+        pk_min_y = float(_pk.get("min_y", 560.0))
+        pk_fade = max(1.0, float(_pk.get("edge_fade_blocks", 8.0)))
+        pk_scale = max(1.0, float(_pk.get("scale_blocks", scale)))
+        pk_convex_max = float(_pk.get("convex_max", 0.5))
+        # convexity from pre-relief field: gaussian(sy)-sy < 0 => convex (peak)
+        _conv = _gf_r(sy_f, sigma=_rsig) - sy_f
+        peak_mask = rock & (sy_f >= pk_min_y) & (_conv <= pk_convex_max)
+        if peak_mask.any() and pk_amp > 0.0:
+            from scipy.ndimage import distance_transform_edt as _edt_pk
+            pk_w = np.clip(_edt_pk(peak_mask).astype(np.float32) / pk_fade, 0.0, 1.0)
+            _g2 = opensimplex.OpenSimplex(seed=0x9EA70 + 7)
+            _pn = _g2.noise2array(_wx / pk_scale, _wy / pk_scale).astype(np.float32)
+            pk_delta = np.round(
+                np.where(peak_mask, pk_amp * pk_w * _pn, 0.0)
+            ).astype(surface_y.dtype)
+            surface_y += pk_delta
+
 
 def decorate_surface(
     surface_y:    np.ndarray,   # (H, W) int16
@@ -3645,13 +3681,20 @@ def decorate_surface(
                                               [_yy.astype(np.float32), _sx],
                                               order=1, mode="nearest") > 0.4
                         _wash_zone &= rock_px
-                    # soft salt-and-pepper edge in the outer `edge_softness` blocks
-                    _edge_soft = float(_wcfg.get("edge_softness", 1.0))
-                    if _edge_soft > 0.0 and _wash_zone.any():
-                        _fade_rng = np.random.default_rng(tile_x * 17 ^ tile_y * 31 ^ 0xFADE)
-                        _coin = _fade_rng.random((H, W)).astype(np.float32)
-                        _edge = _wash_zone & (_dist > (_w_rad - _edge_soft)) & (_dist > 0)
-                        _wash_zone = _wash_zone & ~(_edge & (_coin > 0.5))
+                    # S89 EDGE salt & pepper: speckle out ONLY the outer
+                    # `edge_fade_blocks` of the wash so the rim dissolves into
+                    # little specks; the core stays solid. keep-prob ramps 0 at the
+                    # rim -> 1 at the band's inner edge.
+                    _efade = float(_wcfg.get("edge_fade_blocks", 3.0))
+                    if _efade > 0.0 and _wash_zone.any():
+                        _ef_rng = np.random.default_rng(tile_x * 13 ^ tile_y * 7 ^ 0xD1AF)
+                        _ef_coin = _ef_rng.random((H, W)).astype(np.float32)
+                        _from_edge = (_w_rad - _dist)          # blocks in from the rim
+                        # only speckle the outer band AND never the centerline
+                        # (_dist < 1), so thin washes (radius ~2) keep a solid core.
+                        _band = _wash_zone & (_from_edge < _efade) & (_dist >= 1.0)
+                        _keep_p = np.clip(_from_edge / np.maximum(_efade, 0.5), 0.0, 1.0)
+                        _wash_zone &= ~(_band & (_ef_coin > _keep_p))
                 if _wash_zone.any():
                     _DEFAULT_WASH_PAL = ["gravel", "coarse_dirt", "sand"]
                     _wash_rng = np.random.default_rng(

@@ -1085,8 +1085,14 @@ def place_schematics(
     # surface). Keep "snow" (1-block snow layer overlay) skipped — trees on
     # that look bad. powder_snow stays skipped (pest block; also removed at
     # source elsewhere in S84). Ice variants still skipped.
+    # S89: snow_block RE-ADDED to the skip set. S84 removed it because the OLD
+    # Gaea dusting painted snow_block over the WHOLE biome (-> zero trees), but
+    # depth-snow now puts snow_block ONLY on CAPS (high-potential summits) while
+    # drifts keep the podzol/grass surface (snow is ground_cover). So skipping
+    # snow_block removes trees from caps (fixes floating-on-cap) WITHOUT nuking
+    # the forest -- trees still place on the non-cap majority.
     _SNOW_SURFACE_BLOCKS = frozenset({
-        "snow", "powder_snow", "ice", "packed_ice", "blue_ice",
+        "snow", "snow_block", "powder_snow", "ice", "packed_ice", "blue_ice",
     })
     snow_surface_mask = None
     if surface_blocks is not None:
@@ -1234,7 +1240,11 @@ def place_schematics(
     # (we still place a tree, just a small one).
     _kr_cfg = cfg.get("krummholz", {}) if isinstance(cfg, dict) else {}
     _kr_on = bool(_kr_cfg.get("enabled", False))
-    _kr_min_y = float(_kr_cfg.get("min_elevation_y", 1e9))
+    # Altitude FEATHER: P(force small) ramps 0 at feather_lo_y -> 1 at feather_hi_y
+    # (rock proximity is always 1.0). Gives a gradual krummholz band instead of a
+    # hard altitude cutoff.
+    _kr_feather_lo = float(_kr_cfg.get("feather_lo_y", 550.0))
+    _kr_feather_hi = float(_kr_cfg.get("feather_hi_y", 600.0))
     _kr_rock_near = None
     if _kr_on and eco_grads is not None and hasattr(eco_grads, "gap_mask"):
         _kr_rg = (eco_grads.gap_mask == 5)
@@ -1287,13 +1297,21 @@ def place_schematics(
             if not entries:
                 continue
 
-            # S89 krummholz: small-tree restriction near rock / high elevation.
+            # S89 krummholz: feathered small-tree restriction. Rock proximity =
+            # always small; altitude ramps the probability over [lo,hi] so the
+            # band fades in instead of a hard line.
             if _kr_on and pass_type == "tree":
-                _kr_small = (
-                    (_kr_rock_near is not None and bool(_kr_rock_near[row, col]))
-                    or (float(surface_y[row, col]) >= _kr_min_y)
-                )
-                if _kr_small:
+                _kr_p = 0.0
+                if _kr_rock_near is not None and bool(_kr_rock_near[row, col]):
+                    _kr_p = 1.0
+                else:
+                    _y = float(surface_y[row, col])
+                    if _y >= _kr_feather_hi:
+                        _kr_p = 1.0
+                    elif _y > _kr_feather_lo:
+                        _kr_p = (_y - _kr_feather_lo) / max(
+                            1.0, _kr_feather_hi - _kr_feather_lo)
+                if _kr_p > 0.0 and rng.random() < _kr_p:
                     _kr_sm = [e for e in entries if e.size == "sm"]
                     if _kr_sm:
                         entries = _kr_sm
