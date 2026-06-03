@@ -225,7 +225,7 @@ BUSH_DENSITY_ABS: dict[str, float] = {
     "KARST_BARRENS":            0.70,  # benchmark
     "DESERT_STEPPE_TRANSITION": 0.65,  # user: ~karst amount, keep trees the same
     "SCRUBBY_HEATHLAND":        0.55,  # user: much closer to karst
-    "SEMI_ARID_SHRUBLAND":      0.22,  # S89 walk2: ~halfway back from 0.45 (too many)
+    "SEMI_ARID_SHRUBLAND":      0.12,  # S89 walk3: sparser yet (was 0.22)
     "DRY_WOODLAND_MAQUIS":      0.50,  # user: way more generic (non-pine) bush
 }
 

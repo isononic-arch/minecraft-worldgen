@@ -118,6 +118,14 @@ _CLASSIC_ID_MAP: dict[int, str] = {
 _SPONGE_BLOCK_REMAP: dict[str, str] = {
     "stripped_acacia_log":  "stripped_dark_oak_log",
     "stripped_acacia_wood": "stripped_dark_oak_wood",
+    # S89 walk3: BIRCH_FOREST trees were authored with FENCE-POST trunks
+    # (dbirch=birch_fence, rowan=dark_oak_fence, no logs) -> they rendered as
+    # spindly "accent" trees AND defeated chunk_writer's _log trunk detection
+    # (placed bush-like, looked sparse). Remap trunk-fences to logs; the fence
+    # connection state is dropped below so the log defaults to axis=y (vertical
+    # trunk). Scoped to birch-forest woods to avoid touching conifers.
+    "birch_fence":          "birch_log",
+    "dark_oak_fence":       "dark_oak_log",
     # Fence gates render broken (wrong facing/open state) — remove globally
     "oak_fence_gate":       "air",
     "spruce_fence_gate":    "air",
@@ -174,7 +182,12 @@ def _bare_name(full: str) -> str:
     base = bare.split("[")[0]
     remapped = _SPONGE_BLOCK_REMAP.get(base)
     if remapped:
-        if "[" in bare:
+        # Fence->log remap (tree trunks authored as fences): DROP the fence
+        # connection state -- north/east/... are invalid on a log and would
+        # emit bogus props. A bare log defaults to axis=y => vertical trunk.
+        if base.endswith("_fence") and remapped.endswith("_log"):
+            bare = remapped
+        elif "[" in bare:
             bare = remapped + bare[bare.index("["):]
         else:
             bare = remapped
