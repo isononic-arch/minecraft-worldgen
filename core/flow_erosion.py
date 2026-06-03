@@ -146,11 +146,24 @@ def apply_flow_erosion(
     #     no step against the surrounding land (the seam fix), then
     # (2) gaussian-smooth dy so the gullies are smooth valleys, not staircases.
     from scipy.ndimage import gaussian_filter as _gf_smooth
+    from scipy.ndimage import distance_transform_edt as _edt_fe
     _efb = float(fcfg.get("edge_fade_blocks", 6.0))
     if _efb > 0.0:
-        from scipy.ndimage import distance_transform_edt as _edt_fe
         _rfade = np.clip(_edt_fe(rock).astype(np.float32) / _efb, 0.0, 1.0)
         dy = dy * _rfade
+    # RIVER FADE (fixes the "floating-bridge" inversion): the incision is
+    # strongest on the highest-flow cells = the valley centerline, but the river
+    # carver's channel there is PROTECTED (dy=0). So the protected center stays
+    # up while its high-flow flanks get cut below it -> the valley floor becomes
+    # a raised bridge between fresh walls. Taper dy to 0 within river_fade_blocks
+    # of any river/lake cell so the incision blends INTO the valley floor instead
+    # of cutting a slot beside it.
+    _rvf = float(fcfg.get("river_fade_blocks", 16.0))
+    if _rvf > 0.0 and river_meta is not None:
+        _rm = np.asarray(river_meta) > 0
+        if _rm.any():
+            _rvfade = np.clip(_edt_fe(~_rm).astype(np.float32) / _rvf, 0.0, 1.0)
+            dy = dy * _rvfade
     _ssig = float(fcfg.get("smooth_sigma", 2.0))
     if _ssig > 0.0:
         dy = _gf_smooth(dy, _ssig, mode="nearest")

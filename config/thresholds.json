@@ -4898,7 +4898,7 @@
     "min_rock_tier": 1,
     "flow_lo": 0.001,
     "flow_hi": 0.02,
-    "max_incise_blocks": 8.0,
+    "max_incise_blocks": 6.0,
     "incise_gamma": 0.6,
     "gully_amp_blocks": 3.0,
     "gully_scale_blocks": 24.0,
@@ -4906,15 +4906,16 @@
     "ridge_amp_blocks": 2.0,
     "ridge_sigma": 4.0,
     "ridge_ref_blocks": 3.0,
-    "face_extra_incise_blocks": 2.0,
-    "face_extra_gully_blocks": 4.0,
+    "face_extra_incise_blocks": 0.0,
+    "face_extra_gully_blocks": 3.0,
     "face_gully_scale_blocks": 40.0,
     "face_min_slope_deg": 28.0,
     "face_max_slope_deg": 60.0,
     "face_rough_sigma": 16.0,
     "face_rough_ref": 5.0,
     "edge_fade_blocks": 6.0,
-    "smooth_sigma": 2.0,
+    "smooth_sigma": 3.0,
+    "river_fade_blocks": 16.0,
     "seed": 1337
   }
 }
