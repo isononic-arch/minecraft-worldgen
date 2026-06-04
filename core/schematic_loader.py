@@ -118,14 +118,10 @@ _CLASSIC_ID_MAP: dict[int, str] = {
 _SPONGE_BLOCK_REMAP: dict[str, str] = {
     "stripped_acacia_log":  "stripped_dark_oak_log",
     "stripped_acacia_wood": "stripped_dark_oak_wood",
-    # S89 walk3: BIRCH_FOREST trees were authored with FENCE-POST trunks
-    # (dbirch=birch_fence, rowan=dark_oak_fence, no logs) -> they rendered as
-    # spindly "accent" trees AND defeated chunk_writer's _log trunk detection
-    # (placed bush-like, looked sparse). Remap trunk-fences to logs; the fence
-    # connection state is dropped below so the log defaults to axis=y (vertical
-    # trunk). Scoped to birch-forest woods to avoid touching conifers.
-    "birch_fence":          "birch_log",
-    "dark_oak_fence":       "dark_oak_log",
+    # S89 walk3: the birch_fence/dark_oak_fence -> log remap was REVERTED per
+    # user -- the fence-"stick" birch trees are OK to keep, just RARE. They're
+    # now down-weighted in schematic_placement BIRCH_WEIGHTS so the full leafy
+    # sbirch dominate and the fence-sticks (dbirch/rowan) are occasional accents.
     # Fence gates render broken (wrong facing/open state) — remove globally
     "oak_fence_gate":       "air",
     "spruce_fence_gate":    "air",

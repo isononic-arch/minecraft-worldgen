@@ -423,21 +423,25 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
     # dbirch 18-24 dominant; rowan slightly less; sbirch generally less,
     # sbirch_c_sm + largest sbirch (28 blocks) very very rare.
     if "BIRCH_FOREST" in grouped:
+        # S89 walk3 REWEIGHT: dbirch + rowan are the small thin "stick"/fence
+        # trees (~11 log, ~54 leaves). User wants them OK but RARE. The full
+        # leafy sbirch (45-59 log, 400-900 leaves) now DOMINATE; sticks are
+        # occasional accents.
         _BIRCH_WEIGHTS = {
-            # dbirch 18-24: dominant
-            "dbirch_a_sm": 50, "dbirch_b_sm": 50, "dbirch_c_sm": 50,
-            "dbirch_d_md": 50, "dbirch_e_md": 50, "dbirch_f_lg": 50,
-            "dbirch_g_lg": 50,
-            # rowan: slightly less
-            "rowan_a_sm": 25, "rowan_b_sm": 25, "rowan_c_sm": 25,
-            # sbirch in range: less common
-            "sbirch_a_sm": 10, "sbirch_d_sm": 10, "sbirch_g_md": 10,
-            "sbirch_h_md": 10, "sbirch_i_md": 10, "sbirch_j_md": 10,
-            # sbirch > 24: rare
-            "sbirch_e_sm": 5, "sbirch_k_lg": 5,
-            # sbirch 28 + sbirch_c_sm: very very rare
-            "sbirch_b_sm": 1, "sbirch_c_sm": 1, "sbirch_f_md": 1,
-            "sbirch_l_lg": 1, "sbirch_m_lg": 1,
+            # dbirch (stick/fence): rare accent (was 50)
+            "dbirch_a_sm": 10, "dbirch_b_sm": 10, "dbirch_c_sm": 10,
+            "dbirch_d_md": 10, "dbirch_e_md": 10, "dbirch_f_lg": 10,
+            "dbirch_g_lg": 10,
+            # rowan (stick): rare accent (was 25)
+            "rowan_a_sm": 6, "rowan_b_sm": 6, "rowan_c_sm": 6,
+            # sbirch full leafy birch: NOW DOMINANT (was 10)
+            "sbirch_a_sm": 25, "sbirch_d_sm": 45, "sbirch_g_md": 45,
+            "sbirch_h_md": 45, "sbirch_i_md": 45, "sbirch_j_md": 45,
+            # sbirch taller: common
+            "sbirch_e_sm": 15, "sbirch_k_lg": 12,
+            # sbirch biggest: less common (variety)
+            "sbirch_b_sm": 5, "sbirch_c_sm": 5, "sbirch_f_md": 5,
+            "sbirch_l_lg": 5, "sbirch_m_lg": 5,
         }
         for e in grouped["BIRCH_FOREST"]:
             for stem, w in _BIRCH_WEIGHTS.items():
@@ -1551,6 +1555,11 @@ def place_schematics(
                     # trees replaced with bushes.  4x on the halved BASE_DENSITY.
                     if biome_str == "CONTINENTAL_STEPPE":
                         final_d *= 4.0
+                # S89 walk3: bushes thin in the krummholz zone JUST LIKE trees
+                # (user) -- _kr_dens is 1.0 outside the zone and fades to FF
+                # sparseness deep inside, so this is a no-op elsewhere.
+                if _kr_dens is not None:
+                    final_d *= float(_kr_dens[row, col])
             else:  # tree pass
                 # S71-3: ARCTIC_TUNDRA tree thinning — "VERY VERY sparse"
                 # smallest pines.  AT BASE 0.005 × 0.05 = ~0.00025.
