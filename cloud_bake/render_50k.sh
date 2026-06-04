@@ -25,7 +25,8 @@ set -u
 [ "$#" -ge 1 ] || { echo "Usage: $0 IP1 [IP2 ...]"; exit 1; }
 IPS=("$@"); NB=${#IPS[@]}
 GRID=97
-THREADS="${THREADS:-24}"
+THREADS="${THREADS:-40}"      # ProcessPoolExecutor workers/box (CCX63=48 vCPU)
+OMP="${OMP:-1}"               # numpy threads/proc; 1 => max process parallelism
 BRANCH="s85-cherry-picks"
 OUT_DIR="output_50k"
 DEST="${DEST:-}"
@@ -72,7 +73,7 @@ PYEOF
     rowcmds+="python3 run_pipeline.py --config config/thresholds.json --masks masks/ --schem-index schematic_index.json --output output/ --tile-x0 0 --tile-x1 $GRID --tile-z0 $z --tile-z1 $z1 --threads $THREADS >> /root/r50_${z}.log 2>&1; "
   done
   local cmd="cd /root/minecraft-worldgen && rm -f /root/r50_done && rm -rf output /root/r50_*.log && tmux kill-session -t r50 2>/dev/null; "
-  cmd+="tmux new -d -s r50 'source /root/venv/bin/activate; export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=2; "
+  cmd+="tmux new -d -s r50 'source /root/venv/bin/activate; export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=$OMP OPENBLAS_NUM_THREADS=$OMP MKL_NUM_THREADS=$OMP; "
   cmd+="echo BUILD_START > /root/r50_build.log; "
   cmd+="python3 tools/build_terrain_derived.py --only rock_layers,talus,cap --scale 8 >> /root/r50_build.log 2>&1; "
   cmd+="python3 tools/build_snow_physics.py --scale 8 >> /root/r50_build.log 2>&1; "
