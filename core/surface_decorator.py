@@ -210,15 +210,16 @@ BIOME_BLOCK_PALETTES: dict[str, list[tuple[str, str, str]]] = {
     ],
     # ── Grassland / Steppe ───────────────────────────────────────────────
     "CONTINENTAL_STEPPE": [
+        # S89 walk: user — NO podzol; all podzol -> grass_block.
         ("grass_block",       "dirt",         "base"),
         ("grass_block",       "rooted_dirt",  "eco_moist"),       # moisture corridors
-        ("podzol",            "granite",      "eco_dry"),         # desiccated patches
+        ("grass_block",       "granite",      "eco_dry"),
         ("granite",           "stone",        "eco_shallow_soil"),# thin soil over rock
         ("dirt_path",         "dirt",         "noise"),
-        ("podzol",            "granite",      "erosion"),
+        ("grass_block",       "granite",      "erosion"),
         ("gravel",            "granite",      "erosion2"),
         ("granite",           "stone",        "noise2"),
-        ("podzol",            "dirt",         "moisture"),
+        ("grass_block",       "dirt",         "moisture"),
         ("grass_block",       "coarse_dirt",  "noise3"),
     ],
     "DRY_PINE_BARRENS": [
