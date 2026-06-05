@@ -23,6 +23,11 @@ param(
     [string]$RemoteOut = "/root/minecraft-worldgen/output"
 )
 
+# Robust IP parsing: Start-Process/-File can deliver "-Ips a,b,c" as a single
+# comma-joined string instead of a [string[]]. Split + trim defensively.
+if ($Ips.Count -eq 1 -and $Ips[0] -match ',') { $Ips = $Ips[0] -split ',' }
+$Ips = @($Ips | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+
 $nb = $Ips.Count
 # Round-robin row quota: box b renders rows {b, b+nb, b+2nb, ...} (each row = Grid tiles)
 $tilesPerBox = @()
@@ -33,7 +38,7 @@ for ($b = 0; $b -lt $nb; $b++) {
 $totalTiles = ($tilesPerBox | Measure-Object -Sum).Sum
 
 $prevCounts   = @{}
-$stallMinutes = @{}
+$stallTracker = @{}
 $startTime    = Get-Date
 $milestonesHit = @{}   # 25/50/75 one-time pings
 
@@ -55,10 +60,10 @@ function Poll-AllBoxes {
 
         if ($prevCounts.ContainsKey($boxId) -and $n -ge 0 -and -not $isDone) {
             if ($n -eq $prevCounts[$boxId] -and $n -lt $quota) {
-                if (-not $stallMinutes.ContainsKey($boxId)) { $stallMinutes[$boxId] = 0 }
-                $stallMinutes[$boxId] += $script:PollMinutes
-                if ($stallMinutes[$boxId] -ge $script:StallMinutes) { $result.Stalled += $boxId }
-            } else { $stallMinutes[$boxId] = 0 }
+                if (-not $stallTracker.ContainsKey($boxId)) { $stallTracker[$boxId] = 0 }
+                $stallTracker[$boxId] += $script:PollMinutes
+                if ($stallTracker[$boxId] -ge $script:StallMinutes) { $result.Stalled += $boxId }
+            } else { $stallTracker[$boxId] = 0 }
         }
         $prevCounts[$boxId] = $n
     }
@@ -89,7 +94,7 @@ function Render-Display {
     Write-Host ""
     for ($i = 0; $i -lt $script:Ips.Count; $i++) {
         $boxId = $i + 1; $n = $poll.PerBox[$boxId]; $quota = $script:tilesPerBox[$i]
-        $sm = if ($stallMinutes.ContainsKey($boxId)) { $stallMinutes[$boxId] } else { 0 }
+        $sm = if ($stallTracker.ContainsKey($boxId)) { $stallTracker[$boxId] } else { 0 }
         $color = "White"; $tag = "running"
         if ($n -lt 0) { $color = "Red"; $tag = "SSH ERROR" }
         elseif ($poll.Done[$boxId]) { $color = "Green"; $tag = "DONE" }

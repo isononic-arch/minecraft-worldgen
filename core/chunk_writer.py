@@ -2090,6 +2090,7 @@ def _chunk_to_nbt_bytes(
     biome_grid: np.ndarray,     # (tile_h, tile_w) Vandir biome name strings
     tile_world_x: int, tile_world_z: int,
     tile_h: int, tile_w: int,
+    river_water_y: np.ndarray | None = None,  # (tile_h, tile_w) int16 — river water surface (fluid-tick river/ocean split)
     gap_mask: np.ndarray | None = None,   # (tile_h, tile_w) gap_mask — stony_peaks rock-snow suppression
     cfg: dict | None = None,
 ) -> bytes:
@@ -2303,8 +2304,11 @@ def _chunk_to_nbt_bytes(
             yi = int(water_ys[-1])  # topmost water block only
             lx = lx_fixed if lx_fixed is not None else other
             lz = lz_fixed if lz_fixed is not None else other
-            # Tile-local coords for river check.  cx,cz,tile_world_x/z and
-            # river_water_y are all in scope from the enclosing write_tile.
+            # Tile-local coords for river check.  river_water_y is a PARAMETER
+            # of _chunk_to_nbt_bytes (threaded write_tile -> write_tile_to_region
+            # -> here).  Earlier it was an undefined free var -> NameError on every
+            # water-bearing tile-edge chunk -> silently swallowed -> MISSING river
+            # chunks across the world.  Do not un-thread it.
             wx = cx * CHUNK_SZ + lx
             wz = cz * CHUNK_SZ + lz
             tile_col = wx - tile_world_x
@@ -2375,6 +2379,7 @@ def write_tile_to_region(
     output_dir:   Path,
     tile_h:       int,
     tile_w:       int,
+    river_water_y: np.ndarray | None = None,  # (tile_h, tile_w) int16 — river water surface; fluid-tick river/ocean split
     gap_mask:     np.ndarray | None = None,   # (H, W) uint8 gap_mask — for stony_peaks rock-snow suppression
     cfg:          dict | None = None,
 ) -> list[str]:
@@ -2422,6 +2427,7 @@ def write_tile_to_region(
                 compressed = _chunk_to_nbt_bytes(
                     cx, cz, vol, pal, biome_grid,
                     tile_world_x, tile_world_z, tile_h, tile_w,
+                    river_water_y=river_water_y,
                     gap_mask=gap_mask, cfg=cfg,
                 )
             except Exception as _exc:
@@ -2673,6 +2679,7 @@ def write_tile(
         vol, pal, biome_grid,
         tile_world_x, tile_world_z,
         output_dir, H, W,
+        river_water_y=river_water_y,
         gap_mask=gap_mask, cfg=cfg,
     )
 

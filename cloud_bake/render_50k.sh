@@ -28,7 +28,7 @@ GRID=97
 THREADS="${THREADS:-40}"      # ProcessPoolExecutor workers/box (CCX63=48 vCPU)
 OMP="${OMP:-1}"               # numpy threads/proc; 1 => max process parallelism
 BRANCH="s85-cherry-picks"
-OUT_DIR="output_50k"
+OUT_DIR="${OUT_DIR:-output_50k}"
 DEST="${DEST:-}"
 START=$(date +%s)
 mkdir -p "$OUT_DIR"
