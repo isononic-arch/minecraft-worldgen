@@ -4441,7 +4441,8 @@
           ]
         }
       },
-      "edge_fade_blocks": 6,
+      "edge_fade_blocks": 14,
+      "group_blend_blocks": 10,
       "relief": {
         "enabled": true,
         "amp_blocks": 2.5,

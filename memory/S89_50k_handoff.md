@@ -57,8 +57,12 @@ CHAN_LAKE + set river_water_y. Bounded (only LOWERS, capped → no spillover/tow
 spillover onto banks, the 39 working lakes intact + no shoreline over-grow; tune the cap. LIMITATION: tiles
 whose ONLY lakes are fully-dry (zero CHAN_LAKE cells) are skipped by the `lake_mask.any()` gate — catch in
 render-iteration if any show up dry.
-**STILL TODO (need render/care):** #2/#4/#17 seam meta-fix (big refactor); #9/#10 litho blending;
-#6 rock-on-steep mask rebuild (delicate); #3 schematic padding.
+**DONE (2026-06-06c):** #9 tier blend (rock_layers.edge_fade_blocks 6→14 = wider gradual dark/mid/light
+feather) + #10 litho GROUP blend (random-offset dither in a `group_blend_blocks`=10 band around rock-group
+boundaries; stripe-free random-sample per antipattern #4; ROCK cells only so crisp at rock/non-rock ends).
+In `surface_decorator` rock paint. RENDER-VERIFY the gradient look + tune the two widths.
+**STILL TODO:** #2/#4/#17 seam meta-fix (big refactor — padded surface_y halo); #6 rock-on-steep mask
+rebuild (delicate); #3 schematic/krummholz padding.
 **VERIFIED:** tile(16,72) — **#16 works**: 24,770 water blocks + mud/coarse_dirt/packed_mud banks
 through the dunes (top-down `memory/topdown_16_72.png`). Missing-chunk fix (#1) re-confirmed: **0 chunk
 failures** in full flags-on renders.

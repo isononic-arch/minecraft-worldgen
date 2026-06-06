@@ -2261,6 +2261,40 @@ def _apply_rock_layers(
         _fr = np.random.default_rng(
             (tile_x * 2654435761 ^ tile_y * 40503 ^ 0xED6EFADE) & 0xFFFFFFFF)
         _fade_coin = _fr.random((H, W), dtype=np.float32)
+    # S89 walk #10: blend litho GROUPS where rock meets rock — dither the group ID
+    # in a band around rock-group boundaries by RANDOM-SAMPLING a nearby cell's
+    # group (random offset, NOT nearest-pixel -> no stripes, antipattern #4). So
+    # granitic<->basaltic etc. mingle organically instead of a hard palette line.
+    # Only rock cells (tier>=1) -> stays crisp at rock/non-rock ends.
+    _grp_blend = int(rl_cfg.get("group_blend_blocks", 0))
+    if _grp_blend >= 1:
+        _rk = tier >= 1
+        _bnd = np.zeros((H, W), dtype=bool)
+        for _dz, _dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            _o = np.roll(litho, (_dz, _dx), axis=(0, 1))
+            _orr = np.roll(_rk, (_dz, _dx), axis=(0, 1))
+            _bnd |= _rk & _orr & (litho != _o) & (litho > 0) & (_o > 0)
+        if _bnd.any():
+            from scipy.ndimage import distance_transform_edt as _edt_gb
+            _bd = _edt_gb(~_bnd).astype(np.float32)
+            _band = _rk & (_bd <= float(_grp_blend))
+            if _band.any():
+                _gr = np.random.default_rng(
+                    (tile_x * 2246822519 ^ tile_y * 3266489917 ^ 0x6B10BD) & 0xFFFFFFFF)
+                _gc = _gr.random((H, W), dtype=np.float32)
+                _fade = np.clip(1.0 - _bd / float(_grp_blend), 0.0, 1.0)
+                _do = _band & (_gc < _fade)
+                if _do.any():
+                    _zz, _xx = np.where(_do)
+                    _rdz = _gr.integers(-_grp_blend, _grp_blend + 1, size=_zz.size)
+                    _rdx = _gr.integers(-_grp_blend, _grp_blend + 1, size=_xx.size)
+                    _sz = np.clip(_zz + _rdz, 0, H - 1)
+                    _sx = np.clip(_xx + _rdx, 0, W - 1)
+                    _samp = litho[_sz, _sx]
+                    _ok = (_samp > 0) & _rk[_sz, _sx] & (_samp != litho[_zz, _xx])
+                    litho = litho.copy()
+                    litho[_zz[_ok], _xx[_ok]] = _samp[_ok]
+
     TIERS = ((1, "dark"), (2, "mid"), (3, "light"))
     for gname, gdata in groups_cfg.items():
         gid = name_to_id.get(gname)
