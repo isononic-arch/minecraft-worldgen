@@ -4889,6 +4889,39 @@ def decorate_surface(
             cliff_deg=cliff_deg,  # S88: slope cap (skip snow on steep faces)
         )
 
+    # ── S89 walk #15: SNOW EDGE STROKE ──────────────────────────────────
+    # Speckled fade outline at ALL snow boundaries (slope cutoffs, snowline,
+    # biome edges) — not just the min-height line. Grows a salt-and-pepper
+    # snow[layers=1] ring OUTWARD from the snow mask, amp fading to 0 over
+    # stroke_blocks. ADDITIVE: only ADDS GC; never removes snow. Config-gated.
+    _se_cfg = cfg.get("snow_edge_stroke", {})
+    if _se_cfg.get("enabled", True):
+        _se_blocks = int(_se_cfg.get("stroke_blocks", 9))
+        _se_amp = float(_se_cfg.get("amp", 0.55))
+        if _se_blocks >= 1 and _se_amp > 0.0:
+            _snow_now = (surface_blocks == "snow_block")
+            for _sg in ("snow", "snow_block", "snow_carpet", "powder_snow"):
+                _snow_now = _snow_now | (ground_cover == _sg)
+            if _snow_now.any() and not _snow_now.all():
+                from scipy.ndimage import distance_transform_edt as _edt_se
+                _dse = _edt_se(~_snow_now).astype(np.float32)   # dist OUTSIDE snow to nearest snow
+                _elig = (_dse >= 1.0) & (_dse <= float(_se_blocks))
+                for _b in ("water", "lava", "air", "ice", "packed_ice", "blue_ice"):
+                    _elig &= (surface_blocks != _b)
+                _snowyb = np.zeros((H, W), dtype=bool)
+                for _b in ("SNOWY_BOREAL_TAIGA", "ARCTIC_TUNDRA", "FROZEN_FLATS", "BOREAL_ALPINE"):
+                    _snowyb |= (biome_grid == _b)
+                _elig &= _snowyb
+                if _elig.any():
+                    _amp_se = _se_amp * np.clip(1.0 - (_dse - 1.0) / float(_se_blocks), 0.0, 1.0)
+                    _rng_se = np.random.default_rng(
+                        (tile_x * 48271 ^ tile_y * 31337 ^ 0x5A0F) & 0xFFFFFFFF)
+                    _coin_se = _rng_se.random((H, W), dtype=np.float32)
+                    _place_se = _elig & (_coin_se < _amp_se)
+                    if _place_se.any():
+                        ground_cover[_place_se] = "snow"
+                del _dse, _elig, _snowyb
+
     # ──────────────────────────────────────────────────────────────────
     # S62: OCEAN DECORATION PASS
     # Runs LAST.  Only modifies pixels where biome is _OCEAN/_DEFAULT AND

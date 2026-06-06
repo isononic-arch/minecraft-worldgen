@@ -4884,13 +4884,28 @@
     "fade_blocks": 30,
     "near_density_mult": 1.0,
     "far_density_mult": 0.05,
-    "feather_lo_y": 550,
-    "feather_hi_y": 720,
+    "feather_lo_y": 500,
+    "feather_hi_y": 550,
     "schematics": [
       "ppine",
       "scotsp"
     ],
     "max_height_blocks": 7
+  },
+  "river_carve": {
+    "_comment": "S89 walk #13/#11: shallow headwaters + no chasms. headwater_shallow scales carve depth by Strahler order (order1 -> headwater_depth_scale, order>=full_depth_order -> 1.0; only REDUCES depth). max_carve_blocks>0 caps absolute carve depth (0=off). Tune from batch render.",
+    "headwater_shallow": true,
+    "headwater_depth_scale": 0.5,
+    "full_depth_order": 4.0,
+    "max_carve_blocks": 0.0,
+    "_comment_drylake": "S89 #12: force-flood shallow DRY lake basins. Lower basin-floor cells within this many blocks ABOVE the lake water level down to water-1 so they hold water (0=off). Capped to skip rims/towers. VERIFY on render: no spillover, 39 working lakes intact.",
+    "dry_lake_force_carve_max": 4
+  },
+  "snow_edge_stroke": {
+    "_comment": "S89 walk #15: speckled fade outline at ALL snow boundaries (slope cutoffs, snowline, biome edges). Grows snow[layers=1] OUTWARD from the snow mask over stroke_blocks with a salt-and-pepper fade. Additive only; tune from render.",
+    "enabled": true,
+    "stroke_blocks": 9,
+    "amp": 0.55
   },
   "flow_erosion": {
     "_comment": "S89 walk3: dissect blobby upscaled rock massifs. Gated to rock_layers tier>=min_rock_tier, excludes carved rivers, applied to surface_y BEFORE cliff_deg so slope-driven decoration + written columns follow. flow incision (band-limited tributary flow) + ridged-simplex synthetic gully network (world-coord, seam-safe) + convex ridge sharpening. Test on (24,80)/(89,52) old blob litho tiles + (29,20)/(29,12) high rock tiles. OFF until validated.",

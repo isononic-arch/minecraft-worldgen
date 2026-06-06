@@ -739,6 +739,36 @@ def _process_tile(args: dict) -> dict:
                 lake_water_levels[lid] = np.int16(lake_water)
                 river_water_y[lk] = np.int16(lake_water)
 
+            # ── S89 #12: FORCE-FLOOD shallow DRY lake basins ──────────────────
+            # v26 sets lake water to the MIN spill (anti-spillover). A basin whose
+            # FLOOR sits at/above that level renders DRY (~78/117 lakes). For each
+            # PAINTED lake basin, lower floor cells that are within force_cap ABOVE
+            # the water down to water-1 and tag them lake, so they hold water.
+            # BOUNDED: only LOWERS surface, capped (skips the rim -> no spillover /
+            # no towers), never raises water (respects v26 min-spill). Working lakes
+            # (floor already below water) keep their floor; only shoreline cells
+            # within force_cap flood (slight shoreline grow -> VERIFY on render).
+            # Config: river_carve.dry_lake_force_carve_max (0 = off).
+            # !! BLIND first-pass vs the v23/v25/v26 fail-history. RENDER-VERIFY:
+            #    lakes fill, NO spillover onto banks, the 39 working lakes intact.
+            _hl_ff = masks.get("hydro_lake")
+            _ffcap = int(cfg.get("river_carve", {}).get("dry_lake_force_carve_max", 4))
+            if _hl_ff is not None and _wl_mc_float is not None and _ffcap > 0:
+                for _lid in np.unique(_hl_ff[_hl_ff > 0]).tolist():
+                    _basin = (_hl_ff == _lid)
+                    _wv = _wl_mc_float[_basin]; _wv = _wv[_wv > -64.0]
+                    if _wv.size == 0:
+                        continue
+                    _wlvl = int(np.floor(float(_wv.min())))
+                    if _wlvl < int(core_col_gen.SEA_LEVEL):
+                        continue
+                    _dry = (_basin & (surface_y >= np.int16(_wlvl))
+                            & (surface_y <= np.int16(_wlvl + _ffcap)))
+                    if _dry.any():
+                        surface_y[_dry]     = np.int16(_wlvl - 1)
+                        river_meta[_dry]    = CHAN_LAKE
+                        river_water_y[_dry] = np.int16(_wlvl)
+
             # Connectivity channels: ensure continuous water end-to-end.
             # Each channel connects a lake to a river (or river to river
             # via a lake).  Water level = shallowest endpoint so water

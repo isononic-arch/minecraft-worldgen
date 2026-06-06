@@ -1023,6 +1023,21 @@ def carve_rivers(
         depth_at_cell = (hydro_depth.astype(np.float32) * 255.0
                          if hydro_depth is not None
                          else np.zeros_like(surface_out, dtype=np.float32))
+        # S89 walk (#13/#11): SHALLOW HEADWATERS + no chasms. High-altitude
+        # headwaters (low Strahler order) were carving deep vertical slots.
+        # Scale carve depth down for low order (headwaters shallow, mainstem
+        # full) + optional absolute cap. Bounded (only REDUCES depth, never
+        # raises) + config-gated (cfg.river_carve); tune from the batch render.
+        _rc = (cfg or {}).get("river_carve", {}) if isinstance(cfg, dict) else {}
+        if hydro_order is not None and bool(_rc.get("headwater_shallow", True)):
+            _ordf = hydro_order.astype(np.float32) * 255.0    # Strahler 1..5 (0 = no river)
+            _lo = float(_rc.get("headwater_depth_scale", 0.5))
+            _full = float(_rc.get("full_depth_order", 4.0))
+            _osc = np.clip(_lo + (1.0 - _lo) * (_ordf - 1.0) / max(1e-3, _full - 1.0), _lo, 1.0)
+            depth_at_cell = np.where(_ordf >= 0.5, depth_at_cell * _osc, depth_at_cell)
+        _maxc = float(_rc.get("max_carve_blocks", 0.0))
+        if _maxc > 0.0:
+            depth_at_cell = np.minimum(depth_at_cell, _maxc)
         original_sy_f = surface_out.astype(np.float32)
         new_y_f = (original_sy_f - depth_at_cell).astype(np.float32)
         # Footprint covers the BROAD carve buffer (any non-trivial

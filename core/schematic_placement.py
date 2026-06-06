@@ -176,7 +176,9 @@ BASE_DENSITY: dict[str, float] = {
     # (100% per-pixel attempt rate).  2x comes from this saturation + the
     # S88w5 slope-bound relaxation (35°→45° start, 50°→65° full) letting
     # more attempts pass the slope reject.
-    "ARCTIC_TUNDRA":           0.04,
+    "ARCTIC_TUNDRA":           0.15,   # S89 walk #8: user raised AT treeline->700; 0.04 left the high
+                                       # tundra/plateau ecotone bare. 0.15 = sparse scatter (krummholz
+                                       # + density-fade keep it sparse up high). TUNABLE from render.
     "FROZEN_FLATS":            0.04,
     "TEMPERATE_DECIDUOUS":     0.22,
     "RAINFOREST_COAST":        0.80,   # S89 walk: user — up much closer to BA (was 0.32)

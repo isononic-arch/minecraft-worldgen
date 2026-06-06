@@ -38,6 +38,27 @@ Endless-ocean generator + west-coast spawn (7680,65,25740) are set.
 config-gated (`sand_dune_desert.strip_rivers`, default FALSE = rivers KEEP); #7 krummholz `feather_hi_y`
 600→720 (gradual thinning) + `far_density_mult` 0.0015→0.05 (was bottoming to ~0 → bare top);
 ARCTIC_TUNDRA & SBT treelines both y_top=700.
+**USER REVIEW (2026-06-06) — APPROVED:** rivers meander + palette good (#16); krummholz density/representation
+good; slopes/relief good (#5). **TWEAK applied:** krummholz `feather_lo_y/hi` 550/720 → **500/550** (user:
+regular pines fade out by 550, krummholz fades IN 500-550 = mix band, krummholz-dominant above). far_density
+0.05 kept.
+**DONE (2026-06-06):** carver **#13/#11 first-pass** — `river_carver_v2.py` scales carve depth DOWN for low
+Strahler order (headwaters carve shallow → no chasm/90°-slot) + optional abs cap. Config `river_carve`
+(headwater_depth_scale=0.5, full_depth_order=4, max_carve_blocks=0). Bounded/reversible. **TUNE FROM RENDER.**
+**DONE (2026-06-06):** #8 ARCTIC_TUNDRA BASE_DENSITY 0.04→0.15 (populate gentle high tundra/plateau ecotone;
+tunable). #15 SNOW EDGE STROKE — additive post-pass in decorate_surface (~after _apply_snow_carpet): speckled
+snow[layers=1] ring OUTWARD from the snow mask over `snow_edge_stroke.stroke_blocks`(9) with amp fade(0.55),
+covers ALL snow boundaries incl slope cutoffs. Config `snow_edge_stroke`. All parse-clean + imports OK.
+**DONE (2026-06-06b):** #12 dry lakes — force-flood in `run_pipeline.py` (right after the lake-water loop,
+inside `if lake_mask.any()`): per painted `hydro_lake` basin, lower floor cells within
+`river_carve.dry_lake_force_carve_max`(4) blocks ABOVE the v26 min-spill water down to water-1 + tag
+CHAN_LAKE + set river_water_y. Bounded (only LOWERS, capped → no spillover/towers), uses the v26 level
+(never raises). !! RISKIEST blind change (v23/v25/v26 fail-history). **RENDER-VERIFY:** dry lakes fill, NO
+spillover onto banks, the 39 working lakes intact + no shoreline over-grow; tune the cap. LIMITATION: tiles
+whose ONLY lakes are fully-dry (zero CHAN_LAKE cells) are skipped by the `lake_mask.any()` gate — catch in
+render-iteration if any show up dry.
+**STILL TODO (need render/care):** #2/#4/#17 seam meta-fix (big refactor); #9/#10 litho blending;
+#6 rock-on-steep mask rebuild (delicate); #3 schematic padding.
 **VERIFIED:** tile(16,72) — **#16 works**: 24,770 water blocks + mud/coarse_dirt/packed_mud banks
 through the dunes (top-down `memory/topdown_16_72.png`). Missing-chunk fix (#1) re-confirmed: **0 chunk
 failures** in full flags-on renders.
@@ -52,9 +73,8 @@ render a GENTLE high snowy tile; likely fix = boost ARCTIC_TUNDRA tree/krummholz
 base density is intrinsically low; raising its treeline to 700 alone won't populate it). far_density_mult=0.05
 is a TUNABLE starting point. **SBT vegetation needs user's eye + gentle-plateau test — STOPPED iterating per
 2-tries rule.**
-18. **[TODO] dead_horn_coral_block on alpine cap** (found in verification) — tile(73,65) Y550+ snowy cap has
-   758 `dead_horn_coral_block` surface cells. Coral on a high snowy peak is wrong (rare-block simplex blob or
-   palette mis-map leaking marine blocks into alpine). Trace + remove marine blocks from high-altitude/rock surfaces.
+18. **[NOT A BUG — dropped]** dead_horn_coral_block on the alpine cap is INTENTIONAL (it's in a deliberate
+   varied-rock surface block list, surface_decorator ~4617, alongside stone/andesite/deepslate). Not a leak.
 **Derived masks built locally** (rock_layers/cliff_cap/talus_apron/snow_gap_physics/snow_potential) for
 flags-on verification renders.
 **NOT YET STARTED (code-heavy, careful, need seam-pair renders):** seam meta-fix #1/#2/#4/#17 (padded
