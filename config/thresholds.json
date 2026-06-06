@@ -4450,8 +4450,8 @@
         "octaves": 1,
         "octave_gain": 0.5,
         "slope_gain_by_tier": [
-          0.2,
-          0.55,
+          0.5,
+          0.7,
           1.0
         ],
         "roughness_ref": 2.0,
@@ -4671,7 +4671,7 @@
   "treelines": {
     "_comment_s85": "S85: full rescale for 768-height world. Old 380 was tuned for 448-height. Proportional bump preserves S58 ecological ordering (BT/SBT highest mountain forest, BA krummholz/treeline, ARC_TUN scrub, FROZEN_FLATS sparsest).",
     "ARCTIC_TUNDRA": {
-      "y_top": 310,
+      "y_top": 700,
       "fade_blocks": 100
     },
     "FROZEN_FLATS": {
@@ -4883,9 +4883,9 @@
     "density_mult": 0.2,
     "fade_blocks": 30,
     "near_density_mult": 1.0,
-    "far_density_mult": 0.0015,
+    "far_density_mult": 0.05,
     "feather_lo_y": 550,
-    "feather_hi_y": 600,
+    "feather_hi_y": 720,
     "schematics": [
       "ppine",
       "scotsp"

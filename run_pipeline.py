@@ -222,13 +222,16 @@ def _process_tile(args: dict) -> dict:
         tile_z         = tile_y,
     )
 
-    # S59: Scrap rivers in SAND_DUNE_DESERT — user opted out of wadi treatment.
-    # Restore pre-carve terrain and zero river_meta on SDD pixels. Lakes
-    # (river_meta == CHAN_LAKE == 3) are preserved per user's explicit ask.
-    _sdd_river = (biome_grid == "SAND_DUNE_DESERT") & (river_meta != 3)
-    if _sdd_river.any():
-        surface_y[_sdd_river]  = pre_carve_y[_sdd_river]
-        river_meta[_sdd_river] = 0
+    # S89 walk: user now WANTS real watered rivers in SAND_DUNE_DESERT (with the
+    # usual dirt/mud river palette). The S59 strip is now OPT-IN via config
+    # (cfg.sand_dune_desert.strip_rivers, default FALSE = rivers KEEP/carve/fill).
+    # Lakes (river_meta == CHAN_LAKE == 3) were always preserved regardless.
+    _strip_sdd = bool((cfg or {}).get("sand_dune_desert", {}).get("strip_rivers", False))
+    if _strip_sdd:
+        _sdd_river = (biome_grid == "SAND_DUNE_DESERT") & (river_meta != 3)
+        if _sdd_river.any():
+            surface_y[_sdd_river]  = pre_carve_y[_sdd_river]
+            river_meta[_sdd_river] = 0
 
     # ---- Step 6b.0 (S89 walk3): FLOW EROSION — dissect blobby rock massifs ----
     # Cut a drainage texture into rock terrain BEFORE cliff_deg so slope-driven

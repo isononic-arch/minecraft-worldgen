@@ -33,6 +33,34 @@ The S89 surface overhaul shipped and the full 9,409-tile world regen is collecte
 and walkable (`D:\modrinth_vandir\saves\Vandir50k`, "Vandir 50k" in the Fabric 26.1 profile).
 Endless-ocean generator + west-coast spawn (7680,65,25740) are set.
 
+## BATCH PROGRESS (2026-06-05, autonomous — verified via local flags-on renders)
+**DONE (config, parse-clean):** #5 relief `slope_gain_by_tier[0]` 0.2→0.5; #16 SDD river-strip now
+config-gated (`sand_dune_desert.strip_rivers`, default FALSE = rivers KEEP); #7 krummholz `feather_hi_y`
+600→720 (gradual thinning) + `far_density_mult` 0.0015→0.05 (was bottoming to ~0 → bare top);
+ARCTIC_TUNDRA & SBT treelines both y_top=700.
+**VERIFIED:** tile(16,72) — **#16 works**: 24,770 water blocks + mud/coarse_dirt/packed_mud banks
+through the dunes (top-down `memory/topdown_16_72.png`). Missing-chunk fix (#1) re-confirmed: **0 chunk
+failures** in full flags-on renders.
+**FINDING:** tile(73,65) high-SBT bareness root cause = krummholz density faded to FF-sparse (0.0015≈0)
+at the top + snow-skip. NOTE the SBT-on-snow exemption ALREADY EXISTS (`schematic_placement.py` ~1201-1205:
+SBT & snow & cliff_deg≤30° exempted). So treeline/feather were correct; the density floor was the binding
+constraint. far_density bump 0.0015→0.05 nearly DOUBLED total krummholz (5595→10376) on the ≤30° slopes — good.
+BUT tile(73,65) Y>550 zone is a STEEP SNOWY CAP (median slope 45°, 83% >30°, 81% snow) → trees correctly
+skip it (no pines on a 45° snowy cliff). So that tile's bare top is EXPECTED, not the bug. The #8
+"plateau no-trees" is a DIFFERENT location: a GENTLE high plateau (e.g. tile 30,23). To verify #8 properly,
+render a GENTLE high snowy tile; likely fix = boost ARCTIC_TUNDRA tree/krummholz density on the flats (ARCTIC
+base density is intrinsically low; raising its treeline to 700 alone won't populate it). far_density_mult=0.05
+is a TUNABLE starting point. **SBT vegetation needs user's eye + gentle-plateau test — STOPPED iterating per
+2-tries rule.**
+18. **[TODO] dead_horn_coral_block on alpine cap** (found in verification) — tile(73,65) Y550+ snowy cap has
+   758 `dead_horn_coral_block` surface cells. Coral on a high snowy peak is wrong (rare-block simplex blob or
+   palette mis-map leaking marine blocks into alpine). Trace + remove marine blocks from high-altitude/rock surfaces.
+**Derived masks built locally** (rock_layers/cliff_cap/talus_apron/snow_gap_physics/snow_potential) for
+flags-on verification renders.
+**NOT YET STARTED (code-heavy, careful, need seam-pair renders):** seam meta-fix #1/#2/#4/#17 (padded
+surface_y refactor — needs padded gap_mask/biome/rock too), #3 krummholz padding, #6 rock-on-steep mask
+rebuild (delicate), #9/#10 litho blending, #11/#13 carver depth+bank grade, #12 dry lakes, #15 snow edge stroke.
+
 ## RE-RENDER PUNCH-LIST (batch ALL of these into the one re-render)
 1. **[DONE in code] Missing river-edge chunks** — `river_water_y` threaded through the writer
    (see defect section above). Verify with a missing-inland-chunk scan after re-render.
@@ -92,6 +120,39 @@ Endless-ocean generator + west-coast spawn (7680,65,25740) are set.
    spill-elevation computation (too high) at some high-altitude basins. `hydro_lake_wl.tif` is NORMALIZED
    [0,1] → ×65535 → spline → MC-Y (verified: matches working lakes). Quantify dry-rate across all 117 +
    fix carve/spill before re-render.
+13. **[TODO] High-altitude HEADWATER carved as a deep CHASM** (user: "super high river in deepslate is a
+   chasm, should be a shallow headwater"). depth = `hydro_depth` (Leopold, hydrology_precompute) applied as
+   a parabolic cross-section in river_carver_v2. Likely TWO factors: (a) order-1 headwater depth not scaled
+   shallow enough (min-depth floor too high); (b) on STEEP alpine terrain the width-carve cuts a flat trough
+   ACROSS the slope → the uphill bank is cut very deep → reads as a chasm. Related to #11 (river walls in
+   tall terrain). FIX: clamp headwater (low order / high elevation) carve depth to ~1-2 blocks, and don't
+   cut the bed deeper than a few blocks below the LOWER bank (follow the slope, no deep uphill slot).
+   CONFIRM exact carve math in river_carver_v2 when fixing.
+14. **[RESOLVED-by-inspection] SBT treeline already maxed** — checked `config.treelines`: SNOWY_BOREAL_TAIGA
+   & BOREAL_TAIGA y_top = **700** (≈ world ceiling 703), fade 100. So the treeline is NOT blocking high-SBT
+   trees. The high-SBT no-trees/all-krummholz is therefore purely #7 (krummholz over-fire) + #8 (snow-cap
+   suppression). NOTE: ARCTIC_TUNDRA y_top=310 → high-altitude tundra is bare BY DESIGN; if the bare plateau
+   is tundra-zoned that's expected (raise ARCTIC_TUNDRA treeline only if user wants trees up there).
+15. **[TODO] Snow-cap edge stroke at ALL snow boundaries** (user) — extend the snow edge-stroke beyond just
+   the minimum-height snowline to ANYWHERE snow stops, INCLUDING slope-driven cutoffs. 8-10 block mask
+   extend, salt-and-pepper gradual fade outline. Currently only the snowline bottom gets the stroke; apply
+   it to the full snow-mask boundary (snow_carpet/snow_physics edge).
+16. **[TODO] Enable rivers in SAND_DUNE_DESERT** (user) — currently STRIPPED: `run_pipeline.py:~228`
+   `_sdd_river = (biome_grid=="SAND_DUNE_DESERT") & (river_meta!=3); river_meta[_sdd_river]=0` removes all
+   non-lake rivers in SDD. Remove that strip so REAL WATERED rivers generate (user: "I want REAL rivers" —
+   NOT dry wadis). Removing the strip keeps river_meta as CHAN_RIVER/STREAM -> carver carves + fills water
+   normally. ALSO check for any SDD-specific dry-wadi SURFACE PAINT (legacy riparian palette paintover,
+   S60 note) that would make them read dry, and any "skip fluid ticks"/fill suppression gated on SDD — make
+   sure water actually fills, not just a dry channel.
+17. **[TODO] Tile seam from dune-flatten gaussian** (user, at 10742/38122 = tile 20,74, dunes+lake zone).
+   `surface_decorator._flatten_dune_regions` (~2811) runs `gaussian_filter(surface_y, mode='nearest')`
+   PER-TILE with NO halo → edge-replication at tile borders → surface_y discontinuity = seam (most visible
+   on flat lake tiles). Confirmed by user hypothesis.
+**META-FIX for #2 + #17 (+ any per-tile gaussian seam):** decorate_surface has SEVERAL per-tile
+   `gaussian_filter(surface_y, mode='nearest')` smoothers (dune-flatten ~2811/2833/2842, boundary smoothers
+   ~2851-2968, relief smooth_gain ~3021). ALL seam at tile edges. ONE clean fix: thread a PADDED surface_y
+   (halo, like `biome_grid_padded`) into decorate_surface and run these gaussians on the halo'd array, then
+   crop to inner — continuous across tiles. Do this once; it kills the whole per-tile-smoothing seam family.
 NOTE: user is finding these by walking; expect MORE punch-list items before the re-render fires. Batch ALL,
 verify across seams with top-down renders, THEN one re-render.
 
