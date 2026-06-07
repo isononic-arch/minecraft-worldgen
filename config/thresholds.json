@@ -4306,7 +4306,7 @@
     "rock_layers": {
       "_comment": "S89 NEW system replacing rock_gap palette + strata surface paint. Three slope-banded tiers per lithology group (dark=gentlest in-rock band, light=steepest), topmost-tier-wins so steeper reads lighter. 2 blocks per tier, salt-and-pepper white-noise mix. t1_deg=rock floor with fade t1->fade_to. t2/t3 are NOT fixed degrees: per group they are computed at build time as percentiles of that group's in-rock slope to hit the per-group `split` [dark%,mid%,light%]. Uniform wind shift (all 3 thresholds -= wind_factor*wind_delta_deg, windward=wind_source_deg) => more stone on windward, gradient spacing preserved. dither_amp_deg jitters tier boundaries per-pixel (anti contour-banding). NOTE limestone is intentionally value-INVERTED: white in the dominant (dark/gentle) tier, darker on the exposed (light/steep) tier ('clean car / dirty car') so karst reads white-dominant. Scoured convex peak signature is handled by the evolved cliff_cap pass, NOT here. Feature-flag OFF until validated.",
       "enabled": true,
-      "t1_deg": 40.0,
+      "t1_deg": 38.0,
       "t2_deg": 45.0,
       "t3_deg": 50.0,
       "smax_deg": 90.0,
