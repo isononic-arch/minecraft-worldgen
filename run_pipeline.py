@@ -252,9 +252,39 @@ def _process_tile(args: dict) -> dict:
     # decoration (ground cover, schematic reject) and the written columns all
     # follow the eroded shape. Gated to rock_layers tier>=1, excludes carved
     # rivers. No-op unless cfg.flow_erosion.enabled.
+    # S89-walk4 seam fix: feed flow_erosion a padded halo (pre-carve spline
+    # surface + flow + rock_layers) so its rock edge-fade EDT + gully smoothing
+    # see neighbour-tile rock instead of treating the tile border as a rock
+    # boundary -- the per-tile EDT was fading the gully/ridge texture to 0 in a
+    # strip at every seam (= the relief-texture seam). Same read_tile loader as
+    # the per-tile masks so formats match; pre-carve spline is exact enough for
+    # rock cells (carve only touches river/lake). Edge-of-world tiles zero-fill
+    # the halo (correct: nothing beyond) and still get the seam-free interior.
+    _fe_pad = int((cfg or {}).get("flow_erosion", {}).get("seam_pad_px", 64))
+    _fe_syp = _fe_fp = _fe_rp = None
+    if (_fe_pad > 0 and masks_dir is not None
+            and (cfg or {}).get("flow_erosion", {}).get("enabled", False)):
+        try:
+            _pm_fe = core_tile_stream.read_tile(
+                masks_dir, tile_x * w, tile_y * h, w, h,
+                pad_px=_fe_pad, mask_subset=["height", "flow", "rock_layers"])
+            _hpn = _pm_fe.get("height")
+            if _hpn is not None and _hpn.shape == (h + 2 * _fe_pad, w + 2 * _fe_pad):
+                _hri = np.clip((_hpn * 65535.0).astype(np.int32), 0, 65535)
+                _fe_syp = np.clip(core_col_gen._LUT[_hri],
+                                  core_col_gen.MC_Y_MIN + 4,
+                                  core_col_gen.MC_Y_MAX - 1).astype(np.int16)
+                _fe_fp = _pm_fe.get("flow")
+                _fe_rp = _pm_fe.get("rock_layers")
+        except Exception as _fe_exc:  # noqa: BLE001
+            print(f"[flow_erosion seam] WARN tile=({tile_x},{tile_y}): "
+                  f"{type(_fe_exc).__name__}: {_fe_exc}", flush=True)
+            _fe_syp = _fe_fp = _fe_rp = None
     surface_y = core_flow_erosion.apply_flow_erosion(
         surface_y, masks.get("flow"), masks.get("rock_layers"),
         river_meta, cfg, tile_x, tile_y,
+        pad=(_fe_pad if _fe_syp is not None else 0),
+        surface_y_pad=_fe_syp, flow_pad=_fe_fp, rock_pad=_fe_rp,
     )
 
     # ---- Step 6b: Ecological gradients ----
@@ -548,7 +578,50 @@ def _process_tile(args: dict) -> dict:
             #       of displacement values.
             from scipy.ndimage import gaussian_filter as _gf_crunch
             _disp_f = _disp_int.astype(_np_crunch.float32)
-            _disp_smooth = _gf_crunch(_disp_f, sigma=2.5)
+            # S89-walk4 seam fix: smooth the +/-crunch displacement on a padded
+            # halo so the gaussian sees neighbour-tile crunch instead of
+            # replicating the tile edge -> the +/-1 relief TEXTURE is continuous
+            # across the seam. Halo crunch = slope-only (river/wash/talus
+            # exclusions are inner-only); the inner displacement is preserved.
+            _ds_done = False
+            if surface_y_padded is not None:
+                try:
+                    _pp = _SEAM_PAD_PX
+                    _Hp, _Wp = surface_y_padded.shape
+                    _cdp = core_eco.compute_cliff_deg(
+                        surface_y_padded.astype(surface_y.dtype))
+                    _aspd = _np_crunch.clip(
+                        (_cdp - _fade_start) / max(0.1, _slope_full - _fade_start),
+                        0.0, 1.0).astype(_np_crunch.float32)
+                    _wxp = (tile_x * _W - _pp
+                            + _np_crunch.arange(_Wp, dtype=_np_crunch.uint64))[None, :]
+                    _wzp = (tile_y * _H - _pp
+                            + _np_crunch.arange(_Hp, dtype=_np_crunch.uint64))[:, None]
+                    _h1 = (_wxp * _np_crunch.uint64(0x9E3779B97F4A7C15)
+                           + _wzp * _np_crunch.uint64(0xBF58476D1CE4E5B9))
+                    _h1 = (_h1 ^ (_h1 >> _np_crunch.uint64(30))) * _np_crunch.uint64(0xBF58476D1CE4E5B9)
+                    _h1 = (_h1 ^ (_h1 >> _np_crunch.uint64(27))) * _np_crunch.uint64(0x94D049BB133111EB)
+                    _h1 = _h1 ^ (_h1 >> _np_crunch.uint64(31))
+                    _u01p = (_h1.astype(_np_crunch.float64)
+                             / _np_crunch.float64(_np_crunch.iinfo(_np_crunch.uint64).max)).astype(_np_crunch.float32)
+                    _h2 = (_wxp * _np_crunch.uint64(0xD1B54A32D192ED03)
+                           + _wzp * _np_crunch.uint64(0xA24BAED4963EE407))
+                    _h2 = (_h2 ^ (_h2 >> _np_crunch.uint64(31))) * _np_crunch.uint64(0x9E3779B97F4A7C15)
+                    _h2 = _h2 ^ (_h2 >> _np_crunch.uint64(32))
+                    _uapp = (_h2.astype(_np_crunch.float64)
+                             / _np_crunch.float64(_np_crunch.iinfo(_np_crunch.uint64).max)).astype(_np_crunch.float32)
+                    _dispp = _np_crunch.where(
+                        _uapp < (_aspd * _prob_cap),
+                        _np_crunch.where(_u01p < 0.5, -_crunch_amp, _crunch_amp),
+                        0).astype(_np_crunch.float32)
+                    _dispp[_pp:_pp + _H, _pp:_pp + _W] = _disp_f   # inner = exclusion-applied
+                    _disp_smooth = _gf_crunch(_dispp, sigma=2.5)[_pp:_pp + _H, _pp:_pp + _W]
+                    _ds_done = True
+                    del _cdp, _aspd, _wxp, _wzp, _h1, _h2, _u01p, _uapp, _dispp
+                except Exception:
+                    _ds_done = False
+            if not _ds_done:
+                _disp_smooth = _gf_crunch(_disp_f, sigma=2.5)
             # Smooth weight: 0.65 at core (always-on), +0.35 extra at fade
             # edges (so amp_scale=0 -> _sw=1.0 = fully smoothed).
             _sw = (0.65 + 0.35 * (1.0 - _amp_scale)).astype(_np_crunch.float32)
@@ -571,9 +644,18 @@ def _process_tile(args: dict) -> dict:
                 _np_crunch.float32)
             _amp_bell = _np_crunch.clip(_amp_bell, 0.0, 1.0)
             if float(_amp_bell.max()) > 0.05:
-                _sy_smooth_pass = _gf_crunch(
-                    surface_y.astype(_np_crunch.float32), sigma=3.0
-                )
+                # S89-walk4 seam fix: feather on the padded halo so the boundary
+                # surface smoothing is continuous across tile borders.
+                if surface_y_padded is not None:
+                    _pp2 = _SEAM_PAD_PX
+                    _wrk = surface_y_padded.astype(_np_crunch.float32).copy()
+                    _wrk[_pp2:_pp2 + _H, _pp2:_pp2 + _W] = surface_y.astype(_np_crunch.float32)
+                    _sy_smooth_pass = _gf_crunch(_wrk, sigma=3.0)[_pp2:_pp2 + _H, _pp2:_pp2 + _W]
+                    del _wrk
+                else:
+                    _sy_smooth_pass = _gf_crunch(
+                        surface_y.astype(_np_crunch.float32), sigma=3.0
+                    )
                 _sy_blend = (
                     surface_y.astype(_np_crunch.float32) * (1.0 - _amp_bell)
                     + _sy_smooth_pass * _amp_bell

@@ -39,8 +39,19 @@ def apply_flow_erosion(
     cfg:              dict,
     tile_x:           int,
     tile_y:           int,
+    pad:              int = 0,
+    surface_y_pad:    np.ndarray | None = None,
+    flow_pad:         np.ndarray | None = None,
+    rock_pad:         np.ndarray | None = None,
 ) -> np.ndarray:
-    """Return an eroded copy of surface_y (same dtype). No-op if disabled / no rock."""
+    """Return an eroded copy of surface_y (same dtype). No-op if disabled / no rock.
+
+    S89-walk4 seam fix: when pad>0 and the *_pad halo arrays are supplied, ALL
+    per-tile neighbourhood ops (rock edge-fade EDT, convexity/face/smooth
+    gaussians, gradient) run on the padded halo and the displacement is cropped
+    back to the inner tile -> no false rock-boundary fade or edge replication at
+    tile borders = no relief-texture seam. World-coord noise stays seamless via
+    the (tile_x*W - pad) origin. Falls back to per-tile when no halo."""
     fcfg = cfg.get("flow_erosion", {}) if isinstance(cfg, dict) else {}
     if not fcfg.get("enabled", False):
         return surface_y
@@ -48,18 +59,34 @@ def apply_flow_erosion(
         return surface_y
 
     H, W = surface_y.shape
-    tier = np.round(np.asarray(rock_layers_tile, np.float32) * 255.0).astype(np.int32)
+    _seam = (pad > 0 and surface_y_pad is not None and flow_pad is not None
+             and rock_pad is not None
+             and surface_y_pad.shape == (H + 2 * pad, W + 2 * pad))
     min_tier = int(fcfg.get("min_rock_tier", 1))
+    if _seam:
+        sy = surface_y_pad.astype(np.float32)
+        hh, ww = sy.shape                       # padded dims
+        ox, oy = tile_x * W - pad, tile_y * H - pad   # world origin of halo
+        flow_src = flow_pad
+        tier = np.round(np.asarray(rock_pad, np.float32) * 255.0).astype(np.int32)
+        rm_src = np.zeros((hh, ww), np.uint8)
+        if river_meta is not None:
+            rm_src[pad:pad + H, pad:pad + W] = (np.asarray(river_meta) > 0).astype(np.uint8)
+    else:
+        sy = surface_y.astype(np.float32)
+        hh, ww = H, W
+        ox, oy = tile_x * W, tile_y * H
+        flow_src = flow_tile
+        tier = np.round(np.asarray(rock_layers_tile, np.float32) * 255.0).astype(np.int32)
+        rm_src = (np.asarray(river_meta) > 0).astype(np.uint8) if river_meta is not None else None
     rock = tier >= min_tier
     if not rock.any():
         return surface_y
 
     from core.column_generator import SEA_LEVEL, MC_Y_MAX
 
-    sy = surface_y.astype(np.float32)
-
     # ---- 1. Flow incision (band-limited tributary channels) ----
-    f = np.clip(np.asarray(flow_tile, np.float32), 0.0, 1.0)
+    f = np.clip(np.asarray(flow_src, np.float32), 0.0, 1.0)
     flo = float(fcfg.get("flow_lo", 0.001))
     fhi = float(fcfg.get("flow_hi", 0.02))
     max_incise = float(fcfg.get("max_incise_blocks", 10.0))
@@ -75,9 +102,9 @@ def apply_flow_erosion(
         try:
             from opensimplex import OpenSimplex
             _os = OpenSimplex(seed=int(fcfg.get("seed", 1337)))
-            xs = (tile_x * W + np.arange(W, dtype=np.float64)) / scale
-            ys = (tile_y * H + np.arange(H, dtype=np.float64)) / scale
-            n = _os.noise2array(xs, ys).astype(np.float32)      # (H, W) in [-1,1]
+            xs = (ox + np.arange(ww, dtype=np.float64)) / scale
+            ys = (oy + np.arange(hh, dtype=np.float64)) / scale
+            n = _os.noise2array(xs, ys).astype(np.float32)      # (hh, ww) in [-1,1]
             ridged = (1.0 - np.abs(n)) ** sharp                  # [0,1], lines at n~0
             dy = dy - gully_amp * ridged
         except Exception:
@@ -128,12 +155,12 @@ def apply_flow_erosion(
             from opensimplex import OpenSimplex as _OSf
             _wsc = max(2.0, float(fcfg.get("face_gully_scale_blocks", 40.0)))
             _osf = _OSf(seed=int(fcfg.get("seed", 1337)) + 991)
-            _fxs = (tile_x * W + np.arange(W, dtype=np.float64)) / _wsc
-            _fys = (tile_y * H + np.arange(H, dtype=np.float64)) / _wsc
+            _fxs = (ox + np.arange(ww, dtype=np.float64)) / _wsc
+            _fys = (oy + np.arange(hh, dtype=np.float64)) / _wsc
             _fn = _osf.noise2array(_fxs, _fys).astype(np.float32)
             _fridged = (1.0 - np.abs(_fn)) ** float(fcfg.get("gully_sharpness", 2.0))
         except Exception:
-            _fridged = np.zeros((H, W), np.float32)
+            _fridged = np.zeros((hh, ww), np.float32)
         if face_extra_incise > 0.0:
             dy = dy - face_extra_incise * _face                  # uniform recession
         if face_extra_gully > 0.0:
@@ -159,20 +186,24 @@ def apply_flow_erosion(
     # of any river/lake cell so the incision blends INTO the valley floor instead
     # of cutting a slot beside it.
     _rvf = float(fcfg.get("river_fade_blocks", 16.0))
-    if _rvf > 0.0 and river_meta is not None:
-        _rm = np.asarray(river_meta) > 0
+    if _rvf > 0.0 and rm_src is not None:
+        _rm = np.asarray(rm_src) > 0
         if _rm.any():
             _rvfade = np.clip(_edt_fe(~_rm).astype(np.float32) / _rvf, 0.0, 1.0)
             dy = dy * _rvfade
     _ssig = float(fcfg.get("smooth_sigma", 2.0))
     if _ssig > 0.0:
+        # In seam mode the halo gives real neighbour context; 'nearest' only
+        # replicates at the OUTER halo edge, which is cropped away below.
         dy = _gf_smooth(dy, _ssig, mode="nearest")
 
     # ---- Gate + clamp ----
     dy[~rock] = 0.0
-    if river_meta is not None:
-        dy[np.asarray(river_meta) > 0] = 0.0
-    sy2 = sy + dy
+    if rm_src is not None:
+        dy[np.asarray(rm_src) > 0] = 0.0
+    if _seam:
+        dy = dy[pad:pad + H, pad:pad + W]   # crop displacement to inner tile
+    sy2 = surface_y.astype(np.float32) + dy
     sy2 = np.clip(sy2, float(SEA_LEVEL + 1), float(MC_Y_MAX - 1))
     # never push a rock cell below sea (it would read as water-filled gully)
     return np.round(sy2).astype(surface_y.dtype)
