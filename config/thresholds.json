@@ -4908,6 +4908,11 @@
     "_comment_drylake": "S89 #12: REVERTED (set 0). Force-flood produced a 1-deep nearest-neighbor fringe on working lakes AND did nothing for sea-level 'dry' basins. Diagnosis: dry/striped lakes are terrain-intersection lakes on flat-at-spill Gaea basins (water only pools in river channels cut through them) -- a Gaea-source issue per the hydro HARD RULE, not a post-pipeline fix. 0 = off.",
     "dry_lake_force_carve_max": 0
   },
+  "seam_smoothing": {
+    "_comment": "S89-walk4 seam meta-fix: per-tile surface_y gaussians (dune-flatten, biome-boundary, ocean-coastline, rock-relief smooth_gain) edge-replicated at tile borders -> visible tile seams. enabled feeds decorate_surface a pre-carve neighbour-surface halo (built from the padded height mask) so those gaussians smooth across tile borders. pad_px must exceed ~3*widest_sigma (dune baseline sigma=30 -> 96). off = old per-tile mode='nearest'.",
+    "enabled": true,
+    "pad_px": 96
+  },
   "snow_edge_stroke": {
     "_comment": "S89 walk #15: speckled fade outline at ALL snow boundaries (slope cutoffs, snowline, biome edges). Grows snow[layers=1] OUTWARD from the snow mask over stroke_blocks with a salt-and-pepper fade. Additive only; tune from render.",
     "enabled": true,

@@ -333,6 +333,14 @@ def _process_tile(args: dict) -> dict:
     _INHERITANCE_PAD_PX = 512  # S58: full-tile context on each side
     _ECOTONE_PAD_PX = 48
     biome_grid_padded = None
+    # S89-walk4 seam meta-fix: pre-carve neighbour-surface halo for seam-free
+    # per-tile surface_y gaussians in decorate_surface. Flag-gated; falls back
+    # to per-tile mode='nearest' when off.
+    _seam_cfg = (cfg or {}).get("seam_smoothing", {})
+    import os as _os_seam
+    _seam_on = bool(_seam_cfg.get("enabled", True)) and not _os_seam.environ.get("SEAM_OFF")
+    _SEAM_PAD_PX = int(_seam_cfg.get("pad_px", 96))
+    surface_y_padded = None
     try:
         _padded_masks = core_tile_stream.read_tile(
             masks_dir   = masks_dir,
@@ -370,11 +378,25 @@ def _process_tile(args: dict) -> dict:
         _hi_c = _INHERITANCE_PAD_PX + w + _ECOTONE_PAD_PX
         biome_grid_padded = _bg_big[_lo:_hi_r, _lo:_hi_c].copy()
         del _bg_big
+        # Build the pre-carve surface halo from the padded height mask (same
+        # spline LUT the columns use). Inner is overwritten with the real
+        # surface_y right before decorate; only the halo ring feeds the
+        # cross-tile gaussians. SEAM_PAD covers the widest smoother sigma (~30).
+        if _seam_on:
+            _hraw = np.clip(
+                (_padded_masks["height"] * 65535.0).astype(np.int32), 0, 65535)
+            _sy_pre = core_col_gen._LUT[_hraw].astype(np.float32)
+            _slo = _INHERITANCE_PAD_PX - _SEAM_PAD_PX
+            surface_y_padded = _sy_pre[
+                _slo:_INHERITANCE_PAD_PX + h + _SEAM_PAD_PX,
+                _slo:_INHERITANCE_PAD_PX + w + _SEAM_PAD_PX].copy()
+            del _sy_pre, _hraw
     except Exception as _ecotone_pad_exc:  # noqa: BLE001
-        # Non-fatal: fall back to unpadded ecotone dither.
+        # Non-fatal: fall back to unpadded ecotone dither + per-tile smoothing.
         print(f"[ecotone_pad] WARN tile=({tile_x},{tile_y}): "
               f"{type(_ecotone_pad_exc).__name__}: {_ecotone_pad_exc}")
         biome_grid_padded = None
+        surface_y_padded = None
 
     # ---- Step 6d: Meadow clearing field (S57 Phase 3a) ----
     # Shared low-freq noise field read by both surface_decorator (ground cover
@@ -585,6 +607,12 @@ def _process_tile(args: dict) -> dict:
     # ---- Step 7: Surface decoration ----
     _use_geo = bool(cfg.get("lithology", {}).get("feature_flag_enabled", False))
     _use_sp  = bool(cfg.get("surface_pipeline", {}).get("feature_flag_enabled", False))
+    # S89-walk4: stamp the FINAL (post-carve/crunch) surface_y into the halo's
+    # inner so the seam gaussians smooth real inner terrain against the
+    # pre-carve neighbour halo ring -> continuous across tile borders.
+    if surface_y_padded is not None:
+        surface_y_padded[_SEAM_PAD_PX:_SEAM_PAD_PX + h,
+                         _SEAM_PAD_PX:_SEAM_PAD_PX + w] = surface_y
     surface_blk, sub_blk, ground_cover = core_decorator.decorate_surface(
         surface_y    = surface_y,
         biome_grid   = biome_grid,
@@ -614,6 +642,8 @@ def _process_tile(args: dict) -> dict:
         joint_pattern_tile = masks.get("joint_pattern"),
         rock_layers_tile = masks.get("rock_layers"),
         snow_potential_tile = masks.get("snow_potential"),
+        surface_y_padded = surface_y_padded,
+        seam_pad_px = (_SEAM_PAD_PX if surface_y_padded is not None else 0),
     )
 
     # S89 floating-tree fix: snapshot surface_y AFTER decorate (post rock-relief /

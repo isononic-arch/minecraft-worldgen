@@ -2842,6 +2842,32 @@ def _apply_cap_edge_stroke(
         subsurface_blocks[_bm] = _arr[rng.integers(0, len(_pal), size=_n)]
 
 
+# ── S89-walk4 seam meta-fix ───────────────────────────────────────────────
+# Several per-tile gaussian_filter(surface_y, mode='nearest') smoothers
+# (dune-flatten, biome-boundary, ocean-coastline, rock-relief smooth_gain)
+# edge-replicate at tile borders -> surface_y discontinuity = visible tile
+# seams. decorate_surface sets _SEAM_HALO to a pre-carve NEIGHBOUR-surface
+# halo (built in run_pipeline from the padded height mask); _gf_seam then
+# smooths over real cross-tile context instead of mode='nearest' replication,
+# so both sides of a seam compute the same boundary value. Falls back to the
+# plain per-tile filter when no halo is set (flag off / read failed).
+_SEAM_HALO = None  # tuple(pad_surface_y ndarray (H+2p, W+2p) float32, pad_px int) or None
+
+
+def _gf_seam(sy_f: np.ndarray, sigma: float, mode: str = "nearest") -> np.ndarray:
+    from scipy.ndimage import gaussian_filter as _gf
+    _h = _SEAM_HALO
+    if _h is None:
+        return _gf(sy_f, sigma=sigma, mode=mode)
+    halo, pad = _h
+    H, W = sy_f.shape
+    if halo.shape != (H + 2 * pad, W + 2 * pad):
+        return _gf(sy_f, sigma=sigma, mode=mode)
+    work = halo.astype(np.float32, copy=True)
+    work[pad:pad + H, pad:pad + W] = sy_f
+    return _gf(work, sigma=sigma, mode=mode)[pad:pad + H, pad:pad + W]
+
+
 def _flatten_dune_regions(
     surface_y: np.ndarray,
     gap_mask: np.ndarray,
@@ -2863,8 +2889,8 @@ def _flatten_dune_regions(
     from scipy.ndimage import binary_dilation, gaussian_filter
     sy_f = surface_y.astype(np.float32)
     # 1. Baseline = wide-sigma gaussian of surface_y (what the terrain would
-    #    look like without dune bumps riding on top).
-    baseline = gaussian_filter(sy_f, sigma=sigma_baseline, mode='nearest')
+    #    look like without dune bumps riding on top). _gf_seam = cross-tile halo.
+    baseline = _gf_seam(sy_f, sigma_baseline)
     # 2. Blend dune pixels toward baseline.  strength=0.7 = 70% baseline + 30%
     #    original.  Preserves some dune character without leaving sharp bumps.
     s = float(np.clip(flatten_strength, 0.0, 1.0))
@@ -2873,7 +2899,7 @@ def _flatten_dune_regions(
     #    flattened region blends smoothly with adjacent untouched terrain.
     local_ring = binary_dilation(dune, iterations=max(1, int(mask_dilation_blocks)))
     if local_ring.any():
-        local_blur = gaussian_filter(sy_f, sigma=local_smooth_sigma, mode='nearest')
+        local_blur = _gf_seam(sy_f, local_smooth_sigma)
         weight = local_ring.astype(np.float32)
         sy_f = weight * local_blur + (1.0 - weight) * sy_f
     surface_y[:] = np.round(sy_f).astype(surface_y.dtype)
@@ -2911,7 +2937,7 @@ def _smooth_all_biome_boundaries_y(
     weight[~ring] = 0.0
     sy_f = surface_y.astype(np.float32)
     for _ in range(max(1, passes)):
-        blurred = gaussian_filter(sy_f, sigma=sigma, mode='nearest')
+        blurred = _gf_seam(sy_f, sigma)
         sy_f = weight * blurred + (1.0 - weight) * sy_f
     surface_y[:] = np.round(sy_f).astype(surface_y.dtype)
 
@@ -2941,7 +2967,7 @@ def _smooth_ocean_coastline_y(
     weight[~ring] = 0.0
     sy_f = surface_y.astype(np.float32)
     for _ in range(max(1, passes)):
-        blurred = gaussian_filter(sy_f, sigma=sigma, mode='nearest')
+        blurred = _gf_seam(sy_f, sigma)
         sy_f = weight * blurred + (1.0 - weight) * sy_f
     surface_y[:] = np.round(sy_f).astype(surface_y.dtype)
 
@@ -2999,7 +3025,7 @@ def _smooth_biome_boundary_y(
 
     sy_f = surface_y.astype(np.float32)
     for _pass in range(max(1, passes)):
-        blurred = gaussian_filter(sy_f, sigma=sigma, mode='nearest')
+        blurred = _gf_seam(sy_f, sigma)
         sy_f = weight * blurred + (1.0 - weight) * sy_f
 
     surface_y[:] = np.round(sy_f).astype(surface_y.dtype)
@@ -3052,7 +3078,7 @@ def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y,
     #     natural roughness. existing high-freq roughness = |sy - gaussian(sy)|.
     _rsig = float(rcfg.get("roughness_sigma", 4.0))
     _rref = max(0.1, float(rcfg.get("roughness_ref", 2.0)))
-    existing_rough = np.abs(sy_f - _gf_r(sy_f, sigma=_rsig))
+    existing_rough = np.abs(sy_f - _gf_seam(sy_f, _rsig))
     smooth_gain = np.clip(1.0 - existing_rough / _rref, 0.0, 1.0).astype(np.float32)
     # (3) optional distance edge-fade (default OFF now; slope_gain handles seams)
     efb = float(rcfg.get("edge_fade_blocks", 0.0))
@@ -3124,6 +3150,8 @@ def decorate_surface(
     joint_pattern_tile: np.ndarray | None = None,     # (H, W) float32 [0,1] — basaltic columnar joints (walk #11)
     rock_layers_tile: np.ndarray | None = None,       # (H, W) tiers 0..3 (uint8/255) — S89 rock_layers
     snow_potential_tile: np.ndarray | None = None,    # (H, W) float32 [0,1] — S89 continuous snow potential (depth-snow)
+    surface_y_padded: np.ndarray | None = None,       # (H+2p, W+2p) int16/float — pre-carve neighbour-surface halo for seam-free smoothing (S89-walk4)
+    seam_pad_px: int = 0,                              # halo width of surface_y_padded (0 = none)
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute surface and subsurface block arrays for a tile.
@@ -3142,6 +3170,17 @@ def decorate_surface(
     bm_cfg   = cfg["block_mixing"]
     px_off   = tile_x * W
     py_off   = tile_y * H
+
+    # S89-walk4: arm the cross-tile seam halo for the per-tile surface_y
+    # gaussians (_gf_seam reads this). Set fresh each call (so a leaked global
+    # from a prior tile in the same worker is always overwritten). Validated
+    # by shape inside _gf_seam.
+    global _SEAM_HALO
+    if (surface_y_padded is not None and seam_pad_px > 0
+            and surface_y_padded.shape == (H + 2 * seam_pad_px, W + 2 * seam_pad_px)):
+        _SEAM_HALO = (surface_y_padded.astype(np.float32, copy=False), int(seam_pad_px))
+    else:
+        _SEAM_HALO = None
 
     # S69: Flatten Gaea's raw dune bumps BEFORE the universal boundary
     # smoother.  Root-cause fix for the sand/biome seams that drove S68 to
