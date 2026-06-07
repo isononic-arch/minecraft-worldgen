@@ -418,33 +418,101 @@ def carve_rivers(
                 pad_water_y = _height_norm_to_mc_y(pad_wl, cfg)
                 pad_terrain_y = _height_norm_to_mc_y(pad_h_norm, cfg)
 
-                # Terrain intersection: underwater where terrain < water level
-                pad_underwater = pad_basin & (pad_terrain_y < pad_water_y)
-
-                # Terrain-shaped depth: scale the natural terrain relief
-                # (water_level - terrain) to reach the target max depth.
-                # Preserves the irregular terrain contour shape instead of
-                # imposing circular EDT rings.
-                nat_depth = np.where(pad_underwater,
-                                     pad_water_y - pad_terrain_y, 0.0)
-                lake_min_depth = float(geo.get("lake_min_center_depth", 15.0))
-                if pad_underwater.any():
-                    nat_max = max(float(nat_depth.max()), 0.001)
-                    pad_depth_f = (nat_depth / nat_max) * lake_min_depth
-                    pad_depth_f[~pad_underwater] = 0.0
-                else:
-                    pad_depth_f = nat_depth
-
-                # Crop back to tile extent
                 crop_r0 = row_off - pz0
                 crop_c0 = col_off - px0
-                lake_mask = pad_underwater[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
-                lake_depths = pad_depth_f[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
+                _bowl = bool(geo.get("lake_bowl_carve", False))
+                if _bowl:
+                    # ── S89-walk4 BOWL CARVE ──────────────────────────────────
+                    # Flood the WHOLE precompute basin and carve its bed to
+                    # (water_y - lkdep) using the precomputed parabolic
+                    # bathymetry (hydro_lkdep), instead of only flooding cells
+                    # whose natural terrain already dips below the spill level.
+                    # Fixes flat-at-spill basins that rendered as striped
+                    # channels (water only in the river trenches cut through
+                    # them, dry Y-walls between). lkdep>0 defines the basin
+                    # floor; carve ONLY LOWERS terrain (clip>=0) so existing
+                    # deep channels stay deep and the rim is untouched -> a
+                    # smooth bowl filled to the flat MIN-spill water level (no
+                    # spillover, water never above any rim cell).
+                    lkdep_tif = masks_dir / "hydro_lkdep.tif"
+                    if lkdep_tif.exists():
+                        with rasterio.open(lkdep_tif) as src:
+                            pad_lkdep = src.read(1, window=_RWindow(
+                                px0, pz0, px1 - px0, pz1 - pz0)).astype(np.float32)
+                    else:
+                        pad_lkdep = np.zeros_like(pad_water_y)
+                    # STRICTLY ADDITIVE union: (a) keep every cell the old
+                    # terrain-intersection would flood (terrain < water), so we
+                    # never lose existing water; PLUS (b) the precompute basin
+                    # floor (lkdep>0) within gouge_cap of the water surface, to
+                    # fill the dry Y-walls between channels. carve only LOWERS
+                    # toward (water - lkdep); old-wet cells with lkdep=0 carve 0
+                    # (already underwater) so they're preserved unchanged.
+                    _gouge_cap = float(geo.get("lake_bowl_max_gouge", 6.0))
+                    pad_old_wet = pad_basin & (pad_terrain_y < pad_water_y)
+                    pad_walls = pad_basin & (pad_lkdep > 0) & (
+                        pad_terrain_y <= pad_water_y + _gouge_cap)
+                    pad_floor = pad_old_wet | pad_walls
+                    # Smooth the 1:8 NEAREST-upscaled bathymetry (8-block
+                    # staircase) so the bowl bed is organic, not stepped. Gaussian
+                    # within the basin; outside-basin zeros pull edges shallow ->
+                    # natural shore. Renormalize by the smoothed basin weight so
+                    # the center depth isn't washed out by the surrounding zeros.
+                    _sig = float(geo.get("lake_bowl_smooth_sigma", 4.0))
+                    if _sig > 0:
+                        _w = pad_floor.astype(np.float32)
+                        _num = gaussian_filter(pad_lkdep * _w, sigma=_sig)
+                        _den = gaussian_filter(_w, sigma=_sig)
+                        pad_lkdep_use = np.where(_den > 1e-3, _num / (_den + 1e-6),
+                                                 pad_lkdep)
+                    else:
+                        pad_lkdep_use = pad_lkdep
+                    # Deepen: scale the bathymetry then cap. Thin lakes have a
+                    # shallow distance-to-shore bowl (e.g. tile 19,76 maxes ~6)
+                    # while round lakes reach deeper (33,33 ~11); the scale lifts
+                    # the shallow ones and the cap stops round ones from getting
+                    # absurd. Edges stay shallow (natural shore) since they scale
+                    # from ~1-2.
+                    _dscale = float(geo.get("lake_bowl_depth_scale", 1.0))
+                    if _dscale != 1.0:
+                        pad_lkdep_use = pad_lkdep_use * _dscale
+                    _dcap = float(geo.get("lake_bowl_depth_cap", 0.0))
+                    if _dcap > 0:
+                        pad_lkdep_use = np.minimum(pad_lkdep_use, _dcap)
+                    pad_target_bed = pad_water_y - pad_lkdep_use
+                    pad_depth_f = np.where(
+                        pad_floor,
+                        np.clip(pad_terrain_y - pad_target_bed, 0.0, None),
+                        0.0).astype(np.float32)
+                    lake_mask = pad_floor[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
+                    lake_depths = pad_depth_f[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
+                    lake_shore_band = np.zeros((H, W), dtype=bool)
+                else:
+                    # Terrain intersection: underwater where terrain < water level
+                    pad_underwater = pad_basin & (pad_terrain_y < pad_water_y)
 
-                # Also mark basin pixels above water as lake-adjacent
-                # (for bank decoration even where terrain > water)
-                pad_lake_zone = pad_basin & (pad_terrain_y >= pad_water_y)
-                lake_shore_band = pad_lake_zone[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
+                    # Terrain-shaped depth: scale the natural terrain relief
+                    # (water_level - terrain) to reach the target max depth.
+                    # Preserves the irregular terrain contour shape instead of
+                    # imposing circular EDT rings.
+                    nat_depth = np.where(pad_underwater,
+                                         pad_water_y - pad_terrain_y, 0.0)
+                    lake_min_depth = float(geo.get("lake_min_center_depth", 15.0))
+                    if pad_underwater.any():
+                        nat_max = max(float(nat_depth.max()), 0.001)
+                        pad_depth_f = (nat_depth / nat_max) * lake_min_depth
+                        pad_depth_f[~pad_underwater] = 0.0
+                    else:
+                        pad_depth_f = nat_depth
+
+                    # Crop back to tile extent
+                    lake_mask = pad_underwater[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
+                    lake_depths = pad_depth_f[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
+
+                    # Also mark basin pixels above water as lake-adjacent
+                    # (for bank decoration even where terrain > water)
+                    pad_lake_zone = pad_basin & (pad_terrain_y >= pad_water_y)
+                    lake_shore_band = pad_lake_zone[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
             else:
                 _use_terrain = False
 
@@ -1563,6 +1631,18 @@ def carve_rivers(
                 lake_water, iterations=lake_bw
             ) & ~water_mask & (river_meta == 0) & (surface_out > SEA_LEVEL)
             river_meta[lake_bank] = CHAN_LAKE
+
+    # ── 8b. S89-walk4: LAKE WINS inside its basin ─────────────────────────────
+    # Rivers (carved in step 7) override lake cells with CHAN_RIVER at the river's
+    # LOWER water level, leaving dry banks inside the lake footprint -> the broken
+    # "striped lake with dry walls" look. A real lake SUBMERGES rivers flowing
+    # through it. Re-assert the lake over its whole bowl-carved footprint so
+    # run_pipeline fills the entire basin to the flat lake spill level; the river
+    # channels within become deep lake water, the bowl-carved flats/walls become
+    # shallow lake. Only active with bowl-carve (the footprint was carved below
+    # the water level, so nothing is left dry).
+    if bool(geo.get("lake_bowl_carve", False)) and lake_mask is not None and lake_mask.any():
+        river_meta[lake_mask] = CHAN_LAKE
 
     # ── 9. Delta connectivity (WP `pathFindDown` equivalent) ───────────────
     # S80 v9: DELTA CONNECTIVITY pass DISABLED.  This pre-S80 hack walked

@@ -1379,18 +1379,19 @@ def place_schematics(
     _kr_fade_blocks = float(_kr_cfg.get("fade_blocks", 30.0))
     _kr_near = float(_kr_cfg.get("near_density_mult", 1.0))
     _kr_far = float(_kr_cfg.get("far_density_mult", 0.0015))
+    # S89-walk4: krummholz density is ALTITUDE-based (not EDT-distance from a zone
+    # that included low rock cliffs). 1.0 below feather_lo (regular taiga, no
+    # thinning), then near_density_mult AT feather_lo fading linearly to
+    # far_density_mult at density_top_y. So the band is "much sparser" right at
+    # the treeline (feather_lo) and fades to nothing at the top.
     _kr_dens = None
-    if _kr_on and _kr_fade_blocks > 0.0:
-        _kr_zone = (surface_y >= _kr_feather_lo)
-        if _kr_rock_near is not None:
-            _kr_zone = _kr_zone | _kr_rock_near
-        if _kr_snow_near is not None:
-            _kr_zone = _kr_zone | _kr_snow_near
-        if _kr_zone.any():
-            from scipy.ndimage import distance_transform_edt as _edt_kr
-            _kr_dist = _edt_kr(_kr_zone).astype(np.float32)
-            _kr_t = np.clip(_kr_dist / _kr_fade_blocks, 0.0, 1.0)
-            _kr_dens = (_kr_near + (_kr_far - _kr_near) * _kr_t).astype(np.float32)
+    _kr_dens_top = float(_kr_cfg.get("density_top_y", 700.0))
+    if _kr_on:
+        _sy_f = surface_y.astype(np.float32)
+        _alt_t = np.clip((_sy_f - _kr_feather_lo)
+                         / max(1.0, _kr_dens_top - _kr_feather_lo), 0.0, 1.0)
+        _kr_dens = (_kr_near + (_kr_far - _kr_near) * _alt_t).astype(np.float32)
+        _kr_dens[_sy_f < _kr_feather_lo] = 1.0
     _kr_pool = []
     if _kr_on and _kr_whitelist:
         _kr_seen = set()
@@ -1407,6 +1408,20 @@ def place_schematics(
                     if _kr_h is not None and _kr_h > _kr_max_h:
                         continue
                     _kr_pool.append(_e)
+
+    # S89-walk4 verify: env-gated krummholz placement counter by altitude band.
+    import os as _os_kr
+    _KR_DBG = bool(_os_kr.environ.get("KR_DEBUG"))
+    _kr_dbg_bands = [0, 0, 0, 0, 0, 0]          # <450,450-500,500-550,550-575,575-650,>=650
+    _kr_dbg_reg = [0, 0, 0, 0, 0, 0]            # regular trees placed, same bands
+
+    def _kr_band(y):
+        if y < 450: return 0
+        if y < 500: return 1
+        if y < 550: return 2
+        if y < 575: return 3
+        if y < 650: return 4
+        return 5
 
     for pass_type in ("tree", "bush"):
         # Bushes get their own exclusion grid (smaller radius, independent of trees)
@@ -1466,15 +1481,18 @@ def place_schematics(
             _kr_hit = False
             if _kr_on and pass_type == "tree":
                 _kr_p = 0.0
-                if ((_kr_rock_near is not None and bool(_kr_rock_near[row, col]))
-                        or (_kr_snow_near is not None
-                            and bool(_kr_snow_near[row, col]))):
-                    _kr_p = 1.0
-                else:
-                    _y = float(surface_y[row, col])
-                    if _y >= _kr_feather_hi:
+                _y = float(surface_y[row, col])
+                # S89-walk4: ALTITUDE is the gate. Below feather_lo -> regular
+                # taiga (NO krummholz even hugging rock/snow -> fixes "krummholz
+                # way too low"). At/above feather_lo, rock/snow proximity forces
+                # the tiny pool; otherwise P ramps 0->1 over [lo,hi] (quick).
+                if _y >= _kr_feather_lo:
+                    if ((_kr_rock_near is not None and bool(_kr_rock_near[row, col]))
+                            or (_kr_snow_near is not None
+                                and bool(_kr_snow_near[row, col]))
+                            or _y >= _kr_feather_hi):
                         _kr_p = 1.0
-                    elif _y > _kr_feather_lo:
+                    else:
                         _kr_p = (_y - _kr_feather_lo) / max(
                             1.0, _kr_feather_hi - _kr_feather_lo)
                 if _kr_p > 0.0 and rng.random() < _kr_p:
@@ -1748,8 +1766,20 @@ def place_schematics(
             # Mark exclusion zone
             if pass_type == "tree":
                 exclusion.mark(row, col, radius)
+                if _KR_DBG:
+                    _b = _kr_band(int(surface_y[row, col]))
+                    if _kr_hit:
+                        _kr_dbg_bands[_b] += 1
+                    else:
+                        _kr_dbg_reg[_b] += 1
             else:
                 bush_exclusion.mark(row, col, max(1, radius // 2))
+
+    if _KR_DBG:
+        _lbls = ["<450", "450-500", "500-550", "550-575", "575-650", ">=650"]
+        print(f"[KR_DEBUG] tile=({tile_x},{tile_y}) krummholz vs regular trees placed by band:")
+        for _i, _l in enumerate(_lbls):
+            print(f"[KR_DEBUG]   {_l:>8}: krummholz={_kr_dbg_bands[_i]:>5}  regular={_kr_dbg_reg[_i]:>5}")
 
     return placements
 

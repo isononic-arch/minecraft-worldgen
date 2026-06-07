@@ -222,6 +222,20 @@ def _process_tile(args: dict) -> dict:
         tile_z         = tile_y,
     )
 
+    # S89-walk4: bowl-carve lake-bed RE-LOCK snapshot. The carve sets the smooth
+    # bowl bed for lake cells (river_meta==CHAN_LAKE==3), but post-carve passes
+    # (flow erosion, peak-crunch, bed/bank smoothing) refill the shallow walls
+    # (antipattern #2). Snapshot the carved lake bed NOW; re-apply after ALL
+    # surface_y smoothing, just before chunk write, so the bowl survives.
+    _lake_bowl_relock = bool((cfg or {}).get("hydrology_engine", {})
+                             .get("river_geometry", {}).get("lake_bowl_carve", False))
+    _lake_bed_lock_y = None
+    _lake_bed_lock_mask = None
+    if _lake_bowl_relock:
+        _lake_bed_lock_mask = (river_meta == 3)
+        if _lake_bed_lock_mask.any():
+            _lake_bed_lock_y = surface_y.copy()
+
     # S89 walk: user now WANTS real watered rivers in SAND_DUNE_DESERT (with the
     # usual dirt/mud river palette). The S59 strip is now OPT-IN via config
     # (cfg.sand_dune_desert.strip_rivers, default FALSE = rivers KEEP/carve/fill).
@@ -1277,6 +1291,15 @@ def _process_tile(args: dict) -> dict:
                 _land_lock &= ~_water_zone
                 del _water_zone
             surface_y[_land_lock] = _post_decorate_y[_land_lock]
+
+        # S89-walk4: bowl-carve lake-bed RE-LOCK (final say). Restore the smooth
+        # carved bowl bed for lake cells, overriding the post-carve flow-erosion +
+        # smoothing passes that were refilling the shallow walls (antipattern #2).
+        # Only lowers (min) so we never RAISE a bed a later pass legitimately
+        # deepened; lake cells are underwater so this is purely the bowl floor.
+        if _lake_bed_lock_y is not None and _lake_bed_lock_mask is not None:
+            _lk = _lake_bed_lock_mask
+            surface_y[_lk] = np.minimum(surface_y[_lk], _lake_bed_lock_y[_lk])
 
         core_chunk.write_tile(
             surface_y    = surface_y,

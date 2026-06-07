@@ -574,7 +574,12 @@
       "depth_max": 16,
       "discharge_exponent_w": 0.5,
       "discharge_exponent_d": 0.4,
-      "slope_attenuation": 2.0
+      "slope_attenuation": 2.0,
+      "lake_bowl_carve": true,
+      "lake_bowl_max_gouge": 6.0,
+      "lake_bowl_smooth_sigma": 4.0,
+      "lake_bowl_depth_scale": 2.5,
+      "lake_bowl_depth_cap": 20.0
     },
     "rainfall_proxy": {
       "TEMPERATE_RAINFOREST": 1.4,
@@ -4877,16 +4882,17 @@
     ]
   },
   "krummholz": {
-    "_comment": "S89 stunted high-mountain trees. Rock proximity (gap==5 within rock_dilate_blocks) ALWAYS forces the krummholz pool; altitude is FEATHERED: P(force) ramps 0 at feather_lo_y -> 1 at feather_hi_y. At triggered cells the biome's tree pool is REPLACED by the fixed `schematics` whitelist (matched by path substring, scanned across the whole index) -- user-picked tiny pines. Falls back to size=='sm' if none of the whitelist is loaded. Preserves the tree COUNT (still places, just the tiny variant).",
+    "_comment": "S89 stunted high-mountain trees. S89-walk4: krummholz is ALTITUDE-GATED. Regular taiga below feather_lo_y; above it P(force-small) ramps 0->1 over [feather_lo_y, feather_hi_y] (quick). Density is altitude-based: near_density_mult at feather_lo_y fading to far_density_mult at density_top_y (fade to nothing at the treeline top). Rock/snow proximity forces the krummholz pool ONLY when surface_y >= feather_lo_y (no more krummholz way down low near cliffs). Triggered cells get the `schematics` whitelist tiny pines (fallback size=='sm').",
     "enabled": true,
     "rock_dilate_blocks": 3,
     "snowcap_dilate_blocks": 12,
     "density_mult": 0.2,
     "fade_blocks": 30,
-    "near_density_mult": 1.0,
-    "far_density_mult": 0.05,
-    "feather_lo_y": 500,
-    "feather_hi_y": 550,
+    "near_density_mult": 0.2,
+    "far_density_mult": 0.0,
+    "feather_lo_y": 550,
+    "feather_hi_y": 552,
+    "density_top_y": 700,
     "schematics": [
       "ppine",
       "scotsp"
@@ -4899,8 +4905,8 @@
     "headwater_depth_scale": 0.5,
     "full_depth_order": 4.0,
     "max_carve_blocks": 0.0,
-    "_comment_drylake": "S89 #12: force-flood shallow DRY lake basins. Lower basin-floor cells within this many blocks ABOVE the lake water level down to water-1 so they hold water (0=off). Capped to skip rims/towers. VERIFY on render: no spillover, 39 working lakes intact.",
-    "dry_lake_force_carve_max": 4
+    "_comment_drylake": "S89 #12: REVERTED (set 0). Force-flood produced a 1-deep nearest-neighbor fringe on working lakes AND did nothing for sea-level 'dry' basins. Diagnosis: dry/striped lakes are terrain-intersection lakes on flat-at-spill Gaea basins (water only pools in river channels cut through them) -- a Gaea-source issue per the hydro HARD RULE, not a post-pipeline fix. 0 = off.",
+    "dry_lake_force_carve_max": 0
   },
   "snow_edge_stroke": {
     "_comment": "S89 walk #15: speckled fade outline at ALL snow boundaries (slope cutoffs, snowline, biome edges). Grows snow[layers=1] OUTWARD from the snow mask over stroke_blocks with a salt-and-pepper fade. Additive only; tune from render.",
