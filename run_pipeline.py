@@ -689,9 +689,15 @@ def _process_tile(args: dict) -> dict:
     # ---- Step 7: Surface decoration ----
     _use_geo = bool(cfg.get("lithology", {}).get("feature_flag_enabled", False))
     _use_sp  = bool(cfg.get("surface_pipeline", {}).get("feature_flag_enabled", False))
-    # S89-walk4: stamp the FINAL (post-carve/crunch) surface_y into the halo's
-    # inner so the seam gaussians smooth real inner terrain against the
-    # pre-carve neighbour halo ring -> continuous across tile borders.
+    # S89-walk4: capture the FULLY pre-carve padded surface (inner+halo identical
+    # to neighbours, from the global height spline) BEFORE we overwrite the inner.
+    # rock_relief uses it for its smooth_gain roughness so the relief amplitude is
+    # seamless across rock tile borders (the asymmetric post-crunch-inner vs
+    # pre-carve-halo version caused the relief height STEP on rock seams).
+    _relief_rough_pad = surface_y_padded.copy() if surface_y_padded is not None else None
+    # Stamp the FINAL (post-carve/crunch) surface_y into the halo's inner so the
+    # seam gaussians smooth real inner terrain against the pre-carve neighbour
+    # halo ring -> continuous across tile borders.
     if surface_y_padded is not None:
         surface_y_padded[_SEAM_PAD_PX:_SEAM_PAD_PX + h,
                          _SEAM_PAD_PX:_SEAM_PAD_PX + w] = surface_y
@@ -726,6 +732,7 @@ def _process_tile(args: dict) -> dict:
         snow_potential_tile = masks.get("snow_potential"),
         surface_y_padded = surface_y_padded,
         seam_pad_px = (_SEAM_PAD_PX if surface_y_padded is not None else 0),
+        relief_rough_padded = _relief_rough_pad,
     )
 
     # S89 floating-tree fix: snapshot surface_y AFTER decorate (post rock-relief /

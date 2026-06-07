@@ -3032,7 +3032,8 @@ def _smooth_biome_boundary_y(
 
 
 def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y,
-                       cliff_cap_tile=None, biome_grid=None, north_factor=None):
+                       cliff_cap_tile=None, biome_grid=None, north_factor=None,
+                       rough_padded=None, rough_pad=0):
     """S89: un-smooth rocky terrain. The Gaea -> upscale -> MC pipeline leaves
     rock faces too smooth; add low-amplitude, spatially-coherent height noise
     INSIDE rock (tier>=1), with amplitude fading to 0 over the outer
@@ -3078,7 +3079,21 @@ def _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y,
     #     natural roughness. existing high-freq roughness = |sy - gaussian(sy)|.
     _rsig = float(rcfg.get("roughness_sigma", 4.0))
     _rref = max(0.1, float(rcfg.get("roughness_ref", 2.0)))
-    existing_rough = np.abs(sy_f - _gf_seam(sy_f, _rsig))
+    # S89-walk4 SEAM FIX: compute existing_rough from the SEAMLESS pre-carve
+    # padded field (identical on both sides of a tile boundary) instead of the
+    # post-crunch inner surface smoothed against a pre-carve halo. The latter was
+    # ASYMMETRIC at seams (inner=post-crunch, halo=pre-carve) -> smooth_gain
+    # differed each side -> same world-coord noise * different amplitude = a
+    # several-block relief STEP exactly on rock tile borders. Pre-carve roughness
+    # is also the right signal (natural terrain cragginess, not artificial
+    # crunch/erosion bumps we're trying to fill).
+    if (rough_padded is not None and rough_pad > 0
+            and rough_padded.shape == (H + 2 * rough_pad, W + 2 * rough_pad)):
+        _rp = rough_padded.astype(np.float32)
+        _er = np.abs(_rp - _gf_r(_rp, _rsig))
+        existing_rough = _er[rough_pad:rough_pad + H, rough_pad:rough_pad + W]
+    else:
+        existing_rough = np.abs(sy_f - _gf_seam(sy_f, _rsig))
     smooth_gain = np.clip(1.0 - existing_rough / _rref, 0.0, 1.0).astype(np.float32)
     # (3) optional distance edge-fade (default OFF now; slope_gain handles seams)
     efb = float(rcfg.get("edge_fade_blocks", 0.0))
@@ -3152,6 +3167,7 @@ def decorate_surface(
     snow_potential_tile: np.ndarray | None = None,    # (H, W) float32 [0,1] — S89 continuous snow potential (depth-snow)
     surface_y_padded: np.ndarray | None = None,       # (H+2p, W+2p) int16/float — pre-carve neighbour-surface halo for seam-free smoothing (S89-walk4)
     seam_pad_px: int = 0,                              # halo width of surface_y_padded (0 = none)
+    relief_rough_padded: np.ndarray | None = None,    # (H+2p, W+2p) — FULLY pre-carve padded surface for rock_relief smooth_gain (seamless amplitude)
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute surface and subsurface block arrays for a tile.
@@ -3232,7 +3248,8 @@ def decorate_surface(
     _apply_rock_relief(surface_y, rock_layers_tile, cfg, tile_x, tile_y,
                        cliff_cap_tile=cliff_cap_tile, biome_grid=biome_grid,
                        north_factor=(eco_grads.north_factor if (eco_grads is not None
-                                     and hasattr(eco_grads, "north_factor")) else None))
+                                     and hasattr(eco_grads, "north_factor")) else None),
+                       rough_padded=relief_rough_padded, rough_pad=seam_pad_px)
 
     # --- Build noise arrays ------------------------------------------------
     den_cfg  = cfg["decoration_density_noise"]
