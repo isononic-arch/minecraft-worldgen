@@ -4338,10 +4338,30 @@ def decorate_surface(
                 # _post_decorate_y; convex cells (concavity<=0) are untouched.
                 _df_max = float(_slc.get("drift_fill_blocks", 0.0))
                 if _df_max > 0.0:
-                    from scipy.ndimage import gaussian_filter as _gf_df
                     _syf_d = surface_y.astype(np.float32)
-                    _concav = (_gf_df(_syf_d, float(_slc.get("drift_fill_sigma", 7.0)))
-                               - _syf_d)                      # >0 in hollows
+                    _dfsig = float(_slc.get("drift_fill_sigma", 7.0))
+                    # Hollow depth is measured from the FULLY pre-carve padded
+                    # surface (relief_rough_padded): its inner AND halo ring are
+                    # both derived from the shared global height spline, so the
+                    # gaussian is identical on both sides of any tile border ->
+                    # drift fill is seam-symmetric BY CONSTRUCTION. Measuring from
+                    # the live post-relief surface_y seamed: _gf_seam's halo ring
+                    # is pre-relief while the inner is post-relief, so the edge
+                    # blur (and the raise) was asymmetric wherever rock-relief had
+                    # lifted the surface -> scattered ~3-5 block bumps on snowy
+                    # rock seams. The pre-carve field fills the natural cirque
+                    # bowls (the smooth-snowfield intent); fine relief/erosion
+                    # gullies are left to read as bare-rock couloirs through snow.
+                    if (relief_rough_padded is not None and seam_pad_px > 0
+                            and relief_rough_padded.shape
+                            == (H + 2 * seam_pad_px, W + 2 * seam_pad_px)):
+                        from scipy.ndimage import gaussian_filter as _gf_drift
+                        _pcp = np.asarray(relief_rough_padded, np.float32)
+                        _cv_p = _gf_drift(_pcp, _dfsig) - _pcp
+                        _concav = _cv_p[seam_pad_px:seam_pad_px + H,
+                                        seam_pad_px:seam_pad_px + W]
+                    else:
+                        _concav = _gf_seam(_syf_d, _dfsig) - _syf_d  # per-tile fallback
                     _fill = np.clip(_concav, 0.0, _df_max)
                     _dcells = snow_px & (_fill >= 1.0)
                     if _dcells.any():

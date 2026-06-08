@@ -121,12 +121,14 @@ def render(paths, out):
     gz, gx = np.gradient(syf)
     shade = np.clip(0.5 + 0.6 * (-gx - gz) / 3.0, 0.25, 1.6)  # NW light
     img = np.clip(img.astype(np.float32) * shade[..., None], 0, 255).astype(np.uint8)
-    # mark tile seams (every 512) faint red so we can locate them
-    for sx in range(512 - (x0 * 512) % 512, W, 512):
-        if 0 <= sx < W:
-            img[:, sx] = (255, 0, 0)
+    # tile-seam marker lines OFF by default (they mask real seams). Enable with
+    # env SAT_SEAM_LINES=1 if you want them back.
+    if os.environ.get("SAT_SEAM_LINES"):
+        for sx in range(512 - (x0 * 512) % 512, W, 512):
+            if 0 <= sx < W:
+                img[:, sx] = (255, 0, 0)
     Image.fromarray(img).save(out)
-    print(f"wrote {out}  ({W}x{H}, {len(tiles)} tiles, seam lines in red)")
+    print(f"wrote {out}  ({W}x{H}, {len(tiles)} tiles)")
 
 
 if __name__ == "__main__":

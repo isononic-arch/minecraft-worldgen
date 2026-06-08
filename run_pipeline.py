@@ -701,6 +701,9 @@ def _process_tile(args: dict) -> dict:
     if surface_y_padded is not None:
         surface_y_padded[_SEAM_PAD_PX:_SEAM_PAD_PX + h,
                          _SEAM_PAD_PX:_SEAM_PAD_PX + w] = surface_y
+    import os as _os_surf_pre
+    _sy_before_decorate = (surface_y.copy()
+                           if _os_surf_pre.environ.get("SURF_DUMP_DIR") else None)  # SURF_DUMP seam-bisect snapshot
     surface_blk, sub_blk, ground_cover = core_decorator.decorate_surface(
         surface_y    = surface_y,
         biome_grid   = biome_grid,
@@ -743,6 +746,26 @@ def _process_tile(args: dict) -> dict:
     # cells away from water just before write_tile so columns match the anchors;
     # water/bank cells keep Step 9's fixes.
     _post_decorate_y = surface_y.copy()
+
+    # SURF_DUMP seam-bisect hook: dump pre/post-decorate surface_y + the
+    # pre-carve neighbour halo, then return early (no schematics, no chunk
+    # write).  Lets us reproduce/localise the tile-boundary height seam
+    # locally at the surface_y level (no 768-deep volume -> no OOM).
+    import os as _os_surf_dump
+    _surf_dump_dir = _os_surf_dump.environ.get("SURF_DUMP_DIR")
+    if _surf_dump_dir:
+        import numpy as _np_sd
+        _os_surf_dump.makedirs(_surf_dump_dir, exist_ok=True)
+        _np_sd.save(f"{_surf_dump_dir}/sy_pre_{tile_x}_{tile_y}.npy", _sy_before_decorate)
+        _np_sd.save(f"{_surf_dump_dir}/sy_post_{tile_x}_{tile_y}.npy", _post_decorate_y)
+        _np_sd.save(f"{_surf_dump_dir}/snow_{tile_x}_{tile_y}.npy",
+                    np.isin(surface_blk, ("snow_block", "snow", "powder_snow")))
+        if surface_y_padded is not None:
+            _np_sd.save(f"{_surf_dump_dir}/sy_halo_{tile_x}_{tile_y}.npy", surface_y_padded)
+        if _relief_rough_pad is not None:
+            _np_sd.save(f"{_surf_dump_dir}/rrp_{tile_x}_{tile_y}.npy", _relief_rough_pad)
+        return {"tile_x": tile_x, "tile_y": tile_y, "biomes": [],
+                "elapsed_ms": 0, "surf_dump": True}
 
     # ---- Step 8: Schematic placement ----
     try:

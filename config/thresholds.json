@@ -4805,7 +4805,7 @@
     "micro_curv_ref": 2.0,
     "micro_aspect_coeff": 0.25,
     "micro_potential_coeff": 0.3,
-    "drift_fill_blocks": 4,
+    "drift_fill_blocks": 0,
     "drift_fill_sigma": 7.0,
     "override_rock": true,
     "override_rock_max_slope_deg": 38.0,
