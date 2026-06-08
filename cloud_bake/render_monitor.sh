@@ -90,7 +90,7 @@ declare -A BOX_DONE; for b in "${!IPS[@]}"; do BOX_DONE[$b]=0; done
 trap 'echo; log "interrupted — printing summary"; summary; exit 130' INT
 
 summary(){
-  local ok=0 flagged=0 missing=0; local -a FLAGS MISS
+  local ok=0 flagged=0 missing=0; local -a FLAGS=() MISS=()
   for key in "${!TILE_BOX[@]}"; do
     local s="${STATE[$key]:-MISSING}"
     case "$s" in
