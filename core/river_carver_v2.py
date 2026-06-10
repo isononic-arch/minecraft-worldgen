@@ -222,6 +222,80 @@ def _draw_tapered_channel(centerline, order_u8, path_r, path_c,
                 order_u8[pr, pc] = max(order_u8[pr, pc], channel_order)
 
 
+def _carve_lakes_v2(pad_basin, pad_water_y, pad_terrain_y,
+                    world_ox, world_oy, geo):
+    """Organic lake carve (S90). Returns (water_mask, bed_y) over the padded
+    window. Flatten + EDT parabolic bowl with a DOMAIN-WARPED, TERRAIN-FOLLOWING
+    shoreline so the 1:8 NEAREST staircase becomes an organic outline (Nasworthy,
+    not Balmorhea). ALL math is on HEIGHTS / a distance field — never the
+    discrete lake-ID mask (NEAREST hard rule preserved). World-coord noise =
+    seam-safe across tiles.
+
+    - sdf      = distance-to-shore inside the basin (smooth, but staircased at the
+                 raw mask edge).
+    - warp     = resample sdf at world-coord low-freq-noise-displaced coords ->
+                 the shore iso-contour wiggles organically, breaking the staircase.
+    - terrain  = subtract (terrain - water) so ridges poking into the basin become
+                 coves and flat-at-spill basins still fill fully (kills dry/striped).
+    - bed      = water_y - depth(parabola of the warped/terrain-adjusted distance).
+    """
+    import numpy as np
+    from scipy.ndimage import distance_transform_edt, map_coordinates, gaussian_filter
+    hh, ww = pad_basin.shape
+    lc = geo.get("lake_carve", {})
+    depth_max = float(lc.get("depth_max", 18.0))
+    depth_ref = float(lc.get("depth_ref_px", 40.0))
+    depth_pow = float(lc.get("depth_pow", 1.6))
+    smooth_sig = float(lc.get("shore_smooth_sigma", 6.0))
+    warp_amp = float(lc.get("shore_warp_amp_px", 7.0))
+    warp_scale = float(lc.get("shore_warp_scale_px", 26.0))
+    terr_follow = float(lc.get("terrain_follow", 1.0))
+    shore_thresh = float(lc.get("shore_thresh_px", 0.0))
+    if not pad_basin.any():
+        return np.zeros((hh, ww), bool), pad_terrain_y.copy()
+
+    # FLAT water level (scalar) — pad_water_y is the NEAREST-stepped lake-wl mask
+    # (8-block steps, 0 outside basin); using it per-cell re-injects the staircase
+    # into sdf AFTER smoothing. The median over the basin is the flat lake level.
+    wl_flat = float(np.median(pad_water_y[pad_basin]))
+
+    # SIGNED distance field (+inside, -outside) — continuous across the boundary.
+    # Gaussian-smoothing it dissolves the 1:8 NEAREST staircase into a smooth
+    # contour (this is a DISTANCE FIELD, not the lake-ID mask, so the NEAREST
+    # hard rule is preserved). The warp then adds organic variation on top.
+    sdf = (distance_transform_edt(pad_basin).astype(np.float32)
+           - distance_transform_edt(~pad_basin).astype(np.float32))
+    if smooth_sig > 0.0:
+        sdf = gaussian_filter(sdf, smooth_sig)
+    if warp_amp > 0.0:
+        try:
+            from opensimplex import OpenSimplex
+            _sd = int(lc.get("seed", 4111))
+            yy, xx = np.mgrid[0:hh, 0:ww].astype(np.float32)
+            # 2-octave domain warp: macro octave carves coves/points, fine octave
+            # adds organic texture so the 1:8 staircase fully dissolves.
+            def _oct(scale, a, s1, s2):
+                sx = (world_ox + np.arange(ww, dtype=np.float64)) / max(2.0, scale)
+                sz = (world_oy + np.arange(hh, dtype=np.float64)) / max(2.0, scale)
+                n1 = OpenSimplex(seed=s1).noise2array(sx, sz).astype(np.float32)
+                n2 = OpenSimplex(seed=s2).noise2array(sx, sz).astype(np.float32)
+                return a * n1, a * n2
+            dy1, dx1 = _oct(warp_scale, warp_amp, _sd, _sd + 777)
+            dy2, dx2 = _oct(warp_scale / 3.0, warp_amp * 0.45, _sd + 13, _sd + 790)
+            sdf = map_coordinates(
+                sdf, [yy + dy1 + dy2, xx + dx1 + dx2],
+                order=1, mode="nearest").astype(np.float32)
+        except Exception:
+            pass
+    if terr_follow > 0.0:
+        sdf = sdf - terr_follow * np.clip(pad_terrain_y - wl_flat, 0.0, None)
+
+    water = sdf > shore_thresh
+    d = depth_max * np.clip(sdf / max(1.0, depth_ref), 0.0, 1.0) ** depth_pow
+    bed = np.where(water, wl_flat - d, pad_terrain_y).astype(np.float32)
+    return water, bed
+
+
 def carve_rivers(
     surface_y:      np.ndarray,   # (H, W) int16
     flow_tile:      np.ndarray,   # (H, W) float32 [0,1]
@@ -325,6 +399,7 @@ def carve_rivers(
 
     if lake_raw.any():
         from scipy.ndimage import label
+        _skip_stochastic = False  # S90 v2 sets True (smooth bed, no dither)
 
         # ── 3a. Absorb small river fragments near lakes ──────────────────
         # S80: DISABLED.  This pass was tuned for the old D8/Strahler
@@ -421,7 +496,25 @@ def carve_rivers(
                 crop_r0 = row_off - pz0
                 crop_c0 = col_off - px0
                 _bowl = bool(geo.get("lake_bowl_carve", False))
-                if _bowl:
+                import os as _os_lv2
+                _v2 = (bool(geo.get("lake_carve", {}).get("enabled", False))
+                       and not _os_lv2.environ.get("LAKE_V2_OFF"))
+                if _v2:
+                    # ── S90 ORGANIC LAKE CARVE ────────────────────────────────
+                    # Flatten + EDT parabolic bowl with a domain-warped, terrain-
+                    # following shoreline (de-staircases the 1:8 NEAREST outline).
+                    # only-lower depth (clip>=0) reuses the subtract-apply path and
+                    # preserves naturally-deeper cells; stochastic rounding is
+                    # skipped (the bed is already smooth).
+                    _water_pad, _bed_pad = _carve_lakes_v2(
+                        pad_basin, pad_water_y, pad_terrain_y, px0, pz0, geo)
+                    lake_mask = _water_pad[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
+                    _bedi = _bed_pad[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
+                    _terri = pad_terrain_y[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
+                    lake_depths = np.clip(_terri - _bedi, 0.0, None).astype(np.float32)
+                    lake_shore_band = np.zeros((H, W), dtype=bool)
+                    _skip_stochastic = True
+                elif _bowl:
                     # ── S89-walk4 BOWL CARVE ──────────────────────────────────
                     # Flood the WHOLE precompute basin and carve its bed to
                     # (water_y - lkdep) using the precomputed parabolic
@@ -565,6 +658,8 @@ def carve_rivers(
         pixel_hash = ((world_x * 73856093) ^ (world_z * 19349663)) & 0xFFFFFFFF
         pixel_rand = (pixel_hash % 10000).astype(np.float32) / 10000.0
         bump = (pixel_rand < frac).astype(np.int32)
+        if _skip_stochastic:
+            bump = np.zeros_like(lake_d_floor, dtype=np.int32)  # S90: bed already smooth
         surface_out[carve_mask] -= (lake_d_floor.astype(np.int32) + bump)
 
         river_meta[lake_mask & above_sea] = CHAN_LAKE

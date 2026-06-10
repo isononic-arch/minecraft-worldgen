@@ -760,6 +760,9 @@ def _process_tile(args: dict) -> dict:
         _np_sd.save(f"{_surf_dump_dir}/sy_post_{tile_x}_{tile_y}.npy", _post_decorate_y)
         _np_sd.save(f"{_surf_dump_dir}/snow_{tile_x}_{tile_y}.npy",
                     np.isin(surface_blk, ("snow_block", "snow", "powder_snow")))
+        if river_meta is not None:
+            _np_sd.save(f"{_surf_dump_dir}/rmeta_{tile_x}_{tile_y}.npy",
+                        np.asarray(river_meta, dtype=np.uint8))
         if surface_y_padded is not None:
             _np_sd.save(f"{_surf_dump_dir}/sy_halo_{tile_x}_{tile_y}.npy", surface_y_padded)
         if _relief_rough_pad is not None:

@@ -579,7 +579,20 @@
       "lake_bowl_max_gouge": 6.0,
       "lake_bowl_smooth_sigma": 4.0,
       "lake_bowl_depth_scale": 2.5,
-      "lake_bowl_depth_cap": 20.0
+      "lake_bowl_depth_cap": 20.0,
+      "lake_carve": {
+        "_comment": "S90 organic lake carve (supersedes lake_bowl_carve when enabled): flatten + EDT parabolic bowl with a domain-warped, terrain-following shoreline to de-staircase the 1:8 NEAREST outline (Nasworthy not Balmorhea). All math on heights/distance, never the lake-ID mask. shore_warp = organic edge; terrain_follow = coves where ridges poke in + full fill on flat basins; depth_* = parabolic bowl.",
+        "enabled": true,
+        "depth_max": 18.0,
+        "depth_ref_px": 40.0,
+        "depth_pow": 1.6,
+        "shore_smooth_sigma": 6.0,
+        "shore_warp_amp_px": 14.0,
+        "shore_warp_scale_px": 50.0,
+        "terrain_follow": 1.0,
+        "shore_thresh_px": 0.0,
+        "seed": 4111
+      }
     },
     "rainfall_proxy": {
       "TEMPERATE_RAINFOREST": 1.4,
