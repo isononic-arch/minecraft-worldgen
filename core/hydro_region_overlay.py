@@ -41,7 +41,28 @@ _LAKE_DEPTH_MIN  = 2
 # scale=0.30: a small tributary (100 upstream cells) adds ~3 blocks; a major
 # trunk (10k cells) adds ~30 blocks. Stacks ADDITIVELY on EDT-derived width
 # from paint thickness.
+# S92 NOTE: this constant is DEAD (defined, never consumed) — the additive
+# widening was never wired. Current widths = paint EDT width only.
 _FLOW_WIDTH_SCALE = 0.30
+
+# ── S92 headwater taper ──
+# Painted lines have a hard width floor (1 paint px ≈ 6 blocks at 50k), so
+# every headwater rendered ~9-11 blocks wide regardless of accumulation
+# (audit: min skeleton width 9-11 across (27,34)/(62,61)/(19,76)). Taper the
+# carve depth by upstream accumulation (Leopold-ish W ∝ A^0.4): the
+# footprint contour (carve > 0.1) insets toward the skeleton and the bed
+# shallows with it → dead-end painted sources start as ~2-4-block creeks
+# and widen naturally downstream; mouths (high accumulation) unchanged.
+# taper = clip((A / _HW_REF_PX) ** _HW_EXP, _HW_MIN, 1.0)
+_HW_TAPER_ENABLED = True
+_HW_REF_PX = 200.0    # accumulation (8k skeleton cells) at which taper = 1.0
+_HW_EXP = 0.4
+_HW_MIN = 0.18        # WIDTH-factor floor
+# S92 v5 calibration: applying the raw factor to BOTH width and depth
+# collapsed whole short-tributary networks (accum p50=30 world-wide) to
+# 1-deep ditches at (62,61). Width takes the full factor; DEPTH takes
+# sqrt(factor) — tips ~4 wide / 1-2 deep, mid tributaries ~10-14 wide /
+# ~3 deep, trunks (accum >= 200) untouched.
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +248,23 @@ _coast_factor_8k_cache: np.ndarray | None = None
 # water_y step at tile boundaries (caused by per-tile gravity-walk asymmetry
 # with the lake) without touching lakes or BLEND cascade in run_pipeline.
 _river_water_y_8k_cache: np.ndarray | None = None  # float32 (8192, 8192) MC Y values
+# S92: GLOBAL tidal mask at 8k — painted-footprint reaches whose bed sits
+# below sea level AND that connect to the ocean. Step 9's tidal pass pins
+# these reaches' water to SEA exactly. Computed globally so both sides of
+# every tile border sample the same oracle (per-tile connectivity guesses
+# produced a 63|64 water step at borders — S92 v3 pair test).
+_tidal_8k_cache: np.ndarray | None = None  # bool (8192, 8192)
+# S92: headwater taper factor at 8k, uint8 (factor*255). Multiplies BOTH the
+# 8k bed carve and the 50k per-tile carve so footprint + depth narrow
+# together toward painted sources. 255 (=1.0) on high-accumulation trunks.
+_hw_taper_8k_cache: np.ndarray | None = None
 _cache_path: Path | None = None
+
+
+def get_tidal_8k() -> "np.ndarray | None":
+    """S92: global 8k tidal mask (bool) or None. Valid after the bed cache
+    has been ensured (apply_hydro_region_overlay ran in this process)."""
+    return _tidal_8k_cache
 
 
 def _build_river_edges(paint_mask_8k: np.ndarray):
@@ -911,7 +948,7 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
     global _lake_mask_cache, _flow_accum_8k_cache, _cache_path
     global _river_spline_pts_50k_cache, _river_spline_kdtree_cache
     global _river_spline_polygons_50k_cache
-    global _river_bed_8k_cache, _river_water_y_8k_cache
+    global _river_bed_8k_cache, _river_water_y_8k_cache, _tidal_8k_cache, _hw_taper_8k_cache
     global _coast_factor_8k_cache
 
     import os as _os
@@ -920,7 +957,7 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
     if _os.environ.get("VANDIR_NO_BED_CACHE"):
         return False
 
-    bed_cache_path = hr_path.parent / "_bed_cache_v17.pkl"
+    bed_cache_path = hr_path.parent / "_bed_cache_v18.pkl"
     if not bed_cache_path.exists():
         return False
     try:
@@ -933,7 +970,7 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
             data = _pickle.load(f)
         if data.get('key') != expected_key:
             print(f"[hydro_region_overlay] bed cache MISMATCH "
-                  f"(masks/_bed_cache_v17.pkl is stale) — rebuilding")
+                  f"(masks/_bed_cache_v18.pkl is stale) — rebuilding")
             return False
         _river_bed_8k_cache = data['river_bed_8k']
         _paint_smooth_8k_cache = data['paint_smooth_8k']
@@ -950,6 +987,8 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
         # this field would be rejected by key mismatch above, but defensive-
         # load with .get() in case of partial pickles.
         _coast_factor_8k_cache = data.get('coast_factor_8k')
+        _tidal_8k_cache = data.get('tidal_8k')  # S92 (None in pre-v18 caches)
+        _hw_taper_8k_cache = data.get('hw_taper_8k')  # S92
         # cKDTree is not picklable cleanly; rebuild from points (~5 sec)
         if (_river_spline_pts_50k_cache is not None
                 and _river_spline_pts_50k_cache.shape[0] > 0):
@@ -976,7 +1015,7 @@ def _save_bed_cache_to_disk(hr_path: Path) -> None:
     if _os.environ.get("VANDIR_NO_BED_CACHE"):
         return
 
-    bed_cache_path = hr_path.parent / "_bed_cache_v17.pkl"
+    bed_cache_path = hr_path.parent / "_bed_cache_v18.pkl"
     try:
         key = _make_bed_cache_key(hr_path)
     except Exception as exc:
@@ -997,6 +1036,8 @@ def _save_bed_cache_to_disk(hr_path: Path) -> None:
             'spline_polygons': _river_spline_polygons_50k_cache,
             'river_water_y_8k': _river_water_y_8k_cache,
             'coast_factor_8k': _coast_factor_8k_cache,  # S84
+            'tidal_8k': _tidal_8k_cache,                # S92
+            'hw_taper_8k': _hw_taper_8k_cache,          # S92 (uint8 f*255)
         }
         tmp_path = bed_cache_path.with_suffix('.pkl.tmp')
         with open(tmp_path, 'wb') as f:
@@ -1016,7 +1057,7 @@ def _ensure_caches(hr_path: Path) -> None:
     global _lake_mask_cache, _flow_accum_8k_cache, _cache_path
     global _river_spline_pts_50k_cache, _river_spline_kdtree_cache
     global _river_spline_polygons_50k_cache
-    global _river_bed_8k_cache, _river_water_y_8k_cache
+    global _river_bed_8k_cache, _river_water_y_8k_cache, _tidal_8k_cache, _hw_taper_8k_cache
     global _coast_factor_8k_cache
     if _cache_path == hr_path:
         return
@@ -1305,6 +1346,33 @@ def _ensure_caches(hr_path: Path) -> None:
                         * np.tanh(_depth_raw_8k / np.float32(_DEPTH_MAX_BLOCKS))
                         * _coast_factor_8k_cache  # S84 mouth-shallowing
                     ).astype(np.float32)
+                    # S92 headwater taper (see constants block): scale carve
+                    # depth by upstream accumulation. EDT-propagate the
+                    # skeleton accumulation outward so off-skeleton footprint
+                    # cells inherit their reach's factor — the carve>0.1
+                    # contour then insets toward the skeleton at low-accum
+                    # reaches (thin creeks) while high-accum trunks are
+                    # untouched (taper=1).
+                    if (_HW_TAPER_ENABLED
+                            and _flow_accum_8k_cache is not None
+                            and _flow_accum_8k_cache.any()):
+                        _sk_m = _flow_accum_8k_cache > 0
+                        _, _fa_idx = _edt_coast(~_sk_m, return_indices=True)
+                        _fa_full = _flow_accum_8k_cache[
+                            _fa_idx[0], _fa_idx[1]].astype(np.float32)
+                        _taper_8k = np.clip(
+                            (_fa_full / np.float32(_HW_REF_PX))
+                            ** np.float32(_HW_EXP),
+                            np.float32(_HW_MIN), np.float32(1.0))
+                        _carve_depth_8k = (
+                            _carve_depth_8k * _taper_8k).astype(np.float32)
+                        # stash the WIDTH factor for the 50k per-tile carve
+                        # (uint8 = f*255) — the 50k footprint is computed
+                        # SEPARATELY from this 8k bed; without the factor
+                        # there the taper has no width effect (v4 test).
+                        _hw_taper_8k_cache = np.round(
+                            _taper_8k * np.float32(255.0)).astype(np.uint8)
+                        del _sk_m, _fa_idx, _fa_full, _taper_8k
                     # LUT height → MC Y at 8k
                     _LUT_in_8k = np.array(
                         [0, 17050, 45000, 65496], dtype=np.float64)
@@ -1486,6 +1554,33 @@ def _ensure_caches(hr_path: Path) -> None:
                           f"{_RIVER_BED_GAUSS_SIGMA_8K:.0f}, "
                           f"footprint={int(_footprint_8k.sum())} "
                           f"bank_ring={int(_bank_ring_8k.sum())} cells)")
+
+                    # S92: GLOBAL TIDAL MASK (see module docstring at the
+                    # _tidal_8k_cache global). Flood from ocean through
+                    # footprint cells whose carved bed sits below sea level.
+                    _ocean_8k_t = _height_mc_8k < np.float32(63.0)
+                    # Field = PAINT (not the carve footprint — the S84 coast
+                    # factor zeroes the 8k carve at mouths, so the footprint
+                    # is EMPTY exactly where the estuary is; v6/v7: (27,34)
+                    # got 0 pinned cells) & (bed<63 OR raw terrain<63 — at
+                    # mouths the sub-sea bed is the ocean-corrected terrain
+                    # itself, not carve).
+                    _deep_fp_8k = (paint_mask | _footprint_8k) & (
+                        (_bed_out_8k < np.float32(63.0))
+                        | (_height_mc_8k < np.float32(63.0)))
+                    from scipy.ndimage import label as _lbl_t8
+                    _tl8, _tn8 = _lbl_t8(
+                        _ocean_8k_t | _deep_fp_8k,
+                        structure=np.ones((3, 3), bool))
+                    _tidal_8k_cache = np.zeros_like(_deep_fp_8k)
+                    if _tn8:
+                        _ids8 = np.unique(_tl8[_ocean_8k_t])
+                        _ids8 = _ids8[_ids8 > 0]
+                        if _ids8.size:
+                            _tidal_8k_cache = _deep_fp_8k & np.isin(
+                                _tl8, _ids8)
+                    print(f"[hydro_region_overlay] global tidal mask: "
+                          f"{int(_tidal_8k_cache.sum())} 8k cells")
             except Exception as _bed_exc:  # noqa: BLE001
                 print(f"[hydro_region_overlay] global bed precompute "
                       f"skipped: {type(_bed_exc).__name__}: {_bed_exc}")
@@ -1789,6 +1884,21 @@ def _rasterize_river_edges_tile(
             ).astype(np.float32)
             carve_depth_50k = (
                 carve_depth_50k * _coast_factor_50k
+            ).astype(np.float32)
+        # S92: headwater taper at 50k — the SAME accumulation factor that
+        # shaped the 8k bed, bilinear-sampled, simple multiplication (the
+        # v6 form: measured tips ~4 wide / depth 1 at (62,61) — the asked-
+        # for thin shallow creeks; a v7 attempt to decouple width/depth via
+        # sqrt regressed widths because river_meta's width derives from the
+        # spline outline + other carver fields, not carve_depth alone —
+        # carver width-map deep-dive = documented follow-up).
+        if _hw_taper_8k_cache is not None:
+            _hw_t_50k = (_mc(
+                _hw_taper_8k_cache.astype(np.float32), coords, order=1,
+                mode="constant", cval=255.0,
+            ) / np.float32(255.0)).astype(np.float32)
+            carve_depth_50k = (
+                carve_depth_50k * _hw_t_50k
             ).astype(np.float32)
         paint_eroded_50k = carve_depth_50k > 0.5
         paint_smooth_full_50k = paint_eroded_50k.copy()
