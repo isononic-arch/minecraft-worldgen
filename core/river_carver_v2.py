@@ -223,7 +223,7 @@ def _draw_tapered_channel(centerline, order_u8, path_r, path_c,
 
 
 def _carve_lakes_v2(pad_basin, pad_water_y, pad_terrain_y,
-                    world_ox, world_oy, geo):
+                    world_ox, world_oy, geo, pad_dist=None):
     """Organic lake carve (S90). Returns (water_mask, bed_y) over the padded
     window. Flatten + EDT parabolic bowl with a DOMAIN-WARPED, TERRAIN-FOLLOWING
     shoreline so the 1:8 NEAREST staircase becomes an organic outline (Nasworthy,
@@ -291,7 +291,24 @@ def _carve_lakes_v2(pad_basin, pad_water_y, pad_terrain_y,
         sdf = sdf - terr_follow * np.clip(pad_terrain_y - wl_flat, 0.0, None)
 
     water = sdf > shore_thresh
-    d = depth_max * np.clip(sdf / max(1.0, depth_ref), 0.0, 1.0) ** depth_pow
+    # DEPTH from a GLOBAL distance-to-shore field (computed by the caller at a
+    # large pad so it reaches the centre of lakes wider than a tile). Depth grows
+    # ~linearly with distance-to-shore then caps -> deepens gradually all the way
+    # to the centre (no flat bottom-out), scales with lake size (bigger lake =
+    # deeper), and is SEAM-SAFE (a per-window EDT would truncate at the window
+    # edge). pow<1 flattens the deep floor a touch; smoothing dissolves the step.
+    if pad_dist is not None:
+        depth_per_px = float(lc.get("depth_per_px", 0.15))
+        depth_cap = float(lc.get("depth_cap", 70.0))
+        depth_curve = float(lc.get("depth_curve_pow", 0.85))
+        dsmooth = float(lc.get("depth_smooth_sigma", 5.0))
+        _dist = np.asarray(pad_dist, np.float32)
+        if dsmooth > 0.0:
+            _dist = gaussian_filter(_dist, dsmooth)
+        _n = np.clip(_dist * depth_per_px / max(1.0, depth_cap), 0.0, 1.0)
+        d = depth_cap * (_n ** depth_curve)
+    else:
+        d = depth_max * np.clip(sdf / max(1.0, depth_ref), 0.0, 1.0) ** depth_pow
     bed = np.where(water, wl_flat - d, pad_terrain_y).astype(np.float32)
     return water, bed
 
@@ -501,13 +518,33 @@ def carve_rivers(
                        and not _os_lv2.environ.get("LAKE_V2_OFF"))
                 if _v2:
                     # ── S90 ORGANIC LAKE CARVE ────────────────────────────────
-                    # Flatten + EDT parabolic bowl with a domain-warped, terrain-
-                    # following shoreline (de-staircases the 1:8 NEAREST outline).
-                    # only-lower depth (clip>=0) reuses the subtract-apply path and
-                    # preserves naturally-deeper cells; stochastic rounding is
-                    # skipped (the bed is already smooth).
+                    # Organic de-staircased shoreline + GLOBAL hydro_lkdep depth
+                    # (gradual to centre, no flat bottom-out, seam-safe). only-lower
+                    # depth (clip>=0) reuses the subtract-apply path; stochastic
+                    # rounding skipped (the bed is already smooth).
+                    # GLOBAL distance-to-shore: read the lake mask at a LARGE pad
+                    # and EDT it so distance reaches the centre of lakes wider than
+                    # a tile (seam-safe gradual depth), then crop to the working pad.
+                    from scipy.ndimage import distance_transform_edt as _edt_dep
+                    _DPAD = int(geo.get("lake_carve", {}).get("depth_edt_pad_px", 640))
+                    _dpx0 = max(col_off - _DPAD, 0); _dpz0 = max(row_off - _DPAD, 0)
+                    with rasterio.open(wl_tif) as _src:
+                        _dpx1 = min(col_off + W + _DPAD, _src.width)
+                        _dpz1 = min(row_off + H + _DPAD, _src.height)
+                        _wlb = _src.read(1, window=_RWindow(
+                            _dpx0, _dpz0, _dpx1 - _dpx0, _dpz1 - _dpz0))
+                    _bg = (_wlb == 0)
+                    if _bg.any():
+                        _distb = _edt_dep(_wlb > 0).astype(np.float32)
+                    else:
+                        # window entirely inside a giant lake -> no shore in reach;
+                        # treat as deepest (helper caps it).
+                        _distb = np.full(_wlb.shape, 1e6, np.float32)
+                    _cr = pz0 - _dpz0; _cc = px0 - _dpx0
+                    _pad_dist_v2 = _distb[_cr:_cr + (pz1 - pz0), _cc:_cc + (px1 - px0)]
                     _water_pad, _bed_pad = _carve_lakes_v2(
-                        pad_basin, pad_water_y, pad_terrain_y, px0, pz0, geo)
+                        pad_basin, pad_water_y, pad_terrain_y, px0, pz0, geo,
+                        pad_dist=_pad_dist_v2)
                     lake_mask = _water_pad[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
                     _bedi = _bed_pad[crop_r0:crop_r0+H, crop_c0:crop_c0+W]
                     _terri = pad_terrain_y[crop_r0:crop_r0+H, crop_c0:crop_c0+W]

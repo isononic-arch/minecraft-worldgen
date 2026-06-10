@@ -763,6 +763,8 @@ def _process_tile(args: dict) -> dict:
         if river_meta is not None:
             _np_sd.save(f"{_surf_dump_dir}/rmeta_{tile_x}_{tile_y}.npy",
                         np.asarray(river_meta, dtype=np.uint8))
+        _np_sd.save(f"{_surf_dump_dir}/sblk_{tile_x}_{tile_y}.npy",
+                    np.asarray(surface_blk, dtype=object), allow_pickle=True)
         if surface_y_padded is not None:
             _np_sd.save(f"{_surf_dump_dir}/sy_halo_{tile_x}_{tile_y}.npy", surface_y_padded)
         if _relief_rough_pad is not None:
