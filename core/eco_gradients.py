@@ -827,23 +827,51 @@ def compute_eco_gradients(
             _any_beach_biome = _full_bch | _shallow_bch
             if _any_beach_biome.any():
                 _dist_from_ocean = _edt_bch(~_ocean).astype(np.float32)
+                _bch_cfg = cfg.get("eco_gradients", {}).get("beach_gap", {})
 
-                # --- Gaussian-blurred noise field for width modulation ------
-                # Same pattern as hydrology_precompute.py:694 — seeded RNG,
-                # standard normal, then Gaussian blur.  sigma=8 → 8–16 block
-                # coherent lobes.
-                _bch_rng = np.random.default_rng(99001 + tile_x * 97 + tile_z)
-                _wn_raw = _gf_bch(
-                    _bch_rng.standard_normal((H, W)).astype(np.float32),
-                    sigma=12,   # S55 v2: was 8; larger lobes = longer stretches
-                )
-                _wn_lo, _wn_hi = float(_wn_raw.min()), float(_wn_raw.max())
-                if _wn_hi > _wn_lo:
-                    _width_noise = (2.0 * (_wn_raw - _wn_lo)
-                                    / (_wn_hi - _wn_lo) - 1.0).astype(np.float32)
-                else:
-                    _width_noise = np.zeros_like(_wn_raw)
-                del _wn_raw
+                # --- Width-modulation noise — WORLD-COORD splitmix64 hash +
+                # padded gaussian blur (S91 regression #2 family fix).
+                # Was: per-tile default_rng(99001 + tile_x*97 + tile_z)
+                # standard_normal + per-tile min-max rescale — BOTH per-tile
+                # (the field AND its normalization), so beach width stepped at
+                # every tile border a beach crossed.  Now: hash world coords
+                # (same value computed on both sides of any seam), blur on a
+                # padded window (pad >= 3*sigma so the blur sees identical
+                # neighbourhoods either side), crop, and normalize by FIXED
+                # analytic constants (std of gaussian-blurred uniform noise =
+                # (1/sqrt(12)) / (2*sqrt(pi)*sigma)).
+                _BCH_SIGMA = 12.0
+                _bch_pad = int(3 * _BCH_SIGMA) + 4
+                _pw = W + 2 * _bch_pad
+                _ph = H + 2 * _bch_pad
+                _wxp = (np.int64(tile_x) * W - _bch_pad
+                        + np.arange(_pw, dtype=np.int64))[None, :].astype(np.uint64)
+                _wzp = (np.int64(tile_z) * H - _bch_pad
+                        + np.arange(_ph, dtype=np.int64))[:, None].astype(np.uint64)
+
+                def _bch_hash01(salt):
+                    # salt premixed in Python-int space (numpy emits a
+                    # RuntimeWarning on scalar uint64 wrap; the wrap itself
+                    # is intended splitmix64 behaviour)
+                    _salt64 = np.uint64(
+                        (salt * 0x94D049BB133111EB) & 0xFFFFFFFFFFFFFFFF)
+                    _hh = (_wxp * np.uint64(0x9E3779B97F4A7C15)
+                           + _wzp * np.uint64(0xBF58476D1CE4E5B9)
+                           + _salt64)
+                    _hh = (_hh ^ (_hh >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+                    _hh = (_hh ^ (_hh >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+                    _hh = _hh ^ (_hh >> np.uint64(31))
+                    return (_hh.astype(np.float64)
+                            / np.float64(np.iinfo(np.uint64).max)).astype(np.float32)
+
+                _wn_blur = _gf_bch(_bch_hash01(0xBEAC4), sigma=_BCH_SIGMA)[
+                    _bch_pad:_bch_pad + H, _bch_pad:_bch_pad + W]
+                _std_wn = np.float32((1.0 / np.sqrt(12.0))
+                                     / (2.0 * np.sqrt(np.pi) * _BCH_SIGMA))
+                _width_noise = np.clip((_wn_blur - np.float32(0.5))
+                                       / (np.float32(2.5) * _std_wn),
+                                       -1.0, 1.0).astype(np.float32)
+                del _wn_blur
 
                 # --- Core + total widths (non-beach biomes = 0) -------------
                 # S55 v5: no slope gate.  v3's hard cliff gate and v4's
@@ -856,7 +884,11 @@ def compute_eco_gradients(
                     _base_width + _amp * _width_noise, 0.0
                 ).astype(np.float32)
                 _core_width[~_any_beach_biome] = 0.0
-                _dither_width = _core_width * np.float32(3.0)  # S55 v8: was 0.8; huge mix zone dominates the beach visually
+                # S91 regression #3: dither zone 3.0x -> 1.5x core (config
+                # knob).  3.0x propagated sand ~12-28 px inland — "beaches
+                # propagate out too far" (S90 walk).
+                _dither_width = _core_width * np.float32(
+                    _bch_cfg.get("dither_width_mult", 1.5))
                 _total_width = _core_width + _dither_width
 
                 # --- Eligibility ------------------------------------------
@@ -868,11 +900,19 @@ def compute_eco_gradients(
                 # snow (7), sand_dune (8) — those are physically dominant.
                 # (Floodplain near the coast is delta/tidal flats, which
                 # read as beach visually, not grass clearings.)
+                # S91 regression #4: beach Y-eligibility.  With the S90
+                # coastal spline lift (mc_y_out[4] 64->67) the first land off
+                # the waterline sits at Y64-66; beach belongs on Y64 OR Y65
+                # only.  Above max_surface_y the terrain has risen off the
+                # shore — no sand.  Also auto-tightens horizontal propagation
+                # (#3): beach can't climb inland past the Y65 contour.
+                _bch_max_y = np.int16(_bch_cfg.get("max_surface_y", 65))
                 _bch_eligible = (
                     land_mask & ~water_mask_bch
                     & ((gap_mask == 0) | (gap_mask == 1) | (gap_mask == 4))
                     & _any_beach_biome
                     & (_dist_from_ocean > 0)
+                    & (surface_y <= _bch_max_y)
                 )
 
                 # --- Core: always beach ------------------------------------
@@ -897,19 +937,20 @@ def compute_eco_gradients(
                 # mostly-sand inner half and mostly-biome outer half.
                 _place_prob = np.clip(1.0 - _t, 0.15, 0.85).astype(np.float32)
 
-                # Second Gaussian-blurred random field, finer sigma for edge
-                # fingers (different seed than width noise).
-                _dr_raw = _gf_bch(
-                    _bch_rng.random((H, W)).astype(np.float32),
-                    sigma=1,   # S55 v9: was 2; near per-pixel salt-and-pepper
-                )
-                _dr_lo, _dr_hi = float(_dr_raw.min()), float(_dr_raw.max())
-                if _dr_hi > _dr_lo:
-                    _dith_coin = ((_dr_raw - _dr_lo)
-                                  / (_dr_hi - _dr_lo)).astype(np.float32)
-                else:
-                    _dith_coin = _dr_raw
-                del _dr_raw
+                # Second blurred random field, finer sigma for edge fingers.
+                # S91: world-coord hash (different salt) + padded blur + fixed
+                # normalization — same seam-safety treatment as _width_noise.
+                _DC_SIGMA = 1.0
+                _dc_blur = _gf_bch(_bch_hash01(0xD17BEA), sigma=_DC_SIGMA)[
+                    _bch_pad:_bch_pad + H, _bch_pad:_bch_pad + W]
+                _std_dc = np.float32((1.0 / np.sqrt(12.0))
+                                     / (2.0 * np.sqrt(np.pi) * _DC_SIGMA))
+                _dith_coin = np.clip(
+                    np.float32(0.5)
+                    + (_dc_blur - np.float32(0.5))
+                    / (np.float32(2.5) * _std_dc) * np.float32(0.5),
+                    0.0, 1.0).astype(np.float32)
+                del _dc_blur
 
                 _bch_dithered = _in_dither & (_dith_coin < _place_prob)
 
@@ -926,7 +967,7 @@ def compute_eco_gradients(
                 del (_dist_from_ocean, _width_noise, _core_width,
                      _dither_width, _total_width,
                      _bch_eligible, _bch_core, _in_dither, _t,
-                     _place_prob, _dith_coin, _bch_dithered, _bch_rng)
+                     _place_prob, _dith_coin, _bch_dithered, _wxp, _wzp)
             del _full_bch, _shallow_bch, _base_width, _amp, _any_beach_biome
         del _ocean, water_mask_bch
         # ── End beach ────────────────────────────────────────────────────

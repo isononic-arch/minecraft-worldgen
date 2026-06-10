@@ -991,6 +991,11 @@ def process_tile_columns_v2(
     sediment_thickness_tile: np.ndarray | None = None,
     soil_horizon_depth_tile: np.ndarray | None = None,
     use_new_geology:         bool                = False,
+    # S91 regression #1 (validator parity with generate_columns): optional
+    # padded height halo so the ocean-depth EDT is seam-safe. See
+    # generate_columns for the mechanism.
+    height_tile_padded:      np.ndarray | None = None,
+    pad_px:                  int               = 0,
 ) -> list[list]:
     """
     Vectorized replacement for process_tile_columns().
@@ -1029,7 +1034,15 @@ def process_tile_columns_v2(
     min_ocean_depth = _od_cfg.get("min_depth", 15)
 
     land_mask  = surface_y >= SEA_LEVEL
-    dist       = distance_transform_edt(~land_mask).astype(np.float32)
+    if height_tile_padded is not None and pad_px > 0:
+        # S91: halo-aware EDT (seam-safe at underwater coastlines).
+        _sy_pad_v2 = _LUT[height_tile_padded.astype(np.uint16)].astype(np.int16)
+        _land_pad_v2 = _sy_pad_v2 >= SEA_LEVEL
+        dist = distance_transform_edt(~_land_pad_v2).astype(np.float32)[
+            pad_px:pad_px + H, pad_px:pad_px + W]
+        del _sy_pad_v2, _land_pad_v2
+    else:
+        dist = distance_transform_edt(~land_mask).astype(np.float32)
     blend      = np.clip(dist / transition_px, 0.0, 1.0)
     min_sy     = SEA_LEVEL - min_ocean_depth                        # e.g. Y=48
     corrected  = np.minimum(surface_y, min_sy).astype(np.int32)
@@ -1544,6 +1557,14 @@ def generate_columns(
     sediment_thickness_tile: np.ndarray | None = None,
     soil_horizon_depth_tile: np.ndarray | None = None,
     use_new_geology:         bool                = False,
+    # S91 regression #1: optional padded height halo for the ocean-depth EDT.
+    # The per-tile EDT can't see land just across the tile border, so the
+    # distance-to-shore (and with it the depth blend) JUMPS at tile seams on
+    # underwater coastlines. When the caller provides a padded height window,
+    # the EDT runs on the halo and is cropped back -> both sides of a seam
+    # compute the same distance.
+    height_tile_padded:      np.ndarray | None = None,
+    pad_px:                  int               = 0,
 ) -> np.ndarray:
     """
     Compute the surface_y (H, W) int16 array for a tile.
@@ -1566,7 +1587,16 @@ def generate_columns(
     min_ocean_depth = _od_cfg.get("min_depth", 15)
 
     land_mask = surface_y >= SEA_LEVEL
-    dist      = distance_transform_edt(~land_mask).astype(np.float32)
+    if height_tile_padded is not None and pad_px > 0:
+        # Halo-aware EDT (seam-safe): distance to the nearest land anywhere in
+        # the padded window, cropped to the inner tile.
+        _sy_pad = _LUT[height_tile_padded.astype(np.uint16)].astype(np.int16)
+        _land_pad = _sy_pad >= SEA_LEVEL
+        dist = distance_transform_edt(~_land_pad).astype(np.float32)[
+            pad_px:pad_px + H, pad_px:pad_px + W]
+        del _sy_pad, _land_pad
+    else:
+        dist = distance_transform_edt(~land_mask).astype(np.float32)
     blend     = np.clip(dist / transition_px, 0.0, 1.0)
     min_sy    = SEA_LEVEL - min_ocean_depth
     corrected = np.minimum(surface_y, min_sy).astype(np.int32)

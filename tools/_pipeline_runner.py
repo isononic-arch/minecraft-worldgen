@@ -201,6 +201,20 @@ def run_tile_prelude(
     dep_u16 = er_u16.copy()
     mc_biomes = _mc_biome_map(biome_grid)
 
+    # S91 regression #1 (validator parity): padded height halo so the
+    # ocean-depth EDT is seam-safe, matching run_pipeline's production path.
+    _od_pad = max(64, int(cfg.get("ocean_depth", {}).get("transition_px", 30)) + 16)
+    try:
+        _h_pad = core_tiles.read_tile(
+            masks_dir=masks_dir, col_off=col_off, row_off=row_off,
+            width=TILE_SIZE, height=TILE_SIZE,
+            pad_px=_od_pad, mask_subset=("height",),
+        )
+        h_pad_u16 = (_h_pad["height"] * 65535).astype(np.uint16)
+        del _h_pad
+    except Exception:
+        h_pad_u16 = None
+
     col_results = core_col.process_tile_columns_v2(
         tile_height    = h_u16,
         tile_slope     = sl_u16,
@@ -214,6 +228,8 @@ def run_tile_prelude(
         tile_origin_y  = row_off,
         noise_gens     = noise,
         cfg            = cfg,
+        height_tile_padded = h_pad_u16,
+        pad_px         = (_od_pad if h_pad_u16 is not None else 0),
     )
 
     surface_y = np.array(
@@ -224,7 +240,10 @@ def run_tile_prelude(
     # ---- Step 6a: river carving ----
     _log("carve_rivers")
     pre_carve_y = surface_y.copy()
-    surface_y, river_meta, _conn_channel_mask = core_river.carve_rivers(
+    # S91: carve_rivers returns 4 values since S72 (water_y_field added) —
+    # this unpack had 3 targets, breaking validate_3x3/_pipeline_runner for
+    # every tile with a fatal "too many values to unpack".
+    surface_y, river_meta, _conn_channel_mask, _water_y_field = core_river.carve_rivers(
         surface_y        = surface_y,
         flow_tile        = masks["flow"],
         river_tile       = masks.get("river", np.zeros_like(masks["flow"])),

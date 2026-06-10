@@ -934,7 +934,10 @@ def place_schematics(
     # sprinkle.  Scale 60 blocks; output [0.3, 1.7] multiplier (mean 1.0).
     try:
         import opensimplex as _ox_karst_mod
-        _ox_karst = _ox_karst_mod.OpenSimplex(seed=(tile_seed ^ 0xCA757) & 0x7FFFFFFF)
+        # S91 regression #2: seed must be GLOBAL (was tile_seed ^ 0xCA757 — a
+        # per-tile seed under world coords = a different simplex field per
+        # tile, so the grove pattern broke at every KARST tile border).
+        _ox_karst = _ox_karst_mod.OpenSimplex(seed=(GLOBAL_SEED ^ 0xCA757) & 0x7FFFFFFF)
         _kx = ((np.arange(W) + px_off) / 60.0).astype(np.float64)
         _kz = ((np.arange(H) + py_off) / 60.0).astype(np.float64)
         _karst_noise = _ox_karst.noise2array(_kx, _kz).astype(np.float32)  # [-1, 1]
@@ -1065,11 +1068,16 @@ def place_schematics(
             amplitude *= persistence
             freq *= lacunarity
         noise_tile = accumulated.astype(np.float32)
-        lo, hi = noise_tile.min(), noise_tile.max()
-        if hi - lo > 1e-9:
-            noise_tile = (noise_tile - lo) / (hi - lo)
-        else:
-            noise_tile = np.full((H, W), 0.5, dtype=np.float32)
+        # S91 regression #2: FIXED normalization range (was per-tile min/max).
+        # The raw fBm is world-continuous (global seed + world coords), but
+        # per-tile min-max rescaling made density_mult discontinuous at every
+        # tile border (measured ~1.4x interior variation at a typical seam —
+        # mild, but world-wide and worse wherever tile extrema differ).
+        # +/-1.4 covers the observed per-tile range (~ +/-1.3) for 3-octave
+        # persistence-0.5 fBm; clip handles the tail.
+        _FBM_RANGE = 1.4
+        noise_tile = np.clip(
+            (noise_tile + _FBM_RANGE) / (2.0 * _FBM_RANGE), 0.0, 1.0)
     except ImportError:
         noise_tile = np.empty((H, W), dtype=np.float32)
         for row in range(H):
@@ -1331,6 +1339,10 @@ def place_schematics(
     # adjacent schematic placements (8-neighborhood).  Both trees and bushes
     # share the same tracker so cross-type clusters also get varied rotations.
     _rotation_grid: dict[tuple[int, int], list[int]] = {}
+
+    # S91 regression #2: path -> max(X,Z) extent cache for the tile-boundary
+    # clip rejection below (loaded lazily, edge-strip candidates only).
+    _schem_extent_cache: dict[str, int] = {}
 
     # S89 krummholz: stunted trees on/near rock.  Where rock_gap (gap==5) fires
     # on or within rock_dilate_blocks of a TREE candidate, OR at/above
@@ -1683,6 +1695,33 @@ def place_schematics(
             jitter_z = rng.randint(-3, 3)
             jittered_col = max(0, min(W - 1, col + jitter_x))
             jittered_row = max(0, min(H - 1, row + jitter_z))
+
+            # S91 regression #2: reject placements whose schematic would cross
+            # the tile boundary. stamp_schematic anchors at the (0,0) corner
+            # and "clips to tile bounds silently" — every anchor within the
+            # schematic's XZ extent of the right/bottom edge rendered as a
+            # vertically-sliced half-tree lining the tile border (~tens per
+            # forested seam, world-wide). The neighbour tile is generated
+            # independently and cannot render the missing half, so rejection
+            # is the only seam-safe option. Extent is the ACTUAL max(X,Z) of
+            # the schematic (median ~10, up to ~21 — the footprint proxy
+            # 2*center_off+1 under-covers badly), loaded lazily and cached;
+            # only candidates within _EDGE_GUARD of the far edges pay the
+            # load. max(X,Z) also covers all 4 rotations.
+            _EDGE_GUARD = 24
+            if (jittered_col >= W - _EDGE_GUARD) or (jittered_row >= H - _EDGE_GUARD):
+                _ext = _schem_extent_cache.get(entry.path)
+                if _ext is None:
+                    try:
+                        from core.schematic_loader import load_schem as _ld_ext
+                        _sd_ext = _ld_ext(entry.path)
+                        _ext = int(max(_sd_ext.blocks.shape[1],
+                                       _sd_ext.blocks.shape[2]))
+                    except Exception:
+                        _ext = 2 * {"sm": 2, "md": 3, "lg": 4}.get(entry.size, 3) + 5
+                    _schem_extent_cache[entry.path] = _ext
+                if (jittered_col + _ext > W) or (jittered_row + _ext > H):
+                    continue
 
             # Compute placement Y at jittered position
             sy         = int(surface_y[jittered_row, jittered_col])
