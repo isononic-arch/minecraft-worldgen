@@ -22,6 +22,7 @@ UPLOAD_MASKS=( "masks/override.tif" "masks/lithology.tif" "masks/lithology_regio
 log(){ echo "[T+$(( ($(date +%s)-START)/60 ))m] $*"; }
 
 mapfile -t TLINES < "$TILES"
+TLINES=("${TLINES[@]%$'\r'}")   # strip CR (Windows line endings) so $(( )) works
 declare -a BOX_TILES; for b in "${!IPS[@]}"; do BOX_TILES[$b]=""; done
 i=0
 for line in "${TLINES[@]}"; do
@@ -56,8 +57,12 @@ PYEOF
   done
   local cmd="cd /root/minecraft-worldgen && rm -f /root/rv_done && rm -rf output /root/rv_*.log && tmux kill-session -t rv 2>/dev/null; "
   cmd+="tmux new -d -s rv 'source /root/venv/bin/activate; export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=$OMP OPENBLAS_NUM_THREADS=$OMP MKL_NUM_THREADS=$OMP; "
-  cmd+="echo BUILD_START > /root/rv_build.log; python3 tools/build_terrain_derived.py --only rock_layers,talus,cap --scale 8 >> /root/rv_build.log 2>&1; "
-  cmd+="python3 tools/build_snow_physics.py --scale 8 >> /root/rv_build.log 2>&1; echo BUILD_DONE >> /root/rv_build.log; "
+  if [ -z "${SKIP_BUILD:-}" ]; then
+    cmd+="echo BUILD_START > /root/rv_build.log; python3 tools/build_terrain_derived.py --only rock_layers,talus,cap --scale 8 >> /root/rv_build.log 2>&1; "
+    cmd+="python3 tools/build_snow_physics.py --scale 8 >> /root/rv_build.log 2>&1; echo BUILD_DONE >> /root/rv_build.log; "
+  else
+    cmd+="echo BUILD_DONE >> /root/rv_build.log; "   # SKIP_BUILD: reuse masks from a prior render on this warm box
+  fi
   cmd+="$rowcmds touch /root/rv_done'"
   ssh root@"$ip" "$cmd" 2>&1 | tee -a "$lf"
   echo "[$ip] dispatched ($(echo "$tiles" | tr '|' '\n' | grep -c .) tiles)" | tee -a "$lf"
