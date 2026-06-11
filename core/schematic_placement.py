@@ -1710,18 +1710,38 @@ def place_schematics(
             # load. max(X,Z) also covers all 4 rotations.
             _EDGE_GUARD = 24
             if (jittered_col >= W - _EDGE_GUARD) or (jittered_row >= H - _EDGE_GUARD):
-                _ext = _schem_extent_cache.get(entry.path)
-                if _ext is None:
-                    try:
-                        from core.schematic_loader import load_schem as _ld_ext
-                        _sd_ext = _ld_ext(entry.path)
-                        _ext = int(max(_sd_ext.blocks.shape[1],
-                                       _sd_ext.blocks.shape[2]))
-                    except Exception:
-                        _ext = 2 * {"sm": 2, "md": 3, "lg": 4}.get(entry.size, 3) + 5
-                    _schem_extent_cache[entry.path] = _ext
-                if (jittered_col + _ext > W) or (jittered_row + _ext > H):
-                    continue
+                def _edge_extent(_e):
+                    _x = _schem_extent_cache.get(_e.path)
+                    if _x is None:
+                        try:
+                            from core.schematic_loader import load_schem as _ld_ext
+                            _sd_ext = _ld_ext(_e.path)
+                            _x = int(max(_sd_ext.blocks.shape[1],
+                                         _sd_ext.blocks.shape[2]))
+                        except Exception:
+                            _x = 2 * {"sm": 2, "md": 3, "lg": 4}.get(_e.size, 3) + 5
+                        _schem_extent_cache[_e.path] = _x
+                    return _x
+
+                _fit_lim = min(W - jittered_col, H - jittered_row)
+                if _edge_extent(entry) > _fit_lim:
+                    # S92: SUBSTITUTE a same-list schematic that actually fits
+                    # instead of rejecting. S91's plain rejection left a bare
+                    # trunk-AND-canopy lane ~10px wide tracing every tile
+                    # border (user screenshot: dead-straight gap through
+                    # canopy at the 50|51 seam). Substitution keeps placements
+                    # marching right up to the border with progressively
+                    # smaller schematics; interior canopies then overhang the
+                    # last few px. Weighted among the fitting entries.
+                    _fit_pairs = [(e, w) for e, w in zip(entries, weights)
+                                  if w > 0 and _edge_extent(e) <= _fit_lim]
+                    if not _fit_pairs:
+                        continue
+                    entry = rng.choices([p[0] for p in _fit_pairs],
+                                        weights=[p[1] for p in _fit_pairs],
+                                        k=1)[0]
+                    # keep downstream sizing consistent with the substitute
+                    radius = _biome_canopy_radius(entry.size, biome_str, cfg)
 
             # Compute placement Y at jittered position
             sy         = int(surface_y[jittered_row, jittered_col])
