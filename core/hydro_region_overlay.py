@@ -43,6 +43,33 @@ _LAKE_DEPTH_MIN  = 2
 # from paint thickness.
 _FLOW_WIDTH_SCALE = 0.30
 
+# ── S93 headwater inset ──
+# Painted lines have a hard width floor (1 paint px ≈ 6 blocks at 50k):
+# every headwater rendered 9-11 blocks wide regardless of accumulation.
+# Fix is GEOMETRIC: inset the channel SDF by (1 - t) × local paint
+# half-width, where t comes from skeleton flow accumulation. Width then
+# scales LINEARLY with t (tips ≈ 2-3-block creeks), and depth couples
+# naturally because the depth curve evaluates the inset SDF (a quarter-
+# width creek is proportionally shallower — Leopold-ish w ∝ Q^~0.5).
+# Applied identically at BOTH SDF consumers (8k bed + 50k carve) so bed
+# and footprint cannot disagree (the S92 v4 lesson).
+#   t = clip((accum / _HW_A_REF) ** _HW_EXP, _HW_T_MIN, 1.0)
+# S93 STATUS: DISABLED pending the carver width-map session. Two gates
+# produced internally inconsistent width/depth responses ((62,61): gate 1
+# narrowed width AND collapsed depth; gate 2 with a verified-identical
+# field left width untouched while depth stayed collapsed) — rendered
+# channel width is NOT a single-lever function of this SDF (centerline +
+# EDT width radius + polygon SDF + carve thresholds + bed override all
+# contribute). Flag stays False until that pipeline is mapped end-to-end;
+# the field build + both subtraction sites below are sound and reusable.
+_HW_INSET_ENABLED = False
+_HW_A_REF = 150.0     # accumulation (8k skeleton cells) at which t = 1
+_HW_EXP = 0.45
+_HW_T_MIN = 0.22      # width floor factor (tips keep ~1/4 paint width)
+_BLOCKS_PER_8K = 50000.0 / 8192.0
+# uint8 inset field (blocks), built in _ensure_caches alongside the bed.
+_hw_inset_8k_cache: "np.ndarray | None" = None
+
 
 # ---------------------------------------------------------------------------
 # Global skeleton cache
@@ -908,7 +935,7 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
     """
     global _river_edges_cache, _river_width_8k_cache
     global _paint_smooth_8k_cache, _paint_eroded_8k_cache
-    global _lake_mask_cache, _flow_accum_8k_cache, _cache_path
+    global _lake_mask_cache, _flow_accum_8k_cache, _cache_path, _hw_inset_8k_cache
     global _river_spline_pts_50k_cache, _river_spline_kdtree_cache
     global _river_spline_polygons_50k_cache
     global _river_bed_8k_cache, _river_water_y_8k_cache
@@ -920,9 +947,39 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
     if _os.environ.get("VANDIR_NO_BED_CACHE"):
         return False
 
-    bed_cache_path = hr_path.parent / "_bed_cache_v17.pkl"
+    bed_cache_path = hr_path.parent / "_bed_cache_v19.pkl"
     if not bed_cache_path.exists():
-        return False
+        # ── S93 MIGRATION: adopt a v17 cache in place of a rebuild ──
+        # The v17 pickle encodes an OLDER bed-build's output that current
+        # code does NOT reproduce (rebuilds yield a shallower bed: (62,61)
+        # stream depth 4-5 -> 1, the (27,34) estuary drops below the
+        # river-tag threshold entirely). The cache key hashes paint+config
+        # only, so this code drift was never caught. Until the bed builder
+        # is reconciled (own session), the v17 contents are LOAD-BEARING:
+        # migrate them verbatim (plus the new S93 field) rather than
+        # rebuilding. Boxes self-heal the same way (snapshot ships v17).
+        _v17_path = hr_path.parent / "_bed_cache_v17.pkl"
+        if _v17_path.exists():
+            try:
+                with open(_v17_path, 'rb') as _f17:
+                    _d17 = _pickle.load(_f17)
+                _d17['hw_inset_8k'] = _d17.get('hw_inset_8k')  # None if absent
+                _d17['key'] = _make_bed_cache_key(hr_path)
+                _tmp19 = bed_cache_path.with_suffix('.pkl.tmp')
+                with open(_tmp19, 'wb') as _f19:
+                    _pickle.dump(_d17, _f19,
+                                 protocol=_pickle.HIGHEST_PROTOCOL)
+                _os.replace(_tmp19, bed_cache_path)
+                print("[hydro_region_overlay] bed cache MIGRATED v17 -> "
+                      "v19 (verbatim contents; rebuild would regress the "
+                      "bed — see S93 handoff)")
+            except Exception as _mig_exc:  # noqa: BLE001
+                print(f"[hydro_region_overlay] v17->v19 migration failed "
+                      f"({type(_mig_exc).__name__}: {_mig_exc}) — "
+                      f"falling back to rebuild")
+                return False
+        else:
+            return False
     try:
         expected_key = _make_bed_cache_key(hr_path)
     except Exception as exc:
@@ -933,7 +990,7 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
             data = _pickle.load(f)
         if data.get('key') != expected_key:
             print(f"[hydro_region_overlay] bed cache MISMATCH "
-                  f"(masks/_bed_cache_v17.pkl is stale) — rebuilding")
+                  f"(masks/_bed_cache_v19.pkl is stale) — rebuilding")
             return False
         _river_bed_8k_cache = data['river_bed_8k']
         _paint_smooth_8k_cache = data['paint_smooth_8k']
@@ -950,6 +1007,7 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
         # this field would be rejected by key mismatch above, but defensive-
         # load with .get() in case of partial pickles.
         _coast_factor_8k_cache = data.get('coast_factor_8k')
+        _hw_inset_8k_cache = data.get('hw_inset_8k')  # S93
         # cKDTree is not picklable cleanly; rebuild from points (~5 sec)
         if (_river_spline_pts_50k_cache is not None
                 and _river_spline_pts_50k_cache.shape[0] > 0):
@@ -976,7 +1034,7 @@ def _save_bed_cache_to_disk(hr_path: Path) -> None:
     if _os.environ.get("VANDIR_NO_BED_CACHE"):
         return
 
-    bed_cache_path = hr_path.parent / "_bed_cache_v17.pkl"
+    bed_cache_path = hr_path.parent / "_bed_cache_v19.pkl"
     try:
         key = _make_bed_cache_key(hr_path)
     except Exception as exc:
@@ -997,6 +1055,7 @@ def _save_bed_cache_to_disk(hr_path: Path) -> None:
             'spline_polygons': _river_spline_polygons_50k_cache,
             'river_water_y_8k': _river_water_y_8k_cache,
             'coast_factor_8k': _coast_factor_8k_cache,  # S84
+            'hw_inset_8k': _hw_inset_8k_cache,          # S93 (uint8 blocks)
         }
         tmp_path = bed_cache_path.with_suffix('.pkl.tmp')
         with open(tmp_path, 'wb') as f:
@@ -1013,7 +1072,7 @@ def _save_bed_cache_to_disk(hr_path: Path) -> None:
 def _ensure_caches(hr_path: Path) -> None:
     global _river_edges_cache, _river_width_8k_cache
     global _paint_smooth_8k_cache, _paint_eroded_8k_cache
-    global _lake_mask_cache, _flow_accum_8k_cache, _cache_path
+    global _lake_mask_cache, _flow_accum_8k_cache, _cache_path, _hw_inset_8k_cache
     global _river_spline_pts_50k_cache, _river_spline_kdtree_cache
     global _river_spline_polygons_50k_cache
     global _river_bed_8k_cache, _river_water_y_8k_cache
@@ -1041,6 +1100,7 @@ def _ensure_caches(hr_path: Path) -> None:
         _river_spline_pts_50k_cache = np.zeros((0, 2), dtype=np.float32)
         _river_spline_kdtree_cache = None
         _river_spline_polygons_50k_cache = []
+        _hw_inset_8k_cache = None  # S93
     else:
         masks_dir = hr_path.parent
         # ── 1. Skeleton + edges + EDT width from the painted mask ──
@@ -1069,6 +1129,13 @@ def _ensure_caches(hr_path: Path) -> None:
                 skel_8k.shape, graph_out, graph_in)
         else:
             _flow_accum_8k_cache = np.zeros(skel_8k.shape, dtype=np.uint32)
+
+        # (S93 headwater INSET field is built inside the bed-build section
+        # below — it must scale by the S84 coast factor, which only exists
+        # there. Compounding inset × coast-shallowing erased near-coast
+        # tributaries entirely on the first gate: (19,76) lost all 10.6k
+        # river cells.)
+        _hw_inset_8k_cache = None
 
         # ── 5. GLOBAL signed distance field at 8k ──
         # Cache the SDF (positive inside paint, negative outside) with a
@@ -1295,6 +1362,55 @@ def _ensure_caches(hr_path: Path) -> None:
                     # asymptotic approach — preserves bowl shape).
                     # carve_depth = MAX * tanh(SCALE * max(0, sdf)^POWER / MAX)
                     # × coast_factor (0 at ocean → 1 inland).
+                    # ── S93 headwater INSET field (uint8 blocks at 8k) ──
+                    # inset = (1 - t) × paint half-width × coast_factor,
+                    # t = clip((accum/_HW_A_REF)^_HW_EXP, _HW_T_MIN, 1).
+                    # COAST-SCALED: the S84 factor already shallows the
+                    # carve near the ocean; an unscaled inset COMPOUNDED
+                    # with it and pushed near-coast tributaries below the
+                    # river-tag threshold ((19,76) lost ALL rivers on the
+                    # first gate). FLOORED: never inset below ~2.5 blocks
+                    # of remaining half-width, so no channel can vanish.
+                    # Width + accumulation are EDT-propagated outward so
+                    # off-skeleton / spline-meandered cells inherit their
+                    # reach's values. Subtracted from BOTH channel SDFs
+                    # (this 8k bed + the 50k carve) so bed and footprint
+                    # stay in lockstep.
+                    if (_HW_INSET_ENABLED
+                            and _flow_accum_8k_cache is not None
+                            and _flow_accum_8k_cache.any()
+                            and width_8k is not None and width_8k.any()):
+                        _sk_m = _flow_accum_8k_cache > 0
+                        _, _hw_idx = _edt_coast(~_sk_m, return_indices=True)
+                        _fa_full = _flow_accum_8k_cache[
+                            _hw_idx[0], _hw_idx[1]].astype(np.float32)
+                        _t_full = np.clip(
+                            (_fa_full / np.float32(_HW_A_REF))
+                            ** np.float32(_HW_EXP),
+                            np.float32(_HW_T_MIN), np.float32(1.0))
+                        _w_m = width_8k > 0
+                        _, _w_idx = _edt_coast(~_w_m, return_indices=True)
+                        _w_full_blk = (width_8k[_w_idx[0], _w_idx[1]]
+                                       .astype(np.float32)
+                                       * np.float32(_BLOCKS_PER_8K))
+                        _inset_blocks = ((np.float32(1.0) - _t_full)
+                                         * _w_full_blk
+                                         * _coast_factor_8k_cache)
+                        # floor: keep >= ~2.5 blocks of half-width
+                        _inset_blocks = np.minimum(
+                            _inset_blocks,
+                            np.maximum(_w_full_blk - np.float32(2.5),
+                                       np.float32(0.0)))
+                        _hw_inset_8k_cache = np.clip(
+                            np.round(_inset_blocks), 0, 255).astype(np.uint8)
+                        del (_sk_m, _hw_idx, _fa_full, _t_full, _w_m,
+                             _w_idx, _w_full_blk, _inset_blocks)
+                        print(f"[hydro_region_overlay] S93 headwater inset "
+                              f"field built (max "
+                              f"{int(_hw_inset_8k_cache.max())} blocks)")
+                        _sdf_blocks_8k = (
+                            _sdf_blocks_8k
+                            - _hw_inset_8k_cache.astype(np.float32))
                     _sdf_pos = np.maximum(_sdf_blocks_8k, np.float32(0.0))
                     _depth_raw_8k = (
                         np.float32(_DEPTH_POWER_SCALE)
@@ -1759,6 +1875,21 @@ def _rasterize_river_edges_tile(
         sdf_blocks = np.where(
             inside_mask_flat, dist_50k_flat, -dist_50k_flat
         ).reshape(tile_size, tile_size).astype(np.float32)
+        # S93 headwater inset at 50k — the SAME field subtracted from the
+        # 8k bed SDF, bilinear-sampled (cval 0 = no inset off-world). Keeps
+        # footprint (this sdf) and bed (8k) in lockstep — the S92 v4 lesson.
+        if _hw_inset_8k_cache is not None:
+            from scipy.ndimage import map_coordinates as _mc_hw
+            _s8 = _REGION_PX / _WORLD_PX
+            _rows_hw = (np.arange(tile_size, dtype=np.float64) + row_off) * _s8
+            _cols_hw = (np.arange(tile_size, dtype=np.float64) + col_off) * _s8
+            _rg_hw, _cg_hw = np.meshgrid(_rows_hw, _cols_hw, indexing="ij")
+            _inset_50k = _mc_hw(
+                _hw_inset_8k_cache.astype(np.float32),
+                np.stack([_rg_hw, _cg_hw]), order=1,
+                mode="constant", cval=0.0).astype(np.float32)
+            sdf_blocks = sdf_blocks - _inset_50k
+            del _inset_50k, _rg_hw, _cg_hw, _rows_hw, _cols_hw
         # S83 v17 + S84: power curve with tanh saturation (matches
         # _ensure_caches formula). depth = MAX * tanh(SCALE * sdf^POWER / MAX)
         # × coast_factor (0 at ocean → 1 inland, sampled at 50k from 8k cache).

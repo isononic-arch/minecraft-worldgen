@@ -267,6 +267,7 @@ def _carve_lakes_v2(pad_basin, pad_water_y, pad_terrain_y,
            - distance_transform_edt(~pad_basin).astype(np.float32))
     if smooth_sig > 0.0:
         sdf = gaussian_filter(sdf, smooth_sig)
+    _warp_coords = None
     if warp_amp > 0.0:
         try:
             from opensimplex import OpenSimplex
@@ -282,11 +283,12 @@ def _carve_lakes_v2(pad_basin, pad_water_y, pad_terrain_y,
                 return a * n1, a * n2
             dy1, dx1 = _oct(warp_scale, warp_amp, _sd, _sd + 777)
             dy2, dx2 = _oct(warp_scale / 3.0, warp_amp * 0.45, _sd + 13, _sd + 790)
+            _warp_coords = [yy + dy1 + dy2, xx + dx1 + dx2]
             sdf = map_coordinates(
-                sdf, [yy + dy1 + dy2, xx + dx1 + dx2],
+                sdf, _warp_coords,
                 order=1, mode="nearest").astype(np.float32)
         except Exception:
-            pass
+            _warp_coords = None
     if terr_follow > 0.0:
         sdf = sdf - terr_follow * np.clip(pad_terrain_y - wl_flat, 0.0, None)
 
@@ -305,6 +307,16 @@ def _carve_lakes_v2(pad_basin, pad_water_y, pad_terrain_y,
         _dist = np.asarray(pad_dist, np.float32)
         if dsmooth > 0.0:
             _dist = gaussian_filter(_dist, dsmooth)
+        # S93: warp the DEPTH field with the SAME displacement as the
+        # shoreline SDF. The depth's distance-to-shore comes from the RAW
+        # 1:8 NEAREST mask, so its integer contours (the bed terraces)
+        # were long straight axis-aligned ledges while the shoreline
+        # above them arced organically (user walk). Sharing the warp
+        # makes every depth terrace wobble in sync with the shore.
+        if _warp_coords is not None:
+            _dist = map_coordinates(
+                _dist, _warp_coords,
+                order=1, mode="nearest").astype(np.float32)
         _n = np.clip(_dist * depth_per_px / max(1.0, depth_cap), 0.0, 1.0)
         d = depth_cap * (_n ** depth_curve)
     else:
@@ -1357,17 +1369,31 @@ def carve_rivers(
                 # The S73 objection to explicit plateaus ("ghost weirs" —
                 # MC tick cascades at step lines) is obsolete: S86 never
                 # fluid-ticks river columns.
+                # S93b: SYMMETRIC hysteresis (not monotone-down). The sort
+                # key (dist-from-ocean) is a valid flow order only for
+                # ocean-bound paths; for LAKE-bound inland streams it is
+                # near-constant noise, and a monotone-down quantizer walks
+                # that scrambled order straight to the profile minimum —
+                # water pinned at bed+1, stream depth collapsed from 4-5 to
+                # 1 ((62,61), masked through two later gates). Symmetric
+                # stepping behaves identically to monotone on genuinely
+                # descending paths and simply TRACKS the profile in clean
+                # plateaus on scrambled ones. Estuary flat-63 still comes
+                # from the SEA floor applied below.
                 _MIN_RUN = 12
                 _lvl = float(np.round(_path_y_smooth[0]))
                 _run = 0
                 _q_out = np.empty_like(_path_y_smooth)
                 for _i in range(len(_path_y_smooth)):
                     _v = float(_path_y_smooth[_i])
-                    if _v <= _lvl - 1.5:
-                        _lvl = float(np.round(_v))   # steep: re-anchor
+                    if _v <= _lvl - 1.5 or _v >= _lvl + 1.5:
+                        _lvl = float(np.round(_v))   # big move: re-anchor
                         _run = 0
                     elif _v <= _lvl - 0.5 and _run >= _MIN_RUN:
                         _lvl -= 1.0                  # gentle: single step
+                        _run = 0
+                    elif _v >= _lvl + 0.5 and _run >= _MIN_RUN:
+                        _lvl += 1.0
                         _run = 0
                     _q_out[_i] = _lvl
                     _run += 1
