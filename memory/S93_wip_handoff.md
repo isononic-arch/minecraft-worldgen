@@ -1,4 +1,5 @@
-# S93 WIP HANDOFF — mid-bisect freeze (user asleep). READ FULLY BEFORE TOUCHING ANYTHING.
+# S93 WIP HANDOFF — STALE (historical freeze only). The session SHIPPED: read [S93_handoff.md](S93_handoff.md) instead.
+# Mystery resolved: (62,61) zero-rivers = migration RACE (shared tmp → rebuild fallback → OOM → regressed bed saved over v19), NOT the symmetric quantizer. Probe #3 proved monotone+v17 was always correct; symmetric hunk reverted. Race-safe migration + _BedCacheRefusal shipped in df0345f.
 
 **Pushed state:** `0fce570` (S93 carver quantization, monotone form) — remote is clean through this.
 **Local WIP commit on `s85-cherry-picks` (NOT pushed):** working tree at freeze = bowl warp + symmetric hysteresis + disabled headwater inset + v17→v19 cache migration. See "Working-tree contents" below.
