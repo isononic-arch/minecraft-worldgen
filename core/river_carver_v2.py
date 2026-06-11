@@ -1338,7 +1338,40 @@ def carve_rivers(
                 # pixels round to same int (longer implicit plateaus, no
                 # cross-section tilt).
                 _path_y_smooth = _gf1(_path_y, sigma=8.0, mode='reflect')
-                water_y[_r_ord, _c_ord] = _path_y_smooth
+                # S93: MONOTONE INTEGER QUANTIZATION with hysteresis along
+                # the path (replaces the per-pixel round() downstream — see
+                # 7.8). round() of the smooth profile put the N|N-1
+                # crossing wherever the float wandered past x.5: a ragged,
+                # Voronoi-sliver-interleaved 2D zone that MC renders as
+                # CHECKERED/raised water patches (user screenshots,
+                # estuary at (27,34)). Quantizing HERE makes each integer
+                # drop exactly ONE clean line across the channel:
+                #  - drop 1 when the smooth profile is >= 0.5 below the
+                #    current plateau AND the plateau has run >= _MIN_RUN
+                #    cells (hysteresis kills dither on near-flat reaches);
+                #  - steep reaches (fallen >= 1.5) re-anchor directly to
+                #    round(v) so descent is never artificially backed up;
+                #  - monotone non-increasing toward the ocean + the SEA
+                #    floor (applied below) → the terminal estuary reach is
+                #    a single flat Y63 pool by construction.
+                # The S73 objection to explicit plateaus ("ghost weirs" —
+                # MC tick cascades at step lines) is obsolete: S86 never
+                # fluid-ticks river columns.
+                _MIN_RUN = 12
+                _lvl = float(np.round(_path_y_smooth[0]))
+                _run = 0
+                _q_out = np.empty_like(_path_y_smooth)
+                for _i in range(len(_path_y_smooth)):
+                    _v = float(_path_y_smooth[_i])
+                    if _v <= _lvl - 1.5:
+                        _lvl = float(np.round(_v))   # steep: re-anchor
+                        _run = 0
+                    elif _v <= _lvl - 0.5 and _run >= _MIN_RUN:
+                        _lvl -= 1.0                  # gentle: single step
+                        _run = 0
+                    _q_out[_i] = _lvl
+                    _run += 1
+                water_y[_r_ord, _c_ord] = _q_out
             # Propagate smoothed centerline water_y to ALL footprint cells
             # via existing EDT: every pixel takes its nearest centerline's
             # water_y → uniform per Voronoi cell → uniform per cross-section.
