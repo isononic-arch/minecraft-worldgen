@@ -922,6 +922,16 @@ def _make_bed_cache_key(hr_path: Path) -> str:
     return f"{paint_md5}_{src_md5}_{tun_md5}"
 
 
+class _BedCacheRefusal(RuntimeError):
+    """Raised instead of rebuilding the bed cache while v17 exists.
+
+    S93b: the v17 pickle is load-bearing and IRREPRODUCIBLE — the current
+    bed builder produces a shallower bed ((62,61) depth 4-5 -> 1; the
+    (27,34) estuary vanishes). Any silent fallback to a rebuild regresses
+    every river in the world, so refusal must be FATAL for the tile, not
+    converted into `return False` by a catch-all."""
+
+
 def _load_bed_cache_from_disk(hr_path: Path) -> bool:
     """Try to load the bed-cache pickle from disk. Returns True on success
     (and populates module-level cache globals); False if missing, key
@@ -948,8 +958,10 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
         return False
 
     bed_cache_path = hr_path.parent / "_bed_cache_v19.pkl"
-    if not bed_cache_path.exists():
-        # ── S93 MIGRATION: adopt a v17 cache in place of a rebuild ──
+    _v17_path = hr_path.parent / "_bed_cache_v17.pkl"
+
+    def _migrate_v17_to_v19() -> None:
+        # ── S93 MIGRATION: adopt the v17 cache in place of a rebuild ──
         # The v17 pickle encodes an OLDER bed-build's output that current
         # code does NOT reproduce (rebuilds yield a shallower bed: (62,61)
         # stream depth 4-5 -> 1, the (27,34) estuary drops below the
@@ -958,26 +970,51 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
         # is reconciled (own session), the v17 contents are LOAD-BEARING:
         # migrate them verbatim (plus the new S93 field) rather than
         # rebuilding. Boxes self-heal the same way (snapshot ships v17).
-        _v17_path = hr_path.parent / "_bed_cache_v17.pkl"
+        _tmp19 = None
+        try:
+            with open(_v17_path, 'rb') as _f17:
+                _d17 = _pickle.load(_f17)
+            _d17['hw_inset_8k'] = _d17.get('hw_inset_8k')  # None if absent
+            _d17['key'] = _make_bed_cache_key(hr_path)
+            # Per-worker tmp name: parallel workers race this migration.
+            # A shared tmp made the open()/os.replace() collide
+            # (PermissionError) and the losers fell back to a rebuild
+            # that then SAVED a regressed bed over the verbatim copy
+            # (S93b freeze gate, diag_s93f/render.log).
+            _tmp19 = bed_cache_path.with_suffix(f'.pkl.tmp{_os.getpid()}')
+            with open(_tmp19, 'wb') as _f19:
+                _pickle.dump(_d17, _f19,
+                             protocol=_pickle.HIGHEST_PROTOCOL)
+            _os.replace(_tmp19, bed_cache_path)
+            print("[hydro_region_overlay] bed cache MIGRATED v17 -> "
+                  "v19 (verbatim contents; rebuild would regress the "
+                  "bed — see S93 handoff)")
+        except Exception as _mig_exc:  # noqa: BLE001
+            if _tmp19 is not None:
+                try:
+                    _os.remove(_tmp19)
+                except OSError:
+                    pass
+            # On Windows os.replace also fails while another worker holds
+            # the destination open — the winner's v19 is fine; wait for
+            # it instead of rebuilding.
+            import time as _time
+            for _ in range(120):
+                if bed_cache_path.exists():
+                    print("[hydro_region_overlay] v17->v19 migration "
+                          "lost race — another worker installed v19")
+                    return
+                _time.sleep(5)
+            raise _BedCacheRefusal(
+                f"bed cache v17->v19 migration failed "
+                f"({type(_mig_exc).__name__}: {_mig_exc}) and no other "
+                f"worker installed v19 — REFUSING to rebuild while v17 "
+                f"exists (a rebuild silently regresses every river; see "
+                f"memory/S93_wip_handoff.md)") from _mig_exc
+
+    if not bed_cache_path.exists():
         if _v17_path.exists():
-            try:
-                with open(_v17_path, 'rb') as _f17:
-                    _d17 = _pickle.load(_f17)
-                _d17['hw_inset_8k'] = _d17.get('hw_inset_8k')  # None if absent
-                _d17['key'] = _make_bed_cache_key(hr_path)
-                _tmp19 = bed_cache_path.with_suffix('.pkl.tmp')
-                with open(_tmp19, 'wb') as _f19:
-                    _pickle.dump(_d17, _f19,
-                                 protocol=_pickle.HIGHEST_PROTOCOL)
-                _os.replace(_tmp19, bed_cache_path)
-                print("[hydro_region_overlay] bed cache MIGRATED v17 -> "
-                      "v19 (verbatim contents; rebuild would regress the "
-                      "bed — see S93 handoff)")
-            except Exception as _mig_exc:  # noqa: BLE001
-                print(f"[hydro_region_overlay] v17->v19 migration failed "
-                      f"({type(_mig_exc).__name__}: {_mig_exc}) — "
-                      f"falling back to rebuild")
-                return False
+            _migrate_v17_to_v19()
         else:
             return False
     try:
@@ -989,9 +1026,29 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
         with open(bed_cache_path, 'rb') as f:
             data = _pickle.load(f)
         if data.get('key') != expected_key:
-            print(f"[hydro_region_overlay] bed cache MISMATCH "
-                  f"(masks/_bed_cache_v19.pkl is stale) — rebuilding")
-            return False
+            if _v17_path.exists():
+                # Stale v19 (paint/tunable/source drift — note the key
+                # hashes _ensure_caches SOURCE, so any code edit there
+                # flips every v19 stale). Re-migrate from v17 under the
+                # new key — NEVER rebuild while v17 exists.
+                print("[hydro_region_overlay] bed cache STALE key — "
+                      "re-migrating v17 -> v19 (rebuild would regress)")
+                try:
+                    _os.remove(bed_cache_path)
+                except OSError:
+                    pass
+                _migrate_v17_to_v19()
+                with open(bed_cache_path, 'rb') as f:
+                    data = _pickle.load(f)
+                if data.get('key') != expected_key:
+                    raise _BedCacheRefusal(
+                        "bed cache key still stale after v17 "
+                        "re-migration — refusing to rebuild while v17 "
+                        "exists; re-run the render")
+            else:
+                print(f"[hydro_region_overlay] bed cache MISMATCH "
+                      f"(masks/_bed_cache_v19.pkl is stale) — rebuilding")
+                return False
         _river_bed_8k_cache = data['river_bed_8k']
         _paint_smooth_8k_cache = data['paint_smooth_8k']
         _paint_eroded_8k_cache = _paint_smooth_8k_cache
@@ -1020,6 +1077,8 @@ def _load_bed_cache_from_disk(hr_path: Path) -> bool:
               f"({bed_cache_path.name}, "
               f"bed shape {_river_bed_8k_cache.shape})")
         return True
+    except _BedCacheRefusal:
+        raise  # refusal-to-rebuild must stay fatal, never become a rebuild
     except Exception as exc:
         print(f"[hydro_region_overlay] bed cache load failed: "
               f"{type(exc).__name__}: {exc}")

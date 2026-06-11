@@ -1369,31 +1369,17 @@ def carve_rivers(
                 # The S73 objection to explicit plateaus ("ghost weirs" —
                 # MC tick cascades at step lines) is obsolete: S86 never
                 # fluid-ticks river columns.
-                # S93b: SYMMETRIC hysteresis (not monotone-down). The sort
-                # key (dist-from-ocean) is a valid flow order only for
-                # ocean-bound paths; for LAKE-bound inland streams it is
-                # near-constant noise, and a monotone-down quantizer walks
-                # that scrambled order straight to the profile minimum —
-                # water pinned at bed+1, stream depth collapsed from 4-5 to
-                # 1 ((62,61), masked through two later gates). Symmetric
-                # stepping behaves identically to monotone on genuinely
-                # descending paths and simply TRACKS the profile in clean
-                # plateaus on scrambled ones. Estuary flat-63 still comes
-                # from the SEA floor applied below.
                 _MIN_RUN = 12
                 _lvl = float(np.round(_path_y_smooth[0]))
                 _run = 0
                 _q_out = np.empty_like(_path_y_smooth)
                 for _i in range(len(_path_y_smooth)):
                     _v = float(_path_y_smooth[_i])
-                    if _v <= _lvl - 1.5 or _v >= _lvl + 1.5:
-                        _lvl = float(np.round(_v))   # big move: re-anchor
+                    if _v <= _lvl - 1.5:
+                        _lvl = float(np.round(_v))   # steep: re-anchor
                         _run = 0
                     elif _v <= _lvl - 0.5 and _run >= _MIN_RUN:
                         _lvl -= 1.0                  # gentle: single step
-                        _run = 0
-                    elif _v >= _lvl + 0.5 and _run >= _MIN_RUN:
-                        _lvl += 1.0
                         _run = 0
                     _q_out[_i] = _lvl
                     _run += 1
