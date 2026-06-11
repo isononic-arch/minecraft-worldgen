@@ -388,7 +388,6 @@ def _process_tile(args: dict) -> dict:
     _INHERITANCE_PAD_PX = 512  # S58: full-tile context on each side
     _ECOTONE_PAD_PX = 48
     biome_grid_padded = None
-    _band_biome_pre = None  # S92: pre-overwrite padded biome for the border band
     # S89-walk4 seam meta-fix: pre-carve neighbour-surface halo for seam-free
     # per-tile surface_y gaussians in decorate_surface. Flag-gated; falls back
     # to per-tile mode='nearest' when off.
@@ -423,16 +422,6 @@ def _process_tile(args: dict) -> dict:
             tile_y * h - _INHERITANCE_PAD_PX,
             amplitude_px=40.0, scale=200.0, octaves=2,
         )
-        # S92 border-band biome: the PRE-OVERWRITE padded biome window —
-        # per-pixel deterministic from world data on BOTH sides of any
-        # border (the inner overwrite below injects the tile's own inner
-        # biome, whose soften used CLAMPED displaced reads near tile edges
-        # → not cross-tile symmetric; band identity check failed 46/750
-        # records until this source swap).
-        _lo_b = _INHERITANCE_PAD_PX - _ECOTONE_PAD_PX
-        _band_biome_pre = _bg_big[
-            _lo_b:_INHERITANCE_PAD_PX + h + _ECOTONE_PAD_PX,
-            _lo_b:_INHERITANCE_PAD_PX + w + _ECOTONE_PAD_PX].copy()
         # Overwrite the innermost 512×512 with the authoritative inner
         # biome_grid (which went through the Step 6c inner-scale inheritance
         # and matches the surface_blocks painted downstream).
@@ -448,7 +437,6 @@ def _process_tile(args: dict) -> dict:
         # spline LUT the columns use). Inner is overwritten with the real
         # surface_y right before decorate; only the halo ring feeds the
         # cross-tile gaussians. SEAM_PAD covers the widest smoother sigma (~30).
-        _band_sy_pre = None  # S92: pre-carve padded surface for the border-band placement
         if _seam_on:
             _hraw = np.clip(
                 (_padded_masks["height"] * 65535.0).astype(np.int32), 0, 65535)
@@ -480,13 +468,6 @@ def _process_tile(args: dict) -> dict:
             surface_y_padded = _sy_pre[
                 _slo:_INHERITANCE_PAD_PX + h + _SEAM_PAD_PX,
                 _slo:_INHERITANCE_PAD_PX + w + _SEAM_PAD_PX].copy()
-            # S92 border-band placement: PURE pre-carve copy of the seam
-            # window (surface_y_padded's inner gets overwritten with the
-            # final surface before decorate — the band pass needs the
-            # UN-overwritten LUT surface so BOTH sides of a border compute
-            # identical anchor heights; per-column trunk conform at stamp
-            # time absorbs the difference vs the final surface).
-            _band_sy_pre = surface_y_padded.copy()
             del _sy_pre, _hraw
     except Exception as _ecotone_pad_exc:  # noqa: BLE001
         # Non-fatal: fall back to unpadded ecotone dither + per-tile smoothing.
@@ -494,8 +475,6 @@ def _process_tile(args: dict) -> dict:
               f"{type(_ecotone_pad_exc).__name__}: {_ecotone_pad_exc}")
         biome_grid_padded = None
         surface_y_padded = None
-        _band_biome_pre = None
-        _band_sy_pre = None
 
     # ---- Step 6d: Meadow clearing field (S57 Phase 3a) ----
     # Shared low-freq noise field read by both surface_decorator (ground cover
@@ -857,11 +836,6 @@ def _process_tile(args: dict) -> dict:
                 clearing_field = clearing_field,
                 surface_blocks = surface_blk,
                 cliff_cap_tile = masks.get("cliff_cap"),
-                band_sy_padded   = _band_sy_pre,
-                band_pad_px      = (_SEAM_PAD_PX if _band_sy_pre is not None else 0),
-                biome_grid_padded= _band_biome_pre,
-                biome_pad_px     = (_ECOTONE_PAD_PX if _band_biome_pre is not None else 0),
-                masks_dir        = masks_dir,
             )
             _np_sd.save(f"{_surf_dump_dir}/plc_{tile_x}_{tile_y}.npy",
                         np.asarray([(p.world_x, p.world_z, p.place_y, p.size,
@@ -896,12 +870,6 @@ def _process_tile(args: dict) -> dict:
         clearing_field = clearing_field,
         surface_blocks = surface_blk,
         cliff_cap_tile = masks.get("cliff_cap"),
-        # S92 tile-aware border band: cross-tile-consistent inputs
-        band_sy_padded   = _band_sy_pre,
-        band_pad_px      = (_SEAM_PAD_PX if _band_sy_pre is not None else 0),
-        biome_grid_padded= _band_biome_pre,
-        biome_pad_px     = (_ECOTONE_PAD_PX if _band_biome_pre is not None else 0),
-        masks_dir        = masks_dir,
     )
 
     # ---- Step 9: Chunk write ----
@@ -1325,93 +1293,6 @@ def _process_tile(args: dict) -> dict:
                     print(f"[s91-cap] tile=({tile_x},{tile_y}) capped "
                           f"{int(_too_high_pad.sum())} water cells at "
                           f"bank/lake level", file=sys.stderr, flush=True)
-
-        # ── Pass 0.1: TIDAL CLAMP at river mouths (S92 #1) ──
-        # A river reach whose BED sits below sea level and which connects
-        # to the ocean is a sea-level pool — its surface is Y=SEA exactly.
-        # The skeleton profile + bank caps let such reaches creep to 64-65
-        # over a flat pool, writing 1-block water ledges across wide flat
-        # water near every mouth (the "solid rectangle of raised water",
-        # user screenshots at (27,34)).
-        # Tidal membership comes from the GLOBAL 8k mask in the v18 bed
-        # cache (ocean-connectivity flood over the 8k bed) — per-tile
-        # connectivity guesses disagreed across tile borders (v3 pair
-        # test: 18/23 border columns at 63|64). Both tiles sample the
-        # same oracle; the seam carries the same verdict by construction.
-        _deep_riv = _river_cells_pad & (
-            _surface_y_pad < core_col_gen.SEA_LEVEL)
-        if _deep_riv.any():
-            try:
-                from core.hydro_region_overlay import get_tidal_8k as _get_t8k
-                _t8k = _get_t8k()
-            except Exception:
-                _t8k = None
-            if _t8k is not None and _t8k.any():
-                _S_50K_TO_8K_T = 8192.0 / 50000.0
-                _ys_t = np.clip(((np.arange(_PH) + (row_off - _PAD))
-                                 * _S_50K_TO_8K_T).astype(np.int32), 0, 8191)
-                _xs_t = np.clip(((np.arange(_PW) + (col_off - _PAD))
-                                 * _S_50K_TO_8K_T).astype(np.int32), 0, 8191)
-                _yy_t, _xx_t = np.meshgrid(_ys_t, _xs_t, indexing="ij")
-                # Global-mask cells are SEEDS; extend through 50k-connected
-                # sub-sea-bed river cells. The 8k mask under-resolves narrow
-                # channels (sub-pixel at 8k — the v16 lesson), leaving
-                # upstream fingers of the pool unpinned (v8: 954 Y64 cells
-                # at (27,34)). Seeds recur every ~6 blocks along any reach
-                # the 8k mask does see, so extensions are short and both
-                # sides of a border resolve identically.
-                _tidal_seeds = _deep_riv & _t8k[_yy_t, _xx_t]
-                _tidal_riv = _tidal_seeds
-                if _tidal_seeds.any():
-                    from scipy.ndimage import label as _lbl_t50
-                    _l50, _n50 = _lbl_t50(
-                        _deep_riv, structure=np.ones((3, 3), bool))
-                    _sids = np.unique(_l50[_tidal_seeds])
-                    _sids = _sids[_sids > 0]
-                    if _sids.size:
-                        _tidal_riv = _deep_riv & np.isin(_l50, _sids)
-                _n_tidal = int((_tidal_riv & (
-                    _river_water_y_pad != core_col_gen.SEA_LEVEL)).sum())
-                if _n_tidal:
-                    _river_water_y_pad[_tidal_riv] = np.int16(
-                        core_col_gen.SEA_LEVEL)
-                    print(f"[s92-tidal] tile=({tile_x},{tile_y}) pinned "
-                          f"{_n_tidal} mouth-reach cells to SEA (global mask)",
-                          file=sys.stderr, flush=True)
-
-        # ── Pass 0.15: river water-level COHERENCE (S92 #1) ──
-        # round()ing the smooth float water_y (carver 7.7b implicit
-        # plateaus) + the Pass-0.05 nearest-bank cap both leave adjacent
-        # channel cells disagreeing by +/-1. MC renders the odd-high cells
-        # as CHECKERED floating water at every implicit plateau crossing
-        # (user screenshots, river at (27,34)). Median-filter the integer
-        # water level over river cells (nearest-river fill so banks don't
-        # vote), 2 passes: kills the salt-and-pepper crossings and
-        # straightens step contours into clean 1-row cascade tiers,
-        # preserving the 1D downstream profile. Runs AFTER the tidal pass
-        # so the pin boundary (NEAREST-sampled 8k contour) gets the same
-        # cleanup. Lakes stay untouched (flat per component already).
-        _riv_wy_mask = _river_cells_pad & (
-            _river_water_y_pad > core_col_gen.SEA_LEVEL)
-        if _riv_wy_mask.any():
-            from scipy.ndimage import median_filter as _medf_wy
-            from scipy.ndimage import distance_transform_edt as _edt_wy
-            _, _wy_idx = _edt_wy(~_riv_wy_mask, return_indices=True)
-            _wy_fill = _river_water_y_pad[_wy_idx[0], _wy_idx[1]].astype(np.int16)
-            for _ in range(2):
-                _wy_fill = _medf_wy(_wy_fill, size=3)
-            # never raise a cell by more than +1 (odd-LOW pixels joining the
-            # local majority); the escape pass contains +1 with a 1-px lip.
-            # SEA-pinned tidal cells are excluded from the mask (> SEA), so
-            # the median can't lift the flat mouth pool.
-            _wy_new = np.minimum(_wy_fill,
-                                 (_river_water_y_pad + np.int16(1)).astype(np.int16))
-            _n_coh = int((_riv_wy_mask & (_wy_new != _river_water_y_pad)).sum())
-            _river_water_y_pad = np.where(
-                _riv_wy_mask, _wy_new, _river_water_y_pad).astype(np.int16)
-            if _n_coh:
-                print(f"[s92-coherence] tile=({tile_x},{tile_y}) smoothed "
-                      f"{_n_coh} river water cells", file=sys.stderr, flush=True)
 
         # === S83 v13 PASS 0: CARVE COMPLETION (painted rivers only) ===
         # User v12 feedback: "the escape prevention surface trough wall

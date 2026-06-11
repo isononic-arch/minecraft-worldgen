@@ -863,282 +863,6 @@ class _ExclusionGrid:
 # PUBLIC API
 # ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# S92: TILE-AWARE BORDER BAND
-# ---------------------------------------------------------------------------
-# Both tiles sharing a border compute an IDENTICAL placement list for the
-# ±_BAND_W strip around it, from world-deterministic inputs only (pre-carve
-# padded surface, padded biome grid — both per-pixel deterministic from world
-# data — world-hashed coins, and the GLOBAL 8k hydro paint for water
-# suppression). Each tile then stamps its own columns of every band tree;
-# chunk_writer's per-column clipping assembles whole trees across the seam,
-# and its trunk-conform absorbs the pre-carve-vs-final surface difference.
-# The interior pass cedes the band entirely (no interior anchors within
-# _BAND_W of a border), so no interior/band spacing conflicts arise.
-# Deliberately REDUCED feature set in the band (no eco-density modulation,
-# no ecotone swap, no krummholz/palm/snow-surface logic, no rotation-variety
-# neighborhood) — the band is ~9% of tile area and cross-tile consistency
-# outranks those refinements there.
-
-_BAND_W = 24          # strip half-width each side of a border (>= max extent 21)
-# Band density calibration: the band accepts far more candidates than the
-# interior pass (its slope-reject runs on the SMOOTH pre-carve surface, the
-# interior's on the rough post-decorate one; eco/dupe/clearing thinning are
-# also absent) — unscaled, band canopy measured ~90% vs interior ~30% (a
-# density stripe along borders). World-constant scale → identity preserved.
-# Calibrated at (50,50)|(51,50) in three measured steps (0.30 -> 2.1x rate /
-# 2.4x canopy area; 0.125 -> band canopy 65% vs A-interior 28% because ~2/3
-# of INTERIOR placements die at stamp time on the rough final surface while
-# smooth pre-carve band anchors nearly all stamp; 0.04 -> band ~46%).
-# Note there is NO single interior level to match: the two adjacent
-# interiors measured 28% vs 68% canopy (natural eco-density gradient).
-# 0.04 lands the band between its two neighbours = reads as the natural
-# transition rather than a stripe.
-_BAND_DENSITY_SCALE = 0.04
-_M64 = (1 << 64) - 1
-
-_hydro_paint_8k: "np.ndarray | None" = None
-_hydro_paint_8k_loaded = False
-
-
-def _load_hydro_paint_8k(masks_dir):
-    """Global painted-water mask (8192² bool) — process-cached."""
-    global _hydro_paint_8k, _hydro_paint_8k_loaded
-    if _hydro_paint_8k_loaded:
-        return _hydro_paint_8k
-    _hydro_paint_8k_loaded = True
-    try:
-        from pathlib import Path as _P
-        from PIL import Image as _Img
-        p = _P(masks_dir) / "hydro_region.png"
-        if p.exists():
-            a = np.asarray(_Img.open(p).convert("L"), dtype=np.uint8)
-            if a.shape == (8192, 8192):
-                _hydro_paint_8k = a > 0
-    except Exception:
-        _hydro_paint_8k = None
-    return _hydro_paint_8k
-
-
-def _wh01(wx: int, wz: int, salt: int) -> float:
-    """splitmix64-style world hash → uniform [0,1). Pure-python ints (no
-    numpy scalar overflow warnings); identical on both sides of any seam."""
-    h = (wx * 0x9E3779B97F4A7C15 + wz * 0xBF58476D1CE4E5B9
-         + salt * 0x94D049BB133111EB) & _M64
-    h ^= h >> 30
-    h = (h * 0xBF58476D1CE4E5B9) & _M64
-    h ^= h >> 27
-    h = (h * 0x94D049BB133111EB) & _M64
-    h ^= h >> 31
-    return h / 18446744073709551616.0
-
-
-def _place_border_band(index, cfg, tile_x, tile_y,
-                       band_sy_padded, band_pad_px,
-                       biome_grid_padded, biome_pad_px,
-                       masks_dir, H, W) -> list:
-    """Compute the band placements for all four borders of this tile.
-    Returns PlacementRecords whose anchors may lie up to _BAND_W OUTSIDE the
-    tile (the neighbour's side of a shared strip) — chunk_writer accepts and
-    clips them. Iterates strictly in world (z, x) order with per-cell world
-    hashes, so the shared strip yields byte-identical records on both tiles."""
-    out: list[PlacementRecord] = []
-    if band_sy_padded is None or biome_grid_padded is None:
-        return out
-    den_cfg = cfg.get("decoration_density_noise",
-                      {"scale": 60, "octaves": 3, "floor": 0.15})
-    den_scale = float(den_cfg.get("scale", 60))
-    den_oct = int(den_cfg.get("octaves", 3))
-    den_floor = float(den_cfg.get("floor", 0.15))
-    den_seed = int(cfg.get("noise_seeds", {}).get("decoration_density", 42002))
-    treelines_cfg = cfg.get("treelines", {}) if isinstance(cfg, dict) else {}
-    _tl_default = treelines_cfg.get("_default", {"y_top": 530, "fade_blocks": 100})
-    paint_8k = _load_hydro_paint_8k(masks_dir) if masks_dir is not None else None
-    _S_8K = 8192.0 / 50000.0
-
-    ox0 = tile_x * W   # tile origin, world coords
-    oz0 = tile_y * H
-
-    # borders: (axis, world_line). axis 0 → vertical line x=const (W/E),
-    # axis 1 → horizontal line z=const (N/S). Fixed processing order.
-    borders = [(0, ox0), (0, ox0 + W), (1, oz0), (1, oz0 + H)]
-
-    def _nearest_border_key(wx, wz):
-        d = [abs(wx - ox0), abs(wx - (ox0 + W)), abs(wz - oz0), abs(wz - (oz0 + H))]
-        m = min(d)
-        return d.index(m), m
-
-    try:
-        import opensimplex as _ox_band
-    except ImportError:
-        _ox_band = None
-
-    for bi, (axis, line) in enumerate(borders):
-        # strip rectangle in world coords — IDENTICAL for both tiles sharing
-        # this border (defined purely by the border line + tile span).
-        if axis == 0:
-            wx_lo, wx_hi = line - _BAND_W, line + _BAND_W
-            wz_lo, wz_hi = oz0 - _BAND_W, oz0 + H + _BAND_W
-        else:
-            wz_lo, wz_hi = line - _BAND_W, line + _BAND_W
-            wx_lo, wx_hi = ox0 - _BAND_W, ox0 + W + _BAND_W
-        sw = wx_hi - wx_lo
-        sh = wz_hi - wz_lo
-
-        # world-continuous density fBm over the strip (fixed normalization —
-        # must match the interior pass exactly)
-        if _ox_band is not None:
-            xs = (np.arange(sw, dtype=np.float64) + wx_lo) / den_scale
-            zs = (np.arange(sh, dtype=np.float64) + wz_lo) / den_scale
-            acc = np.zeros((sh, sw), dtype=np.float64)
-            amp, freq = 1.0, 1.0
-            for o in range(den_oct):
-                _ox_band.seed(den_seed + o * 7919)
-                acc += _ox_band.noise2array(xs * freq, zs * freq) * amp
-                amp *= 0.5
-                freq *= 2.0
-            dmult = den_floor + (1.0 - den_floor) * np.clip(
-                (acc + 1.4) / 2.8, 0.0, 1.0)
-        else:
-            dmult = np.full((sh, sw), 0.5, dtype=np.float32)
-
-        # painted-water suppression: global 8k paint sampled over the strip,
-        # EDT within the (identical) strip window, 14-block buffer
-        if paint_8k is not None:
-            zz8 = np.clip(((np.arange(sh) + wz_lo) * _S_8K).astype(np.int32), 0, 8191)
-            xx8 = np.clip(((np.arange(sw) + wx_lo) * _S_8K).astype(np.int32), 0, 8191)
-            wmask = paint_8k[np.ix_(zz8, xx8)]
-            if wmask.any():
-                from scipy.ndimage import distance_transform_edt as _edt_b
-                wdist = _edt_b(~wmask)
-            else:
-                wdist = np.full((sh, sw), 1e6, dtype=np.float32)
-        else:
-            wdist = np.full((sh, sw), 1e6, dtype=np.float32)
-
-        excl = _ExclusionGrid(sh, sw)
-        bush_excl = _ExclusionGrid(sh, sw)
-
-        # salts must be WORLD-invariant: a shared border is "E" (bi=1) from
-        # one tile and "W" (bi=0) from the other — any bi-dependence gives
-        # the two sides different coins for the same world cell (first
-        # identity check failed on exactly this).
-        for pass_type, salt_base in (("tree", 0x7EE0000),
-                                     ("bush", 0xB050000)):
-            for sz in range(sh):
-                wz = wz_lo + sz
-                for sx in range(sw):
-                    wx = wx_lo + sx
-                    # corner dedupe: the nearest border owns the cell
-                    nb, _nd = _nearest_border_key(wx, wz)
-                    if nb != bi:
-                        continue
-                    # padded-array lookups (world → padded index)
-                    pr = wz - oz0 + band_pad_px
-                    pc = wx - ox0 + band_pad_px
-                    if not (0 <= pr < band_sy_padded.shape[0]
-                            and 0 <= pc < band_sy_padded.shape[1]):
-                        continue
-                    sy = int(band_sy_padded[pr, pc])
-                    if sy < 63:
-                        continue          # ocean
-                    if wdist[sz, sx] <= 14.0:
-                        continue          # painted water buffer
-                    br = wz - oz0 + biome_pad_px
-                    bc = wx - ox0 + biome_pad_px
-                    if not (0 <= br < biome_grid_padded.shape[0]
-                            and 0 <= bc < biome_grid_padded.shape[1]):
-                        continue
-                    biome_str = str(biome_grid_padded[br, bc])
-                    entries_all = index.get(biome_str)
-                    if not entries_all:
-                        continue
-                    entries = [e for e in entries_all if e.schem_type == pass_type]
-                    if not entries:
-                        continue
-                    base_d = BASE_DENSITY.get(biome_str, 0.05)
-                    if pass_type == "bush":
-                        _abs_b = BUSH_DENSITY_ABS.get(biome_str)
-                        if _abs_b is not None:
-                            d_eff = _abs_b
-                            if biome_str in SPARSE_BUSH_BIOMES:
-                                d_eff *= 0.5
-                        else:
-                            d_eff = base_d * 0.4
-                            if biome_str in SPARSE_BUSH_BIOMES:
-                                d_eff *= 0.5
-                            d_eff *= BUSH_DENSITY_MULT.get(biome_str, 1.0)
-                    else:
-                        d_eff = base_d
-                    # treeline fade from the pre-carve surface (identical
-                    # formula to the interior pass)
-                    _tl = treelines_cfg.get(biome_str, _tl_default) \
-                        if isinstance(treelines_cfg.get(biome_str, None), dict) \
-                        else _tl_default
-                    _fade = max(float(_tl.get("fade_blocks",
-                                              _tl_default.get("fade_blocks", 30))), 1.0)
-                    _ytop = float(_tl.get("y_top", _tl_default.get("y_top", 230)))
-                    d_eff *= float(np.clip(1.0 - (sy - _ytop) / _fade, 0.0, 1.0))
-                    d_eff *= float(dmult[sz, sx])
-                    d_eff *= _BAND_DENSITY_SCALE
-                    if d_eff <= 0.0:
-                        continue
-                    if _wh01(wx, wz, salt_base) >= d_eff:
-                        continue
-                    # weighted entry pick via a second world hash
-                    wts = [max(e.weight, 0.0) for e in entries]
-                    tot = sum(wts)
-                    if tot <= 0:
-                        continue
-                    r = _wh01(wx, wz, salt_base + 1) * tot
-                    ci = 0
-                    for ci, _w in enumerate(wts):
-                        r -= _w
-                        if r <= 0:
-                            break
-                    entry = entries[ci]
-                    radius = _biome_canopy_radius(entry.size, biome_str, cfg)
-                    if pass_type == "tree":
-                        if not excl.is_clear(sz, sx, radius):
-                            continue
-                    else:
-                        _br_ = max(1, radius // 2)
-                        if not bush_excl.is_clear(sz, sx, _br_):
-                            continue
-                        if not excl.is_clear(sz, sx, _br_):
-                            continue
-                    # footprint slope reject on the band surface
-                    _off = _SIZE_CENTER_OFF_BAND.get(entry.size, 3)
-                    _r0 = max(0, pr - 1)
-                    _r1 = min(band_sy_padded.shape[0], pr + 2 * _off + 1)
-                    _c0 = max(0, pc - 1)
-                    _c1 = min(band_sy_padded.shape[1], pc + 2 * _off + 1)
-                    _fp = band_sy_padded[_r0:_r1, _c0:_c1]
-                    if int(_fp.max() - _fp.min()) > _MAX_FP_RANGE_BAND.get(entry.size, 3):
-                        continue
-                    rotation = int(_wh01(wx, wz, salt_base + 2) * 4) & 3
-                    place_y = sy - entry.anchor_y - entry.inset_depth
-                    out.append(PlacementRecord(
-                        schem_path=entry.path,
-                        world_x=wx, world_z=wz, place_y=place_y,
-                        anchor_y=entry.anchor_y,
-                        inset_depth=entry.inset_depth,
-                        extra_inset=0,
-                        size=entry.size, schem_type=entry.schem_type,
-                        biome=biome_str, rotation=rotation,
-                        species=entry.species,
-                    ))
-                    if pass_type == "tree":
-                        excl.mark(sz, sx, radius)
-                    else:
-                        bush_excl.mark(sz, sx, max(1, radius // 2))
-    return out
-
-
-_SIZE_CENTER_OFF_BAND = {"sm": 2, "md": 3, "lg": 4}
-_MAX_FP_RANGE_BAND = {"sm": 4, "md": 3, "lg": 2}
-
-
 def place_schematics(
     surface_y:    np.ndarray,          # (H, W) int16
     biome_grid:   np.ndarray,          # (H, W) object str
@@ -1154,17 +878,6 @@ def place_schematics(
     clearing_field: np.ndarray | None = None,  # (H,W) float32 [0,1] — meadow clearing noise (S57 Phase 3a)
     surface_blocks: np.ndarray | None = None,  # (H,W) object str — for snow-surface skip (S58)
     cliff_cap_tile: np.ndarray | None = None,  # (H,W) float32 [0,1] — walk #12: suppress trees on cap
-    # ── S92 tile-aware border band ──
-    # Cross-tile-consistent inputs: pre-carve padded surface (NOT the final
-    # surface — both sides of a border must compute identical anchors; the
-    # stamp-time per-column trunk conform absorbs the difference), padded
-    # biome grid (per-pixel deterministic from world data on both sides),
-    # masks_dir for the GLOBAL 8k hydro paint (water suppression).
-    band_sy_padded: np.ndarray | None = None,   # (H+2p, W+2p) float32 pre-carve
-    band_pad_px:    int = 0,
-    biome_grid_padded: np.ndarray | None = None,  # (H+2q, W+2q) object str
-    biome_pad_px:   int = 0,
-    masks_dir=None,
 ) -> list[PlacementRecord]:
     """
     Compute schematic placements for one tile.
@@ -1590,32 +1303,6 @@ def place_schematics(
     exclusion = _ExclusionGrid(H, W)
     placements: list[PlacementRecord] = []
 
-    # ── S92 tile-aware border band — compute FIRST so its in-tile tree
-    # placements seed the interior exclusion grid. The interior loop then
-    # cedes the whole ±_BAND_W zone (see skip below), so border-crossing
-    # trees are identical on both sides of every seam.
-    band_placements: list[PlacementRecord] = []
-    _band_on = (band_sy_padded is not None and band_pad_px >= _BAND_W
-                and biome_grid_padded is not None and biome_pad_px >= _BAND_W)
-    if _band_on:
-        try:
-            band_placements = _place_border_band(
-                index, cfg, tile_x, tile_y, band_sy_padded, band_pad_px,
-                biome_grid_padded, biome_pad_px, masks_dir, H, W)
-            for _bp in band_placements:
-                if _bp.schem_type != "tree":
-                    continue
-                _lr = _bp.world_z - py_off
-                _lc = _bp.world_x - px_off
-                if 0 <= _lr < H and 0 <= _lc < W:
-                    exclusion.mark(_lr, _lc,
-                                   _biome_canopy_radius(_bp.size, _bp.biome, cfg))
-        except Exception as _band_exc:  # noqa: BLE001
-            print(f"[band] WARN tile=({tile_x},{tile_y}): "
-                  f"{type(_band_exc).__name__}: {_band_exc}")
-            band_placements = []
-            _band_on = False
-
     rows_arr, cols_arr = np.where(land_mask)
     order = np_rng.permutation(len(rows_arr))
 
@@ -1756,13 +1443,6 @@ def place_schematics(
         for idx in order:
             row = int(rows_arr[idx])
             col = int(cols_arr[idx])
-
-            # S92: the border band owns the ±_BAND_W zone around every tile
-            # edge — interior anchors stay out so band placements (computed
-            # identically by both neighbours) are the only trees there.
-            if _band_on and (row < _BAND_W or row >= H - _BAND_W
-                             or col < _BAND_W or col >= W - _BAND_W):
-                continue
 
             orig_biome_str = str(biome_grid[row, col])
             biome_str = orig_biome_str
@@ -2030,38 +1710,18 @@ def place_schematics(
             # load. max(X,Z) also covers all 4 rotations.
             _EDGE_GUARD = 24
             if (jittered_col >= W - _EDGE_GUARD) or (jittered_row >= H - _EDGE_GUARD):
-                def _edge_extent(_e):
-                    _x = _schem_extent_cache.get(_e.path)
-                    if _x is None:
-                        try:
-                            from core.schematic_loader import load_schem as _ld_ext
-                            _sd_ext = _ld_ext(_e.path)
-                            _x = int(max(_sd_ext.blocks.shape[1],
-                                         _sd_ext.blocks.shape[2]))
-                        except Exception:
-                            _x = 2 * {"sm": 2, "md": 3, "lg": 4}.get(_e.size, 3) + 5
-                        _schem_extent_cache[_e.path] = _x
-                    return _x
-
-                _fit_lim = min(W - jittered_col, H - jittered_row)
-                if _edge_extent(entry) > _fit_lim:
-                    # S92: SUBSTITUTE a same-list schematic that actually fits
-                    # instead of rejecting. S91's plain rejection left a bare
-                    # trunk-AND-canopy lane ~10px wide tracing every tile
-                    # border (user screenshot: dead-straight gap through
-                    # canopy at the 50|51 seam). Substitution keeps placements
-                    # marching right up to the border with progressively
-                    # smaller schematics; interior canopies then overhang the
-                    # last few px. Weighted among the fitting entries.
-                    _fit_pairs = [(e, w) for e, w in zip(entries, weights)
-                                  if w > 0 and _edge_extent(e) <= _fit_lim]
-                    if not _fit_pairs:
-                        continue
-                    entry = rng.choices([p[0] for p in _fit_pairs],
-                                        weights=[p[1] for p in _fit_pairs],
-                                        k=1)[0]
-                    # keep downstream sizing consistent with the substitute
-                    radius = _biome_canopy_radius(entry.size, biome_str, cfg)
+                _ext = _schem_extent_cache.get(entry.path)
+                if _ext is None:
+                    try:
+                        from core.schematic_loader import load_schem as _ld_ext
+                        _sd_ext = _ld_ext(entry.path)
+                        _ext = int(max(_sd_ext.blocks.shape[1],
+                                       _sd_ext.blocks.shape[2]))
+                    except Exception:
+                        _ext = 2 * {"sm": 2, "md": 3, "lg": 4}.get(entry.size, 3) + 5
+                    _schem_extent_cache[entry.path] = _ext
+                if (jittered_col + _ext > W) or (jittered_row + _ext > H):
+                    continue
 
             # Compute placement Y at jittered position
             sy         = int(surface_y[jittered_row, jittered_col])
@@ -2160,9 +1820,6 @@ def place_schematics(
         for _i, _l in enumerate(_lbls):
             print(f"[KR_DEBUG]   {_l:>8}: krummholz={_kr_dbg_bands[_i]:>5}  regular={_kr_dbg_reg[_i]:>5}")
 
-    # S92: append the tile-aware border-band placements (anchors may sit up
-    # to _BAND_W outside the tile — chunk_writer accepts and clips them).
-    placements.extend(band_placements)
     return placements
 
 

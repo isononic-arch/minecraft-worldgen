@@ -1561,16 +1561,6 @@ def stamp_schematic(
                         continue
                     if not non_air[:, _sz, _sx].any():
                         continue
-                    # S92 tile-aware band: an OUT-OF-TILE column is the
-                    # neighbour tile's half of a border-crossing tree, NOT
-                    # underwater (col_desink kept its -2^30 init there,
-                    # which read as "below sea" and whole-rejected every
-                    # crossing tree — the actual mechanism behind bare
-                    # borders; the "clips silently" docstring was stale).
-                    _tz_oob = local_z + _sz
-                    _tx_oob = local_x + _sx
-                    if not (0 <= _tz_oob < tile_H and 0 <= _tx_oob < tile_W):
-                        continue
                     # Below-sea reject (oceans, deep lakes)
                     if col_desink[_sz, _sx] < 63:
                         _uwater_hit = True
@@ -2612,11 +2602,8 @@ def write_tile(
     for p in placements:
         local_x = p.world_x - tile_world_x
         local_z = p.world_z - tile_world_z
-        # S92 tile-aware band: accept anchors up to 32 px OUTSIDE the tile —
-        # a border-crossing tree anchored in the neighbour still has blocks
-        # in THIS tile (per-block/per-column bounds checks clip the rest).
-        if not (-32 <= local_x < W + 32 and -32 <= local_z < H + 32):
-            continue  # far outside tile bounds
+        if not (0 <= local_x < W and 0 <= local_z < H):
+            continue  # outside tile bounds (edge overlap)
         try:
             schem_data = schem_loader.load_schem(Path(p.schem_path))
             schem_data._rotation = getattr(p, 'rotation', 0)
