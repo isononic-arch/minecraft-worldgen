@@ -388,6 +388,7 @@ def _process_tile(args: dict) -> dict:
     _INHERITANCE_PAD_PX = 512  # S58: full-tile context on each side
     _ECOTONE_PAD_PX = 48
     biome_grid_padded = None
+    _band_biome_pre = None  # S92: pre-overwrite padded biome for the border band
     # S89-walk4 seam meta-fix: pre-carve neighbour-surface halo for seam-free
     # per-tile surface_y gaussians in decorate_surface. Flag-gated; falls back
     # to per-tile mode='nearest' when off.
@@ -422,6 +423,16 @@ def _process_tile(args: dict) -> dict:
             tile_y * h - _INHERITANCE_PAD_PX,
             amplitude_px=40.0, scale=200.0, octaves=2,
         )
+        # S92 border-band biome: the PRE-OVERWRITE padded biome window —
+        # per-pixel deterministic from world data on BOTH sides of any
+        # border (the inner overwrite below injects the tile's own inner
+        # biome, whose soften used CLAMPED displaced reads near tile edges
+        # → not cross-tile symmetric; band identity check failed 46/750
+        # records until this source swap).
+        _lo_b = _INHERITANCE_PAD_PX - _ECOTONE_PAD_PX
+        _band_biome_pre = _bg_big[
+            _lo_b:_INHERITANCE_PAD_PX + h + _ECOTONE_PAD_PX,
+            _lo_b:_INHERITANCE_PAD_PX + w + _ECOTONE_PAD_PX].copy()
         # Overwrite the innermost 512×512 with the authoritative inner
         # biome_grid (which went through the Step 6c inner-scale inheritance
         # and matches the surface_blocks painted downstream).
@@ -437,6 +448,7 @@ def _process_tile(args: dict) -> dict:
         # spline LUT the columns use). Inner is overwritten with the real
         # surface_y right before decorate; only the halo ring feeds the
         # cross-tile gaussians. SEAM_PAD covers the widest smoother sigma (~30).
+        _band_sy_pre = None  # S92: pre-carve padded surface for the border-band placement
         if _seam_on:
             _hraw = np.clip(
                 (_padded_masks["height"] * 65535.0).astype(np.int32), 0, 65535)
@@ -468,6 +480,13 @@ def _process_tile(args: dict) -> dict:
             surface_y_padded = _sy_pre[
                 _slo:_INHERITANCE_PAD_PX + h + _SEAM_PAD_PX,
                 _slo:_INHERITANCE_PAD_PX + w + _SEAM_PAD_PX].copy()
+            # S92 border-band placement: PURE pre-carve copy of the seam
+            # window (surface_y_padded's inner gets overwritten with the
+            # final surface before decorate — the band pass needs the
+            # UN-overwritten LUT surface so BOTH sides of a border compute
+            # identical anchor heights; per-column trunk conform at stamp
+            # time absorbs the difference vs the final surface).
+            _band_sy_pre = surface_y_padded.copy()
             del _sy_pre, _hraw
     except Exception as _ecotone_pad_exc:  # noqa: BLE001
         # Non-fatal: fall back to unpadded ecotone dither + per-tile smoothing.
@@ -475,6 +494,8 @@ def _process_tile(args: dict) -> dict:
               f"{type(_ecotone_pad_exc).__name__}: {_ecotone_pad_exc}")
         biome_grid_padded = None
         surface_y_padded = None
+        _band_biome_pre = None
+        _band_sy_pre = None
 
     # ---- Step 6d: Meadow clearing field (S57 Phase 3a) ----
     # Shared low-freq noise field read by both surface_decorator (ground cover
@@ -836,6 +857,11 @@ def _process_tile(args: dict) -> dict:
                 clearing_field = clearing_field,
                 surface_blocks = surface_blk,
                 cliff_cap_tile = masks.get("cliff_cap"),
+                band_sy_padded   = _band_sy_pre,
+                band_pad_px      = (_SEAM_PAD_PX if _band_sy_pre is not None else 0),
+                biome_grid_padded= _band_biome_pre,
+                biome_pad_px     = (_ECOTONE_PAD_PX if _band_biome_pre is not None else 0),
+                masks_dir        = masks_dir,
             )
             _np_sd.save(f"{_surf_dump_dir}/plc_{tile_x}_{tile_y}.npy",
                         np.asarray([(p.world_x, p.world_z, p.place_y, p.size,
@@ -870,6 +896,12 @@ def _process_tile(args: dict) -> dict:
         clearing_field = clearing_field,
         surface_blocks = surface_blk,
         cliff_cap_tile = masks.get("cliff_cap"),
+        # S92 tile-aware border band: cross-tile-consistent inputs
+        band_sy_padded   = _band_sy_pre,
+        band_pad_px      = (_SEAM_PAD_PX if _band_sy_pre is not None else 0),
+        biome_grid_padded= _band_biome_pre,
+        biome_pad_px     = (_ECOTONE_PAD_PX if _band_biome_pre is not None else 0),
+        masks_dir        = masks_dir,
     )
 
     # ---- Step 9: Chunk write ----
