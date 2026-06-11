@@ -5,7 +5,7 @@ level kill `depth_at_cell > 0.05`, which is the gate that suppresses
 water_y_field assignment in river_carver_v2.py:1014.
 
 Reads:
-  masks/_bed_cache_v18.pkl   (river_bed_8k, river_water_y_8k, paint_smooth_8k)
+  masks/_bed_cache_v17.pkl   (river_bed_8k, river_water_y_8k, paint_smooth_8k)
   masks/height.tif (50k)     to compute surface_y per pixel via _LUT
   Each tile's painted-river mask via apply_hydro_region_overlay
 
@@ -38,7 +38,7 @@ SCALE_8K = 8192 / 50000.0
 
 
 def load_bed_cache():
-    p = Path("masks/_bed_cache_v18.pkl")
+    p = Path("masks/_bed_cache_v17.pkl")
     print(f"Loading bed cache ({p.stat().st_size / 1024**2:.0f} MB)...")
     with open(p, "rb") as f:
         d = pickle.load(f)

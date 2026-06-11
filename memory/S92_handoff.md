@@ -1,4 +1,23 @@
-# S92 Handoff — checkered river water + treeline lanes + river geometry audit (COMPLETE, validated locally)
+# S92 Handoff — checkered river water + treeline lanes + river geometry audit — **REVERTED after walk (3cd7376)**
+
+**POSTMORTEM (read this first).** All S92 *code* (commits `1fa322a` + `b45dd20`) was REVERTED in `3cd7376` after the box-render walk. Code is back to the S91 tip `6b26cd7` state exactly. The S92 box render DID confirm: the S91 high-relief seam fix LANDED (73|66/74|66 border clean — note the user's observed seam near z≈34299/34304 is the border against (73,67)/(74,67), which are STALE in Vandir50k_verify — not re-rendered since pre-S91), and snowy massif (30,10) + lithology-at-elevation (31,21) look great.
+
+**Walk verdicts that triggered the revert (what the local metrics MISSED — every artifact below passed my numeric gates):**
+1. Estuary (tidal clamp): water no longer NARROWS naturally — flows awkwardly to an end; at every 1-Y step a row of straggler water is left behind. The flat-pool pin + coherence median preserve the 1D profile but break the channel's VISUAL taper and step cleanliness in ways column-level metrics (incoherent/floating counts) don't capture.
+2. River: a "crossguard" — two rows of floating water escaped PAST the channel diameter. Likely the tidal 50k seed-extension or the coherence median's +1 raises interacting with the containment passes.
+3. Lake junction (62,61): a straggler lake border crossing into the river — less natural than before (suspect: headwater taper reshaping the channel mask at the junction, or the band/taper interaction with CHAN_LAKE tagging).
+4. Forest border (band placement): WORSE than the S91 lane — wide density bands + striped single rows. The band's reduced feature set (no eco modulation, no dupe-rerolls, uniform world-hash texture) reads as a visibly different forest TEXTURE in a 48px stripe, even at matched average density; the strip-sequential exclusion produces row-aligned patterns the interior's permuted iteration doesn't.
+
+**LESSONS for the rework (user: "take a step back, evaluate on a smaller scale; tree seams were 90% fine before today"):**
+- Numeric seam metrics (identity %, density bins, canopy medians) are NOT sufficient gates for these systems — the failures were *qualitative* (taper shape, texture stripes, straggler rows). Any rework needs TOP-DOWN VISUAL diffs (rendered-block maps of the artifact zones) as a first-class gate before any box render.
+- One change at a time, one tile pair at a time, in-world walk per change. No stacked multi-system sessions.
+- The tree-seam problem to actually solve is SMALL: the S91 edge-guard lane (~10px, one-sided). Candidate minimal fixes to evaluate separately: (a) S92's substitution alone (was measured: canopy holds 23-26% to the last 2 cols — never walked in isolation!); (b) relax the guard to allow ≤2-block overhang clipping on md/lg.
+- River checkered water: rethink at the SOURCE (the carver's water_y rounding / 7.7b implicit plateaus) rather than Step-9 post-passes stacked on top of containment.
+- Keep: tools/diag_water_coherence.py, diag_veg_seam.py (measurement stays useful); the v18 cache concept died with the revert (back to v17; boxes' snapshot v17 remains valid).
+
+---
+*Original S92 log below (now historical — code reverted):*
+
 
 **Branch:** `s85-cherry-picks` on top of S91 `6b26cd7`. Committed end of S92, NOT pushed (push before next box render — boxes will auto-build the v18 bed cache, ~12 min first render).
 **FINAL v9 VERDICTS:** border water agreement 20/20 river columns identical across (27,33)|(27,34) (was 18/23 mismatched); (27,34) estuary = one flat Y63 pool (2604 cells pinned), remaining 702 Y64 cells ALL have bed ≥ 63 = the river's legitimate first above-sea reach; floating cells 57 (0.9%, the thin physically-required 63|64 cascade line — was broad checkered rectangles); (62,61) tributary creeks width 4/7/12 tips 4.0, junction/lake intact (raised 84 max +2, wl 95).
