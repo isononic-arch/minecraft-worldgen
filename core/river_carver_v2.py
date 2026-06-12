@@ -1269,8 +1269,21 @@ def carve_rivers(
         # carve is capped BELOW the 0.05 footprint threshold instead of
         # zeroed: the old wide trough fills back to near-terrain and the
         # channel reads as a thin stream in a soft swale — no dry moat.
+        # S93e POSTMORTEM — DEFAULT OFF. The taper narrows correctly (the
+        # 40-wide (30,12) ribbon became a thin stream) but thin channels
+        # FRAGMENT at elevation steps: pre-taper the (30,12) channel was
+        # ONE connected 20,633-cell water body, post-taper THREE pieces —
+        # in-game it reads as isolated ponds with dry gaps (user: "big
+        # regression at the money walk"). The v15 sink / berm / bank
+        # passes are tuned for wide channels and the step-quantized water
+        # surface breaks thin ones. ALSO: the S93e gates measured rm/rwy
+        # ASSIGNMENTS, not rendered water (surface < rwy) — the retry's
+        # entry bar is a TRUE-WET CONNECTIVITY gate (one component per
+        # channel, measured on (rwy>SEA) & (sy_final < rwy)) plus a
+        # step-survival mechanism for thin streams. Machinery kept intact
+        # behind river_carve.headwater_taper.enabled.
         _ht = _rc.get("headwater_taper", {}) if isinstance(_rc, dict) else {}
-        if (bool(_ht.get("enabled", True))
+        if (bool(_ht.get("enabled", False))
                 and hydro_dist_src is not None
                 and hydro_dcl is not None
                 and hydro_hw_cl is not None):
@@ -1312,6 +1325,26 @@ def carve_rivers(
             depth_at_cell = np.where(
                 _g_ht >= 1.0, depth_at_cell,
                 np.minimum(depth_at_cell, _cap_ht)).astype(np.float32)
+            # S93e2 STEP-SURVIVAL FLOOR: thin channels fragmented because
+            # carve depth -> 0 wherever the skeleton tube nears the
+            # polygon edge (meander corners) or a step lip — those cells
+            # fell out of the 0.05 footprint and broke the stream into
+            # ponds ((30,12): 1 connected body pre-taper, 3 post). Inside
+            # the REAL taper tube (valid dist_src, dcl <= target, above
+            # the tidal zone) floor the carve depth so the footprint is
+            # continuous BY CONSTRUCTION; the v15 too_high sink then
+            # guarantees a continuous wet corridor. The tube may poke a
+            # few blocks past the paint at sharp corners (target-capped
+            # at painted half-width) — that's where the stream should be.
+            _floor_ht = float(_ht.get("min_tube_carve", 1.2))
+            if _floor_ht > 0.0:
+                _tube = ((_dsrc_n >= 0.0) & (_tgt < np.float32(1e8))
+                         & (hydro_dcl <= _tgt) & ~_tidal_ht)
+                if _tube.any():
+                    depth_at_cell = np.where(
+                        _tube,
+                        np.maximum(depth_at_cell, np.float32(_floor_ht)),
+                        depth_at_cell).astype(np.float32)
             del _dsrc_n, _tgt, _g_ht, _cap_ht, _tidal_ht
         original_sy_f = surface_out.astype(np.float32)
         new_y_f = (original_sy_f - depth_at_cell).astype(np.float32)
