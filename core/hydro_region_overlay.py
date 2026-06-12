@@ -1792,6 +1792,29 @@ def _ensure_caches(hr_path: Path) -> None:
         pass
 
 
+def _windowed_map_coordinates(arr_8k, rows_f, cols_f, order, cval):
+    """S93c OOM fix: map_coordinates on a tile-bbox WINDOW of an 8k field.
+
+    scipy's order>=2 spline prefilter allocates a float64 copy of the WHOLE
+    input (8192^2 = 512MB) per call, per tile — three such calls per river
+    tile got worker processes OOM-killed on the 8GB local box (and waste
+    ~1.5GB/worker on render boxes). The cubic prefilter is an IIR with pole
+    |z| ~= 0.268, so influence decays below float32 epsilon within ~20 px;
+    a 40-px margin window is numerically identical for all sampled coords
+    while allocating ~(64+80)^2 instead of 8192^2.
+    """
+    from scipy.ndimage import map_coordinates as _mc_w
+    _m = 40
+    r0 = max(0, int(np.floor(rows_f.min())) - _m)
+    r1 = min(arr_8k.shape[0], int(np.ceil(rows_f.max())) + _m + 1)
+    c0 = max(0, int(np.floor(cols_f.min())) - _m)
+    c1 = min(arr_8k.shape[1], int(np.ceil(cols_f.max())) + _m + 1)
+    sub = np.ascontiguousarray(arr_8k[r0:r1, c0:c1], dtype=np.float32)
+    rg, cg = np.meshgrid(rows_f - r0, cols_f - c0, indexing="ij")
+    return _mc_w(sub, np.stack([rg, cg]), order=order,
+                 mode="constant", cval=cval)
+
+
 def _rasterize_river_edges_tile(
     col_off: int, row_off: int, tile_size: int,
 ):
@@ -1968,8 +1991,10 @@ def _rasterize_river_edges_tile(
         cols_f = (np.arange(tile_size, dtype=np.float64) + col_off) * scale_to_8k
         rg, cg = np.meshgrid(rows_f, cols_f, indexing="ij")
         coords = np.stack([rg, cg])
-        edt_at_tile_8k = _mc(_river_width_8k_cache, coords, order=3,
-                             mode="constant", cval=0.0)
+        # S93c: windowed — the full-field order-3 prefilter was a 512MB
+        # float64 alloc per call (OOM-killed workers; see helper docstring).
+        edt_at_tile_8k = _windowed_map_coordinates(
+            _river_width_8k_cache, rows_f, cols_f, 3, 0.0)
         edt_blocks = edt_at_tile_8k * scale
         # S84: sample coast factor (8k cache) at 50k via bilinear interp.
         if _coast_factor_8k_cache is not None:
@@ -1992,8 +2017,8 @@ def _rasterize_river_edges_tile(
         rg, cg = np.meshgrid(rows_f, cols_f, indexing="ij")
         coords = np.stack([rg, cg])
 
-        sdf_50k = _mc(_paint_eroded_8k_cache, coords, order=3,
-                      mode="constant", cval=-1e6)
+        sdf_50k = _windowed_map_coordinates(
+            _paint_eroded_8k_cache, rows_f, cols_f, 3, -1e6)
         sdf_50k = _gf_50k(sdf_50k, sigma=_SDF_SMOOTH_SIGMA_50K)
         sdf_blocks = sdf_50k * scale  # 8k pixels → MC blocks
         # S83 v17 + S84: power curve with tanh saturation (matches spline path)
@@ -2020,8 +2045,8 @@ def _rasterize_river_edges_tile(
         paint_eroded_50k = carve_depth_50k > 0.5
         paint_smooth_full_50k = paint_eroded_50k.copy()
 
-        edt_at_tile_8k = _mc(_river_width_8k_cache, coords, order=3,
-                             mode="constant", cval=0.0)
+        edt_at_tile_8k = _windowed_map_coordinates(
+            _river_width_8k_cache, rows_f, cols_f, 3, 0.0)
         edt_blocks = edt_at_tile_8k * scale
 
     # ── Common post-processing (runs for both spline and fallback paths) ──
@@ -2037,15 +2062,13 @@ def _rasterize_river_edges_tile(
     if (_flow_accum_8k_cache is not None
             and _flow_accum_8k_cache.any()
             and paint_eroded_50k is not None):
-        from scipy.ndimage import map_coordinates as _mc_flow
         scale_to_8k = _REGION_PX / _WORLD_PX
         rows_f = (np.arange(tile_size, dtype=np.float64) + row_off) * scale_to_8k
         cols_f = (np.arange(tile_size, dtype=np.float64) + col_off) * scale_to_8k
-        rg, cg = np.meshgrid(rows_f, cols_f, indexing="ij")
-        coords = np.stack([rg, cg])
-        flow_at_tile_8k = _mc_flow(
-            _flow_accum_8k_cache.astype(np.float32),
-            coords, order=3, mode="constant", cval=0.0)
+        # S93c: windowed (was a full-8k float32 copy + 512MB float64
+        # prefilter per tile).
+        flow_at_tile_8k = _windowed_map_coordinates(
+            _flow_accum_8k_cache, rows_f, cols_f, 3, 0.0)
         flow_50k = np.where(paint_eroded_50k, flow_at_tile_8k, 0.0)
 
     return out, width, paint_smooth_full_50k, flow_50k, carve_depth_50k
