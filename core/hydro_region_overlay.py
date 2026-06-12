@@ -1817,6 +1817,24 @@ def _ensure_dist_from_source(masks_dir=None):
         from collections import deque
         from scipy.ndimage import convolve as _cv_ds
         sk = fl > 0
+        # S93e2b: the flow graph SKIPS stretches of the painted skeleton —
+        # its gaps interrupted the taper tube (dcl rose past target inside
+        # the gap but stayed under the no-data radius) and broke channels
+        # into ponds at every gap ((30,12): 3 wet components in ALL knob
+        # variants). BFS over the UNION of graph cells and the TRUE paint
+        # skeleton so distance flows continuously through graph gaps.
+        if masks_dir is not None:
+            try:
+                from PIL import Image as _PIL_ds
+                from skimage.morphology import skeletonize as _sk_ds
+                _hr_ds = np.asarray(
+                    _PIL_ds.open(str(masks_dir / "hydro_region.png"))
+                    .convert("L"), dtype=np.uint8)
+                if _hr_ds.shape == (_REGION_PX, _REGION_PX):
+                    sk = sk | _sk_ds(_hr_ds == 2)
+            except Exception as _sk_exc:  # noqa: BLE001
+                print(f"[hydro_region_overlay] paint-skeleton union "
+                      f"failed: {type(_sk_exc).__name__}: {_sk_exc}")
         _k8 = np.ones((3, 3), np.uint8)
         _k8[1, 1] = 0
         deg = _cv_ds(sk.astype(np.uint8), _k8, mode="constant")
