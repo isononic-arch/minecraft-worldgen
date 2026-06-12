@@ -4924,7 +4924,16 @@
     "full_depth_order": 4.0,
     "max_carve_blocks": 0.0,
     "_comment_drylake": "S89 #12: REVERTED (set 0). Force-flood produced a 1-deep nearest-neighbor fringe on working lakes AND did nothing for sea-level 'dry' basins. Diagnosis: dry/striped lakes are terrain-intersection lakes on flat-at-spill Gaea basins (water only pools in river channels cut through them) -- a Gaea-source issue per the hydro HARD RULE, not a post-pipeline fix. 0 = off.",
-    "dry_lake_force_carve_max": 0
+    "dry_lake_force_carve_max": 0,
+    "_comment_taper": "S93e2 headwater width taper, box-gated variant B (true-wet connectivity = 1 component on all 6 gate tiles). target half-width = min(hw_min + k*sqrt(dist-from-source-blocks), painted half-width); min_tube_carve floors the carve inside the tube (step survival); tidal guard (no taper <= sea+1); lake-outlet tips seed at d=300; nodata_dcl = no taper where no skeleton point within that radius (graph-less painted channels keep paint width).",
+    "headwater_taper": {
+      "enabled": true,
+      "hw_min": 2.5,
+      "k": 0.45,
+      "edge_soft": 1.5,
+      "nodata_dcl": 48.0,
+      "min_tube_carve": 1.4
+    }
   },
   "seam_smoothing": {
     "_comment": "S89-walk4 seam meta-fix: per-tile surface_y gaussians (dune-flatten, biome-boundary, ocean-coastline, rock-relief smooth_gain) edge-replicated at tile borders -> visible tile seams. enabled feeds decorate_surface a pre-carve neighbour-surface halo (built from the padded height mask) so those gaussians smooth across tile borders. pad_px must exceed ~3*widest_sigma (dune baseline sigma=30 -> 96). off = old per-tile mode='nearest'.",
