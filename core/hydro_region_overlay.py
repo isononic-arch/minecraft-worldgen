@@ -2023,6 +2023,7 @@ def _rasterize_river_edges_tile(
     paint_smooth_full_50k = None
     flow_50k = np.zeros((tile_size, tile_size), dtype=np.float32)
     carve_depth_50k = None
+    sdf_blocks = None  # S93e3: spline-polygon SDF (blocks, + inside) for the organic tube
     paint_eroded_50k = None
     edt_blocks = None
 
@@ -2207,7 +2208,7 @@ def _rasterize_river_edges_tile(
             _flow_accum_8k_cache, rows_f, cols_f, 3, 0.0)
         flow_50k = np.where(paint_eroded_50k, flow_at_tile_8k, 0.0)
 
-    return out, width, paint_smooth_full_50k, flow_50k, carve_depth_50k
+    return out, width, paint_smooth_full_50k, flow_50k, carve_depth_50k, sdf_blocks
 
 
 def _rasterize_lake_mask_tile(
@@ -2259,7 +2260,8 @@ def apply_hydro_region_overlay(
     # block corners you'd get from a naive NEAREST upsample.
     # river_width_radius is the EDT-derived half-width per cell, in MC
     # blocks. Wide brush stroke → wide river. Thin stroke → thin river.
-    river_paint, river_width_radius, paint_full_smooth, flow_50k, carve_depth_50k = (
+    (river_paint, river_width_radius, paint_full_smooth, flow_50k,
+     carve_depth_50k, _sdf_blocks_tile) = (
         _rasterize_river_edges_tile(col_off, row_off, tile_size)
     )
     lake_paint = _rasterize_lake_mask_tile(col_off, row_off, tile_size)
@@ -2492,14 +2494,30 @@ def apply_hydro_region_overlay(
                     _dcl_w, _idx_w = _edt_ds(~_occ, return_indices=True)
                     _crop_ds = np.s_[_HALO_DS:_HALO_DS + tile_size,
                                      _HALO_DS:_HALO_DS + tile_size]
-                    masks["hydro_dcl"] = (
+                    _hw_cl_t = (_hwv[_idx_w[0], _idx_w[1]][_crop_ds]
+                                .astype(np.float32))
+                    # S93e3 ORGANIC TUBE: distance-to-centerline derived
+                    # from the spline-polygon SDF (dcl = half-width - sdf)
+                    # instead of the point EDT. The tube becomes an inward
+                    # EROSION of the polygon, inheriting all of the paint's
+                    # organic edge waves (the point-EDT tube followed the
+                    # blocky 6-block 8k skeleton -> straight canal runs
+                    # with rectangular jogs). The SDF is the established
+                    # seam-safe carve input. Point EDT is kept ONLY as the
+                    # no-data radius test (skeleton coverage).
+                    if _sdf_blocks_tile is not None:
+                        masks["hydro_dcl"] = np.maximum(
+                            _hw_cl_t - _sdf_blocks_tile.astype(np.float32),
+                            0.0).astype(np.float32)
+                    else:
+                        masks["hydro_dcl"] = (
+                            _dcl_w[_crop_ds].astype(np.float32))
+                    masks["hydro_dclpt"] = (
                         _dcl_w[_crop_ds].astype(np.float32))
                     masks["hydro_dist_src"] = (
                         _val[_idx_w[0], _idx_w[1]][_crop_ds]
                         .astype(np.float32))
-                    masks["hydro_hw_cl"] = (
-                        _hwv[_idx_w[0], _idx_w[1]][_crop_ds]
-                        .astype(np.float32))
+                    masks["hydro_hw_cl"] = _hw_cl_t
         except Exception as _bed_samp_exc:  # noqa: BLE001
             print(f"[hydro_region_overlay] bed/water_y sample skipped: "
                   f"{type(_bed_samp_exc).__name__}: {_bed_samp_exc}")
