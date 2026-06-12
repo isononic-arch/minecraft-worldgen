@@ -1,7 +1,15 @@
 # S93 HANDOFF (final) — carver quantization, tree-lane substitution, bowl warp, BED-CACHE MIGRATION
 
-**Sessions S93 + S93b (2026-06-10/11), branch `s85-cherry-picks`, ship commit `df0345f` on top of WIP freeze `06145ee` on top of pushed `0fce570`.**
+**Sessions S93 + S93b + S93c (2026-06-10/11), branch `s85-cherry-picks`, ship commits `df0345f` (S93b) + `c611c95`/`ddab939`/`5e16860` (S93c).**
 Supersedes [S93_wip_handoff.md](S93_wip_handoff.md) (mid-bisect freeze — historical only).
+
+## S93c ADDENDUM (same day, after the S93b install)
+
+1. **High-altitude sweep verdict:** water structure CLEAN at extreme relief — (79,71) descends 295 blocks in monotone bands (1 incoherent / 2009 cells), (30,12) at Y389-520 smooth (55 / 20631). The S93 quantizer holds. **BUT the bed override dug canyons at altitude:** the v17 `river_bed_8k` stores ABSOLUTE MC-Y baked with a **pre-768 LUT (field max 446.6 = old 448-world ceiling)** → dig grows with elevation: ~0 at Y63-95 (lowland validated tiles), 16-20 at Y145, **225-235 at Y500**. S84-era damage, world-wide at elevated painted rivers.
+2. **Canyon guard shipped (`c611c95`):** `river_carve.bed_max_extra_depth` (default 3.0) — override digs at most that far below the live-carved surface. Gates: 3 lowland tiles BYTE-IDENTICAL (rwy/sy/rmeta); (79,71) depth p50 16→6 max 10; (30,12) p50 225→8 max 11. The true rebake = bed-builder reconciliation session.
+3. **Cross-tile ecotone dither shipped (`5e16860`)** — user bug at (14333,17728): tree/veg swaps truncated at tile seams (surface blocks blended, GC + species swap fields were inner-grid-only). Swap geometry now computed on `biome_grid_padded`, cropped to inner; GC content pick switched from sequential `rng.integers` (stream re-rolls; tile-seeded) to per-pixel world-coord splitmix64. Gate `tools/diag_ecotone_seam.py`: zero diffs beyond 106px of boundary/edge, plc drift ≤0.8%, seam band ~11.5k swaps EACH side; border top-down clean. Walk note: placements near biome boundaries re-jiggle (canopy-exclusion cascade — S91-class re-roll).
+4. **Windowed 8k sampling (`ddab939`):** the 3 per-tile order-3 `map_coordinates` calls each spline-prefiltered the full 8k field into a fresh 512MB float64 → workers got HARD-KILLED by Windows under RAM pressure (pipeline exits 0, tile silently missing). Now tile-bbox windows + 40px margin — (62,61) byte-identical. Local box reality: **7.5GB total RAM** → local renders 1 worker; box workers also slimmer.
+5. **S93c walk TPs (installed to Vandir50k_verify):** steep descent (79,71) `/tp @s 40933 168 36487`; extreme headwater (30,12) top `/tp @s 15802 545 6616`, mid `/tp @s 15796 521 6352`; cross-tile veg seam (27,34)|(28,34) `/tp @s 14336 80 17728` (user's report spot — look along x=14336).
 
 ## WHAT SHIPPED (all walked or gate-passed)
 
