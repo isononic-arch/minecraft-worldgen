@@ -1298,6 +1298,21 @@ def carve_rivers(
                 _new_bed = np.maximum(hydro_river_bed,
                                        float(BEDROCK_Y + 3))
                 _cur_b = surface_out.astype(np.float32)
+                # S93c CANYON GUARD: the 8k bed cache stores ABSOLUTE MC-Y
+                # baked with a pre-768 height LUT (field max ~446.6 = the
+                # old 448-world ceiling). At lowland the baked LUT matches
+                # the live spline (bed ~= terrain at river cells, dig ~0,
+                # override is a near-no-op vs the live carve) but the error
+                # grows with altitude: (79,71) Y~145 dug 16-20 below the
+                # banks, (30,12) Y~500 dug a 225-deep canyon. Clamp the
+                # override to at most bed_max_extra_depth below the LIVE-
+                # carved surface — exact no-op where the cache is sane,
+                # canyon-killer at altitude. Proper fix = rebake the bed
+                # under the current spline (bed-builder reconciliation
+                # session; see memory/S93_handoff.md).
+                _bed_extra = float(_rc.get("bed_max_extra_depth", 3.0))
+                if _bed_extra > 0.0:
+                    _new_bed = np.maximum(_new_bed, _cur_b - _bed_extra)
                 _new_bed = np.minimum(_new_bed, _cur_b)
                 surface_out[_bed_valid] = (
                     np.round(_new_bed[_bed_valid])
