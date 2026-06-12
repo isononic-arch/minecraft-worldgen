@@ -341,7 +341,8 @@ def carve_rivers(
     hydro_river_bed:  np.ndarray | None = None,  # (H, W) float32 MC-Y from global 8k precompute (S83 v8)
     hydro_river_water_y: np.ndarray | None = None,  # (H, W) float32 MC-Y from skeleton walk (S83 v9)
     hydro_dist_src: np.ndarray | None = None,  # (H, W) float32 blocks from source tip (S93e taper; -1 = no data)
-    hydro_dcl:      np.ndarray | None = None,  # (H, W) float32 blocks to nearest global skeleton pt (S93e v2)
+    hydro_dcl:      np.ndarray | None = None,  # (H, W) float32 organic dist-to-centerline (hw - polygon SDF; S93e3)
+    hydro_dclpt:    np.ndarray | None = None,  # (H, W) float32 blocks to nearest skeleton POINT (nodata test)
     hydro_hw_cl:    np.ndarray | None = None,  # (H, W) float32 painted half-width at that skeleton pt (S93e v2)
     masks_dir:      "Path | None" = None,
     tile_x:         int | None = None,
@@ -1339,11 +1340,18 @@ def carve_rivers(
                        + 0.3 * _vn_ht(16, 0xE30BB)).astype(np.float32)
                 _tgt = _tgt * (1.0 - _wob * 0.5 + _wob * _nz)
                 del _wzz, _wxx, _nz
-            _tgt = np.maximum(_tgt, np.float32(max(_hw_min * 0.6, 1.0)))
+            # Wobble may never push below hw_min — it erased the 1-wide
+            # (27,33) creek (18 cells, sub-survival) on the ORG gate.
+            _tgt = np.maximum(_tgt, np.float32(_hw_min))
             _tgt = np.minimum(_tgt, np.maximum(
                 hydro_hw_cl.astype(np.float32), _hw_min))
             _tgt = np.where(_dsrc_n >= 0.0, _tgt,
                             np.float32(1e9)).astype(np.float32)
+            # S93e3b: nodata tests use the POINT distance — the organic
+            # hydro_dcl (hw - polygon SDF) stays small inside any paint
+            # regardless of skeleton coverage.
+            _dclpt_ht = (hydro_dclpt if hydro_dclpt is not None
+                         else hydro_dcl)
             # S93e3 FURNITURE SCALING: banks / U-depth / rim machinery all
             # key off width_u8, and carve depth was sized for the PAINTED
             # width — the tapered stream sat at the bottom of a full-size
@@ -1351,7 +1359,7 @@ def carve_rivers(
             # width to the tube and scale carve depth ~ sqrt(width ratio)
             # inside valid taper zones (physical w/d coupling).
             _valid_ht = (_dsrc_n >= 0.0) & (_tgt < np.float32(1e8)) \
-                & (hydro_dcl <= np.float32(_ht.get("nodata_dcl", 48.0)))
+                & (_dclpt_ht <= np.float32(_ht.get("nodata_dcl", 48.0)))
             if _valid_ht.any():
                 _w_eff = np.clip(_tgt + _soft_ht, 1.0, 254.0)
                 width_u8 = np.where(
@@ -1373,7 +1381,7 @@ def carve_rivers(
             # dcl and be gated DRY ((62,61)'s inter-lake streams died to
             # this). Far-from-skeleton means "no taper", never "no water".
             _nodata_r = float(_ht.get("nodata_dcl", 48.0))
-            _g_ht = np.where(hydro_dcl > _nodata_r,
+            _g_ht = np.where(_dclpt_ht > _nodata_r,
                              np.float32(1.0), _g_ht)
             # TIDAL GUARD: no taper where the pre-carve terrain sits at
             # or below sea level (+1) — tidal fans/estuary mouths are
