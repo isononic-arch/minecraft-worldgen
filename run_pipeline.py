@@ -353,21 +353,25 @@ def _process_tile(args: dict) -> dict:
     # OVERRIDE_BIOME_MAP since S56). The soften+dither below handles
     # the visible biome-to-biome transition.
 
-    # ---- Step 6c.5: Soften biome boundaries (S58) ----
-    biome_grid = core_biome_assign.soften_biome_boundaries(
-        biome_grid, tile_x * w, tile_y * h,
-        amplitude_px=40.0, scale=200.0, octaves=2,
-    )
-
-    # ---- Step 6c.6 (S89 walk): tundra floor -> snowy taiga ----
-    # ARCTIC_TUNDRA only reads right as the bare cap band; below the floor it
-    # looks better as SNOWY_BOREAL_TAIGA. surface_y-gated, applied before the
-    # padded grid is built so the cross-tile ecotone + all downstream consumers
-    # (decorate, schematics, MC tag) see the remapped biome.
+    # ---- Step 6c.5: Soften biome boundaries (S58; REWORKED S93c) ----
+    # The inner soften now happens inside Step 6c2 on the HALO'D grid (the
+    # razor-seam fix): softening the bare 512² gave the spray EDT a grid-
+    # local view — a neighbour-tile biome absent from the window had
+    # dist=inf, could never win a spray cell, and its salt-and-pepper
+    # stopped DEAD at the tile edge ((27,34)|(28,34): 0 vs 23-40
+    # BOREAL_ALPINE cells per column across the seam = a razor-straight
+    # biome front in-world). Legacy per-tile soften kept only as the
+    # 6c2-failure fallback below.
     _TUNDRA_FLOOR_Y = 625
-    _at_low = (biome_grid == "ARCTIC_TUNDRA") & (surface_y < _TUNDRA_FLOOR_Y)
-    if _at_low.any():
-        biome_grid[_at_low] = "SNOWY_BOREAL_TAIGA"
+    _softened_via_halo = False
+
+    def _tundra_floor_remap(_bg):
+        # Step 6c.6 (S89 walk): ARCTIC_TUNDRA below the floor reads better
+        # as SNOWY_BOREAL_TAIGA. Runs AFTER soften, before all consumers
+        # (decorate, schematics, MC tag).
+        _at_low = (_bg == "ARCTIC_TUNDRA") & (surface_y < _TUNDRA_FLOOR_Y)
+        if _at_low.any():
+            _bg[_at_low] = "SNOWY_BOREAL_TAIGA"
 
     # ---- Step 6c2: Padded biome_grid for cross-tile ecotone (S58 Phase 3b) ----
     # Two different halo widths used here:
@@ -422,9 +426,17 @@ def _process_tile(args: dict) -> dict:
             tile_y * h - _INHERITANCE_PAD_PX,
             amplitude_px=40.0, scale=200.0, octaves=2,
         )
-        # Overwrite the innermost 512×512 with the authoritative inner
-        # biome_grid (which went through the Step 6c inner-scale inheritance
-        # and matches the surface_blocks painted downstream).
+        # S93c: the inner biome grid IS the center slice of the halo'd
+        # soften — both sides of any seam compute the spray from the same
+        # world-coord noise AND the same EDT view (halo 512 >> spray reach
+        # ~2*amp=80), so spray density is continuous across tiles.
+        biome_grid = _bg_big[
+            _INHERITANCE_PAD_PX:_INHERITANCE_PAD_PX + h,
+            _INHERITANCE_PAD_PX:_INHERITANCE_PAD_PX + w].copy()
+        _tundra_floor_remap(biome_grid)
+        _softened_via_halo = True
+        # Re-sync the center so ring + inner stay consistent (the ring does
+        # not get the tundra remap — pre-existing limitation).
         _bg_big[_INHERITANCE_PAD_PX:_INHERITANCE_PAD_PX + h,
                 _INHERITANCE_PAD_PX:_INHERITANCE_PAD_PX + w] = biome_grid
         # Extract inner-plus-48 window for the ecotone dither.
@@ -475,6 +487,14 @@ def _process_tile(args: dict) -> dict:
               f"{type(_ecotone_pad_exc).__name__}: {_ecotone_pad_exc}")
         biome_grid_padded = None
         surface_y_padded = None
+    if not _softened_via_halo:
+        # 6c2 failed before the halo'd soften landed — legacy per-tile
+        # soften (razor seams, but better than no softening at all).
+        biome_grid = core_biome_assign.soften_biome_boundaries(
+            biome_grid, tile_x * w, tile_y * h,
+            amplitude_px=40.0, scale=200.0, octaves=2,
+        )
+        _tundra_floor_remap(biome_grid)
 
     # ---- Step 6d: Meadow clearing field (S57 Phase 3a) ----
     # Shared low-freq noise field read by both surface_decorator (ground cover

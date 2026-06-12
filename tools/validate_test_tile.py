@@ -613,11 +613,10 @@ def main() -> int:
         eco_grads = None
 
     # Step 6c: REMOVED S58 (see run_pipeline.py)
-    # Step 6c.5: Soften biome boundaries (S58)
-    biome_grid = core_biome.soften_biome_boundaries(
-        biome_grid, tx * TILE_SIZE, tz * TILE_SIZE,
-        amplitude_px=40.0, scale=200.0, octaves=2,
-    )
+    # Step 6c.5 REWORKED S93c: inner soften now happens inside Step 6c2 on
+    # the halo'd grid (razor-seam fix — see run_pipeline.py). Legacy
+    # per-tile soften kept only as the 6c2-failure fallback below.
+    _softened_via_halo = False
 
     # Step 6c2: Padded biome_grid for cross-tile ecotone (S58 Phase 3b)
     # See run_pipeline.py's Step 6c2 for the full rationale on the two halos.
@@ -645,8 +644,12 @@ def main() -> int:
             tz * TILE_SIZE - _INHERITANCE_PAD_PX,
             amplitude_px=40.0, scale=200.0, octaves=2,
         )
-        _bg_big[_INHERITANCE_PAD_PX:_INHERITANCE_PAD_PX + TILE_SIZE,
-                _INHERITANCE_PAD_PX:_INHERITANCE_PAD_PX + TILE_SIZE] = biome_grid
+        # S93c: inner biome grid = center slice of the halo'd soften
+        # (cross-tile-continuous spray; see run_pipeline.py Step 6c2).
+        biome_grid = _bg_big[
+            _INHERITANCE_PAD_PX:_INHERITANCE_PAD_PX + TILE_SIZE,
+            _INHERITANCE_PAD_PX:_INHERITANCE_PAD_PX + TILE_SIZE].copy()
+        _softened_via_halo = True
         _lo = _INHERITANCE_PAD_PX - _ECOTONE_PAD_PX
         _hi = _INHERITANCE_PAD_PX + TILE_SIZE + _ECOTONE_PAD_PX
         biome_grid_padded = _bg_big[_lo:_hi, _lo:_hi].copy()
@@ -655,6 +658,11 @@ def main() -> int:
         print(f"[validate] WARN: ecotone_pad failed: "
               f"{type(_ecotone_pad_exc).__name__}: {_ecotone_pad_exc}")
         biome_grid_padded = None
+    if not _softened_via_halo:
+        biome_grid = core_biome.soften_biome_boundaries(
+            biome_grid, tx * TILE_SIZE, tz * TILE_SIZE,
+            amplitude_px=40.0, scale=200.0, octaves=2,
+        )
 
     # Step 6d: Meadow clearing field (S57 Phase 3a)
     import core.meadow_clearing_field as core_clearing
