@@ -1588,11 +1588,25 @@ def _process_tile(args: dict) -> dict:
                    .get("river_geometry", {}).get("lake_carve", {}))
         _LG_RADIUS = int(_lg_cfg.get("rim_grade_radius_px", 12))
         _LG_SIGMA = float(_lg_cfg.get("rim_grade_sigma", 4.0))
-        if _LG_RADIUS > 0 and _lake_mask_pad.any():
+        # S93e4: the rim grade also bands ABOVE-SEA RIVER water. The
+        # taper narrowed channels to a tube, so the elevation change that
+        # the old 40-wide carve spread across gentle banks now happened
+        # in ~2 cells at the tube edge — vertical cut walls, banks p50 7
+        # blocks above water at 14 px out on (30,12) (user: "I see
+        # trenches"). Same masked gaussian + leak re-pin; sea-level water
+        # excluded (estuary fans/beaches untouched). Knob
+        # river_carve.headwater_taper.rim_grade (default on).
+        _rg_on = bool((cfg.get("river_carve", {})
+                       .get("headwater_taper", {})).get("rim_grade", True))
+        _wet_lg = _lake_mask_pad
+        if _rg_on:
+            _wet_lg = _wet_lg | (
+                _water_y_positive_pad > core_col_gen.SEA_LEVEL)
+        if _LG_RADIUS > 0 and _wet_lg.any():
             from scipy.ndimage import binary_dilation as _bd_lg
             from scipy.ndimage import gaussian_filter as _gf_lg
             _land_pad_lg = _river_water_y_pad < 0
-            _band_lg = (_bd_lg(_lake_mask_pad, iterations=_LG_RADIUS)
+            _band_lg = (_bd_lg(_wet_lg, iterations=_LG_RADIUS)
                         & _land_pad_lg)
             if _band_lg.any():
                 # masked-normalized gaussian over LAND ONLY — water/bed
