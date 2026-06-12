@@ -816,6 +816,9 @@ def _process_tile(args: dict) -> dict:
         # S91 veg-seam assess: ground cover + (env-gated) schematic placements.
         _np_sd.save(f"{_surf_dump_dir}/gc_{tile_x}_{tile_y}.npy",
                     np.asarray(ground_cover, dtype=object), allow_pickle=True)
+        # S93c ecotone gate: biome grid (diffs must hug boundaries/edges).
+        _np_sd.save(f"{_surf_dump_dir}/bg_{tile_x}_{tile_y}.npy",
+                    np.asarray(biome_grid, dtype=object), allow_pickle=True)
         if _os_surf_dump.environ.get("SURF_DUMP_SCHEM"):
             try:
                 _sd_index = core_placement.load_index(_Path(args["schem_index_path"]))
@@ -836,6 +839,7 @@ def _process_tile(args: dict) -> dict:
                 clearing_field = clearing_field,
                 surface_blocks = surface_blk,
                 cliff_cap_tile = masks.get("cliff_cap"),
+                biome_grid_padded = biome_grid_padded,  # S93c cross-tile ecotone
             )
             _np_sd.save(f"{_surf_dump_dir}/plc_{tile_x}_{tile_y}.npy",
                         np.asarray([(p.world_x, p.world_z, p.place_y, p.size,
@@ -870,6 +874,7 @@ def _process_tile(args: dict) -> dict:
         clearing_field = clearing_field,
         surface_blocks = surface_blk,
         cliff_cap_tile = masks.get("cliff_cap"),
+        biome_grid_padded = biome_grid_padded,  # S93c cross-tile ecotone
     )
 
     # ---- Step 9: Chunk write ----

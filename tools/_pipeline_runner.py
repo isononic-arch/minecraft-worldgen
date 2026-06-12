@@ -398,6 +398,7 @@ def run_tile_prelude(
                 cliff_deg     = cliff_deg,
                 clearing_field = clearing_field,
                 surface_blocks = surface_blk,
+                biome_grid_padded = biome_grid_padded,  # S93c cross-tile ecotone
             )
         except Exception as e:
             _log(f"place_schematics failed (non-fatal): {e}")

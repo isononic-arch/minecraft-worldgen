@@ -714,6 +714,7 @@ def main() -> int:
                 cliff_deg     = cliff_deg,
                 clearing_field = clearing_field,
                 surface_blocks = surface_blk,
+                biome_grid_padded = biome_grid_padded,  # S93c cross-tile ecotone
             )
         except Exception as e:
             print(f"[validate] WARN: schematic placement failed: {e}")

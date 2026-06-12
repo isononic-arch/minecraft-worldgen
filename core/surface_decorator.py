@@ -4714,6 +4714,9 @@ def decorate_surface(
         ground_cover, biome_grid, noise_b, cfg,
         tile_x, tile_y,
         gap_mask=_gap_for_ecotone,
+        # S93c: same cross-tile halo the surface dither uses — veg swaps
+        # now continue across tile seams instead of truncating.
+        biome_grid_padded=biome_grid_padded if _use_padded_ecotone else None,
     )
 
     # S60: clear ground cover on bare rock. When the high-elevation height
@@ -5425,6 +5428,7 @@ def _apply_ecotone_dither_ground_cover(
     tile_x:       int,
     tile_y:       int,
     gap_mask:     np.ndarray | None = None,
+    biome_grid_padded: np.ndarray | None = None,  # S93c: cross-tile halo
 ) -> None:
     """S59: Ground cover counterpart to ``_apply_ecotone_dither``.
 
@@ -5437,14 +5441,50 @@ def _apply_ecotone_dither_ground_cover(
     this tile and copy its ground_cover value (captures the full GC palette
     diversity including "" air/none pixels).
 
-    No padding — runs on inner tile only. Cross-tile seam asymmetry for GC at
-    the 1-pixel tile boundary is accepted as a cosmetic carry-forward (noted
-    in CLAUDE.md and §18).
+    S93c: when ``biome_grid_padded`` is provided, the swap GEOMETRY
+    (has_neighbour / neighbour_biome / swap_prob) is computed on the padded
+    grid and cropped to inner — biome boundaries that sit across a tile seam
+    now project their veg transition into this tile (user report: tree/veg
+    swaps stopped dead at tile borders while surface blocks blended).
+    Interior pixels are byte-identical to the unpadded path: a pixel whose
+    nearest boundary was already interior gets the same EDT distances, and
+    the per-pixel coin (inner-shaped, same seed) is unchanged. Residual:
+    swap CONTENT is still sampled from this tile's inner pixels of the
+    neighbour biome — a biome present only in the halo contributes geometry
+    but no GC samples (those pixels keep their own GC).
     """
-    fields = _compute_ecotone_swap_fields(biome_grid, cfg, gap_mask, noise_b)
-    if fields is None:
-        return
-    has_neighbour, neighbour_biome, swap_prob_grid, biome_names, _, _ = fields
+    _pgrid = biome_grid_padded
+    _Hi, _Wi = biome_grid.shape
+    _pad_ok = (
+        _pgrid is not None
+        and getattr(_pgrid, "ndim", 0) == 2
+        and _pgrid.shape[0] > _Hi
+        and _pgrid.shape[1] > _Wi
+        and (_pgrid.shape[0] - _Hi) == (_pgrid.shape[1] - _Wi)
+        and (_pgrid.shape[0] - _Hi) % 2 == 0
+    )
+    if _pad_ok:
+        _p = (_pgrid.shape[0] - _Hi) // 2
+        if gap_mask is not None:
+            _gap_pad = np.zeros(_pgrid.shape, dtype=gap_mask.dtype)
+            _gap_pad[_p:_p + _Hi, _p:_p + _Wi] = gap_mask
+        else:
+            _gap_pad = None
+        fields = _compute_ecotone_swap_fields(_pgrid, cfg, _gap_pad, None)
+        if fields is None:
+            return
+        has_neighbour, neighbour_biome, swap_prob_grid, biome_names, _, _ = fields
+        _crop = (slice(_p, _p + _Hi), slice(_p, _p + _Wi))
+        has_neighbour   = has_neighbour[_crop]
+        neighbour_biome = neighbour_biome[_crop]
+        swap_prob_grid  = swap_prob_grid[_crop]
+        if not has_neighbour.any():
+            return
+    else:
+        fields = _compute_ecotone_swap_fields(biome_grid, cfg, gap_mask, noise_b)
+        if fields is None:
+            return
+        has_neighbour, neighbour_biome, swap_prob_grid, biome_names, _, _ = fields
 
     H, W = biome_grid.shape
     # Independent per-pixel coin — different seed from surface/sub (0xEC0D17E).
@@ -5473,6 +5513,22 @@ def _apply_ecotone_dither_ground_cover(
     # 80,50 / 28,7 / 59,44).  Random sampling restores the natural per-pixel
     # variation in GC density across the swap zone.  Surface blocks still
     # use nearest-pixel (coherent palettes there look good).
+    # S93c: WORLD-COORD HASHED pick (replaces the sequential rng.integers
+    # stream). The stream made every swap pixel's CONTENT re-roll whenever
+    # swap counts changed anywhere earlier in iteration order (so any swap-
+    # geometry change re-rolled all interior bands), and was tile-seeded.
+    # splitmix64 of world coords gives each pixel a stable pick independent
+    # of mask changes elsewhere (S87 good practice #3).
+    _wx = (swap_c.astype(np.uint64) + np.uint64(tile_x * W))
+    _wz = (swap_r.astype(np.uint64) + np.uint64(tile_y * H))
+    _h = ((_wx * np.uint64(0x9E3779B97F4A7C15))
+          ^ (_wz * np.uint64(0xC2B2AE3D27D4EB4F))
+          ^ np.uint64(0x9C0DEC0))
+    _h ^= _h >> np.uint64(30)
+    _h *= np.uint64(0xBF58476D1CE4E5B9)
+    _h ^= _h >> np.uint64(27)
+    _h *= np.uint64(0x94D049BB133111EB)
+    _h ^= _h >> np.uint64(31)
     nb_at_swap = neighbour_biome[swap_r, swap_c]
     for bname in biome_names:
         bname_mask = nb_at_swap == bname
@@ -5486,8 +5542,8 @@ def _apply_ecotone_dither_ground_cover(
         target_r = swap_r[bname_mask]
         target_c = swap_c[bname_mask]
 
-        n_swap = int(bname_mask.sum())
-        sample_idx = rng.integers(0, len(biome_pixels_r), size=n_swap)
+        sample_idx = (_h[bname_mask]
+                      % np.uint64(len(biome_pixels_r))).astype(np.int64)
         sampled_r = biome_pixels_r[sample_idx]
         sampled_c = biome_pixels_c[sample_idx]
 

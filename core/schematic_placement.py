@@ -878,6 +878,7 @@ def place_schematics(
     clearing_field: np.ndarray | None = None,  # (H,W) float32 [0,1] — meadow clearing noise (S57 Phase 3a)
     surface_blocks: np.ndarray | None = None,  # (H,W) object str — for snow-surface skip (S58)
     cliff_cap_tile: np.ndarray | None = None,  # (H,W) float32 [0,1] — walk #12: suppress trees on cap
+    biome_grid_padded: np.ndarray | None = None,  # (H+2p,W+2p) object str — S93c cross-tile ecotone halo
 ) -> list[PlacementRecord]:
     """
     Compute schematic placements for one tile.
@@ -1313,15 +1314,38 @@ def place_schematics(
     # entries list swaps — mixes tree species at biome seams. Independent coin
     # from surface/sub (seed 0xEC0D17E) and GC (0x9C0DEC0); uses 0x5C0DEC0
     # for "schematic ecotone".
-    # Inner-only (no padding) — cross-tile symmetry is cosmetic carry-forward.
+    # S93c: when biome_grid_padded is provided, the swap GEOMETRY comes from
+    # the padded grid (cropped to inner) — boundaries sitting across a tile
+    # seam now project their species mixing into this tile (user report:
+    # tree swaps stopped dead at tile borders). The coin stays inner-shaped
+    # with the same seed, so interior candidates are byte-identical; the
+    # swapped entries list works for halo-only biomes too (index is global).
     _seam_has_nb: np.ndarray | None = None
     _seam_nb: np.ndarray | None = None
     _seam_swap_grid: np.ndarray | None = None
     try:
         from core.surface_decorator import _compute_ecotone_swap_fields as _ecotone_fields
-        _fields = _ecotone_fields(biome_grid, cfg, gap_mask=None, noise_b=None)
+        _pgrid = biome_grid_padded
+        _pad_ok = (
+            _pgrid is not None
+            and getattr(_pgrid, "ndim", 0) == 2
+            and _pgrid.shape[0] > H
+            and _pgrid.shape[1] > W
+            and (_pgrid.shape[0] - H) == (_pgrid.shape[1] - W)
+            and (_pgrid.shape[0] - H) % 2 == 0
+        )
+        if _pad_ok:
+            _fields = _ecotone_fields(_pgrid, cfg, gap_mask=None, noise_b=None)
+        else:
+            _fields = _ecotone_fields(biome_grid, cfg, gap_mask=None, noise_b=None)
         if _fields is not None:
             _seam_has_nb, _seam_nb, _seam_sp, _, _, _ = _fields
+            if _pad_ok:
+                _p = (_pgrid.shape[0] - H) // 2
+                _crop = (slice(_p, _p + H), slice(_p, _p + W))
+                _seam_has_nb = _seam_has_nb[_crop]
+                _seam_nb = _seam_nb[_crop]
+                _seam_sp = _seam_sp[_crop]
             _seam_rng = np.random.default_rng(tile_seed ^ 0x5C0DEC0)
             _seam_coin = _seam_rng.random((H, W)).astype(np.float32)
             _seam_swap_grid = _seam_coin < _seam_sp
