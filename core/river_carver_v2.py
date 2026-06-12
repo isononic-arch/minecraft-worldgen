@@ -1298,10 +1298,73 @@ def carve_rivers(
             _soft_ht = max(float(_ht.get("edge_soft", 1.5)), 0.25)
             _dsrc_n = hydro_dist_src.astype(np.float32)
             _tgt = _hw_min + _k_ht * np.sqrt(np.maximum(_dsrc_n, 0.0))
+            # S93e3 EDGE WOBBLE: the tube edge is an iso-contour of the
+            # skeleton EDT — a smooth parallel offset that erased the
+            # painted meander wobble (user: "straight and unnatural").
+            # Modulate the target half-width with world-stable 2-octave
+            # value noise so the banks meander organically and identically
+            # across tile seams.
+            _wob = float(_ht.get("edge_wobble", 0.45))
+            if _wob > 0.0:
+                _Hg, _Wg = _tgt.shape
+                _wz0 = (tile_z if tile_z is not None else 0) * 512
+                _wx0 = (tile_x if tile_x is not None else 0) * 512
+                _wzz, _wxx = np.meshgrid(
+                    np.arange(_Hg, dtype=np.int64) + _wz0,
+                    np.arange(_Wg, dtype=np.int64) + _wx0, indexing="ij")
+
+                def _vn_ht(scale, salt):
+                    gx = np.floor_divide(_wxx, scale)
+                    gz = np.floor_divide(_wzz, scale)
+                    fx = ((_wxx - gx * scale).astype(np.float32) / scale)
+                    fz = ((_wzz - gz * scale).astype(np.float32) / scale)
+                    fx = fx * fx * (3.0 - 2.0 * fx)
+                    fz = fz * fz * (3.0 - 2.0 * fz)
+
+                    def _h(ax, az):
+                        h = ((ax.astype(np.uint64)
+                              * np.uint64(0x9E3779B97F4A7C15))
+                             ^ (az.astype(np.uint64)
+                                * np.uint64(0xC2B2AE3D27D4EB4F))
+                             ^ np.uint64(salt))
+                        h ^= h >> np.uint64(30)
+                        h *= np.uint64(0xBF58476D1CE4E5B9)
+                        h ^= h >> np.uint64(27)
+                        return (h >> np.uint64(40)).astype(np.float32) / np.float32(2**24)
+                    n00 = _h(gx, gz); n10 = _h(gx + 1, gz)
+                    n01 = _h(gx, gz + 1); n11 = _h(gx + 1, gz + 1)
+                    return ((n00 * (1 - fx) + n10 * fx) * (1 - fz)
+                            + (n01 * (1 - fx) + n11 * fx) * fz)
+                _nz = (0.7 * _vn_ht(48, 0x5713E3)
+                       + 0.3 * _vn_ht(16, 0xE30BB)).astype(np.float32)
+                _tgt = _tgt * (1.0 - _wob * 0.5 + _wob * _nz)
+                del _wzz, _wxx, _nz
+            _tgt = np.maximum(_tgt, np.float32(max(_hw_min * 0.6, 1.0)))
             _tgt = np.minimum(_tgt, np.maximum(
                 hydro_hw_cl.astype(np.float32), _hw_min))
             _tgt = np.where(_dsrc_n >= 0.0, _tgt,
                             np.float32(1e9)).astype(np.float32)
+            # S93e3 FURNITURE SCALING: banks / U-depth / rim machinery all
+            # key off width_u8, and carve depth was sized for the PAINTED
+            # width — the tapered stream sat at the bottom of a full-size
+            # trench inside a 24-block bank collar. Clamp the working
+            # width to the tube and scale carve depth ~ sqrt(width ratio)
+            # inside valid taper zones (physical w/d coupling).
+            _valid_ht = (_dsrc_n >= 0.0) & (_tgt < np.float32(1e8)) \
+                & (hydro_dcl <= np.float32(_ht.get("nodata_dcl", 48.0)))
+            if _valid_ht.any():
+                _w_eff = np.clip(_tgt + _soft_ht, 1.0, 254.0)
+                width_u8 = np.where(
+                    _valid_ht,
+                    np.minimum(width_u8.astype(np.float32), _w_eff),
+                    width_u8.astype(np.float32)).astype(width_u8.dtype)
+                _dsc_min = float(_ht.get("depth_scale_min", 0.4))
+                _hwn_safe = np.maximum(hydro_hw_cl.astype(np.float32), 1.0)
+                _dscale = np.clip(np.sqrt(
+                    np.clip(_tgt, 0.0, 1e6) / _hwn_safe), _dsc_min, 1.0)
+                depth_at_cell = np.where(
+                    _valid_ht, depth_at_cell * _dscale,
+                    depth_at_cell).astype(np.float32)
             _g_ht = np.clip((_tgt + _soft_ht - hydro_dcl.astype(np.float32))
                             / _soft_ht, 0.0, 1.0).astype(np.float32)
             # NO-DATA GUARD: cells far from ANY skeleton point belong to
