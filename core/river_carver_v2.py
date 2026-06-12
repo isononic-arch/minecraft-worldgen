@@ -340,6 +340,9 @@ def carve_rivers(
     height_norm:    np.ndarray | None = None,  # (H, W) float32 [0,1] — raw terrain
     hydro_river_bed:  np.ndarray | None = None,  # (H, W) float32 MC-Y from global 8k precompute (S83 v8)
     hydro_river_water_y: np.ndarray | None = None,  # (H, W) float32 MC-Y from skeleton walk (S83 v9)
+    hydro_dist_src: np.ndarray | None = None,  # (H, W) float32 blocks from source tip (S93e taper; -1 = no data)
+    hydro_dcl:      np.ndarray | None = None,  # (H, W) float32 blocks to nearest global skeleton pt (S93e v2)
+    hydro_hw_cl:    np.ndarray | None = None,  # (H, W) float32 painted half-width at that skeleton pt (S93e v2)
     masks_dir:      "Path | None" = None,
     tile_x:         int | None = None,
     tile_z:         int | None = None,
@@ -1250,6 +1253,66 @@ def carve_rivers(
         _maxc = float(_rc.get("max_carve_blocks", 0.0))
         if _maxc > 0.0:
             depth_at_cell = np.minimum(depth_at_cell, _maxc)
+        # ── S93e HEADWATER WIDTH TAPER ──────────────────────────────────
+        # User spec: "headwaters should be realistically thin and widen at
+        # a realistic pace." Wet width IS the carve footprint (the S80 v15
+        # too_high sink floods every footprint cell), and the footprint is
+        # the painted polygon — so paint-floor-width headwaters render
+        # 12-50 blocks wide from their FIRST block. Gate depth_at_cell on
+        # distance-to-painted-centerline vs a target half-width grown with
+        # GEODESIC DISTANCE FROM THE CHANNEL'S SOURCE TIP (hydro_dist_src;
+        # BFS over the 8k skeleton pixels — robust where the painted flow
+        # graph breaks, which is why raw flow accumulation can't drive
+        # this). target = hw_min + k*sqrt(d_src), capped at the local
+        # painted half-width (never widens) -> exact no-op beyond ~600
+        # blocks from a tip (mainstems, estuaries). Outside the target the
+        # carve is capped BELOW the 0.05 footprint threshold instead of
+        # zeroed: the old wide trough fills back to near-terrain and the
+        # channel reads as a thin stream in a soft swale — no dry moat.
+        _ht = _rc.get("headwater_taper", {}) if isinstance(_rc, dict) else {}
+        if (bool(_ht.get("enabled", True))
+                and hydro_dist_src is not None
+                and hydro_dcl is not None
+                and hydro_hw_cl is not None):
+            # S93e v2: PURE per-cell math on globally-sampled fields (the
+            # seam law — geometry derived per-tile dries channels at tile
+            # borders; the v1 per-tile skeletonize did exactly that at
+            # (27,33)|(27,34)). All three inputs come from the overlay's
+            # halo'd EDT over the GLOBAL 8k skeleton points, identical on
+            # both sides of every seam.
+            _hw_min = float(_ht.get("hw_min", 1.5))
+            _k_ht = float(_ht.get("k", 0.37))
+            _soft_ht = max(float(_ht.get("edge_soft", 1.5)), 0.25)
+            _dsrc_n = hydro_dist_src.astype(np.float32)
+            _tgt = _hw_min + _k_ht * np.sqrt(np.maximum(_dsrc_n, 0.0))
+            _tgt = np.minimum(_tgt, np.maximum(
+                hydro_hw_cl.astype(np.float32), _hw_min))
+            _tgt = np.where(_dsrc_n >= 0.0, _tgt,
+                            np.float32(1e9)).astype(np.float32)
+            _g_ht = np.clip((_tgt + _soft_ht - hydro_dcl.astype(np.float32))
+                            / _soft_ht, 0.0, 1.0).astype(np.float32)
+            # NO-DATA GUARD: cells far from ANY skeleton point belong to
+            # painted channels whose flow graph never built — they'd
+            # otherwise inherit an unrelated point's values with a huge
+            # dcl and be gated DRY ((62,61)'s inter-lake streams died to
+            # this). Far-from-skeleton means "no taper", never "no water".
+            _nodata_r = float(_ht.get("nodata_dcl", 48.0))
+            _g_ht = np.where(hydro_dcl > _nodata_r,
+                             np.float32(1.0), _g_ht)
+            # TIDAL GUARD: no taper where the pre-carve terrain sits at
+            # or below sea level (+1) — tidal fans/estuary mouths are
+            # governed by the sea, not by upstream catchment. The
+            # above-sea estuary arm still narrows (the desired
+            # "accurately narrows upstream" behaviour); without this
+            # the whole approved (27,34) fan thinned 43%.
+            _tidal_ht = surface_out.astype(np.float32) <= float(SEA_LEVEL + 1)
+            if _tidal_ht.any():
+                _g_ht = np.where(_tidal_ht, np.float32(1.0), _g_ht)
+            _cap_ht = np.float32(0.04) + _g_ht * depth_at_cell
+            depth_at_cell = np.where(
+                _g_ht >= 1.0, depth_at_cell,
+                np.minimum(depth_at_cell, _cap_ht)).astype(np.float32)
+            del _dsrc_n, _tgt, _g_ht, _cap_ht, _tidal_ht
         original_sy_f = surface_out.astype(np.float32)
         new_y_f = (original_sy_f - depth_at_cell).astype(np.float32)
         # Footprint covers the BROAD carve buffer (any non-trivial

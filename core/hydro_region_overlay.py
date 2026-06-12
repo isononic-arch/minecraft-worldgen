@@ -1792,6 +1792,124 @@ def _ensure_caches(hr_path: Path) -> None:
         pass
 
 
+_dist_src_8k_sparse = None  # (rr, cc, dist_blocks) | False after a failed build
+
+
+def _ensure_dist_from_source(masks_dir=None):
+    """S93e: per-skeleton-cell GEODESIC distance (in blocks) from the
+    channel's SOURCE TIP, BFS over the painted 8k skeleton pixels.
+
+    Drives the carver's headwater width taper. Tips are degree-1
+    endpoints of the flow>0 pixel set with near-zero accumulation
+    (mouth endpoints carry high flow and are excluded). Pixel-BFS is
+    deliberately used instead of the painted flow graph — the graph
+    breaks at stroke joints (accumulation resets mid-channel), which
+    is why flow alone can't drive the taper.
+    """
+    global _dist_src_8k_sparse
+    if _dist_src_8k_sparse is not None:
+        return _dist_src_8k_sparse or None
+    try:
+        fl = _flow_accum_8k_cache
+        if fl is None or not fl.any():
+            _dist_src_8k_sparse = False
+            return None
+        from collections import deque
+        from scipy.ndimage import convolve as _cv_ds
+        sk = fl > 0
+        _k8 = np.ones((3, 3), np.uint8)
+        _k8[1, 1] = 0
+        deg = _cv_ds(sk.astype(np.uint8), _k8, mode="constant")
+        tips = sk & (deg == 1) & (fl <= 5)
+        # LAKE-OUTLET BONUS: a zero-flow endpoint that touches a lake is
+        # an OUTLET, not a spring — the lake integrates its whole basin,
+        # so the channel should START wide. Seed those tips at 300 blocks
+        # (-> target ~8 half-width) instead of 0. (Lake INFLOW ends carry
+        # accumulated flow > 5 and were never tips.) Lakes = painted-
+        # region lakes UNION Gaea lakes (hydro_lake.tif decimated to 8k)
+        # — the painted lake mask is EMPTY world-wide (all Vandir lakes
+        # are Gaea), which silently no-op'd the first version and left
+        # (62,61)'s junction stream 2 blocks wide.
+        _lake_8k = None
+        if _lake_mask_cache is not None and _lake_mask_cache.any():
+            _lake_8k = _lake_mask_cache.copy()
+        if masks_dir is not None:
+            try:
+                import rasterio as _rio_ds
+                from rasterio.enums import Resampling as _Rs_ds
+                with _rio_ds.open(str(masks_dir / "hydro_lake.tif")) as _lds:
+                    _gl = _lds.read(
+                        1, out_shape=(_REGION_PX, _REGION_PX),
+                        resampling=_Rs_ds.nearest) > 0
+                _lake_8k = _gl if _lake_8k is None else (_lake_8k | _gl)
+            except Exception as _gl_exc:  # noqa: BLE001
+                print(f"[hydro_region_overlay] gaea-lake load for outlet "
+                      f"bonus failed: {type(_gl_exc).__name__}: {_gl_exc}")
+        _lake_near = None
+        if _lake_8k is not None and _lake_8k.any():
+            from scipy.ndimage import binary_dilation as _bd_ds
+            _lake_near = _bd_ds(_lake_8k, iterations=3)
+        _LAKE_SRC_DIST = 300.0
+        rr, cc = np.where(sk)
+        index = {(int(r), int(c)): i for i, (r, c) in enumerate(zip(rr, cc))}
+        dist = np.full(len(rr), -1.0, dtype=np.float32)
+        q = deque()
+        for r, c in zip(*np.where(tips)):
+            _seed = 0.0
+            if _lake_near is not None and _lake_near[r, c]:
+                _seed = _LAKE_SRC_DIST
+            dist[index[(int(r), int(c))]] = _seed
+            q.append((int(r), int(c)))
+        _step = np.float32(float(_WORLD_PX) / float(_REGION_PX))  # ~6.1 blk/px
+        while q:
+            r, c = q.popleft()
+            d0 = dist[index[(r, c)]]
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    if dr == 0 and dc == 0:
+                        continue
+                    j = index.get((r + dr, c + dc))
+                    if j is not None and dist[j] < 0:
+                        dist[j] = d0 + _step
+                        q.append((r + dr, c + dc))
+        # S93e v2: densify with midpoints of 8-connected skeleton pairs
+        # (halves the ~6.1-block point spacing → EDT scalloping ±1.5) and
+        # carry the half-width (width_8k EDT value) per point so the
+        # carver's taper is PURE per-cell math on globally-sampled fields
+        # (the seam law: never derive geometry per-tile).
+        hwv = (_river_width_8k_cache[rr, cc].astype(np.float32)
+               * (float(_WORLD_PX) / float(_REGION_PX))
+               if _river_width_8k_cache is not None
+               else np.zeros(len(rr), np.float32))
+        prr = [rr.astype(np.float32)]
+        pcc = [cc.astype(np.float32)]
+        pvv = [dist]
+        phw = [hwv]
+        for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):
+            j = np.array([index.get((int(r) + dr, int(c) + dc), -1)
+                          for r, c in zip(rr, cc)], dtype=np.int64)
+            ok = j >= 0
+            if ok.any():
+                i = np.where(ok)[0]
+                prr.append((rr[i] + rr[j[i]]) / 2.0)
+                pcc.append((cc[i] + cc[j[i]]) / 2.0)
+                pvv.append((dist[i] + dist[j[i]]) / 2.0)
+                phw.append((hwv[i] + hwv[j[i]]) / 2.0)
+        _dist_src_8k_sparse = (
+            np.concatenate(prr), np.concatenate(pcc),
+            np.concatenate(pvv), np.concatenate(phw))
+        print(f"[hydro_region_overlay] dist-from-source built: "
+              f"{len(rr)} skel cells (+midpoints -> "
+              f"{len(_dist_src_8k_sparse[0])} pts), {int(tips.sum())} tips, "
+              f"max {float(dist.max()):.0f} blocks")
+        return _dist_src_8k_sparse
+    except Exception as _ds_exc:  # noqa: BLE001
+        print(f"[hydro_region_overlay] dist-from-source build failed: "
+              f"{type(_ds_exc).__name__}: {_ds_exc}")
+        _dist_src_8k_sparse = False
+        return None
+
+
 def _windowed_map_coordinates(arr_8k, rows_f, cols_f, order, cval):
     """S93c OOM fix: map_coordinates on a tile-bbox WINDOW of an 8k field.
 
@@ -2324,6 +2442,46 @@ def apply_hydro_region_overlay(
                     mode='constant', cval=-999.0,
                 ).astype(np.float32)
                 masks["hydro_river_water_y"] = _wy_50k
+            # S93e v2: headwater-taper fields — GLOBAL 8k skeleton points
+            # rasterized into a HALO'D 50k window, one EDT, crop to tile.
+            # Both sides of any seam see the same points within the halo
+            # (64 blocks >> max target half-width ~25), so distance-to-
+            # centerline, distance-from-source and half-width agree across
+            # tiles — the per-tile skeletonize this replaces dried the
+            # first rows of (27,34) at the (27,33) border (its medial axis
+            # stopped at the window cut).
+            _ds = _ensure_dist_from_source(masks_dir)
+            if _ds is not None:
+                _dsr, _dsc, _dsv, _dsh = _ds
+                _HALO_DS = 64
+                _b50 = float(_WORLD_PX) / float(_REGION_PX)
+                _r050 = row_off - _HALO_DS
+                _c050 = col_off - _HALO_DS
+                _hh = tile_size + 2 * _HALO_DS
+                # points (8k px, centers) → 50k block coords → window px
+                _pr = np.round((_dsr + 0.5) * _b50).astype(np.int64) - _r050
+                _pc = np.round((_dsc + 0.5) * _b50).astype(np.int64) - _c050
+                _in_w = ((_pr >= 0) & (_pr < _hh) & (_pc >= 0) & (_pc < _hh))
+                if _in_w.any():
+                    from scipy.ndimage import (
+                        distance_transform_edt as _edt_ds)
+                    _occ = np.zeros((_hh, _hh), dtype=bool)
+                    _val = np.zeros((_hh, _hh), dtype=np.float32)
+                    _hwv = np.zeros((_hh, _hh), dtype=np.float32)
+                    _occ[_pr[_in_w], _pc[_in_w]] = True
+                    _val[_pr[_in_w], _pc[_in_w]] = _dsv[_in_w]
+                    _hwv[_pr[_in_w], _pc[_in_w]] = _dsh[_in_w]
+                    _dcl_w, _idx_w = _edt_ds(~_occ, return_indices=True)
+                    _crop_ds = np.s_[_HALO_DS:_HALO_DS + tile_size,
+                                     _HALO_DS:_HALO_DS + tile_size]
+                    masks["hydro_dcl"] = (
+                        _dcl_w[_crop_ds].astype(np.float32))
+                    masks["hydro_dist_src"] = (
+                        _val[_idx_w[0], _idx_w[1]][_crop_ds]
+                        .astype(np.float32))
+                    masks["hydro_hw_cl"] = (
+                        _hwv[_idx_w[0], _idx_w[1]][_crop_ds]
+                        .astype(np.float32))
         except Exception as _bed_samp_exc:  # noqa: BLE001
             print(f"[hydro_region_overlay] bed/water_y sample skipped: "
                   f"{type(_bed_samp_exc).__name__}: {_bed_samp_exc}")

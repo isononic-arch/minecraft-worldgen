@@ -563,6 +563,9 @@ def main() -> int:
         hydro_lake_wl    = masks.get("hydro_lake_wl"),
         hydro_centerline = masks.get("hydro_centerline"),
         height_norm      = masks["height"],
+        hydro_dist_src   = masks.get("hydro_dist_src"),  # S93e headwater taper
+        hydro_dcl        = masks.get("hydro_dcl"),
+        hydro_hw_cl      = masks.get("hydro_hw_cl"),
         masks_dir        = masks_dir,
         tile_x           = tx,
         tile_z           = tz,
