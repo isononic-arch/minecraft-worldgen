@@ -1528,10 +1528,26 @@ def carve_rivers(
                 _r_ord = _r_arr[_ord]
                 _c_ord = _c_arr[_ord]
                 _path_y = water_y[_r_ord, _c_ord].astype(np.float32)
-                # sigma=8: ~16-cell support along path → adjacent path
-                # pixels round to same int (longer implicit plateaus, no
-                # cross-section tilt).
-                _path_y_smooth = _gf1(_path_y, sigma=8.0, mode='reflect')
+                # S93e5 SLOPE-ADAPTIVE POOLS: sigma=8 + MIN_RUN=12 are
+                # right for lowland reaches (long pools, no dither) but on
+                # steep paths the terrain rises ~3-4 blocks within one
+                # 12-cell pool while the water holds level — the stream
+                # reads as sunk in a cut ("the trench is still there").
+                # Scale smoothing + pool length down with the path's mean
+                # descent rate: steep mountain streams become short
+                # riffle-pools that hug the hillside (lag <= ~1.5), flat
+                # estuaries keep the long approved pools. Per-component
+                # constants -> no within-path parameter discontinuities;
+                # cross-section uniformity holds (sigma>=3 ~ 6-cell
+                # support >> the 2-3 path px a cross-section spans).
+                _drop_rate = 0.0
+                if len(_path_y) > 8:
+                    _drop_rate = max(0.0, float(_path_y[0] - _path_y[-1])
+                                     / float(len(_path_y)))
+                _steep_t = float(np.clip(_drop_rate / 0.15, 0.0, 1.0))
+                _sigma_p = 8.0 - 5.0 * _steep_t          # 8 flat -> 3 steep
+                _min_run_p = int(round(12 - 8 * _steep_t))  # 12 -> 4
+                _path_y_smooth = _gf1(_path_y, sigma=_sigma_p, mode='reflect')
                 # S93: MONOTONE INTEGER QUANTIZATION with hysteresis along
                 # the path (replaces the per-pixel round() downstream — see
                 # 7.8). round() of the smooth profile put the N|N-1
@@ -1551,7 +1567,7 @@ def carve_rivers(
                 # The S73 objection to explicit plateaus ("ghost weirs" —
                 # MC tick cascades at step lines) is obsolete: S86 never
                 # fluid-ticks river columns.
-                _MIN_RUN = 12
+                _MIN_RUN = _min_run_p
                 _lvl = float(np.round(_path_y_smooth[0]))
                 _run = 0
                 _q_out = np.empty_like(_path_y_smooth)

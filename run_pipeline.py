@@ -1596,8 +1596,11 @@ def _process_tile(args: dict) -> dict:
         # trenches"). Same masked gaussian + leak re-pin; sea-level water
         # excluded (estuary fans/beaches untouched). Knob
         # river_carve.headwater_taper.rim_grade (default on).
+        # S93e5: default OFF — with slope-adaptive water the stream hugs
+        # the hillside (no walls to grade), and the grade's re-dressed
+        # dirt band was part of the user's trench complaint.
         _rg_on = bool((cfg.get("river_carve", {})
-                       .get("headwater_taper", {})).get("rim_grade", True))
+                       .get("headwater_taper", {})).get("rim_grade", False))
         _wet_lg = _lake_mask_pad
         if _rg_on:
             _wet_lg = _wet_lg | (
