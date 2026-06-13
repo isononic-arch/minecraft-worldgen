@@ -1381,17 +1381,23 @@ def carve_rivers(
             # dcl and be gated DRY ((62,61)'s inter-lake streams died to
             # this). Far-from-skeleton means "no taper", never "no water".
             _nodata_r = float(_ht.get("nodata_dcl", 48.0))
-            _g_ht = np.where(_dclpt_ht > _nodata_r,
-                             np.float32(1.0), _g_ht)
+            # S93e5b: BLEND the guard over its last 12 blocks instead of
+            # a hard switch — "the shrink should taper out gradually".
+            _nd_t = np.clip((_dclpt_ht.astype(np.float32)
+                             - (_nodata_r - 12.0)) / 12.0, 0.0, 1.0)
+            _g_ht = np.maximum(_g_ht, _nd_t)
             # TIDAL GUARD: no taper where the pre-carve terrain sits at
-            # or below sea level (+1) — tidal fans/estuary mouths are
-            # governed by the sea, not by upstream catchment. The
-            # above-sea estuary arm still narrows (the desired
-            # "accurately narrows upstream" behaviour); without this
-            # the whole approved (27,34) fan thinned 43%.
-            _tidal_ht = surface_out.astype(np.float32) <= float(SEA_LEVEL + 1)
-            if _tidal_ht.any():
-                _g_ht = np.where(_tidal_ht, np.float32(1.0), _g_ht)
+            # or below sea level — tidal fans/estuary mouths are governed
+            # by the sea, not by upstream catchment. The above-sea
+            # estuary arm still narrows (the desired "accurately narrows
+            # upstream" behaviour); without this the whole approved
+            # (27,34) fan thinned 43%. S93e5b: blended over Y sea+1..
+            # sea+7 (gradual widening into the fan, no shoreline jump).
+            _td_t = np.clip((float(SEA_LEVEL + 7)
+                             - surface_out.astype(np.float32)) / 6.0,
+                            0.0, 1.0)
+            _tidal_ht = _td_t >= 1.0
+            _g_ht = np.maximum(_g_ht, _td_t)
             _cap_ht = np.float32(0.04) + _g_ht * depth_at_cell
             depth_at_cell = np.where(
                 _g_ht >= 1.0, depth_at_cell,
