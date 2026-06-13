@@ -190,9 +190,17 @@ def _bare_name(full: str) -> str:
     return bare
 
 
+# Per-process schematic cache. Schematic files are immutable during a render
+# and stamp_schematic never writes into SchemData.blocks (the rot>0 path
+# rot90s onto a .copy()), so sharing one parsed instance across placements is
+# safe. The `_rotation` attribute the placement loop attaches is overwritten
+# per placement before each stamp reads it.
+_LOAD_CACHE: dict[str, SchemData] = {}
+
+
 def load_schem(path: Union[str, Path]) -> SchemData:
     """
-    Load a schematic file and return SchemData.
+    Load a schematic file and return SchemData (cached per path per process).
 
     Raises:
         FileNotFoundError if path doesn't exist.
@@ -200,21 +208,27 @@ def load_schem(path: Union[str, Path]) -> SchemData:
         ImportError if nbtlib is not installed.
     """
     path = Path(path)
+    key = str(path)
+    cached = _LOAD_CACHE.get(key)
+    if cached is not None:
+        return cached
     if not path.exists():
         raise FileNotFoundError(f"Schematic not found: {path}")
 
     suffix = path.suffix.lower()
 
     if suffix == ".schem":
-        return _load_sponge_schem(path)
+        data = _load_sponge_schem(path)
     elif suffix in (".schematic", ".litematic"):
-        return _load_classic_schematic(path)
+        data = _load_classic_schematic(path)
     else:
         # Try sponge first, fall back to classic
         try:
-            return _load_sponge_schem(path)
+            data = _load_sponge_schem(path)
         except Exception:
-            return _load_classic_schematic(path)
+            data = _load_classic_schematic(path)
+    _LOAD_CACHE[key] = data
+    return data
 
 
 def _load_sponge_schem(path: Path) -> SchemData:

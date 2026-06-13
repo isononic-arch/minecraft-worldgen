@@ -1,0 +1,26 @@
+# S94 minimal validation set — 20 tiles (computed by tools/diag_s94_tileset.py,
+# stats in diag_s94_tileset.json). Covers: all 26 biomes (>=800px @1:8 each),
+# stale-taper sweep, 3 seam pairs (river / biome-dither / high-relief),
+# rivers, lakes, coast, cliffs, controls, S87 high-risk-history tiles.
+#
+# tx tz   why
+79 71   # stale sweep + steep 295-blk descent + rock + river (BOREAL_TAIGA)
+27 33   # stale sweep + river-seam pair N (TEMPERATE_DECIDUOUS)
+27 34   # stale sweep + estuary control + seam pair S (EASTERN_TEMPERATE_COAST)
+28 34   # razor-seam pair w/ (27,34) — biome dither seam, user report spot (BOREAL_ALPINE+TD)
+62 61   # stale sweep + lake junction + stream depth 4-5 (TEMPERATE_RAINFOREST)
+19 76   # stale sweep + river banks (LUSH_RAINFOREST_COAST + SAND_DUNE_DESERT)
+48 48   # control: ocean tile, validator default
+51 53   # control: floodplain/lakes/rivers baseline (MIXED_FOREST)
+30 12   # extreme headwater Y389-520, snow-over-rock, S93 money tile (SNOWY_BOREAL_TAIGA)
+29 12   # high-relief seam pair w/ (30,12) + temperate_basaltic rock (ARCTIC_TUNDRA+SBT)
+13 82   # high-risk: S87 missing-river-chunk history (RAINFOREST_COAST)
+50 48   # high-risk: S87 blank-tile history (MIXED_FOREST)
+84 60   # CONTINENTAL_STEPPE + KARST_BARRENS + RIPARIAN_WOODLAND + river + lake
+33 73   # DESERT_STEPPE_TRANSITION + DRY_PINE_BARRENS + SEMI_ARID_SHRUBLAND, relief 21k raw
+20 51   # DRY_OAK_SAVANNA + SCRUBBY_HEATHLAND + river + lake
+36 84   # COASTAL_HEATH + DRY_WOODLAND_MAQUIS + ocean coast
+29 89   # MANGROVE_COAST + TIDAL_JUNGLE_FRINGE + ocean coast
+20 53   # BIRCH_FOREST + coast + river
+33 6    # FROZEN_FLATS + river (S85 Tundra Valley reference)
+8 73    # FRESHWATER_FEN (reference tile)
