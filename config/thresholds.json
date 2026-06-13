@@ -4927,7 +4927,7 @@
     "dry_lake_force_carve_max": 0,
     "_comment_taper": "S93e2 headwater width taper, box-gated variant B (true-wet connectivity = 1 component on all 6 gate tiles). target half-width = min(hw_min + k*sqrt(dist-from-source-blocks), painted half-width); min_tube_carve floors the carve inside the tube (step survival); tidal guard (no taper <= sea+1); lake-outlet tips seed at d=300; nodata_dcl = no taper where no skeleton point within that radius (graph-less painted channels keep paint width).",
     "headwater_taper": {
-      "enabled": true,
+      "enabled": false,
       "hw_min": 2.5,
       "k": 0.45,
       "edge_soft": 1.5,
