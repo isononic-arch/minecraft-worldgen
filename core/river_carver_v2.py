@@ -1546,11 +1546,15 @@ def carve_rivers(
                 # constants -> no within-path parameter discontinuities;
                 # cross-section uniformity holds (sigma>=3 ~ 6-cell
                 # support >> the 2-3 path px a cross-section spans).
+                # Range-based rate: endpoint difference is NOISE on
+                # lake-bound paths (dist-from-ocean ordering is scrambled
+                # there — S93b lesson), which silently no-op'd the first
+                # version of this adaptivity.
                 _drop_rate = 0.0
                 if len(_path_y) > 8:
-                    _drop_rate = max(0.0, float(_path_y[0] - _path_y[-1])
-                                     / float(len(_path_y)))
-                _steep_t = float(np.clip(_drop_rate / 0.15, 0.0, 1.0))
+                    _drop_rate = (float(_path_y.max() - _path_y.min())
+                                  / float(len(_path_y)))
+                _steep_t = float(np.clip(_drop_rate / 0.10, 0.0, 1.0))
                 _sigma_p = 8.0 - 5.0 * _steep_t          # 8 flat -> 3 steep
                 _min_run_p = int(round(12 - 8 * _steep_t))  # 12 -> 4
                 _path_y_smooth = _gf1(_path_y, sigma=_sigma_p, mode='reflect')
