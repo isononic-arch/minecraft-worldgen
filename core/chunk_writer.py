@@ -263,6 +263,13 @@ _SOIL_DEPTH_MODERATE = 2     # 18° ≤ slope < 35°
 _SOIL_DEPTH_STEEP    = 1     # 35° ≤ slope < 55°
 _SOIL_DEPTH_CLIFF    = 0     # slope ≥ 55°
 
+# S94 (B) river-bank dirt risers: the bank-taper leaves stepped banks whose
+# vertical risers expose the stone basement (steep => 0-1 soil). On LAND near a
+# river, force the soil (dirt) horizon to cover each step riser so the riser
+# face shows dirt, not stone. Sized to the local step height, capped.
+_BANK_SOIL_RADIUS = 12   # blocks from river water that count as "bank"
+_BANK_SOIL_MAX    = 6    # cap on the forced soil depth (tall terrace risers)
+
 # Maximum sediment thickness (blocks of gravel/dirt above basement)
 _SEDIMENT_MAX_BLOCKS = 8
 
@@ -708,6 +715,7 @@ def _fill_geology_layers(
     band_scale_y: int,
     tile_world_x: int,
     tile_world_z: int,
+    bank_mask: np.ndarray | None = None,
 ) -> None:
     """
     Phase 1.75 geology fill.  Overwrites the stone-filled range
@@ -739,6 +747,21 @@ def _fill_geology_layers(
     soil_depth[slope_deg >= 18] = _SOIL_DEPTH_MODERATE
     soil_depth[slope_deg >= 35] = _SOIL_DEPTH_STEEP
     soil_depth[slope_deg >= 55] = _SOIL_DEPTH_CLIFF
+
+    # ---- S94 (B): river-bank dirt risers --------------------------------
+    # On LAND near a river, deepen the soil horizon to cover each step riser
+    # (riser height = drop to the lowest 4-neighbour), so the stepped bank
+    # shows DIRT on its faces instead of the stone basement. Sized per-cell to
+    # the local riser + 1, capped. Restricted to the bank mask so world-wide
+    # rock cliffs are untouched (they keep their bare-rock look).
+    if bank_mask is not None and bank_mask.any():
+        _sy_i = surface_y.astype(np.int32)
+        _minnb = _sy_i.copy()
+        for _dz, _dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            _minnb = np.minimum(_minnb, np.roll(np.roll(_sy_i, _dz, 0), _dx, 1))
+        _riser = np.clip(_sy_i - _minnb, 0, _BANK_SOIL_MAX)
+        soil_depth = np.where(
+            bank_mask, np.maximum(soil_depth, _riser + 1), soil_depth)
 
     # ---- 2. Compute sediment_thickness per column: f(concavity, flow) ----
     # Concavity via second derivatives of surface_y (Laplacian approximation)
@@ -966,12 +989,47 @@ def build_column_array(
 
     # ---- Subsurface fill: geology branch OR legacy cliff banding ----
     if use_new_geology and lithology_tile is not None:
+        # S94 (B): bank mask = dry LAND within _BANK_SOIL_RADIUS of a river
+        # water cell (gets deepened soil so step risers show dirt, not stone).
+        _bank_mask = None
+        if river_water_y is not None:
+            _wet = (river_water_y > SEA_Y) & (river_water_y > surface_y)
+            if _wet.any():
+                from scipy.ndimage import distance_transform_edt as _edt_bk
+                _dist_bk = _edt_bk(~_wet)
+                _is_river_col = river_water_y > SEA_Y          # water + emergent rock
+                _bank_mask = (~_is_river_col) & (surface_y > SEA_Y) \
+                    & (_dist_bk <= _BANK_SOIL_RADIUS)
         _fill_geology_layers(
             vol, pal, stone_mask, abs_y, surface_y, lithology_tile,
             flow_tile=flow_tile, cfg=cfg,
             band_scale_y=band_scale_y,
             tile_world_x=tile_world_x, tile_world_z=tile_world_z,
+            bank_mask=_bank_mask,
         )
+        # S94 (B) direct dirt risers: _fill_geology_layers keeps STONE on
+        # lithology==0 columns (common right beside rivers), so the soil
+        # horizon never gets written and the stepped bank exposes stone. Stamp
+        # DIRT directly from surface_y-1 down each cell's riser height on bank
+        # cells, so every step FACE shows dirt, not the basement. Restricted to
+        # the bank mask (land near a river) — world-wide rock cliffs untouched.
+        if _bank_mask is not None and _bank_mask.any():
+            _DIRT_IDX = pal.idx("dirt")
+            _syc = surface_y.astype(np.int32)
+            _mnb = _syc.copy()
+            for _dz, _dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                _mnb = np.minimum(_mnb, np.roll(np.roll(_syc, _dz, 0), _dx, 1))
+            _rise = np.clip(_syc - _mnb, 0, _BANK_SOIL_MAX)
+            _bz, _bx = np.where(_bank_mask & (_rise >= 1))
+            for _i in range(_bz.size):
+                _z = int(_bz[_i]); _x = int(_bx[_i])
+                _top = int(_syc[_z, _x]); _d = int(_rise[_z, _x])
+                _y1 = _top - 1 - Y_MIN              # just below the surface block
+                _y0 = _top - _d - Y_MIN             # bottom of the riser face
+                if _y0 < 0:
+                    _y0 = 0
+                if _y1 >= 0:
+                    vol[_y0:_y1 + 1, _z, _x] = _DIRT_IDX
     elif biome_grid is not None:
         # ---- Legacy cliff interior banding ----
         # For steep columns (cliff_deg >= cliff_deg_thr) replace the uniform stone

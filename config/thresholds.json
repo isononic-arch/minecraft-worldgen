@@ -4347,7 +4347,7 @@
       },
       "groups": {
         "granitic": {
-          "rib_mid_contrast": "light",
+          "rib_mid_contrast": "dark",
           "split": [
             55,
             25,
@@ -4933,6 +4933,16 @@
       "edge_soft": 1.5,
       "nodata_dcl": 48.0,
       "min_tube_carve": 1.4
+    },
+    "flood_settle": {
+      "enabled": true,
+      "method": "xsecspill"
+    },
+    "bank_taper": {
+      "enabled": true,
+      "grade": 0.34,
+      "sigma": 2.0,
+      "max_reach": 48
     }
   },
   "seam_smoothing": {
