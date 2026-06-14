@@ -60,7 +60,15 @@ chunk_writer:
    walked -- to blend into surroundings; BROAD outcrops (erosion core survives)
    kept. Only emergent river-footprint cells, only lowers. Offline-validated on
    (84,60): 7 thin cells removed, 0 thin remaining, all 43 broad kept.
-   **PENDING FINAL USER WALK.**
+   **IN-PIPELINE CAVEAT (RE-VERIFY): the render removed the INTERIOR thin column
+   (~6 sy cells changed vs no-despike) but left 1 thin column at the TILE EDGE
+   x=511 (seam artifact — padded-halo at the boundary; should resolve when (85,60)
+   renders with despike). ALSO unreconciled: despike render r.84.60.mca md5
+   (81640868714f) == pre-despike B render md5 despite the 6-cell sy diff — debug
+   whether despike's lowered cells reach chunk output (runs on _surface_y_pad in
+   Step-9 before crop; verify crop + re-locks don't stomp it; emergent cells are
+   river-footprint not bank, so the bank-skipping rock re-lock may still touch
+   them). PENDING FINAL USER WALK + this re-verify.**
 4. **rock-poke paint** (Phase 2, gated with flood_settle.paint_rocks default True).
    `core/surface_decorator.py:paint_river_rocks()`, called from run_pipeline after
    the crop. Emergent river-bed cells (river_meta>0 & water>SEA & surface_y>=water)
