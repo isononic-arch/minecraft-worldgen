@@ -112,7 +112,11 @@ def main():
     #     dilation, no indexed EDT) ----------------------------------------
     maxw = float(np.percentile(wid[cl], 99)) if cl.any() else 1.0
     rad = int(np.ceil(maxw / 2.0 / sc)) + cover_px
-    rad = int(np.clip(rad, 1, 64))
+    # cap is SCALE-AWARE: it must track cover_px (=cover//sc). A fixed 64 cap
+    # silently clamped scale-1 coverage to 64 blocks (vs the validated 256) while
+    # scale-4 was unaffected (64px*4=256 blocks) — the validation/production
+    # mismatch. Cap generously above cover_px so cover drives the radius.
+    rad = int(np.clip(rad, 1, cover_px + int(np.ceil(maxw / 2.0 / sc)) + 8))
     foot = ndimage.binary_dilation(cl, iterations=rad) & ~lake
     print(f"[river_wl] footprint dilate r={rad}px -> {int(foot.sum())} cells", flush=True)
 
