@@ -19,8 +19,8 @@ from core import river_flood_settle as _fs
 LUT = _cg._LUT
 SEA = _cg.SEA_LEVEL
 
-SCALE = 8
-N8 = 6250
+SCALE = int(sys.argv[6]) if len(sys.argv) > 6 else 8
+N8 = 50000 // SCALE
 
 
 def r8(name, rs=Resampling.nearest):
@@ -56,13 +56,10 @@ def main(dump, txA, tzA, txB, tzB):
     skel8 = cl8 > 0
     # river footprint at 1:8: dilate centerline by ~ (width/8) so wide rivers are
     # captured (a 60-block river ~ 7px at 1:8).
-    river8 = skel8.copy()
-    wpx = np.clip((wid8 / SCALE).astype(int), 0, 8)
-    for it in range(1, 9):
-        river8 |= ndimage.binary_dilation(skel8 & (wpx >= it),
-                                          iterations=it)
     lake8m = lake8 > 0
-    river8 &= ~lake8m
+    dcl, (iy, ix) = ndimage.distance_transform_edt(~skel8, return_indices=True)
+    w_at = wid8[iy, ix] / float(SCALE)
+    river8 = (dcl <= np.maximum(w_at / 2.0, 0.5)) & ~lake8m
     source8 = np.where(river8, bed8 - 1, -999).astype(np.int32)
     ocean8 = bed8 <= SEA
     print(f"river8 cells={int(river8.sum())} ocean8 cells={int(ocean8.sum())}")
