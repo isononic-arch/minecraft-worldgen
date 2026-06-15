@@ -1704,11 +1704,55 @@ def _process_tile(args: dict) -> dict:
                 _settled = core_river_settle.settle(
                     source=_src_pad, bed=_surface_y_pad.astype(np.int32),
                     river=_riv_w, dist=_dist_fs, skel=_skel_fs, land=_land_fs)
+                # S94 seam-walk: gated dump of the flood-settle PADDED inputs +
+                # output so a harness can run settle() variants offline and
+                # check seam continuity without a 25-min re-render per variant.
+                _fd = os.environ.get("FLOOD_DUMP_DIR")
+                if _fd:
+                    os.makedirs(_fd, exist_ok=True)
+                    for _nm, _ar in (("src", _src_pad), ("bed", _surface_y_pad),
+                                     ("riv", _riv_w), ("dist", _dist_fs),
+                                     ("skel", _skel_fs), ("land", _land_fs),
+                                     ("settled", _settled)):
+                        np.save(f"{_fd}/fs_{_nm}_{tile_x}_{tile_y}.npy",
+                                np.asarray(_ar))
                 _wmask = _riv_w & (_settled > _SEA)
                 _river_water_y_pad[_wmask] = _settled[_wmask].astype(np.int16)
                 print(f"[s94-flood] tile=({tile_x},{tile_y}) flood-settled "
                       f"{int(_riv_w.sum())} river cells",
                       file=sys.stderr, flush=True)
+
+                # ── S94 GLOBAL river water-level override (the seam fix) ──────
+                # The per-tile settle above is now the FALLBACK. If the global
+                # hydro_river_wl bake exists, OVERRIDE the water level with it on
+                # covered river cells. It is one global field, so the value at
+                # any world coord is identical on both sides of a tile seam ->
+                # the 1-block water-level seam step is gone. The river EXTENT
+                # stays per-tile (chunk_writer fills where level > bed at full
+                # res) so the perimeter stays organic (no NEAREST swimming-pool
+                # geometry). Read the PADDED window (boundless, -999 fill) so the
+                # bank-taper that follows is seam-consistent too.
+                _grwl_path = masks_dir / "hydro_river_wl.tif"
+                if _grwl_path.exists():
+                    try:
+                        import rasterio as _rio_wl
+                        from rasterio.windows import Window as _Win
+                        with _rio_wl.open(_grwl_path) as _wls:
+                            _gll = _wls.read(
+                                1, window=_Win(col_off - _PAD, row_off - _PAD,
+                                               _PW, _PH),
+                                boundless=True, fill_value=-999,
+                            ).astype(np.int16)
+                        _ov = _riv_w & (_gll > _SEA)
+                        _river_water_y_pad[_ov] = _gll[_ov]
+                        print(f"[s94-river-wl] tile=({tile_x},{tile_y}) global "
+                              f"level override on {int(_ov.sum())}/"
+                              f"{int(_riv_w.sum())} river cells",
+                              file=sys.stderr, flush=True)
+                    except Exception as _wl_exc:  # noqa: BLE001
+                        print(f"[s94-river-wl] WARN tile=({tile_x},{tile_y}) "
+                              f"{type(_wl_exc).__name__}: {_wl_exc}",
+                              file=sys.stderr, flush=True)
 
         # ── S94 BANK TAPER (config river_carve.bank_taper) ─────────────────
         # USER (84,60 walk): the flood-settled water sits in abrupt TROUGH

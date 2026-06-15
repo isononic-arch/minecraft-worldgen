@@ -114,6 +114,12 @@ def settle(source, bed, river, dist, skel, land=None):
 
     # Sort upstream (high dist) -> downstream (low dist); running min so the
     # level can only stay equal or drop as we move toward the ocean.
+    # NOTE (S94 seam-walk): this per-tile running-min is why the flood-settle
+    # is NOT seam-consistent for INLAND rivers — band ordering depends on a
+    # per-tile dist-from-local-ocean seed and the running-min runs over the
+    # differing set of upstream bands each tile's halo sees. The seam-clean
+    # water LEVEL comes from the GLOBAL hydro_river_wl bake (see run_pipeline);
+    # this path is the per-tile fallback only.
     order = np.argsort(-band_dist)  # descending dist = upstream first
     lvl_sorted = band_level[order]
     run = np.minimum.accumulate(lvl_sorted)
