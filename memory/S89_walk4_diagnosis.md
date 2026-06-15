@@ -1,4 +1,19 @@
-# S89 walk4 — in-world review fixes + lake/river diagnosis (2026-06-06)
+# S89 walk4 — in-world review fixes + lake/river diagnosis (2026-06-06/07)
+
+## SESSION END STATE (2026-06-07)
+COMMITTED on s85-cherry-picks:
+- b6fae5c (PUSHED to origin): deep lakes + krummholz + #12 revert + diag transpose fix
+- d70e13a (LOCAL, NOT pushed): tile-seam meta-fix
+All 5 fixes done + verified: lakes (deep bowls), krummholz (alt-gate), #12 revert,
+lithology (user-confirmed), tile seams (9-block->0.5-block, verified by elevation
+profile across tiles 73,66|74,66 — local full render OOMs on the 7.5GB machine).
+NEXT: push d70e13a + full cloud render (Hetzner 192GB boxes, no OOM) = the seam
+integration test + walkable world. render_verify.sh (78-tile) or full 50k.
+Seam fix = seam_smoothing.enabled (config) / SEAM_OFF env to disable.
+diag tools: diag_mca_water.py, diag_tree_altitude.py, diag_satellite.py (all have
+the FIXED block-unpacker — li-major, not slot-major).
+
+
 
 User reviewed the 78-tile verify world. Findings + what I did.
 

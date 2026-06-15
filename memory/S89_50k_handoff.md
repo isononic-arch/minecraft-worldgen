@@ -1,5 +1,18 @@
 # S89 → 50k REGEN handoff — **COMPLETE** (2026-06-04)
 
+## ⚡ POST-COMPACTION ACTION (2026-06-06, IN FLIGHT — DO THIS)
+Background task **b22q1tbsz** = 78-tile VERIFY render (`cloud_bake/render_verify.sh`, 8 boxes, commit
+`08df50c`) collecting to `/d/verify_out`. **WHEN b22q1tbsz COMPLETES (auto-notified):**
+1. `cp /d/verify_out/*.mca /d/modrinth_vandir/saves/Vandir50k_verify/region/`  ← the "Vandir Verify"
+   browse world (already built: ocean gen + datapack, in the Fabric 26.1 profile saves; junction done).
+2. **KILL the 8 Hetzner boxes** (user requested; token is short-lived, user rotating after). Server IDs in
+   `C:/Users/nicho/.hetzner_ids` (137498775–137498782); token in `C:/Users/nicho/.hetzner_token`. Delete each:
+   `for id in $(cat /c/Users/nicho/.hetzner_ids | tr , ' '); do curl -s -X DELETE -H "Authorization: Bearer $(cat /c/Users/nicho/.hetzner_token)" https://api.hetzner.cloud/v1/servers/$id; done`
+3. `rm -f /c/Users/nicho/.hetzner_token /c/Users/nicho/.hetzner_ids` (don't leave the secret).
+4. Tell the user: **servers deleted + "Vandir Verify" ready** — browse via `memory/verify_checklist.md` TPs.
+NEXT after user reviews batch-b: the risky-3 (#2/#4/#17 seam meta-fix, #3 schematic padding, #6 rock-rebuild).
+
+
 ## ⚠️ KNOWN DEFECT — RE-RENDER PENDING (2026-06-05)
 The 50k render has a **missing-chunk bug along all water-bearing tiles**: wherever a
 river/lake/ocean touches a TILE boundary, the perimeter chunk(s) there are absent from
