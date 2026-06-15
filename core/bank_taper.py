@@ -55,8 +55,19 @@ def taper(sy, rwy, rm):
     lake = (rm == 3)
     # wet water cells = river footprint, watered above sea, water over the bed
     wet = river_fp & (rwy > SEA_Y) & (rwy > orig)
-    # bank/wall cells = land (NOT river footprint, NOT lake)
-    land = ~river_fp & ~lake
+    # S94 walk (84,60): DRY river-footprint cells -- river-tagged but with NO
+    # water level assigned (rwy == -999 sentinel) -- are mis-tagged marginal
+    # tendrils that stand proud as thin "stonehenge" pickets along the bank.
+    # They were INVISIBLE to both passes: this taper excluded them with the
+    # channel (land = ~river_fp), and despike skips them (needs rwy > SEA).
+    # chunk_writer already renders them as LAND (grass on top), so fold them into
+    # the bank domain here and let the ramp + step-limit lower them to blend.
+    # WATERED channel + emergent-ROCK cells (rwy > SEA) stay protected so the
+    # real channel and the user-liked rocky outcrops are untouched.
+    dry_river = river_fp & ~(rwy > SEA_Y)
+    protect = (river_fp & (rwy > SEA_Y)) | lake
+    # bank/wall cells = land (NOT watered/emergent river, NOT lake) PLUS dry river
+    land = (~river_fp & ~lake) | dry_river
 
     new_sy = orig.copy()
     if not wet.any():
@@ -139,10 +150,11 @@ def taper(sy, rwy, rm):
     new_sy = np.where(perim_land, perim_tgt, new_sy)
     new_sy = np.where(ring1_land, ring1_tgt, new_sy)
 
-    # only-lower + don't touch river/lake interior (apply BEFORE the step-limit
-    # so it operates on the TRUE final bank surface, not the ramp).
+    # only-lower + don't touch watered/emergent river or lake interior (apply
+    # BEFORE the step-limit so it operates on the TRUE final bank surface, not
+    # the ramp). DRY river cells are intentionally NOT protected -> tapered.
     new_sy = np.minimum(new_sy, orig)
-    new_sy = np.where(river_fp | lake, orig, new_sy)
+    new_sy = np.where(protect, orig, new_sy)
 
     # ----- S94 (A): limit bank steps to MAX_BANK_STEP -----------------------
     # Lower any bank cell sitting more than MAX_BANK_STEP above its lowest
@@ -182,9 +194,10 @@ def taper(sy, rwy, rm):
         new_sy = np.where(
             over, np.maximum(np.minimum(new_sy, cap), cont_floor), new_sy)
 
-    # final safety: never raise anywhere, never touch river/lake interior
+    # final safety: never raise anywhere, never touch watered/emergent river or
+    # lake interior (dry river cells stay tapered).
     new_sy = np.minimum(new_sy, orig)
-    new_sy = np.where(river_fp | lake, orig, new_sy)
+    new_sy = np.where(protect, orig, new_sy)
 
     return new_sy.astype(orig.dtype)
 
