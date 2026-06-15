@@ -1,0 +1,962 @@
+[
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   52,
+   53
+  ],
+  "b": [
+   52,
+   54
+  ],
+  "rows": 62,
+  "rows_abovesea": 62,
+  "wmax": 5,
+  "wsum": 189
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   20,
+   63
+  ],
+  "b": [
+   20,
+   64
+  ],
+  "rows": 45,
+  "rows_abovesea": 45,
+  "wmax": 5,
+  "wsum": 110
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   84,
+   67
+  ],
+  "b": [
+   84,
+   68
+  ],
+  "rows": 31,
+  "rows_abovesea": 31,
+  "wmax": 5,
+  "wsum": 70
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   12,
+   80
+  ],
+  "b": [
+   13,
+   80
+  ],
+  "rows": 105,
+  "rows_abovesea": 105,
+  "wmax": 4,
+  "wsum": 318
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   59,
+   75
+  ],
+  "b": [
+   59,
+   76
+  ],
+  "rows": 136,
+  "rows_abovesea": 136,
+  "wmax": 4,
+  "wsum": 248
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   62,
+   59
+  ],
+  "b": [
+   62,
+   60
+  ],
+  "rows": 123,
+  "rows_abovesea": 123,
+  "wmax": 4,
+  "wsum": 237
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   80,
+   70
+  ],
+  "b": [
+   81,
+   70
+  ],
+  "rows": 68,
+  "rows_abovesea": 68,
+  "wmax": 4,
+  "wsum": 165
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   20,
+   52
+  ],
+  "b": [
+   21,
+   52
+  ],
+  "rows": 46,
+  "rows_abovesea": 46,
+  "wmax": 4,
+  "wsum": 141
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   61,
+   45
+  ],
+  "b": [
+   61,
+   46
+  ],
+  "rows": 42,
+  "rows_abovesea": 42,
+  "wmax": 4,
+  "wsum": 115
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   19,
+   24
+  ],
+  "b": [
+   20,
+   24
+  ],
+  "rows": 38,
+  "rows_abovesea": 38,
+  "wmax": 4,
+  "wsum": 113
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   26,
+   9
+  ],
+  "b": [
+   26,
+   10
+  ],
+  "rows": 37,
+  "rows_abovesea": 37,
+  "wmax": 4,
+  "wsum": 105
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   83,
+   70
+  ],
+  "b": [
+   83,
+   71
+  ],
+  "rows": 36,
+  "rows_abovesea": 36,
+  "wmax": 4,
+  "wsum": 105
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   70,
+   74
+  ],
+  "b": [
+   71,
+   74
+  ],
+  "rows": 50,
+  "rows_abovesea": 50,
+  "wmax": 4,
+  "wsum": 101
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   32,
+   28
+  ],
+  "b": [
+   32,
+   29
+  ],
+  "rows": 35,
+  "rows_abovesea": 35,
+  "wmax": 4,
+  "wsum": 85
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   36,
+   16
+  ],
+  "b": [
+   37,
+   16
+  ],
+  "rows": 31,
+  "rows_abovesea": 31,
+  "wmax": 4,
+  "wsum": 82
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   30,
+   53
+  ],
+  "b": [
+   30,
+   54
+  ],
+  "rows": 28,
+  "rows_abovesea": 28,
+  "wmax": 4,
+  "wsum": 81
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   34,
+   77
+  ],
+  "b": [
+   35,
+   77
+  ],
+  "rows": 32,
+  "rows_abovesea": 32,
+  "wmax": 4,
+  "wsum": 73
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   58,
+   76
+  ],
+  "b": [
+   59,
+   76
+  ],
+  "rows": 27,
+  "rows_abovesea": 27,
+  "wmax": 4,
+  "wsum": 66
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   25,
+   9
+  ],
+  "b": [
+   26,
+   9
+  ],
+  "rows": 22,
+  "rows_abovesea": 22,
+  "wmax": 4,
+  "wsum": 61
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   20,
+   52
+  ],
+  "b": [
+   20,
+   53
+  ],
+  "rows": 20,
+  "rows_abovesea": 20,
+  "wmax": 4,
+  "wsum": 61
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   16,
+   85
+  ],
+  "b": [
+   16,
+   86
+  ],
+  "rows": 28,
+  "rows_abovesea": 18,
+  "wmax": 4,
+  "wsum": 61
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   33,
+   5
+  ],
+  "b": [
+   33,
+   6
+  ],
+  "rows": 19,
+  "rows_abovesea": 19,
+  "wmax": 4,
+  "wsum": 55
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   55,
+   52
+  ],
+  "b": [
+   55,
+   53
+  ],
+  "rows": 26,
+  "rows_abovesea": 26,
+  "wmax": 4,
+  "wsum": 47
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   30,
+   91
+  ],
+  "b": [
+   31,
+   91
+  ],
+  "rows": 23,
+  "rows_abovesea": 17,
+  "wmax": 4,
+  "wsum": 46
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   21,
+   86
+  ],
+  "b": [
+   21,
+   87
+  ],
+  "rows": 33,
+  "rows_abovesea": 13,
+  "wmax": 4,
+  "wsum": 40
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   49,
+   59
+  ],
+  "b": [
+   50,
+   59
+  ],
+  "rows": 13,
+  "rows_abovesea": 13,
+  "wmax": 4,
+  "wsum": 33
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   88,
+   66
+  ],
+  "b": [
+   88,
+   67
+  ],
+  "rows": 18,
+  "rows_abovesea": 13,
+  "wmax": 4,
+  "wsum": 33
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   32,
+   32
+  ],
+  "b": [
+   32,
+   33
+  ],
+  "rows": 13,
+  "rows_abovesea": 13,
+  "wmax": 4,
+  "wsum": 32
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   81,
+   48
+  ],
+  "b": [
+   81,
+   49
+  ],
+  "rows": 20,
+  "rows_abovesea": 13,
+  "wmax": 4,
+  "wsum": 32
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   73,
+   49
+  ],
+  "b": [
+   73,
+   50
+  ],
+  "rows": 13,
+  "rows_abovesea": 13,
+  "wmax": 4,
+  "wsum": 32
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   37,
+   8
+  ],
+  "b": [
+   38,
+   8
+  ],
+  "rows": 7,
+  "rows_abovesea": 7,
+  "wmax": 4,
+  "wsum": 19
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   70,
+   48
+  ],
+  "b": [
+   70,
+   49
+  ],
+  "rows": 13,
+  "rows_abovesea": 6,
+  "wmax": 4,
+  "wsum": 14
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   28,
+   33
+  ],
+  "b": [
+   28,
+   34
+  ],
+  "rows": 165,
+  "rows_abovesea": 165,
+  "wmax": 3,
+  "wsum": 341
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   71,
+   75
+  ],
+  "b": [
+   71,
+   76
+  ],
+  "rows": 147,
+  "rows_abovesea": 147,
+  "wmax": 3,
+  "wsum": 287
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   29,
+   67
+  ],
+  "b": [
+   29,
+   68
+  ],
+  "rows": 119,
+  "rows_abovesea": 106,
+  "wmax": 3,
+  "wsum": 270
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   84,
+   70
+  ],
+  "b": [
+   84,
+   71
+  ],
+  "rows": 60,
+  "rows_abovesea": 60,
+  "wmax": 3,
+  "wsum": 169
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   12,
+   78
+  ],
+  "b": [
+   13,
+   78
+  ],
+  "rows": 85,
+  "rows_abovesea": 85,
+  "wmax": 3,
+  "wsum": 168
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   75,
+   78
+  ],
+  "b": [
+   76,
+   78
+  ],
+  "rows": 77,
+  "rows_abovesea": 77,
+  "wmax": 3,
+  "wsum": 168
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   82,
+   64
+  ],
+  "b": [
+   83,
+   64
+  ],
+  "rows": 57,
+  "rows_abovesea": 57,
+  "wmax": 3,
+  "wsum": 147
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   32,
+   31
+  ],
+  "b": [
+   33,
+   31
+  ],
+  "rows": 70,
+  "rows_abovesea": 70,
+  "wmax": 3,
+  "wsum": 130
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   32,
+   31
+  ],
+  "b": [
+   32,
+   32
+  ],
+  "rows": 46,
+  "rows_abovesea": 46,
+  "wmax": 3,
+  "wsum": 124
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   35,
+   32
+  ],
+  "b": [
+   36,
+   32
+  ],
+  "rows": 59,
+  "rows_abovesea": 59,
+  "wmax": 3,
+  "wsum": 123
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   70,
+   50
+  ],
+  "b": [
+   71,
+   50
+  ],
+  "rows": 38,
+  "rows_abovesea": 38,
+  "wmax": 3,
+  "wsum": 107
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   67,
+   49
+  ],
+  "b": [
+   68,
+   49
+  ],
+  "rows": 49,
+  "rows_abovesea": 49,
+  "wmax": 3,
+  "wsum": 105
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   81,
+   60
+  ],
+  "b": [
+   82,
+   60
+  ],
+  "rows": 42,
+  "rows_abovesea": 42,
+  "wmax": 3,
+  "wsum": 102
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   29,
+   53
+  ],
+  "b": [
+   30,
+   53
+  ],
+  "rows": 44,
+  "rows_abovesea": 44,
+  "wmax": 3,
+  "wsum": 99
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   70,
+   75
+  ],
+  "b": [
+   71,
+   75
+  ],
+  "rows": 53,
+  "rows_abovesea": 53,
+  "wmax": 3,
+  "wsum": 98
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   81,
+   61
+  ],
+  "b": [
+   82,
+   61
+  ],
+  "rows": 37,
+  "rows_abovesea": 37,
+  "wmax": 3,
+  "wsum": 98
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   12,
+   77
+  ],
+  "b": [
+   13,
+   77
+  ],
+  "rows": 48,
+  "rows_abovesea": 48,
+  "wmax": 3,
+  "wsum": 93
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   65,
+   57
+  ],
+  "b": [
+   65,
+   58
+  ],
+  "rows": 39,
+  "rows_abovesea": 39,
+  "wmax": 3,
+  "wsum": 92
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   64,
+   58
+  ],
+  "b": [
+   65,
+   58
+  ],
+  "rows": 35,
+  "rows_abovesea": 35,
+  "wmax": 3,
+  "wsum": 89
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   65,
+   81
+  ],
+  "b": [
+   65,
+   82
+  ],
+  "rows": 38,
+  "rows_abovesea": 38,
+  "wmax": 3,
+  "wsum": 89
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   70,
+   73
+  ],
+  "b": [
+   70,
+   74
+  ],
+  "rows": 43,
+  "rows_abovesea": 43,
+  "wmax": 3,
+  "wsum": 87
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   82,
+   61
+  ],
+  "b": [
+   82,
+   62
+  ],
+  "rows": 37,
+  "rows_abovesea": 37,
+  "wmax": 3,
+  "wsum": 81
+ },
+ {
+  "kind": "river",
+  "orient": "H",
+  "a": [
+   73,
+   73
+  ],
+  "b": [
+   73,
+   74
+  ],
+  "rows": 43,
+  "rows_abovesea": 43,
+  "wmax": 3,
+  "wsum": 81
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   65,
+   81
+  ],
+  "b": [
+   66,
+   81
+  ],
+  "rows": 76,
+  "rows_abovesea": 39,
+  "wmax": 3,
+  "wsum": 75
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   67,
+   50
+  ],
+  "b": [
+   68,
+   50
+  ],
+  "rows": 38,
+  "rows_abovesea": 38,
+  "wmax": 3,
+  "wsum": 75
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   75,
+   57
+  ],
+  "b": [
+   76,
+   57
+  ],
+  "rows": 29,
+  "rows_abovesea": 29,
+  "wmax": 3,
+  "wsum": 75
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   25,
+   55
+  ],
+  "b": [
+   26,
+   55
+  ],
+  "rows": 29,
+  "rows_abovesea": 29,
+  "wmax": 3,
+  "wsum": 74
+ },
+ {
+  "kind": "river",
+  "orient": "V",
+  "a": [
+   51,
+   53
+  ],
+  "b": [
+   52,
+   53
+  ],
+  "rows": 35,
+  "rows_abovesea": 35,
+  "wmax": 3,
+  "wsum": 74
+ }
+]

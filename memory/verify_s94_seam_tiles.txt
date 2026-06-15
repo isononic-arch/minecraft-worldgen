@@ -1,0 +1,32 @@
+# S94 SEAM-FOCUSED validation set — 24 tiles. Base 20-tile roster set (all 26
+# biomes, controls, stale-sweep, S87 high-risk history) + 4 tiles forming 2
+# GENUINE wide-river-crossing seam pairs (verified by tools/diag_seam_crossings.py
+# reading full-res boundary strips — the old set's "seam pairs" were biome/relief
+# only, never a verified river crossing). Validates flood-settle water-level +
+# bank-taper + dry-river-tendril fix CONTINUITY across tile boundaries.
+#
+# tx tz   why
+79 71   # stale sweep + steep 295-blk descent + rock + river (BOREAL_TAIGA)
+27 33   # biome/river seam pair N (TEMPERATE_DECIDUOUS)
+27 34   # estuary control + seam pair S (EASTERN_TEMPERATE_COAST)
+28 34   # razor biome-dither seam pair w/ (27,34) (BOREAL_ALPINE+TD)
+62 61   # stale sweep + lake junction + stream depth 4-5 (TEMPERATE_RAINFOREST)
+19 76   # stale sweep + river banks (LUSH_RAINFOREST_COAST + SAND_DUNE_DESERT)
+48 48   # control: ocean tile, validator default
+51 53   # control: floodplain/lakes/rivers baseline (MIXED_FOREST)
+30 12   # extreme headwater Y389-520, snow-over-rock, S93 money tile (SNOWY_BOREAL_TAIGA)
+29 12   # high-relief biome seam pair w/ (30,12) + temperate_basaltic rock (ARCTIC_TUNDRA+SBT)
+13 82   # high-risk: S87 missing-river-chunk history (RAINFOREST_COAST)
+50 48   # high-risk: S87 blank-tile history (MIXED_FOREST)
+84 60   # dry-river-fix dev tile: CONTINENTAL_STEPPE+KARST+RIPARIAN + river + lake
+33 73   # DESERT_STEPPE_TRANSITION + DRY_PINE_BARRENS + SEMI_ARID_SHRUBLAND, relief 21k
+20 51   # DRY_OAK_SAVANNA + SCRUBBY_HEATHLAND + river + lake
+36 84   # COASTAL_HEATH + DRY_WOODLAND_MAQUIS + ocean coast
+29 89   # MANGROVE_COAST + TIDAL_JUNGLE_FRINGE + ocean coast
+20 53   # BIRCH_FOREST + coast + river
+33 6    # FROZEN_FLATS + river (Tundra Valley reference)
+8 73    # FRESHWATER_FEN (reference tile)
+52 53   # *** RIVER-CROSSING SEAM (wide, 5-blk) top of pair, w/ (52,54); abuts control (51,53) (MIXED_FOREST)
+52 54   # *** RIVER-CROSSING SEAM (wide, 5-blk) bottom of pair, w/ (52,53) (MIXED_FOREST)
+12 80   # *** RIVER-CROSSING SEAM (river hugs seam 105 rows) left of pair, w/ (13,80) (RAINFOREST_COAST)
+13 80   # *** RIVER-CROSSING SEAM right of pair, w/ (12,80) (DESERT_STEPPE_TRANSITION+SEMI_ARID_SHRUBLAND)
