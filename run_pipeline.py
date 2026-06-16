@@ -112,6 +112,7 @@ def _process_tile(args: dict) -> dict:
     core_river_settle   = importlib.import_module("core.river_flood_settle")
     core_bank_taper     = importlib.import_module("core.bank_taper")
     core_water_cleanup  = importlib.import_module("core.water_cleanup")
+    core_water_fill     = importlib.import_module("core.water_fill")
 
     t0 = time.perf_counter()
 
@@ -1814,6 +1815,24 @@ def _process_tile(args: dict) -> dict:
                 print(f"[s94-spill-cleanup] tile=({tile_x},{tile_y}) lowered "
                       f"{_nd} overspilled water cells", file=sys.stderr, flush=True)
 
+        # ── S94c FILL-TO-BANKS (realism: "steep banks nearly all dry"): the
+        # bank-taper lowers the valley floor BELOW the contained channel water
+        # surface, but the water mask is the narrow carved channel -> the tapered
+        # bench renders DRY below the waterline. Flood water OUTWARD to every dry
+        # cell sitting below an adjacent water level, bounded where terrain rises
+        # to the bank. NO terrain raised (no walls). PADDED -> seam-safe. Requires
+        # the level be CONTAINED (rebuild_river_wl --bank-cover) else it pours over
+        # the bank; runs AFTER the spill-cleanup so it fills to the contained level.
+        if _river_cells_pad.any():
+            _wy_fill, _filled = core_water_fill.fill_to_banks(
+                _river_water_y_pad, _surface_y_pad, _lake_mask_pad)
+            _nf = int(_filled.sum())
+            if _nf:
+                _river_water_y_pad[:, :] = _wy_fill.astype(_river_water_y_pad.dtype)
+                print(f"[s94-fill-banks] tile=({tile_x},{tile_y}) filled "
+                      f"{_nf} sub-level bank cells to the waterline",
+                      file=sys.stderr, flush=True)
+
         # ── Crop padded results back to inner tile ──
         surface_y[:, :] = _surface_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W]
         river_water_y[:, :] = _river_water_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W]
@@ -1829,9 +1848,14 @@ def _process_tile(args: dict) -> dict:
         # lock was likely stomping Step 9's WP-style water-bank lowering.
         if _crunch_lock_y is not None and _crunch_rock_mask is not None:
             _final_mask = _crunch_rock_mask
-            if river_meta is not None and (river_meta > 0).any():
+            # S94c: protect FILL-TO-BANKS water (river_water_y>63) too, so the
+            # re-lock doesn't raise terrain back up through the newly-filled bank.
+            _riv_or_fill = (((river_meta > 0) if river_meta is not None
+                             else np.zeros_like(surface_y, dtype=bool))
+                            | (river_water_y > 63))
+            if _riv_or_fill.any():
                 from scipy.ndimage import binary_dilation as _bd_lock
-                _river_zone_lock = _bd_lock(river_meta > 0, iterations=8)
+                _river_zone_lock = _bd_lock(_riv_or_fill, iterations=8)
                 _final_mask = _crunch_rock_mask & ~_river_zone_lock
                 del _river_zone_lock
             surface_y[_final_mask] = _crunch_lock_y[_final_mask]
@@ -1843,13 +1867,14 @@ def _process_tile(args: dict) -> dict:
         # zone so river/lake bank smoothing survives.
         if _post_decorate_y is not None:
             _land_lock = surface_y >= 63
-            if river_meta is not None and (river_meta > 0).any() or (surface_y < 63).any():
+            # S94c: include FILL-TO-BANKS water (river_water_y>63) in the water
+            # zone so restoring land doesn't undo the tapered+flooded bank.
+            _wz_src = (((river_meta > 0) if river_meta is not None
+                        else np.zeros_like(surface_y, dtype=bool))
+                       | (surface_y < 63) | (river_water_y > 63))
+            if _wz_src.any():
                 from scipy.ndimage import binary_dilation as _bd_lk2
-                _water_zone = _bd_lk2(
-                    (river_meta > 0) | (surface_y < 63)
-                    if river_meta is not None else (surface_y < 63),
-                    iterations=14,
-                )
+                _water_zone = _bd_lk2(_wz_src, iterations=14)
                 _land_lock &= ~_water_zone
                 del _water_zone
             surface_y[_land_lock] = _post_decorate_y[_land_lock]

@@ -73,7 +73,14 @@ def main():
     ap.add_argument("--masks", default="masks")
     ap.add_argument("--out", default="masks/hydro_river_wl.tif")
     ap.add_argument("--cover", type=int, default=28,
-                    help="blocks to extend the level footprint beyond width/2")
+                    help="blocks to extend the level footprint beyond width/2 "
+                         "(OUTPUT extent only — where the level is written)")
+    ap.add_argument("--bank-cover", type=int, default=6,
+                    help="blocks out from the centerline at which the BANK is "
+                         "measured (the containment). MUST be near the real "
+                         "channel edge — large values (the old 28) measure the "
+                         "bank up the valley wall and OVER-LEVEL the water. "
+                         "Paired with the pipeline fill-to-banks pass.")
     ap.add_argument("--native", action="store_true",
                     help="write at native (scaled) resolution; skip 50k upscale "
                          "(for local validation — avoids the 50k OOM)")
@@ -120,26 +127,37 @@ def main():
     foot = ndimage.binary_dilation(cl, iterations=rad) & ~lake
     print(f"[river_wl] footprint dilate r={rad}px -> {int(foot.sum())} cells", flush=True)
 
+    # NARROW channel — the cells over which SOURCE + BANK are measured. The bank
+    # is the min adjacent LAND just OUTSIDE this narrow channel, i.e. at the real
+    # channel edge (like the per-tile flood-settle's narrow `river` mask), NOT 30
+    # px up the valley wall. This is what keeps the level CONTAINED (no perch).
+    bank_cover_px = max(0, a.bank_cover // sc)
+    chan_rad = max(1, int(np.ceil(maxw / 2.0 / sc)) + bank_cover_px)
+    chan = ndimage.binary_dilation(cl, iterations=chan_rad) & ~lake
+    print(f"[river_wl] bank-channel dilate r={chan_rad}px -> {int(chan.sum())} cells",
+          flush=True)
+
     fr, fc = np.where(foot)
     # nearest centerline node (band) for every footprint cell (sparse KDTree)
     dist_to_cl, lab = tree.query(np.column_stack([fr, fc]), workers=-1)
     nb = node_pts.shape[0]
 
-    # --- per-cell source + min adjacent LAND bank (np.roll, no EDT) ----------
-    source_full = np.where(foot, bed - 1, np.iinfo(np.int32).max).astype(np.int32)
-    land = ~foot & ~lake
+    # --- min adjacent LAND bank, land = NOT the narrow channel (channel-edge) --
     INFB = np.iinfo(np.int32).max
+    land = ~chan & ~lake
     bed_land = np.where(land, bed, INFB).astype(np.int32)
     min_adj_land = np.full(bed.shape, INFB, np.int32)
     for dz, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
         min_adj_land = np.minimum(min_adj_land, np.roll(np.roll(bed_land, dz, 0), dx, 1))
     del bed_land, land
 
-    src_f = (bed[fr, fc] - 1).astype(np.int64)
-    bank_f = min_adj_land[fr, fc].astype(np.int64)
-    # per-band (cross-section) aggregates
-    band_src = np.full(nb, np.iinfo(np.int64).max); np.minimum.at(band_src, lab, src_f)
-    band_bank = np.full(nb, np.iinfo(np.int64).max); np.minimum.at(band_bank, lab, bank_f)
+    # --- per-band aggregates measured over the NARROW CHANNEL cells -----------
+    cr, cc = np.where(chan)
+    _, lab_c = tree.query(np.column_stack([cr, cc]), workers=-1)
+    src_c = (bed[cr, cc] - 1).astype(np.int64)
+    bank_c = min_adj_land[cr, cc].astype(np.int64)
+    band_src = np.full(nb, np.iinfo(np.int64).max); np.minimum.at(band_src, lab_c, src_c)
+    band_bank = np.full(nb, np.iinfo(np.int64).max); np.minimum.at(band_bank, lab_c, bank_c)
     band_level = np.minimum(band_src, band_bank)
     del min_adj_land
 

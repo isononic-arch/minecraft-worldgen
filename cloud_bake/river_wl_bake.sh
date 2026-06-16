@@ -22,6 +22,7 @@ OUT_DIR="${OUT_DIR:-/d/river_wl_out}"
 BRANCH="s85-cherry-picks"
 THREADS="${THREADS:-8}"; OMP="${OMP:-4}"
 COVER="${COVER:-256}"           # river-wl level coverage band (blocks; 256 = full coverage, validated)
+BANK_COVER="${BANK_COVER:-6}"   # S94c: blocks out from centerline to measure the BANK (containment). small=contained, large(28)=over-levels
 TTL_MIN="${TTL_MIN:-120}"       # EDT-free rebuild is fast; headroom for safety
 LOC="${LOC:-fsn1}"
 TILES="${TILES:-52,53;52,54;12,80;13,80}"
@@ -66,7 +67,7 @@ echo "$TILES" | tr ';' '\n' | tr ',' ' ' | ssh root@"$IP" "cat > /root/rv_tiles.
 
 # dispatch: rebuild (50k) -> render 4 tiles -> health+md5 -> done. tmux detaches,
 # output redirected, so this ssh RETURNS cleanly (no dangling channel).
-JOB="source /root/venv/bin/activate; export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=$OMP OPENBLAS_NUM_THREADS=$OMP MKL_NUM_THREADS=$OMP; cd /root/minecraft-worldgen; rm -f /root/done /root/job.log; echo REBUILD_START > /root/job.log; python rebuild_river_wl.py --scale 1 --cover $COVER >> /root/job.log 2>&1; echo RENDER_START >> /root/job.log; python run_pipeline.py --config config/thresholds.json --masks masks/ --schem-index schematic_index.json --output output/ --tile-list \"$TILES\" --threads $THREADS >> /root/job.log 2>&1; python tools/verify_render_health.py --out-dir output --tiles /root/rv_tiles.txt > /root/health.txt 2>&1; (cd output && md5sum *.mca > /root/md5.txt 2>/dev/null); cp masks/hydro_river_wl.tif /root/hydro_river_wl.tif; touch /root/done"
+JOB="source /root/venv/bin/activate; export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=$OMP OPENBLAS_NUM_THREADS=$OMP MKL_NUM_THREADS=$OMP; cd /root/minecraft-worldgen; rm -f /root/done /root/job.log; echo REBUILD_START > /root/job.log; python rebuild_river_wl.py --scale 1 --cover $COVER --bank-cover $BANK_COVER >> /root/job.log 2>&1; echo RENDER_START >> /root/job.log; python run_pipeline.py --config config/thresholds.json --masks masks/ --schem-index schematic_index.json --output output/ --tile-list \"$TILES\" --threads $THREADS >> /root/job.log 2>&1; python tools/verify_render_health.py --out-dir output --tiles /root/rv_tiles.txt > /root/health.txt 2>&1; (cd output && md5sum *.mca > /root/md5.txt 2>/dev/null); cp masks/hydro_river_wl.tif /root/hydro_river_wl.tif; touch /root/done"
 ssh root@"$IP" "tmux kill-session -t job 2>/dev/null; tmux new -d -s job '$JOB'" < /dev/null
 log "dispatched (rebuild + 4-tile render) in tmux"
 
