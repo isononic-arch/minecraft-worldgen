@@ -1806,11 +1806,16 @@ def _process_tile(args: dict) -> dict:
         # raised terrace border flush with both water and bank (no wall). The
         # raised cells get the biome surface block repainted after the crop. Runs
         # on the PADDED surface (seam-safe) after the bank-taper.
+        # Water-hug DISABLED by default: the fill-to-spill global bake now makes
+        # the water level CONTAINED by construction (never above the local
+        # terrain), so there is nothing to raise. Raising land created the
+        # swimming-pool walls + exposed-face "air pockets" the user reported.
+        # Kept behind the flag as a fallback only.
         _hug_cfg = (cfg.get("river_carve", {}) or {}).get("water_hug", {}) \
             if isinstance(cfg, dict) else {}
         _hug_raised_inner = None
         _hug_y_inner = None
-        if bool(_hug_cfg.get("enabled", True)) and _river_cells_pad.any():
+        if bool(_hug_cfg.get("enabled", False)) and _river_cells_pad.any():
             _rm_hug = np.zeros(_surface_y_pad.shape, dtype=np.uint8)
             _rm_hug[_river_cells_pad] = 1
             _rm_hug[_lake_mask_pad] = 3

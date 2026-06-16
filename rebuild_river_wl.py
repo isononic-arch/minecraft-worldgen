@@ -125,52 +125,38 @@ def main():
     dist_to_cl, lab = tree.query(np.column_stack([fr, fc]), workers=-1)
     nb = node_pts.shape[0]
 
-    # --- per-cell source + min adjacent LAND bank (np.roll, no EDT) ----------
-    source_full = np.where(foot, bed - 1, np.iinfo(np.int32).max).astype(np.int32)
-    land = ~foot & ~lake
-    INFB = np.iinfo(np.int32).max
-    bed_land = np.where(land, bed, INFB).astype(np.int32)
-    min_adj_land = np.full(bed.shape, INFB, np.int32)
-    for dz, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-        min_adj_land = np.minimum(min_adj_land, np.roll(np.roll(bed_land, dz, 0), dx, 1))
-    del bed_land, land
-
-    src_f = (bed[fr, fc] - 1).astype(np.int64)
-    bank_f = min_adj_land[fr, fc].astype(np.int64)
-    # per-band (cross-section) aggregates
-    band_src = np.full(nb, np.iinfo(np.int64).max); np.minimum.at(band_src, lab, src_f)
-    band_bank = np.full(nb, np.iinfo(np.int64).max); np.minimum.at(band_bank, lab, bank_f)
-    band_level = np.minimum(band_src, band_bank)
-    del min_adj_land
-
-    # --- monotone non-increasing downstream, ordered by SOURCE (global) ------
-    order = np.argsort(-band_src.astype(np.float64))      # high source = upstream
-    run = np.minimum.accumulate(band_level[order])
-    band_mono = np.empty_like(band_level); band_mono[order] = run
-
-    # --- local band-adjacency relaxation (fix reversals) --------------------
-    # find adjacent footprint cells with different bands -> directed edge by src
-    fl_grid = np.full(bed.shape, -1, np.int64); fl_grid[fr, fc] = lab
-    src_grid = np.where(foot, bed - 1, -(1 << 30)).astype(np.int64)
-    up_e = []; dn_e = []
-    for dz, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-        nbl = np.roll(np.roll(fl_grid, dz, 0), dx, 1)
-        nbs = np.roll(np.roll(src_grid, dz, 0), dx, 1)
-        m = (fl_grid >= 0) & (nbl >= 0) & (nbl != fl_grid) & (nbs < src_grid)
-        up_e.append(fl_grid[m]); dn_e.append(nbl[m])
-    up_e = np.concatenate(up_e); dn_e = np.concatenate(dn_e)
-    if up_e.size:
-        key = np.unique(up_e * nb + dn_e); up_e = key // nb; dn_e = key % nb
-        for _ in range(64):
-            need = band_mono[up_e] < band_mono[dn_e]
-            if not need.any():
-                break
-            np.minimum.at(band_mono, dn_e, band_mono[up_e])
-    del fl_grid, src_grid
+    # --- CONTAINED water surface via FILL-TO-SPILL (priority flood) ----------
+    # The water level must NEVER exceed the local terrain (else it perches over
+    # dry land — the user-reported spill). Morphological reconstruction-by-
+    # erosion fills every depression up to its lowest spill barrier draining to
+    # the ocean: filled[c] = the highest water can rise at c before overflowing.
+    # => filled <= the containing banks ALWAYS (no perch), AND basins flood to
+    # their spill (wide floodplains still fill). This is the robust global
+    # containment the old min(source, far-bank) lacked (the far bank over-leveled
+    # narrow channels while the nearest-fill coverage carried an upstream level
+    # onto lower downstream terrain).
+    from skimage.morphology import reconstruction as _recon
+    ocean = bed <= SEA
+    seed = np.full(bed.shape, int(bed.max()), dtype=np.float32)
+    bedf = bed.astype(np.float32)
+    seed[ocean] = bedf[ocean]
+    seed[0, :] = bedf[0, :]; seed[-1, :] = bedf[-1, :]
+    seed[:, 0] = bedf[:, 0]; seed[:, -1] = bedf[:, -1]
+    del ocean
+    print("[river_wl] fill-to-spill (reconstruction)...", flush=True)
+    filled = _recon(seed, bedf, method="erosion").astype(np.int32)
+    del seed, bedf
+    # water surface at each footprint cell = the nearest CENTERLINE's filled
+    # level (flat per cross-section = the local thalweg/spill), CLAMPED to that
+    # cell's OWN filled level so it can never sit above the cell's terrain.
+    # -1 to match the carver's water surface (source = pre_carve - 1): the fill
+    # sits at the terrain, the water surface is one block below it.
+    node_filled = filled[cl_r, cl_c]
+    lvl_f = np.minimum(node_filled[lab], filled[fr, fc]) - 1
+    del filled
 
     # --- scatter level to the footprint cells -------------------------------
     out = np.full(bed.shape, -999, np.int16)
-    lvl_f = band_mono[lab]
     out[fr, fc] = np.where(lvl_f > SEA, lvl_f, -999).astype(np.int16)
     print(f"[river_wl] water cells={int((out > SEA).sum())}", flush=True)
 
