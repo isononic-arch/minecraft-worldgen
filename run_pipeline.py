@@ -1863,6 +1863,13 @@ def _process_tile(args: dict) -> dict:
             _lk = _lake_bed_lock_mask
             surface_y[_lk] = np.minimum(surface_y[_lk], _lake_bed_lock_y[_lk])
 
+        # NOTE: a post-relock "Pass 2" cleanup was tried and REVERTED — the final
+        # re-locks raise some beds ABOVE their bank, so trimming there lands the
+        # water below the raised bed (dry) and cascades: 13,80 went 10111/131 ->
+        # 9740/180 (worse). Post-relock trimming drains, it does not contain. The
+        # 131 residual on 13,80 is the GLOBAL bake over-leveling that tile's
+        # interior; the cure is the bake, not more trimming. See S94 handoff.
+
         # S94 Phase 2: paint EMERGENT river-bed shoals (the rocks left by the
         # flood-settle where the lumpy bed pokes above the contained water) as
         # the per-cell lithology DARK band, so they read as natural rock not

@@ -27,6 +27,16 @@ paint. These can't ALL be had cleanly at the tile level — see why below.
   bank), the trimmed shore ring sits a couple blocks below the interior = a thin
   2-block waterline step at the bank (water-over-water, NOT the over-land spill the
   user flagged). The real cure for that is the bake not over-leveling (hard).
+- **TWO cleanup passes** (ordering matters): Pass 1 runs PRE-crop on the padded
+  arrays (true halo -> seam-safe edges) right after bank-taper/despike. Pass 2
+  runs POST the final surface_y re-locks (crunch / post-decorate / lake-bed) on
+  the cropped inner arrays. WHY both: the re-locks RAISE the bed on some cells
+  AFTER Pass 1, so a cell Pass 1 lowered to its bank renders DRY (bed >= water),
+  re-exposing an adjacent higher-water cell as a +3 perch (verified world
+  6702,41183: rwy=68 yet solid_top=68 dry -> neighbour 71 perches +3). Pass 2
+  edge-pads by 1 (replicate) so np.roll doesn't wrap, and FREEZES the boundary
+  ring to Pass 1's true-halo result -> no new seam. Pass 1 alone left 131 perch
+  on 13,80; Pass 2 targets those.
 - masks/hydro_river_wl.tif = the band-based FULL-COVERAGE bake (7.9MB). Good.
 - water_hug DISABLED/removed (caused walls + 1x3 air pockets = exposed wall faces).
 
