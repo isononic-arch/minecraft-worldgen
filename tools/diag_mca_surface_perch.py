@@ -14,7 +14,7 @@ WATER = {"minecraft:water", "minecraft:bubble_column"}
 AIRS = {"minecraft:air", "minecraft:void_air", "minecraft:cave_air"}
 NONGROUND = {"minecraft:water", "minecraft:bubble_column", "minecraft:seagrass",
              "minecraft:tall_seagrass", "minecraft:kelp", "minecraft:kelp_plant"}
-Y_LO, Y_HI = 50, 140
+Y_LO, Y_HI = 50, 320   # raised ceiling so high-altitude rivers (bed Y150-280) are seen
 
 
 def tile_surface(mca):

@@ -98,6 +98,47 @@ re-appearing seam after trim, the real cure is the bake not over-leveling there
 - Walk: 52,53|52,54 waterline seam `/tp @s 26954 75 27648`; 12,80|13,80 seam
   `/tp @s 6656 75 41279`; 13,80 perch outlier `/tp @s 6702 75 41183`.
 
+## S94b SURVEY — how widespread (all LOCAL renders, 0 box; tools/diag_river_survey.py)
+Mask-level: pre-cleanup perch = **1.0% of river cells in 14/507 tiles** (rare,
+localized). Deltas=92 tiles, high-alt(bed>=150)=66, lake-river junctions=70.
+Rendered + diagnosed 8 representative tiles (diag_river_survey_render/, installed):
+| tile | kind | water | perch | note |
+|---|---|---|---|---|
+| 89,58 | high-alt | 57396 | 0.20% | big mtn river, fine (water Y157) |
+| 69,62 | high-alt | 55146 | 0.25% | fine |
+| 79,71 | high-alt+perch | 1654 | 1.09% | small, minor +5 |
+| 35,21 | high-alt+perch | 168 | **20.83%** | **WORST: tiny steep channel, +10 at Y285** |
+| 20,63 | delta | 42728 | 0.45% | minor +5 |
+| 12,82 | delta | 72682 | 0.00% | clean |
+| 16,76 | lake | 104818 | 0.42% | lake-shore perch 228 (0.23%) +4 |
+| 51,53 | lake | 179981 | 0.05% | lake-shore perch 34 (0.03%) |
+- **Lake>RIVER: NOT reproduced** — both big lakes show lake==river at junctions
+  (0% lake higher, cascade blend at line 1077-1090 works). The user's "lakes sit
+  higher than adjacent rivers" is actually **lake-over-SHORE perch**: lake water
+  +4 above adjacent DRY land at the rim (0.03-0.23%). At a checked cell the MASK
+  bed=110 but it RENDERS 105/109 -> the lake bowl-carve + Step-9 re-locks reshape
+  the bed/shore AFTER lake_wl is fixed, leaving rim cells dry below the water.
+  Same root class as the river re-lock perch.
+- **High-alt rivers: big ones fine (0.2%); small/steep ones over-level badly**
+  (35,21 20.8%). Bank detection in the global bake fails where the bank is
+  ill-defined: wide flat washes (13,80) AND steep narrow channels (35,21).
+- diag tools fixed: diag_mca_surface_perch Y_HI 140->320 (high-alt water was a
+  false zero); diag_lake_river_level reports lake-shore perch + reach-12 junction.
+- Walk (verify world): 35,21 worst high-alt perch `/tp @s 18313 290 11026`;
+  16,76 lake-shore perch `/tp @s 8421 113 39118`; 20,63 delta `/tp @s 10603 75 32767`;
+  89,58 big mtn river `/tp @s 45828 162 29866`.
+
+## TWO REAL FIXES (bake/pipeline level — NOT done, need user go-ahead; risky unsupervised)
+1. **Bake over-leveling** (rebuild_river_wl.py band_bank): on flat-wash / steep-
+   narrow terrain the cross-section min-adjacent-land bank is too high -> water
+   over-levels. Cure: local-terrain-aware bank. Re-bake OOMs locally at scale 1
+   (use scale-4 --native to prototype, or the box). Affects ALL tiles -> must
+   re-validate the clean ones (52,53) for regression.
+2. **Lake-shore perch**: rim cells below lake_wl render dry (bowl-carve/re-lock
+   reshape after level set). Cure: either extend lake fill to all sub-level rim
+   cells, or re-lock the lake shore terrain >= lake_wl. NOT the river spill-trim
+   (that breaks the flat lake surface).
+
 ## NEXT
 1. Confirm `diag_s94_trim/r.13.80.mca` KEEPS water (not dry) + perch ~0. Install it.
 2. Box all 4 river-crossing tiles (52,53/52,54/12,80/13,80) via
