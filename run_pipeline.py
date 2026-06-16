@@ -111,7 +111,7 @@ def _process_tile(args: dict) -> dict:
     core_flow_erosion   = importlib.import_module("core.flow_erosion")
     core_river_settle   = importlib.import_module("core.river_flood_settle")
     core_bank_taper     = importlib.import_module("core.bank_taper")
-    core_water_hug      = importlib.import_module("core.water_hug")
+    core_water_cleanup  = importlib.import_module("core.water_cleanup")
 
     t0 = time.perf_counter()
 
@@ -1796,42 +1796,23 @@ def _process_tile(args: dict) -> dict:
                           f"{_ch_ds} thin rock-column cells",
                           file=sys.stderr, flush=True)
 
-        # ── S94 WATER-HUG: raise leaking land to contain the (seam-clean) water ─
-        # The global override gives a seam-clean water LEVEL but, being computed
-        # on pre-carve terrain, it can sit a few blocks above the local carved
-        # bank -> water spills over dry land (user report). Rather than LOWER the
-        # water (which re-broke the seam), RAISE the land that leaks: any land
-        # cell below the adjacent water level is filled UP to it, propagated over
-        # the connected dip until it meets terrain already at that level -> a
-        # raised terrace border flush with both water and bank (no wall). The
-        # raised cells get the biome surface block repainted after the crop. Runs
-        # on the PADDED surface (seam-safe) after the bank-taper.
-        # Water-hug DISABLED by default: the fill-to-spill global bake now makes
-        # the water level CONTAINED by construction (never above the local
-        # terrain), so there is nothing to raise. Raising land created the
-        # swimming-pool walls + exposed-face "air pockets" the user reported.
-        # Kept behind the flag as a fallback only.
-        _hug_cfg = (cfg.get("river_carve", {}) or {}).get("water_hug", {}) \
-            if isinstance(cfg, dict) else {}
-        _hug_raised_inner = None
-        _hug_y_inner = None
-        if bool(_hug_cfg.get("enabled", False)) and _river_cells_pad.any():
-            _rm_hug = np.zeros(_surface_y_pad.shape, dtype=np.uint8)
-            _rm_hug[_river_cells_pad] = 1
-            _rm_hug[_lake_mask_pad] = 3
-            _hug_sy, _hug_raised = core_water_hug.hug(
-                _surface_y_pad, _river_water_y_pad, _rm_hug,
-                max_reach=int(_hug_cfg.get("max_reach", 40)))
-            _ch_hug = int(_hug_raised.sum())
-            if _ch_hug:
-                _surface_y_pad[:, :] = _hug_sy.astype(_surface_y_pad.dtype)
-                _hug_raised_inner = _hug_raised[_PAD:_PAD + _H,
-                                                _PAD:_PAD + _W].copy()
-                _hug_y_inner = _hug_sy[_PAD:_PAD + _H,
-                                       _PAD:_PAD + _W].astype(np.int32).copy()
-                print(f"[s94-hug] tile=({tile_x},{tile_y}) raised {_ch_hug} "
-                      f"leak cells to contain water",
-                      file=sys.stderr, flush=True)
+        # ── S94 SPILL-ROW CLEANUP (user): the seam-clean GLOBAL water level is
+        # correct except where it sits above the local terrain -> spills over a
+        # lower bank. Instead of containing it (wall-or-seam), DELETE the spilling
+        # water: any widthwise row of surface water whose EDGE block is exposed to
+        # air (land just beyond it is below the water surface) is replaced with
+        # air. The perching slices vanish; the contained river stays. Runs on the
+        # PADDED surface (seam-safe halo) after all bank shaping. Terrain-driven
+        # => both tiles delete the same rows at a seam.
+        if _river_cells_pad.any():
+            _rm_cln = (_river_cells_pad & ~_lake_mask_pad)
+            _wy_cln, _del_cln = core_water_cleanup.cleanup_spill_rows(
+                _river_water_y_pad, _surface_y_pad, _rm_cln)
+            _nd = int(_del_cln.sum())
+            if _nd:
+                _river_water_y_pad[:, :] = _wy_cln.astype(_river_water_y_pad.dtype)
+                print(f"[s94-spill-cleanup] tile=({tile_x},{tile_y}) deleted "
+                      f"{_nd} spilling water cells", file=sys.stderr, flush=True)
 
         # ── Crop padded results back to inner tile ──
         surface_y[:, :] = _surface_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W]
@@ -1905,27 +1886,6 @@ def _process_tile(args: dict) -> dict:
                 print(f"[s94-rocks] tile=({tile_x},{tile_y}) painted "
                       f"{_np}/{int(_exposed.sum())} emergent river rocks as "
                       f"litho dark band", file=sys.stderr, flush=True)
-
-        # S94 water-hug repaint: the raised leak cells need (a) their raised
-        # surface_y RE-ASSERTED (a later lock may have lowered it back) and (b)
-        # the biome surface block painted on top — decoration ran on the OLD
-        # lower surface, so without this the raised border would show whatever
-        # block was at the old top. Geology below fills automatically from the
-        # raised surface_y in chunk_writer.
-        if _hug_raised_inner is not None and _hug_raised_inner.any():
-            _hm = _hug_raised_inner
-            surface_y[_hm] = np.maximum(
-                surface_y[_hm], _hug_y_inner[_hm].astype(surface_y.dtype))
-            _DEF_SURF = ("grass_block", "dirt")
-            _bb = getattr(core_col_gen, "_BIOME_BASE_BLOCKS", {})
-            _zz_h, _xx_h = np.where(_hm)
-            for _zi, _xi in zip(_zz_h.tolist(), _xx_h.tolist()):
-                _s, _u = _bb.get(biome_grid[_zi, _xi], _DEF_SURF)
-                surface_blk[_zi, _xi] = _s
-                sub_blk[_zi, _xi] = _u
-            print(f"[s94-hug] tile=({tile_x},{tile_y}) repainted "
-                  f"{int(_hm.sum())} raised border cells",
-                  file=sys.stderr, flush=True)
 
         # S91 #5 diag: env-gated FINAL-surface dump (post Step-9 water fixes +
         # all locks).  The dry-run SURF_DUMP hook never sees these passes —
