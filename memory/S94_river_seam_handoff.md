@@ -77,12 +77,26 @@ verify the seam after rendering. If a heavily-over-leveled tile (13,80) shows a
 re-appearing seam after trim, the real cure is the bake not over-leveling there
 (hard: needs the carver's flowing-flood logic globally).
 
-## INSTALLED / VERIFY WORLD
-- Verify world: `/d/modrinth_vandir/saves/Vandir50k_verify/region/`. 13,80 was
-  installed with the BAD delete-cleanup (mostly dry) — RE-INSTALL with the trim
-  version once the render confirms it keeps water.
-- Walk tiles: 13,80 perch spot `/tp @s 6703 90 41180`; seam (52,53)|(52,54)
-  `/tp @s 26880 90 27648`; (12,80)|(13,80) seam `/tp @s 6656 90 41216`.
+## VALIDATION (all LOCAL renders, 0 box spend, Pass-1 land-only trim)
+| tile | water | dry-land perch | water-step |
+|---|---|---|---|
+| 52,53 | 89193 | 0 (0.00%) | 0 |
+| 52,54 | 14603 | 0 (0.00%) | 0 |
+| 12,80 | 33801 | 17 (0.05%) | 3* |
+| 13,80 | 10111 | 131 (1.30%) | 2* |
+- 52,53|52,54 H-seam: every RIVER column identical both sides (terrain 67, water
+  70=70), 0 water-steps. WATERLINE SEAM = GONE (the saga's goal). The 2/3 flagged
+  "water-steps" on 12,80 are LAND terrain micro-steps (70/69), not water.
+- 13,80 = OVER-LEVELED OUTLIER: wide flat savanna wash, global bake can't find the
+  bank on near-flat terrain -> levels the interior too high (water 71 over 68-70
+  bank). 131 small +3 spots. NOT a global problem (its neighbour 12,80 = 17).
+- 12,80|13,80 V-seam terrain: 70 solid-steps>=2 (terrain, NOT water) — savanna
+  relief / possible terrain seam, SEPARATE track from the water fix.
+
+## INSTALLED / VERIFY WORLD  (`/d/modrinth_vandir/saves/Vandir50k_verify/region/`)
+- ALL 4 installed (Pass-1 trim): r.52.53 / r.52.54 / r.12.80 / r.13.80.
+- Walk: 52,53|52,54 waterline seam `/tp @s 26954 75 27648`; 12,80|13,80 seam
+  `/tp @s 6656 75 41279`; 13,80 perch outlier `/tp @s 6702 75 41183`.
 
 ## NEXT
 1. Confirm `diag_s94_trim/r.13.80.mca` KEEPS water (not dry) + perch ~0. Install it.
