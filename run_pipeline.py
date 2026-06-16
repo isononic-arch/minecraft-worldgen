@@ -1811,8 +1811,8 @@ def _process_tile(args: dict) -> dict:
             _nd = int(_del_cln.sum())
             if _nd:
                 _river_water_y_pad[:, :] = _wy_cln.astype(_river_water_y_pad.dtype)
-                print(f"[s94-spill-cleanup] tile=({tile_x},{tile_y}) deleted "
-                      f"{_nd} spilling water cells", file=sys.stderr, flush=True)
+                print(f"[s94-spill-cleanup] tile=({tile_x},{tile_y}) lowered "
+                      f"{_nd} overspilled water cells", file=sys.stderr, flush=True)
 
         # ── Crop padded results back to inner tile ──
         surface_y[:, :] = _surface_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W]

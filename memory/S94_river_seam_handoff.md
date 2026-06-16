@@ -14,12 +14,19 @@ paint. These can't ALL be had cleanly at the tile level — see why below.
   SEAM-CLEAN but OVER-LEVELS some tiles (water above terrain).
 - **+ spill-TRIM pass** `core/water_cleanup.py:cleanup_spill_rows` (called in
   run_pipeline after the bank-taper, before crop, on the PADDED arrays). It does
-  what the user actually asked: a surface-water cell that sits above its lowest
-  surrounding wall (min of 4-neighbour tops: water level if water else terrain
-  top) is LOWERED to that wall (never below its bed), iterated so the drop
-  propagates inward across a flooded sheet. => removes the EXPOSED TOP LAYER(S),
-  keeps the water in the trough. NOT delete-the-column (that drained 13,80 dry —
-  the user's "what the fuck" screenshot), NOT raise-land (walls).
+  what the user actually asked: a surface-water cell that sits above an adjacent
+  LAND bank (min of the 4 neighbours that are LAND = terrain top; water neighbours
+  contribute INF) is LOWERED to that bank (never below its bed). => removes the
+  EXPOSED-OVER-LAND TOP LAYER(S), keeps the flood body. NOT delete-the-column
+  (drained 13,80 dry — the "what the fuck" screenshot), NOT raise-land (walls).
+  **LAND-ONLY support is load-bearing:** an earlier version took min over ALL
+  neighbours incl. water, which made a ~615-cell edge-perch CASCADE through the
+  water and drain the whole sheet (13,80 10081 -> 2943 water). Land-only trims
+  only the cells actually perching over a lower bank; flood body stays. Trade-off:
+  where the global bake over-levels the interior (13,80 interior 71 over a 69
+  bank), the trimmed shore ring sits a couple blocks below the interior = a thin
+  2-block waterline step at the bank (water-over-water, NOT the over-land spill the
+  user flagged). The real cure for that is the bake not over-leveling (hard).
 - masks/hydro_river_wl.tif = the band-based FULL-COVERAGE bake (7.9MB). Good.
 - water_hug DISABLED/removed (caused walls + 1x3 air pockets = exposed wall faces).
 
@@ -45,6 +52,10 @@ paint. These can't ALL be had cleanly at the tile level — see why below.
    problem remained.
 6. **delete-whole-row cleanup**: drained the trough DRY (deleted the water column
    down to the bed). WRONG. The user wanted only the exposed TOP layer removed.
+7. **trim with ALL-neighbour support (incl. water)**: a small edge-perch CASCADES
+   through the water and drains the whole flood to its lowest outflow (13,80
+   10081 -> 2943). Use LAND-only support so trim is local to actual over-land
+   spill (see CURRENT STATE).
 
 ## THE CORE TENSION (so you don't re-discover it the hard way)
 The global level is seam-clean but over-levels (above terrain) in spots. To fix a
