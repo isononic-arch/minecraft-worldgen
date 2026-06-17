@@ -1703,9 +1703,36 @@ def _process_tile(args: dict) -> dict:
                 # true-land bank mask EXCLUDES lakes (a lake is water, not a
                 # bank — else a river beside a lake drains to the lake bed).
                 _land_fs = ~_river_cells_pad & ~_lake_mask_pad
+                # S94c: GLOBAL dist-from-ocean for the monotone ordering (seam
+                # fix). The per-tile EDT (_dist_fs) falls back to the lowest
+                # in-window cell when the ocean is past the halo -> diverges at
+                # seams on flowing rivers. Read the 1:8 global field for the
+                # padded window + upscale (distance is smooth; settle only uses
+                # the ORDER). Fall back to the per-tile EDT if the bake is absent.
+                _dist_for_settle = _dist_fs
+                _gdist_path = masks_dir / "hydro_ocean_dist8.tif"
+                if _gdist_path.exists():
+                    try:
+                        import rasterio as _rio_gd
+                        from rasterio.windows import Window as _WinGd
+                        from rasterio.enums import Resampling as _Rsmp_gd
+                        with _rio_gd.open(_gdist_path) as _gds:
+                            _gdist = _gds.read(
+                                1,
+                                window=_WinGd((col_off - _PAD) / 8.0,
+                                              (row_off - _PAD) / 8.0,
+                                              _PW / 8.0, _PH / 8.0),
+                                out_shape=(_PH, _PW), boundless=True,
+                                fill_value=0.0, resampling=_Rsmp_gd.bilinear,
+                            ).astype(np.float32)
+                        _dist_for_settle = _gdist
+                    except Exception as _gd_exc:  # noqa: BLE001
+                        print(f"[s94-ocean-dist] WARN tile=({tile_x},{tile_y}) "
+                              f"{type(_gd_exc).__name__}: {_gd_exc} -> per-tile EDT",
+                              file=sys.stderr, flush=True)
                 _settled = core_river_settle.settle(
                     source=_src_pad, bed=_surface_y_pad.astype(np.int32),
-                    river=_riv_w, dist=_dist_fs, skel=_skel_fs, land=_land_fs)
+                    river=_riv_w, dist=_dist_for_settle, skel=_skel_fs, land=_land_fs)
                 # S94 seam-walk: gated dump of the flood-settle PADDED inputs +
                 # output so a harness can run settle() variants offline and
                 # check seam continuity without a 25-min re-render per variant.
@@ -1735,7 +1762,11 @@ def _process_tile(args: dict) -> dict:
                 # geometry). Read the PADDED window (boundless, -999 fill) so the
                 # bank-taper that follows is seam-consistent too.
                 _grwl_path = masks_dir / "hydro_river_wl.tif"
-                if _grwl_path.exists():
+                # S94c: global override now OPT-IN. With the global-dist settle
+                # above being seam-clean + contained, the override (which
+                # over-levels) is no longer the seam fix. Set RIVER_WL_OVERRIDE=1
+                # to re-enable the cap-to-settle path for A/B.
+                if _grwl_path.exists() and os.environ.get("RIVER_WL_OVERRIDE"):
                     try:
                         import rasterio as _rio_wl
                         from rasterio.windows import Window as _Win
@@ -1745,11 +1776,25 @@ def _process_tile(args: dict) -> dict:
                                                _PW, _PH),
                                 boundless=True, fill_value=-999,
                             ).astype(np.int16)
+                        # S94c: CAP the global level to the per-tile flood-settle
+                        # (which measures the bank at the REAL channel edge, so it
+                        # is CONTAINED) instead of blindly replacing it. Where the
+                        # global is already <= settle it wins (seam-clean); where it
+                        # OVER-LEVELS (wide washes / steep narrow channels the
+                        # fixed-distance bake bank can't fit) it is clamped down to
+                        # the contained settle level -> no perch. The fill-to-banks
+                        # pass then wets the banks up to this contained level. Where
+                        # settle produced no level (<=SEA) we trust the global.
                         _ov = _riv_w & (_gll > _SEA)
-                        _river_water_y_pad[_ov] = _gll[_ov]
+                        _cur_ov = _river_water_y_pad[_ov]
+                        _capped = np.where(_cur_ov > _SEA,
+                                           np.minimum(_gll[_ov], _cur_ov),
+                                           _gll[_ov]).astype(np.int16)
+                        _n_clamp = int((_capped < _gll[_ov]).sum())
+                        _river_water_y_pad[_ov] = _capped
                         print(f"[s94-river-wl] tile=({tile_x},{tile_y}) global "
-                              f"level override on {int(_ov.sum())}/"
-                              f"{int(_riv_w.sum())} river cells",
+                              f"level on {int(_ov.sum())}/{int(_riv_w.sum())} river "
+                              f"cells ({_n_clamp} clamped down to settle)",
                               file=sys.stderr, flush=True)
                     except Exception as _wl_exc:  # noqa: BLE001
                         print(f"[s94-river-wl] WARN tile=({tile_x},{tile_y}) "
