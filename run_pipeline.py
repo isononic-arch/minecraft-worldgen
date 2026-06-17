@@ -1733,6 +1733,25 @@ def _process_tile(args: dict) -> dict:
                 _settled = core_river_settle.settle(
                     source=_src_pad, bed=_surface_y_pad.astype(np.int32),
                     river=_riv_w, dist=_dist_for_settle, skel=_skel_fs, land=_land_fs)
+                # S94c: inland-drain guard. The global ocean-distance runs OPPOSITE
+                # to flow for the rare headwater that drains AWAY from the nearest
+                # ocean (e.g. 35,21), so its monotone empties the channel. Where the
+                # global-dist settle produced NO water but the per-tile EDT settle
+                # WOULD have, restore the per-tile level on just those cells (a tiny
+                # isolated headwater, so its per-tile seam is negligible). Seam-prone
+                # ocean-draining rivers keep the seam-clean global level.
+                if _dist_for_settle is not _dist_fs:
+                    _settled_p = core_river_settle.settle(
+                        source=_src_pad, bed=_surface_y_pad.astype(np.int32),
+                        river=_riv_w, dist=_dist_fs, skel=_skel_fs, land=_land_fs)
+                    _drained = (_settled_p > _SEA) & (_settled <= _SEA)
+                    _nd_g = int(_drained.sum())
+                    if _nd_g:
+                        _settled = np.where(_drained, _settled_p,
+                                            _settled).astype(_settled.dtype)
+                        print(f"[s94-drain-guard] tile=({tile_x},{tile_y}) restored "
+                              f"{_nd_g} drained cells from the per-tile settle",
+                              file=sys.stderr, flush=True)
                 # S94 seam-walk: gated dump of the flood-settle PADDED inputs +
                 # output so a harness can run settle() variants offline and
                 # check seam continuity without a 25-min re-render per variant.
