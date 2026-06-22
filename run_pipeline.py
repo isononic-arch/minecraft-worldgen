@@ -109,10 +109,6 @@ def _process_tile(args: dict) -> dict:
     core_eco            = importlib.import_module("core.eco_gradients")
     core_clearing       = importlib.import_module("core.meadow_clearing_field")
     core_flow_erosion   = importlib.import_module("core.flow_erosion")
-    core_river_settle   = importlib.import_module("core.river_flood_settle")
-    core_bank_taper     = importlib.import_module("core.bank_taper")
-    core_water_cleanup  = importlib.import_module("core.water_cleanup")
-    core_water_fill     = importlib.import_module("core.water_fill")
 
     t0 = time.perf_counter()
 
@@ -1236,9 +1232,6 @@ def _process_tile(args: dict) -> dict:
         )
         _river_water_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W] = river_water_y
 
-        # S94: clean carver source/platform water (pre-cap) for flood-settle.
-        _clean_water_pad_s94 = _river_water_y_pad.copy()
-
         # lake_mask_pad: painted-lake in pad, authoritative lake_mask in inner.
         _lake_mask_pad = _paint_lake_pad.copy()
         _lake_mask_pad[_PAD:_PAD + _H, _PAD:_PAD + _W] = lake_mask
@@ -1656,247 +1649,6 @@ def _process_tile(args: dict) -> dict:
         # that the cap then lowered.)
         _s9_snap("p2b_grade", _surface_y_pad)
 
-        # ── S94 FLOOD-SETTLE (config river_carve.flood_settle) ─────────────
-        # USER (84,60 walk): "SAME terraces across the entire latitude band —
-        # no split down the middle", via the MC glass-platform trick simulated
-        # in-pipeline. The v8.14 cap (Pass 0.05) does water = min(clean,
-        # eff_cap) with eff_cap = the per-cell propagated NEAREST-EDGE bank —
-        # so on a wide channel the LEFT and RIGHT banks differ and the two
-        # halves settle to different levels: a 1-block ledge running LENGTHWISE
-        # down the channel centre. Replace that per-cell cap with a flood-
-        # settle that SUPERSEDES it: take the CLEAN carver source (the flat
-        # platform sheet), then per true cross-section (nearest-centerline
-        # slice) settle to min(source, lowest lateral bank) — flat per latitude
-        # band, contained by construction (water can never sit above a bank =>
-        # ZERO levees, the spill drops it), and enforce monotone non-increasing
-        # toward the ocean so it only steps DOWN. The lumpy BED is never
-        # touched (water-only); where a high bed bump exceeds the contained
-        # level it pokes through as a rock. Runs on the PADDED halo so a river
-        # crossing a seam settles identically on both sides. Flow coordinate =
-        # a local dist-from-ocean (ocean = surface<=SEA, else seed lowest
-        # source cell — mirrors the carver's _dist_from_ocean). Centerline =
-        # skeletonize of the WETTED source mask (NOT _river_cells_pad, which
-        # includes Step-8 bank dilation and skeletonizes branchy).
-        _fs_cfg = (cfg.get("river_carve", {}) or {}).get("flood_settle", {}) \
-            if isinstance(cfg, dict) else {}
-        if bool(_fs_cfg.get("enabled", False)) and _river_cells_pad.any():
-            _SEA = core_col_gen.SEA_LEVEL
-            _src_pad = _clean_water_pad_s94.astype(np.int32)
-            _riv_w = (_river_cells_pad & (_src_pad > _SEA) & ~_lake_mask_pad)
-            if _riv_w.sum() >= 8:
-                from skimage.morphology import skeletonize as _skz_fs
-                from scipy.ndimage import distance_transform_edt as _edt_fs
-                try:
-                    _skel_fs = _skz_fs(_riv_w)
-                except Exception:
-                    _skel_fs = _riv_w
-                if not _skel_fs.any():
-                    _skel_fs = _riv_w
-                # local dist-from-ocean (lower = downstream)
-                _ocean_fs = _surface_y_pad <= _SEA
-                if not _ocean_fs.any():
-                    _rr_fs, _cc_fs = np.where(_riv_w)
-                    _lo_fs = int(np.argmin(_surface_y_pad[_rr_fs, _cc_fs]))
-                    _ocean_fs = np.zeros_like(_riv_w)
-                    _ocean_fs[_rr_fs[_lo_fs], _cc_fs[_lo_fs]] = True
-                _dist_fs = _edt_fs(~_ocean_fs).astype(np.float32)
-                # true-land bank mask EXCLUDES lakes (a lake is water, not a
-                # bank — else a river beside a lake drains to the lake bed).
-                _land_fs = ~_river_cells_pad & ~_lake_mask_pad
-                # S94c: GLOBAL dist-from-ocean for the monotone ordering (seam
-                # fix). The per-tile EDT (_dist_fs) falls back to the lowest
-                # in-window cell when the ocean is past the halo -> diverges at
-                # seams on flowing rivers. Read the 1:8 global field for the
-                # padded window + upscale (distance is smooth; settle only uses
-                # the ORDER). Fall back to the per-tile EDT if the bake is absent.
-                _dist_for_settle = _dist_fs
-                _gdist_path = masks_dir / "hydro_ocean_dist8.tif"
-                if _gdist_path.exists():
-                    try:
-                        import rasterio as _rio_gd
-                        from rasterio.windows import Window as _WinGd
-                        from rasterio.enums import Resampling as _Rsmp_gd
-                        with _rio_gd.open(_gdist_path) as _gds:
-                            _gdist = _gds.read(
-                                1,
-                                window=_WinGd((col_off - _PAD) / 8.0,
-                                              (row_off - _PAD) / 8.0,
-                                              _PW / 8.0, _PH / 8.0),
-                                out_shape=(_PH, _PW), boundless=True,
-                                fill_value=0.0, resampling=_Rsmp_gd.bilinear,
-                            ).astype(np.float32)
-                        _dist_for_settle = _gdist
-                    except Exception as _gd_exc:  # noqa: BLE001
-                        print(f"[s94-ocean-dist] WARN tile=({tile_x},{tile_y}) "
-                              f"{type(_gd_exc).__name__}: {_gd_exc} -> per-tile EDT",
-                              file=sys.stderr, flush=True)
-                _settled = core_river_settle.settle(
-                    source=_src_pad, bed=_surface_y_pad.astype(np.int32),
-                    river=_riv_w, dist=_dist_for_settle, skel=_skel_fs, land=_land_fs)
-                # S94c: inland-drain guard. The global ocean-distance runs OPPOSITE
-                # to flow for the rare headwater that drains AWAY from the nearest
-                # ocean (e.g. 35,21), so its monotone empties the channel. Where the
-                # global-dist settle produced NO water but the per-tile EDT settle
-                # WOULD have, restore the per-tile level on just those cells (a tiny
-                # isolated headwater, so its per-tile seam is negligible). Seam-prone
-                # ocean-draining rivers keep the seam-clean global level.
-                if _dist_for_settle is not _dist_fs:
-                    _settled_p = core_river_settle.settle(
-                        source=_src_pad, bed=_surface_y_pad.astype(np.int32),
-                        river=_riv_w, dist=_dist_fs, skel=_skel_fs, land=_land_fs)
-                    _drained = (_settled_p > _SEA) & (_settled <= _SEA)
-                    _nd_g = int(_drained.sum())
-                    if _nd_g:
-                        _settled = np.where(_drained, _settled_p,
-                                            _settled).astype(_settled.dtype)
-                        print(f"[s94-drain-guard] tile=({tile_x},{tile_y}) restored "
-                              f"{_nd_g} drained cells from the per-tile settle",
-                              file=sys.stderr, flush=True)
-                # S94 seam-walk: gated dump of the flood-settle PADDED inputs +
-                # output so a harness can run settle() variants offline and
-                # check seam continuity without a 25-min re-render per variant.
-                _fd = os.environ.get("FLOOD_DUMP_DIR")
-                if _fd:
-                    os.makedirs(_fd, exist_ok=True)
-                    for _nm, _ar in (("src", _src_pad), ("bed", _surface_y_pad),
-                                     ("riv", _riv_w), ("dist", _dist_fs),
-                                     ("skel", _skel_fs), ("land", _land_fs),
-                                     ("settled", _settled)):
-                        np.save(f"{_fd}/fs_{_nm}_{tile_x}_{tile_y}.npy",
-                                np.asarray(_ar))
-                _wmask = _riv_w & (_settled > _SEA)
-                _river_water_y_pad[_wmask] = _settled[_wmask].astype(np.int16)
-                print(f"[s94-flood] tile=({tile_x},{tile_y}) flood-settled "
-                      f"{int(_riv_w.sum())} river cells",
-                      file=sys.stderr, flush=True)
-
-                # ── S94 GLOBAL river water-level override (the seam fix) ──────
-                # The per-tile settle above is now the FALLBACK. If the global
-                # hydro_river_wl bake exists, OVERRIDE the water level with it on
-                # covered river cells. It is one global field, so the value at
-                # any world coord is identical on both sides of a tile seam ->
-                # the 1-block water-level seam step is gone. The river EXTENT
-                # stays per-tile (chunk_writer fills where level > bed at full
-                # res) so the perimeter stays organic (no NEAREST swimming-pool
-                # geometry). Read the PADDED window (boundless, -999 fill) so the
-                # bank-taper that follows is seam-consistent too.
-                _grwl_path = masks_dir / "hydro_river_wl.tif"
-                # S94c: global override now OPT-IN. With the global-dist settle
-                # above being seam-clean + contained, the override (which
-                # over-levels) is no longer the seam fix. Set RIVER_WL_OVERRIDE=1
-                # to re-enable the cap-to-settle path for A/B.
-                if _grwl_path.exists() and os.environ.get("RIVER_WL_OVERRIDE"):
-                    try:
-                        import rasterio as _rio_wl
-                        from rasterio.windows import Window as _Win
-                        with _rio_wl.open(_grwl_path) as _wls:
-                            _gll = _wls.read(
-                                1, window=_Win(col_off - _PAD, row_off - _PAD,
-                                               _PW, _PH),
-                                boundless=True, fill_value=-999,
-                            ).astype(np.int16)
-                        # S94c: CAP the global level to the per-tile flood-settle
-                        # (which measures the bank at the REAL channel edge, so it
-                        # is CONTAINED) instead of blindly replacing it. Where the
-                        # global is already <= settle it wins (seam-clean); where it
-                        # OVER-LEVELS (wide washes / steep narrow channels the
-                        # fixed-distance bake bank can't fit) it is clamped down to
-                        # the contained settle level -> no perch. The fill-to-banks
-                        # pass then wets the banks up to this contained level. Where
-                        # settle produced no level (<=SEA) we trust the global.
-                        _ov = _riv_w & (_gll > _SEA)
-                        _cur_ov = _river_water_y_pad[_ov]
-                        _capped = np.where(_cur_ov > _SEA,
-                                           np.minimum(_gll[_ov], _cur_ov),
-                                           _gll[_ov]).astype(np.int16)
-                        _n_clamp = int((_capped < _gll[_ov]).sum())
-                        _river_water_y_pad[_ov] = _capped
-                        print(f"[s94-river-wl] tile=({tile_x},{tile_y}) global "
-                              f"level on {int(_ov.sum())}/{int(_riv_w.sum())} river "
-                              f"cells ({_n_clamp} clamped down to settle)",
-                              file=sys.stderr, flush=True)
-                    except Exception as _wl_exc:  # noqa: BLE001
-                        print(f"[s94-river-wl] WARN tile=({tile_x},{tile_y}) "
-                              f"{type(_wl_exc).__name__}: {_wl_exc}",
-                              file=sys.stderr, flush=True)
-
-        # ── S94 BANK TAPER (config river_carve.bank_taper) ─────────────────
-        # USER (84,60 walk): the flood-settled water sits in abrupt TROUGH
-        # WALLS — taper them into a natural gaussian valley. Spec: the 1-cell
-        # LAND perimeter touching water is flush at water level W; the next
-        # ring out is W+1 (secondary containment wall); beyond, a constant-
-        # gentle-grade ramp (reach SCALES WITH WALL HEIGHT) gaussian-smoothed
-        # to the natural terrain. Only LOWERS bank cells (never raises, never
-        # touches the bed/water/emergent-rocks); terrace-safe (per-cell
-        # nearest-water W + a highest-nearby-pool floor so no terrace drains).
-        # Runs on the PADDED surface (seam-safe halo) right after the flood-
-        # settle, before the crop. The later rock re-lock SKIPS river banks so
-        # it won't fight this; it is the final say on bank Y.
-        _bt_cfg = (cfg.get("river_carve", {}) or {}).get("bank_taper", {}) \
-            if isinstance(cfg, dict) else {}
-        if (bool(_bt_cfg.get("enabled", False)) and _river_cells_pad.any()):
-            _rm_pad_bt = np.zeros(_surface_y_pad.shape, dtype=np.uint8)
-            _rm_pad_bt[_river_cells_pad] = 1
-            _rm_pad_bt[_lake_mask_pad] = 3
-            _tapered = core_bank_taper.taper(
-                _surface_y_pad, _river_water_y_pad, _rm_pad_bt)
-            _ch_bt = int((_tapered.astype(np.int32)
-                          != _surface_y_pad.astype(np.int32)).sum())
-            _surface_y_pad[:, :] = _tapered.astype(_surface_y_pad.dtype)
-            print(f"[s94-banktaper] tile=({tile_x},{tile_y}) tapered "
-                  f"{_ch_bt} bank cells", file=sys.stderr, flush=True)
-
-            # S94: despike thin 'stonehenge' emergent-rock columns (the bank-
-            # taper skips river-footprint cells, so isolated 1-wide tall rock
-            # pixels there are never smoothed). Lowers only THIN tall rock
-            # components; broad outcrops kept. Runs on the same padded surface.
-            if bool(_bt_cfg.get("despike_rock", True)):
-                _desp = core_bank_taper.despike_emergent_rock(
-                    _surface_y_pad, _river_water_y_pad, _rm_pad_bt)
-                _ch_ds = int((_desp.astype(np.int32)
-                              != _surface_y_pad.astype(np.int32)).sum())
-                _surface_y_pad[:, :] = _desp.astype(_surface_y_pad.dtype)
-                if _ch_ds:
-                    print(f"[s94-despike] tile=({tile_x},{tile_y}) lowered "
-                          f"{_ch_ds} thin rock-column cells",
-                          file=sys.stderr, flush=True)
-
-        # ── S94 SPILL-ROW CLEANUP (user): the seam-clean GLOBAL water level is
-        # correct except where it sits above the local terrain -> spills over a
-        # lower bank. Instead of containing it (wall-or-seam), DELETE the spilling
-        # water: any widthwise row of surface water whose EDGE block is exposed to
-        # air (land just beyond it is below the water surface) is replaced with
-        # air. The perching slices vanish; the contained river stays. Runs on the
-        # PADDED surface (seam-safe halo) after all bank shaping. Terrain-driven
-        # => both tiles delete the same rows at a seam.
-        if _river_cells_pad.any():
-            _rm_cln = (_river_cells_pad & ~_lake_mask_pad)
-            _wy_cln, _del_cln = core_water_cleanup.cleanup_spill_rows(
-                _river_water_y_pad, _surface_y_pad, _rm_cln)
-            _nd = int(_del_cln.sum())
-            if _nd:
-                _river_water_y_pad[:, :] = _wy_cln.astype(_river_water_y_pad.dtype)
-                print(f"[s94-spill-cleanup] tile=({tile_x},{tile_y}) lowered "
-                      f"{_nd} overspilled water cells", file=sys.stderr, flush=True)
-
-        # ── S94c FILL-TO-BANKS (realism: "steep banks nearly all dry"): the
-        # bank-taper lowers the valley floor BELOW the contained channel water
-        # surface, but the water mask is the narrow carved channel -> the tapered
-        # bench renders DRY below the waterline. Flood water OUTWARD to every dry
-        # cell sitting below an adjacent water level, bounded where terrain rises
-        # to the bank. NO terrain raised (no walls). PADDED -> seam-safe. Requires
-        # the level be CONTAINED (rebuild_river_wl --bank-cover) else it pours over
-        # the bank; runs AFTER the spill-cleanup so it fills to the contained level.
-        if _river_cells_pad.any():
-            _wy_fill, _filled = core_water_fill.fill_to_banks(
-                _river_water_y_pad, _surface_y_pad, _lake_mask_pad)
-            _nf = int(_filled.sum())
-            if _nf:
-                _river_water_y_pad[:, :] = _wy_fill.astype(_river_water_y_pad.dtype)
-                print(f"[s94-fill-banks] tile=({tile_x},{tile_y}) filled "
-                      f"{_nf} sub-level bank cells to the waterline",
-                      file=sys.stderr, flush=True)
-
         # ── Crop padded results back to inner tile ──
         surface_y[:, :] = _surface_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W]
         river_water_y[:, :] = _river_water_y_pad[_PAD:_PAD + _H, _PAD:_PAD + _W]
@@ -1912,14 +1664,9 @@ def _process_tile(args: dict) -> dict:
         # lock was likely stomping Step 9's WP-style water-bank lowering.
         if _crunch_lock_y is not None and _crunch_rock_mask is not None:
             _final_mask = _crunch_rock_mask
-            # S94c: protect FILL-TO-BANKS water (river_water_y>63) too, so the
-            # re-lock doesn't raise terrain back up through the newly-filled bank.
-            _riv_or_fill = (((river_meta > 0) if river_meta is not None
-                             else np.zeros_like(surface_y, dtype=bool))
-                            | (river_water_y > 63))
-            if _riv_or_fill.any():
+            if river_meta is not None and (river_meta > 0).any():
                 from scipy.ndimage import binary_dilation as _bd_lock
-                _river_zone_lock = _bd_lock(_riv_or_fill, iterations=8)
+                _river_zone_lock = _bd_lock(river_meta > 0, iterations=8)
                 _final_mask = _crunch_rock_mask & ~_river_zone_lock
                 del _river_zone_lock
             surface_y[_final_mask] = _crunch_lock_y[_final_mask]
@@ -1931,14 +1678,13 @@ def _process_tile(args: dict) -> dict:
         # zone so river/lake bank smoothing survives.
         if _post_decorate_y is not None:
             _land_lock = surface_y >= 63
-            # S94c: include FILL-TO-BANKS water (river_water_y>63) in the water
-            # zone so restoring land doesn't undo the tapered+flooded bank.
-            _wz_src = (((river_meta > 0) if river_meta is not None
-                        else np.zeros_like(surface_y, dtype=bool))
-                       | (surface_y < 63) | (river_water_y > 63))
-            if _wz_src.any():
+            if river_meta is not None and (river_meta > 0).any() or (surface_y < 63).any():
                 from scipy.ndimage import binary_dilation as _bd_lk2
-                _water_zone = _bd_lk2(_wz_src, iterations=14)
+                _water_zone = _bd_lk2(
+                    (river_meta > 0) | (surface_y < 63)
+                    if river_meta is not None else (surface_y < 63),
+                    iterations=14,
+                )
                 _land_lock &= ~_water_zone
                 del _water_zone
             surface_y[_land_lock] = _post_decorate_y[_land_lock]
@@ -1951,37 +1697,6 @@ def _process_tile(args: dict) -> dict:
         if _lake_bed_lock_y is not None and _lake_bed_lock_mask is not None:
             _lk = _lake_bed_lock_mask
             surface_y[_lk] = np.minimum(surface_y[_lk], _lake_bed_lock_y[_lk])
-
-        # NOTE: a post-relock "Pass 2" cleanup was tried and REVERTED — the final
-        # re-locks raise some beds ABOVE their bank, so trimming there lands the
-        # water below the raised bed (dry) and cascades: 13,80 went 10111/131 ->
-        # 9740/180 (worse). Post-relock trimming drains, it does not contain. The
-        # 131 residual on 13,80 is the GLOBAL bake over-leveling that tile's
-        # interior; the cure is the bake, not more trimming. See S94 handoff.
-
-        # S94 Phase 2: paint EMERGENT river-bed shoals (the rocks left by the
-        # flood-settle where the lumpy bed pokes above the contained water) as
-        # the per-cell lithology DARK band, so they read as natural rock not
-        # the decorated dirt/grass surface. Exposed = river cell tagged with
-        # above-sea water but where surface_y >= river_water_y (chunk_writer
-        # places NO water there). Lakes excluded. surface_y + river_water_y are
-        # final here (post all Step-9 locks). Gated with flood_settle.
-        _fs_cfg2 = (cfg.get("river_carve", {}) or {}).get("flood_settle", {}) \
-            if isinstance(cfg, dict) else {}
-        if (bool(_fs_cfg2.get("enabled", False))
-                and bool(_fs_cfg2.get("paint_rocks", True))):
-            _SEA2 = core_col_gen.SEA_LEVEL
-            _CHAN_LAKE2 = np.uint8(3)
-            _exposed = ((river_meta > 0) & (river_meta != _CHAN_LAKE2)
-                        & (river_water_y > _SEA2)
-                        & (surface_y >= river_water_y))
-            if _exposed.any():
-                _np = core_decorator.paint_river_rocks(
-                    surface_blk, sub_blk, lithology_tile, _exposed,
-                    cfg, tile_x, tile_y)
-                print(f"[s94-rocks] tile=({tile_x},{tile_y}) painted "
-                      f"{_np}/{int(_exposed.sum())} emergent river rocks as "
-                      f"litho dark band", file=sys.stderr, flush=True)
 
         # S91 #5 diag: env-gated FINAL-surface dump (post Step-9 water fixes +
         # all locks).  The dry-run SURF_DUMP hook never sees these passes —

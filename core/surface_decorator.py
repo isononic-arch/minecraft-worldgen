@@ -2324,64 +2324,6 @@ def _apply_rock_layers(
                                 coin, layer_dither, paint_sub=True)
 
 
-def paint_river_rocks(
-    surface_blocks:    np.ndarray,
-    subsurface_blocks: np.ndarray,
-    lithology_tile:    np.ndarray | None,
-    exposed_mask:      np.ndarray | None,
-    cfg:               dict,
-    tile_x:            int,
-    tile_y:            int,
-) -> int:
-    """S94 Phase 2: paint river-bed cells that poke ABOVE the flood-settled
-    water (emergent shoals/rocks) with the per-cell lithology group's DARK
-    rock band, so exposed bed reads as natural rock instead of the decorated
-    dirt/grass surface. `exposed_mask` = river cells where surface_y >=
-    river_water_y (no water placed there by chunk_writer). Uses the same dark
-    palette + dither as _apply_rock_layers' tier-1; resolves the group per
-    cell from the painted lithology_tile. Returns count painted."""
-    if exposed_mask is None or not exposed_mask.any():
-        return 0
-    if lithology_tile is None:
-        return 0
-    litho_cfg = cfg.get("lithology", {}) if isinstance(cfg, dict) else {}
-    rl_cfg = litho_cfg.get("rock_layers", {})
-    groups_cfg = rl_cfg.get("groups", {})
-    if not groups_cfg:
-        return 0
-    H, W = surface_blocks.shape
-    if lithology_tile.shape != (H, W):
-        from scipy.ndimage import zoom as _z_rr
-        litho = _z_rr(lithology_tile,
-                      (H / lithology_tile.shape[0], W / lithology_tile.shape[1]),
-                      order=0)
-    else:
-        litho = lithology_tile
-    name_to_id = {
-        _gn: int(_gd.get("id", 0))
-        for _gn, _gd in litho_cfg.get("groups", {}).items()
-    }
-    rng = np.random.default_rng(
-        (tile_x * 73856093 ^ tile_y * 19349663 ^ 0x52CC15) & 0xFFFFFFFF)
-    coin = rng.random((H, W), dtype=np.float32)
-    dither = float(rl_cfg.get("layer_dither", 0.04))
-    painted = 0
-    for gname, gdata in groups_cfg.items():
-        gid = name_to_id.get(gname)
-        if gid is None:
-            continue
-        pal = gdata.get("dark")
-        if not pal:
-            continue
-        m = exposed_mask & (litho == gid)
-        if not m.any():
-            continue
-        _paint_solid_dither(surface_blocks, subsurface_blocks, m, pal,
-                            coin, dither, paint_sub=True)
-        painted += int(m.sum())
-    return painted
-
-
 def _apply_talus(
     surface_blocks:    np.ndarray,
     subsurface_blocks: np.ndarray,
