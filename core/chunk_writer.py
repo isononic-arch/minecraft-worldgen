@@ -923,6 +923,7 @@ def build_column_array(
     flow_tile:               np.ndarray | None = None,  # (H, W) float32 [0,1] — for inline sediment thickness
     cfg:                     dict | None        = None,  # thresholds.json — for lithology group palettes
     gap_mask:                np.ndarray | None  = None,  # (H, W) uint8 — for walk #9 rock_zone Y-2..Y-5 cleanup
+    river_meta:              np.ndarray | None  = None,  # (H, W) uint8 — channel type (3=CHAN_LAKE) for steep-void lake exclusion
 ) -> tuple[np.ndarray, "BlockPalette"]:
     """
     Build a (Y_RANGE, H, W) object array of block name strings.
@@ -1253,36 +1254,88 @@ def build_column_array(
                     if blk_idx != WATER_IDX and blk_idx != SEAGRASS_IDX:
                         vol[yi, r, c] = WATER_IDX
 
-    # ── steep-river STRUCTURE_VOID seal (user): on steep slopes MC's fluid
-    # update cascades the placed river water and it renders ugly. structure_void
-    # blocks fluid AND has no collision box, so seal the spill air with it: where
-    # a river cell's water sits >=2 above an adjacent column's top, that column
-    # has an air gap the source would cascade into -> fill the gap (column top+1
-    # .. spilling water level) with structure_void so the water keeps its clean
-    # placed layer and players still swim through. ctop>SEA excludes ocean, so
-    # river->ocean delta outlets stay open. Steep-only (>=2) -> flat/contained
-    # rivers have no such gap and are untouched.
+    # ── steep-river STRUCTURE_VOID seal (S94d MASK rework) ─────────────────
+    # On steep slopes MC's fluid update cascades the placed river water and it
+    # renders ugly (flowing waterfalls down the terraced steps).  structure_void
+    # blocks fluid AND has no collision box (invisible + swimmable), so we wall
+    # the EXPOSED LATERAL FACES of the river water inside the steep zone with it,
+    # turning the cascade into a frozen, contained, invisible-dammed channel.
+    #
+    # The S93 per-cell version (e1b8321) only sealed cells where a neighbour's
+    # water sat >=2 above the column top; the STEEPEST cascades still flowed
+    # because that test left gaps along multi-step staircases.  This version
+    # builds a connected steep-zone MASK and seals EVERY air cell laterally
+    # adjacent to a river-water block within it — a full one-cell void shell
+    # hugging the whole cascade.  The bed below the bottom water block is solid
+    # stone, so a lateral void shell + solid floor = the water body is fully
+    # contained and every source block stays put (no flow target -> no update).
+    #
+    # Steep-zone seed = terrain slope >= _STEEP_DEG  OR  a real >=_STEP_BLK
+    # water-surface drop to a lower river neighbour (the direct cascade signal);
+    # dilated _ZONE_DIL so the seed grows to cover the cascade + the neighbour
+    # air cells where the void actually lands.  Flat/contained rivers have a
+    # level water surface (no exposed lateral faces) and fall outside the zone,
+    # so they are untouched.
+    #
+    # Exclusions: OCEAN outlets (column top <= SEA) stay open so river->ocean
+    # deltas drain; LAKE cells (river_meta == CHAN_LAKE, dilated 2px to clear
+    # the 2px lake bank) stay open so a steep river->lake cascade pours into the
+    # lake instead of being walled into a floating edge (51,53 risk).
     if river_water_y is not None:
+        from scipy.ndimage import binary_dilation as _bd_void
+        from core.eco_gradients import compute_cliff_deg as _ccd_void
+        _CHAN_LAKE = 3
+        _STEEP_DEG = 22.0    # terrain-slope gate (deg) for the steep zone
+        _STEP_BLK  = 2       # water-surface drop (blocks) counted as a cascade step
+        _ZONE_DIL  = 4       # grow seed to cover cascade + neighbour-air targets
         _SVOID = pal.idx("structure_void")
-        _ry = river_water_y.astype(np.int32); _sy32 = surface_y.astype(np.int32)
-        _ctop = np.where(_ry > SEA_Y, np.maximum(_sy32, _ry), _sy32)
-        _ctop = np.where(_sy32 < SEA_Y, SEA_Y, _ctop)
-        _wlev = np.where(_ry > SEA_Y, _ry, 0)
-        _nbr_w = np.zeros_like(_wlev)
-        for _dz, _dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            _nbr_w = np.maximum(_nbr_w, np.roll(np.roll(_wlev, _dz, 0), _dx, 1))
-        _seal = (_ctop > SEA_Y) & ((_nbr_w - _ctop) >= 2)
-        if _seal.any():
-            _seal3d = (_seal[None, :, :]
-                       & (abs_y > _ctop[None, :, :])
-                       & (abs_y <= _nbr_w[None, :, :])
-                       & (vol == 0))
-            _nv = int(_seal3d.sum())
-            if _nv:
-                vol[_seal3d] = _SVOID
-                print(f"[s93-void-seal] tile=({tile_world_x // 512},"
-                      f"{tile_world_z // 512}) sealed {_nv} steep-spill air cells",
-                      flush=True)
+
+        _ry32 = river_water_y.astype(np.int32)
+        _sy32 = surface_y.astype(np.int32)
+        # above-sea river/stream water cells (lakes excluded below)
+        _rmask = (_ry32 > SEA_Y) & (_ry32 > _sy32)
+        if river_meta is not None:
+            _lake2d = (np.asarray(river_meta) == _CHAN_LAKE)
+            _rmask &= ~_lake2d
+        else:
+            _lake2d = np.zeros_like(_rmask)
+
+        if _rmask.any():
+            # steep-zone seed: terrain-steep river OR a real water step down
+            _slope = _ccd_void(surface_y)
+            _seed = _rmask & (_slope >= _STEEP_DEG)
+            _wl = np.where(_rmask, _ry32, 1 << 20)  # sentinel-high for non-river
+            _nbr_min = _wl.copy()
+            for _dz, _dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                _nbr_min = np.minimum(_nbr_min, np.roll(np.roll(_wl, _dz, 0), _dx, 1))
+            _seed |= _rmask & ((_ry32 - _nbr_min) >= _STEP_BLK)
+            _zone = _bd_void(_seed, iterations=_ZONE_DIL)
+
+            # seal-target footprint: in-zone, column above SEA (no ocean), not lake
+            _ctop = np.where(_rmask, np.maximum(_sy32, _ry32), _sy32)
+            _lake_keepout = _bd_void(_lake2d, iterations=2) if _lake2d.any() else _lake2d
+            _seal_ok = _zone & (_ctop > SEA_Y) & (~_lake_keepout)
+
+            if _seal_ok.any():
+                # restrict the 3D work to the river-water Y band (perf)
+                _lo = max(0, int(_sy32[_rmask].min()) - Y_MIN)
+                _hi = min(Y_RANGE, int(_ry32[_rmask].max()) - Y_MIN + 2)
+                _sub = vol[_lo:_hi]   # view — boolean assignment writes through
+                _absy = (np.arange(_lo, _hi, dtype=np.int32)[:, None, None] + Y_MIN)
+                # river-water blocks (above SEA, in river columns)
+                _rw3d = (_sub == WATER_IDX) & _rmask[None, :, :] & (_absy > SEA_Y)
+                # air cells laterally adjacent to a river-water block at same Y
+                _adj = np.zeros_like(_rw3d)
+                for _dz, _dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    _adj |= np.roll(np.roll(_rw3d, _dz, 1), _dx, 2)
+                _seal3d = _adj & (_sub == 0) & _seal_ok[None, :, :]
+                _nv = int(_seal3d.sum())
+                if _nv:
+                    _sub[_seal3d] = _SVOID
+                    print(f"[s93-void-seal] tile=({tile_world_x // 512},"
+                          f"{tile_world_z // 512}) steep-zone {int(_zone.sum())} "
+                          f"cols, sealed {_nv} river-water lateral air cells",
+                          flush=True)
 
     # ── Floating vegetation cleanup ──────────────────────────────────────
     # Remove any grass-type ground_cover block (at sy+1) that does NOT have a
@@ -2516,6 +2569,7 @@ def write_tile(
     lithology_tile: np.ndarray | None = None, # (H, W) uint8 — Phase 1.75
     flow_tile:      np.ndarray | None = None, # (H, W) float32 — Phase 1.75
     gap_mask:       np.ndarray | None = None, # (H, W) uint8 — walk #9 cleanup
+    river_meta:     np.ndarray | None = None, # (H, W) uint8 — channel type (3=lake) for steep-void seal
 ) -> list[str]:
     """
     Full tile write pipeline:
@@ -2564,6 +2618,7 @@ def write_tile(
         flow_tile      = flow_tile if _use_geo else None,
         cfg            = cfg if _use_geo else None,
         gap_mask       = gap_mask,
+        river_meta     = river_meta,
     )
 
     # S71-2 Option β: river water-spread post-pass (purely additive — does
