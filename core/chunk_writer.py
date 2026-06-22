@@ -1253,6 +1253,37 @@ def build_column_array(
                     if blk_idx != WATER_IDX and blk_idx != SEAGRASS_IDX:
                         vol[yi, r, c] = WATER_IDX
 
+    # ── steep-river STRUCTURE_VOID seal (user): on steep slopes MC's fluid
+    # update cascades the placed river water and it renders ugly. structure_void
+    # blocks fluid AND has no collision box, so seal the spill air with it: where
+    # a river cell's water sits >=2 above an adjacent column's top, that column
+    # has an air gap the source would cascade into -> fill the gap (column top+1
+    # .. spilling water level) with structure_void so the water keeps its clean
+    # placed layer and players still swim through. ctop>SEA excludes ocean, so
+    # river->ocean delta outlets stay open. Steep-only (>=2) -> flat/contained
+    # rivers have no such gap and are untouched.
+    if river_water_y is not None:
+        _SVOID = pal.idx("structure_void")
+        _ry = river_water_y.astype(np.int32); _sy32 = surface_y.astype(np.int32)
+        _ctop = np.where(_ry > SEA_Y, np.maximum(_sy32, _ry), _sy32)
+        _ctop = np.where(_sy32 < SEA_Y, SEA_Y, _ctop)
+        _wlev = np.where(_ry > SEA_Y, _ry, 0)
+        _nbr_w = np.zeros_like(_wlev)
+        for _dz, _dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            _nbr_w = np.maximum(_nbr_w, np.roll(np.roll(_wlev, _dz, 0), _dx, 1))
+        _seal = (_ctop > SEA_Y) & ((_nbr_w - _ctop) >= 2)
+        if _seal.any():
+            _seal3d = (_seal[None, :, :]
+                       & (abs_y > _ctop[None, :, :])
+                       & (abs_y <= _nbr_w[None, :, :])
+                       & (vol == 0))
+            _nv = int(_seal3d.sum())
+            if _nv:
+                vol[_seal3d] = _SVOID
+                print(f"[s93-void-seal] tile=({tile_world_x // 512},"
+                      f"{tile_world_z // 512}) sealed {_nv} steep-spill air cells",
+                      flush=True)
+
     # ── Floating vegetation cleanup ──────────────────────────────────────
     # Remove any grass-type ground_cover block (at sy+1) that does NOT have a
     # solid support block directly below it. Cases:
