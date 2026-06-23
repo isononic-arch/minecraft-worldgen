@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# ⚠️ DEPRECATED / UNSAFE (S94e audit) — DO NOT USE FOR THE FINAL RENDER.
+# Use cloud_bake/render_50k_final.sh instead. This script:
+#   (1) scp-uploads the STALE LOCAL masks/override.tif over the snapshot's
+#       correct S87 banding (line ~36/64) -> wrong biomes world-wide;
+#   (2) never runs tools/heal_height_seams.py -> z=512k row-boundary seams;
+#   (3) never force-regens the bed cache -> stale bed -> dry/staircased rivers.
+# render_50k_final.sh fixes all three (validated S93 input handling + pre-warm).
+#
 # render_50k.sh — FULL 50k world regen (9,409 tiles = 97x97) across N boxes.
 #
 # Per-box PARALLELISM: run_pipeline is a ProcessPoolExecutor. We pass --threads
