@@ -1417,6 +1417,14 @@ def build_column_array(
                                 vol[_y_rel, _r, _c] = _rock_idx
                 del _rock_zone
 
+    # Re-assert the bedrock floor LAST so nothing overwrites it. vol[0] (Y_MIN,
+    # the lowest world height) is set to bedrock at the top of this function, but
+    # in the deepest ocean a column whose surface_y reaches Y_MIN has its
+    # ocean-floor surface block written over vol[0]. Force bedrock back so every
+    # column — land, coast, and abyssal ocean — has a guaranteed 1-block bedrock
+    # layer at the world floor.
+    vol[0, :, :] = pal.idx("bedrock")
+
     return vol, pal
 
 
