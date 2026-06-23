@@ -47,7 +47,7 @@ N_SECTIONS = Y_RANGE // SECTION_H  # 48 (S84: was 32)
 BIOME_TO_MC: dict[str, str] = {
     "COASTAL_HEATH":           "minecraft:savanna_plateau",  # S71: was plains
     "TEMPERATE_RAINFOREST":    "minecraft:dark_forest",
-    "BOREAL_TAIGA":            "minecraft:meadow",  # S85: was stony_shore (S71). Meadow temp=0.5 keeps it snow-free + clean differentiation from BA plains
+    "BOREAL_TAIGA":            "minecraft:taiga",  # S94e: split off meadow → own tag so the no-snow datapack can give BT snowy_taiga grey-green tint (#80b497) distinct from BA's meadow green. Datapack overrides taiga: temp 1.0 (never snows ≤Y700) + rain. REQUIRES re-render (biome ID baked into .mca).
     "BOREAL_ALPINE":           "minecraft:meadow",   # S86: was plains. Meadow shares BT's MC tag — BA differentiation now lives in palette + ecology, not in MC sky biome. No freeze in lowland BA water.
     "SNOWY_BOREAL_TAIGA":      "minecraft:snowy_taiga",
     "ARCTIC_TUNDRA":           "minecraft:snowy_plains",  # S70: was frozen_peaks (jagged ice spikes); user wants flat snow scrubland
