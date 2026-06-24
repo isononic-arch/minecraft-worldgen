@@ -86,7 +86,9 @@ def _read_downsampled_nearest(path: Path, scale: int) -> np.ndarray:
     """
     with rasterio.open(path) as src:
         H, W = src.height, src.width
-        out_H, out_W = H // scale, W // scale
+        # ceil sizing so row[::scale] matches out_W when W isn't divisible by scale
+        # (mainland 50000/8=6250 exact -> unchanged; island 10867/8 -> 1359 not 1358)
+        out_H, out_W = len(range(0, H, scale)), len(range(0, W, scale))
         dtype = src.dtypes[0]
         out = np.empty((out_H, out_W), dtype=dtype)
         # Read one source row at a time from the top-left of each scale×scale block.
@@ -118,7 +120,9 @@ def build_lithology(
     """
     override_lo = _read_downsampled_nearest(override_path, PRECOMPUTE_SCALE)
     H, W = override_lo.shape
-    assert H == W == 6250, f"unexpected precompute shape {override_lo.shape}"
+    # size-agnostic: mainland override -> 6250², island override -> footprint/8.
+    # Just require square (the 1:8 precompute alignment); don't hardcode 6250.
+    assert H == W, f"lithology source must be square at 1:8; got {override_lo.shape}"
 
     zone_to_id = _build_zone_to_id_lut(config)
 

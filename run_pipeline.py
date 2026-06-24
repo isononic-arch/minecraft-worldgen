@@ -119,6 +119,11 @@ def _process_tile(args: dict) -> dict:
     out_dir     = _Path(args["output_dir"])
     tile_sz     = args["tile_size"]
     dry_run     = args["dry_run"]
+    # Island offset-render: masks are read LOCALLY (col_off=tile_x*tile_sz into the
+    # island bbox TIF) but blocks are WRITTEN at the world offset so the .mca land
+    # at the island's real location. Defaults 0 -> mainland behavior unchanged.
+    woff_x      = args.get("world_offset_x", 0)
+    woff_z      = args.get("world_offset_z", 0)
 
     # Load config
     with open(cfg_path) as f:
@@ -1721,8 +1726,8 @@ def _process_tile(args: dict) -> dict:
             biome_grid   = biome_grid,
             placements   = placements,
             schem_loader = core_schem_loader,
-            tile_world_x = col_off,
-            tile_world_z = row_off,
+            tile_world_x = col_off + woff_x,
+            tile_world_z = row_off + woff_z,
             output_dir   = out_dir,
             cfg          = cfg,
             river_water_y= river_water_y,

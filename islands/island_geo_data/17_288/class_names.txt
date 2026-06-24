@@ -1,0 +1,25 @@
+0	Ocean
+1	High-Medium Density Urban or Built-up Land
+2	Low Density Built-up Land (Rural or Residential)
+3	Sugar cane (and minor crops)
+4	Coconut Palm-Pasture
+5	Pasture, Hay or other Grassy Areas (e.g. soccer fields)
+6	Golf Course
+7	Drought Deciduous Open Woodland
+8	Montane Non-Forest Vegetation
+9	Steep Non-Forest Vegetation
+10	Deciduous, Evergreen Coastal and Mixed Forest or Shrubland, with or without succulents
+11	Drought Deciduous Forest/Shrub
+12	Semi-Deciduous Forest (includes Semi-Evergreen Forest)
+13	Evergreen Forest with Coconut Palm
+14	Seasonal Evergreen Forest
+15	Evergreen Forest (including Sierra Palm Forest)
+16	Sierra Palm, Transitional and Tall Cloud Forest
+17	Elfin and Sierra Palm Cloud Forest
+18	Emergent Wetland
+19	Mangrove
+20	Seasonally Flooded Savannahs and Woodland
+21	Quarries
+22	Coastal Sand, Rock, Cliffs or Bare Ground
+23	Bare Soil (including bulldozed land)
+24	Water - Permanent

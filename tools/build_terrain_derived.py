@@ -285,18 +285,19 @@ def build_rock_layers_u(surface_y: np.ndarray, slope_deg: np.ndarray,
 # ─── Upscale + write ─────────────────────────────────────────────────────
 
 def chunked_upscale_write(arr_ds: np.ndarray, path: Path, scale: int,
-                            method: str = "bilinear") -> None:
-    """Chunked upscale 1:scale -> 50k + write to disk in row stripes.
-    Peak memory = chunk_rows * 50000 * 1 byte ~ 1 MB per stripe.
+                            method: str = "bilinear", full_size: int = WORLD_50K) -> None:
+    """Chunked upscale 1:scale -> full_size + write to disk in row stripes.
+    Peak memory = chunk_rows * full_size * 1 byte ~ 1 MB per stripe.
 
     Uses core.hydrology_precompute.write_upscaled (the existing chunked
     upscaler used by rebuild_floodplain etc.) so the I/O profile matches
-    every other 50k mask write."""
+    every other mask write. full_size defaults to 50k (mainland); islands
+    pass their footprint."""
     from core.hydrology_precompute import write_upscaled
     path.parent.mkdir(parents=True, exist_ok=True)
     write_upscaled(
         data=arr_ds, path=path, dtype="uint8", scale=scale,
-        full_size=WORLD_50K, chunk_rows=100,
+        full_size=full_size, chunk_rows=100,
         interpolation=("bilinear" if method == "bilinear" else "nearest"),
     )
 
@@ -311,6 +312,8 @@ def main() -> int:
                      help='Comma-separated subset: aspect,bedrock,talus,cap')
     ap.add_argument("--scale", type=int, default=DEFAULT_SCALE,
                      help='Working scale denominator (4 = 12500x12500; 8 = 6250x6250)')
+    ap.add_argument("--world-size", type=int, default=WORLD_50K,
+                     help='Full output size (default 50000 mainland; islands pass their square footprint)')
     args = ap.parse_args()
 
     masks_dir = Path(args.masks)
@@ -323,7 +326,7 @@ def main() -> int:
         return 2
 
     scale = int(args.scale)
-    ds_size = WORLD_50K // scale
+    ds_size = args.world_size // scale
     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     only = set(args.only.split(",")) if args.only else None
 
@@ -389,7 +392,7 @@ def main() -> int:
     def emit(name: str, arr_ds: np.ndarray, method: str = "bilinear") -> None:
         t_ = time.perf_counter()
         path = masks_dir / f"{name}.tif"
-        chunked_upscale_write(arr_ds, path, scale=scale, method=method)
+        chunked_upscale_write(arr_ds, path, scale=scale, method=method, full_size=args.world_size)
         # Report stats from working-scale array (50k version is on disk only,
         # not in memory).  Working-scale nonzero is a representative ratio.
         nz_ds = int((arr_ds > 0).sum())
@@ -470,7 +473,7 @@ def main() -> int:
                 u, rl_path,
                 levels=(1.0, 2.0, 3.0),
                 dither_u=float(rl_cfg.get("dither_u", 0.18)),
-                target_size=WORLD_50K,
+                target_size=args.world_size,
                 interpolation="catmull_rom",
             )
             size_mb = rl_path.stat().st_size / (1024 * 1024)
