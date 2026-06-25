@@ -21,9 +21,29 @@ def _noise_band(name, lo, hi, block):
                         "min_threshold": lo, "max_threshold": hi},
             "then_run": _floor_block(block)}
 
+# Seabed density: y_clamped_gradient solid at the bottom (+3.0 at Y-64) -> air
+# (-3.0 at Y-56), crossover at Y-60 (the EXACT Vandir deep-ocean prerender floor:
+# the column LUT floors deep-ocean cells at Y-60; deepest-10% mean = -60.0). The
+# floor noise (constant in Y, y_scale=0) nudges the crossover +-~1.1 blocks
+# (amp 0.8 / slope 0.75), so the seabed undulates ~Y-59..-61 (matching the
+# prerender's -59..-61 deep range) and the BOTTOM stays deeply solid (>=+2.2 at
+# Y-64) -> physically impossible for water to reach bedrock (no "water to the
+# bottom"), no sub-seabed air pocket for fluid.
+_SEABED_DENSITY = {
+    "type": "minecraft:add",
+    "argument1": {"type": "minecraft:y_clamped_gradient",
+                  "from_y": -64, "to_y": -56, "from_value": 3.0, "to_value": -3.0},
+    "argument2": {"type": "minecraft:mul", "argument1": 0.8,
+                  "argument2": {"type": "minecraft:noise", "noise": "vandir:ocean_floor",
+                                "xz_scale": 0.3, "y_scale": 0.0}}
+}
 OCEAN = {
     "sea_level": 63,
     "disable_mob_generation": False,
+    # aquifers OFF + lava router 0 + default_fluid water => NO lava anywhere, ever.
+    # (The "lava under the water" was MC's default aquifer lava floor, which only
+    # appears when aquifers are enabled OR when the custom settings fail to load
+    # and MC falls back to minecraft:overworld. Both are foreclosed here.)
     "aquifers_enabled": False,
     "ore_veins_enabled": False,
     "legacy_random_source": False,
@@ -35,15 +55,12 @@ OCEAN = {
         "barrier": 0, "fluid_level_floodedness": 0, "fluid_level_spread": 0, "lava": 0,
         "temperature": 0, "vegetation": 0, "continents": 0, "erosion": 0, "depth": 0,
         "ridges": 0, "preliminary_surface_level": 0, "vein_toggle": 0, "vein_ridged": 0, "vein_gap": 0,
-        # solid below ~Y-60, water above to sea level; noise (constant in Y) just undulates the floor.
-        "final_density": {
-            "type": "minecraft:add",
-            "argument1": {"type": "minecraft:y_clamped_gradient",
-                          "from_y": -70, "to_y": -50, "from_value": 1.0, "to_value": -1.0},
-            "argument2": {"type": "minecraft:mul", "argument1": 0.5,
-                          "argument2": {"type": "minecraft:noise", "noise": "vandir:ocean_floor",
-                                        "xz_scale": 0.3, "y_scale": 0.0}}
-        }
+        # initial_density_without_jaggedness is REQUIRED by the 1.21 noise_settings
+        # schema; omitting it makes MC reject vandir:ocean and silently fall back to
+        # the default overworld generator (= aquifer lava + jagged terrain). MUST
+        # mirror final_density.
+        "initial_density_without_jaggedness": _SEABED_DENSITY,
+        "final_density": _SEABED_DENSITY,
     },
     "surface_rule": {
         "type": "minecraft:sequence",

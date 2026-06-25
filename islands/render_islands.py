@@ -362,7 +362,9 @@ def bake_island(entry):
 
     rock_gap = synth_rock_gap(masks["slope"], rock_deg)
     snow_gap = synth_snow_gap(mcy, land, bands)
-    shore, beach = synth_shore_beach(land, mcy, masks["slope"])
+    # wider beach fringe: capture the coastal rise (Y63..71) + gentler-but-not-flat
+    # flanks so steep volcanic coasts still get a continuous sand band, not specks.
+    shore, beach = synth_shore_beach(land, mcy, masks["slope"], beach_band=8.0, gentle_deg=16.0)
 
     _wtif(od / "height.tif", masks["height"])
     _wtif(od / "slope.tif", masks["slope"])
@@ -412,6 +414,11 @@ def bake_island(entry):
     cfg.setdefault("hydrology", {}).update(
         {"flow_river_threshold": 2.0, "flow_wetland_threshold": 2.0})
     cfg.setdefault("hydrology_engine", {})["min_stream_flow"] = 2.0
+    # WASH handling: NO per-island re-cal. The island flow.tif is now LINEAR
+    # band-pass like Gaea (derive flow_to_uint16), so the mainland wash knobs
+    # (washes.min_flow=0.003, width_max) fire thin drainage channels on islands
+    # identically to the mainland -> dark/mid/light rock_layers tiers read
+    # through. The old _WASH_ROCK_COVERAGE percentile band-aid is deleted.
     isl_cfg = od / "thresholds_island.json"
     isl_cfg.write_text(json.dumps(cfg))
 
@@ -438,6 +445,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bake"); ap.add_argument("--render"); ap.add_argument("--list", action="store_true")
     ap.add_argument("--threads", type=int, default=6)
+    # S95-fix: production islands render WITH schematics by default, matching the
+    # mainland (which always places trees). --fast skips them (RAM-saver for the
+    # 7.4GB box; trees were the cause of the "no trees on islands" report).
+    ap.add_argument("--fast", action="store_true",
+                    help="skip schematics (RAM-saver); default places trees to match the mainland")
     a = ap.parse_args()
     layout = json.loads((ISL / "layout.json").read_text())
     islands = layout["islands"]
@@ -453,7 +465,7 @@ def main():
         from islands.render_drive import render_island   # built next
         sel = islands if a.render == "all" else [i for i in islands if a.render in safe_name(i["name"]) or a.render in i["dem_path"]]
         for i in sel:
-            render_island(i, threads=a.threads)
+            render_island(i, threads=a.threads, fast=a.fast)
 
 
 if __name__ == "__main__":

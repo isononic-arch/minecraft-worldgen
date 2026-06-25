@@ -24,6 +24,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", default=",".join(SHOWCASE))
     ap.add_argument("--threads", type=int, default=2)
+    # S95-fix: render WITH schematics by default (mainland parity). --fast skips
+    # them for the memory-tight 7.4GB box (the old hardcoded fast=True is why the
+    # showcase had no trees).
+    ap.add_argument("--fast", action="store_true", help="skip schematics (RAM-saver)")
     a = ap.parse_args()
     keys = [k.strip() for k in a.list.split(",") if k.strip()]
     layout = json.loads((ISL / "layout.json").read_text())
@@ -38,7 +42,7 @@ def main():
             print(f"[batch] SKIP {k}: not baked", flush=True); continue
         print(f"\n[batch] ===== {k} ===== ({(time.time()-t0)/60:.0f}m elapsed)", flush=True)
         try:
-            render_island(entry, threads=a.threads, fast=True)
+            render_island(entry, threads=a.threads, fast=a.fast)
         except Exception as e:
             print(f"[batch] {k} render FAILED: {e}", flush=True); continue
         # top-down it

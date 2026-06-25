@@ -21,12 +21,15 @@ def _safe(name):
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
-def _content_tiles(mdir: Path, world_w: int, world_h: int):
-    """Tiles whose local window contains any land (height>sea). Skip all-ocean."""
-    tiles = []
+def _content_tiles(mdir: Path, world_w: int, world_h: int, buffer_tiles: int = 0):
+    """Tiles whose local window contains land (height>sea), optionally DILATED by
+    `buffer_tiles` rings to also render the surrounding feathered shelf + a little
+    deep ocean. With buffer_tiles>=1 the coast/shelf render fully (no cropped coast)
+    so the tiles slot into the world seamlessly; buffer_tiles=0 = land-only (legacy)."""
+    land = []
+    ntx = math.ceil(world_w / TILE); nty = math.ceil(world_h / TILE)
     hpath = mdir / "height.tif"
     with rasterio.open(str(hpath)) as src:
-        ntx = math.ceil(world_w / TILE); nty = math.ceil(world_h / TILE)
         for ty in range(nty):
             for tx in range(ntx):
                 from rasterio.windows import Window
@@ -35,8 +38,17 @@ def _content_tiles(mdir: Path, world_w: int, world_h: int):
                     continue
                 a = src.read(1, window=Window(tx*TILE, ty*TILE, w, h))
                 if a.size and (a > SEA_RAW + 40).any():
-                    tiles.append((tx, ty))
-    return tiles
+                    land.append((tx, ty))
+    if buffer_tiles <= 0:
+        return land
+    sel = set(land)
+    for (tx, ty) in land:
+        for dx in range(-buffer_tiles, buffer_tiles + 1):
+            for dy in range(-buffer_tiles, buffer_tiles + 1):
+                nx, ny = tx + dx, ty + dy
+                if 0 <= nx < ntx and 0 <= ny < nty:
+                    sel.add((nx, ny))
+    return sorted(sel)
 
 
 def _snap(v):
@@ -55,7 +67,7 @@ def _tile_args(entry, mdir, odir, tx, ty, fast=False):
                 world_offset_x=int(ox), world_offset_z=int(oz))
 
 
-def render_island(entry, threads=2, only_tile=None, fast=True):
+def render_island(entry, threads=2, only_tile=None, fast=True, buffer_tiles=1):
     import run_pipeline
     # fast mode relies on ISL/_no_schem.json being ABSENT (load_index raises -> {}).
     p = ISL / "_no_schem.json"
@@ -66,8 +78,8 @@ def render_island(entry, threads=2, only_tile=None, fast=True):
     man = json.loads((mdir / "manifest.json").read_text())
     world_h, world_w = man["world_hw"]
     odir = OUT / name; odir.mkdir(parents=True, exist_ok=True)
-    tiles = [only_tile] if only_tile else _content_tiles(mdir, world_w, world_h)
-    print(f"[render] {name}: {len(tiles)} content tiles, offset={entry['world_offset_px']} fast={fast} threads={threads}", flush=True)
+    tiles = [only_tile] if only_tile else _content_tiles(mdir, world_w, world_h, buffer_tiles=buffer_tiles)
+    print(f"[render] {name}: {len(tiles)} tiles (land + {buffer_tiles}-tile shelf buffer), offset={entry['world_offset_px']} fast={fast} threads={threads}", flush=True)
     t0 = time.time()
     if only_tile or threads <= 1:
         for t in tiles:
@@ -97,9 +109,13 @@ if __name__ == "__main__":
     ap.add_argument("--name", required=True)
     ap.add_argument("--tile", help="tx,ty single tile for debug")
     ap.add_argument("--threads", type=int, default=2)
-    ap.add_argument("--trees", action="store_true", help="enable schematic vegetation (slower, more memory)")
+    # S95-fix: trees ON by default (mainland parity). --fast skips schematics
+    # (RAM-saver). --trees kept as a back-compat no-op (already the default).
+    ap.add_argument("--trees", action="store_true", help="(deprecated; trees are now the default)")
+    ap.add_argument("--fast", action="store_true", help="skip schematics (RAM-saver for the 7.4GB box)")
+    ap.add_argument("--buffer", type=int, default=1, help="shelf-buffer ring of ocean tiles to also render (1 captures the ~380-block shelf so the coast slots in)")
     a = ap.parse_args()
     layout = json.loads((ISL / "layout.json").read_text())
     entry = next(i for i in layout["islands"] if a.name in _safe(i["name"]) or a.name in i["dem_path"])
     only = tuple(int(x) for x in a.tile.split(",")) if a.tile else None
-    render_island(entry, threads=a.threads, only_tile=only, fast=not a.trees)
+    render_island(entry, threads=a.threads, only_tile=only, fast=a.fast, buffer_tiles=a.buffer)

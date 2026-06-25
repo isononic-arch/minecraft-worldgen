@@ -230,7 +230,17 @@ def apply_seabed_transplant(mcy, mcy_sea, texture, base_depth, amp, apron_px):
     tex = np.clip(texture[yy % th, xx % tw], -2.0, 2.0)  # bound canyon tails
     deep = base_depth + amp * tex
     t = np.clip(dist / max(apron_px, 1), 0.0, 1.0)       # 0 at shore -> 1 open water
-    seabed = (1 - t) * (mcy_sea - 2.0) + t * deep        # shelf rises to waterline
+    # SMOOTHSTEP (3t^2-2t^3): gentle at BOTH the shore AND the deep end -> a wide
+    # gradual shelf over hundreds of blocks, no flat-then-cliff (the old t^2 stayed
+    # flat near shore then dived). The island sits on a believable shelf.
+    f = t * t * (3.0 - 2.0 * t)
+    # NARROW-CHANNEL clamp: in a strait between islands both shores are near, so
+    # `dist` stays small and the floor would cliff to deep at the channel midline.
+    # Scale the achievable depth by local OPENNESS (a broader EDT) so straits stay a
+    # shallow gradual saddle and only OPEN ocean reaches the full base depth.
+    open_t = np.clip(dist / (max(apron_px, 1) * 1.5), 0.0, 1.0)
+    deep_eff = (mcy_sea - 2.0) + (deep - (mcy_sea - 2.0)) * open_t
+    seabed = (1 - f) * (mcy_sea - 2.0) + f * deep_eff    # shelf rises to waterline
     seabed = np.clip(seabed, -63.0, mcy_sea - 1.0)       # never below bedrock / above sea
     out = mcy.copy(); out[ocean] = seabed[ocean]
     return out
@@ -306,11 +316,21 @@ def compute_flow_accum(mcy: np.ndarray, sea_y: float) -> np.ndarray:
 
 
 def flow_to_uint16(acc: np.ndarray) -> np.ndarray:
-    """Log-scale accumulation to uint16 (consumers are percentile/relative, so
-    only the monotone ordering matters)."""
-    la = np.log1p(acc)
-    la /= (la.max() + 1e-9)
-    return np.clip(np.round(la * 65535), 0, 65535).astype(np.uint16)
+    """LINEAR-scale accumulation -> uint16 so the field is BAND-PASS (high only in
+    channels) like Gaea's flow.tif. Log-scaling FLATTENED the distribution (land
+    median normalized ~0.18) so the wash gate (washes.min_flow=0.003) fired on
+    ~100% of rock and BLANKETED the massif, burying the dark/mid/light rock_layers
+    tiers (R1+R2). Linear preserves the heavy tail: land p99 -> ~0.018 (mainland
+    0.0184), so only real drainage clears the gate (~7% of rock vs ~5.5% mainland)
+    and every mainland wash/tier knob is valid unchanged. NORMALIZE BY THE RAW MAX
+    (keep the heavy tail intact) — the band-pass IS the heavy tail: the main
+    drainage channels accumulate ~the whole upstream area (max ~= N cells) while
+    ridges/slopes stay ~1, so dividing by max drives the median toward 0 and only
+    channels survive. (Clipping the tail would flatten the distribution and re-
+    blanket the washes — that is exactly the bug this replaces.)"""
+    a = acc.astype(np.float64)
+    a /= (a.max() + 1e-9)
+    return np.clip(np.round(a * 65535), 0, 65535).astype(np.uint16)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -367,7 +387,8 @@ def derive(dem: np.ndarray, *, footprint_blocks: int, mcy_sea: float,
            mcy_peak: float, sea_raw: float | None = None,
            native_cap: int | None = None, seabed: str = "vandir",
            seabed_base: float = -60.0, seabed_amp: float = 5.0,
-           seabed_apron_px: float = 40.0, declip: bool = True,
+           seabed_apron_px: float = 40.0, seabed_ramp_blocks: float = 500.0,
+           declip: bool = True,
            declip_frac: float = 0.12, clean_fragments: bool = True,
            coast_frac: float = 0.06, coast_rise: float = 0.015,
            gamma: float = 2.2, curve: tuple | None = None):
@@ -405,8 +426,14 @@ def derive(dem: np.ndarray, *, footprint_blocks: int, mcy_sea: float,
     if seabed == "vandir":
         tex = load_seabed_texture()
         if tex is not None:
-            mcy = apply_seabed_transplant(mcy, mcy_sea, tex, seabed_base, seabed_amp, seabed_apron_px)
-            _log(f"seabed transplant ON (base={seabed_base} amp={seabed_amp} apron={seabed_apron_px}px)")
+            # WIDE feathered shelf: size the coastal apron in WORLD BLOCKS (not raw px)
+            # so every island gets the same physical shelf width regardless of DEM res.
+            # apron_px = ramp_blocks / hstep = ramp_blocks * native_px / footprint_blocks.
+            _apron_eff = max(seabed_apron_px,
+                             seabed_ramp_blocks * max(dh, dw) / max(footprint_blocks, 1))
+            mcy = apply_seabed_transplant(mcy, mcy_sea, tex, seabed_base, seabed_amp, _apron_eff)
+            _log(f"seabed transplant ON (base={seabed_base} amp={seabed_amp} "
+                 f"shelf={seabed_ramp_blocks:.0f}blk={_apron_eff:.0f}px eased t^2)")
         else:
             _log("seabed=vandir but no patch -> run islands/extract_seabed_patch.py; keeping flat")
 

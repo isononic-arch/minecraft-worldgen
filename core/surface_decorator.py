@@ -2911,30 +2911,46 @@ def _smooth_all_biome_boundaries_y(
     buffer_blocks: int = 24,
     sigma: float = 8.0,
     passes: int = 3,
+    biome_grid_padded: "np.ndarray | None" = None,
+    pad_px: int = 0,
 ) -> None:
     """S67: Gaussian-smooth Y at EVERY biome boundary pixel.  Replaces per-
     biome target list — now biome-agnostic.  Detects boundaries via 4-neighbour
     biome difference, builds a wide ring on both sides, blends Y toward
-    blurred Y with a taper weight that peaks at the boundary."""
+    blurred Y with a taper weight that peaks at the boundary.
+
+    S95-R3 seam fix: the blur (`_gf_seam`) already reads the surface_y HALO so the
+    blurred VALUE is seam-continuous, but the taper WEIGHT (boundary detect + EDT)
+    was computed on the inner 512² only -> each side of a tile seam computed its
+    weight independently -> asymmetric weight -> visible Y steps on STEEP terrain
+    (islands exposed this; mainland is seam-free only by luck of gentle terrain).
+    When the padded biome grid is supplied, compute the boundary/EDT/weight on the
+    HALO'D grid and crop to inner so the weight is identical on both sides."""
     if biome_grid.size == 0:
         return
+    from scipy.ndimage import binary_dilation, gaussian_filter, distance_transform_edt
+    H, W = surface_y.shape
+    _use_pad = (biome_grid_padded is not None and pad_px > 0
+                and biome_grid_padded.shape == (H + 2 * pad_px, W + 2 * pad_px))
+    bg = biome_grid_padded if _use_pad else biome_grid
     # Detect boundary: pixels whose 4-neighbour has a different biome.
-    boundary = np.zeros(biome_grid.shape, dtype=bool)
-    boundary[:-1, :] |= (biome_grid[:-1, :] != biome_grid[1:, :])
-    boundary[1:, :]  |= (biome_grid[:-1, :] != biome_grid[1:, :])
-    boundary[:, :-1] |= (biome_grid[:, :-1] != biome_grid[:, 1:])
-    boundary[:, 1:]  |= (biome_grid[:, :-1] != biome_grid[:, 1:])
+    boundary = np.zeros(bg.shape, dtype=bool)
+    boundary[:-1, :] |= (bg[:-1, :] != bg[1:, :])
+    boundary[1:, :]  |= (bg[:-1, :] != bg[1:, :])
+    boundary[:, :-1] |= (bg[:, :-1] != bg[:, 1:])
+    boundary[:, 1:]  |= (bg[:, :-1] != bg[:, 1:])
     if not boundary.any():
         return
-    from scipy.ndimage import binary_dilation, gaussian_filter, distance_transform_edt
     ring = binary_dilation(boundary, iterations=buffer_blocks)
     if not ring.any():
         return
-    # Weight peaks at boundary pixels, fades to edge of ring
+    # Weight peaks at boundary pixels, fades to edge of ring.
     dist_from_boundary = distance_transform_edt(~boundary).astype(np.float32)
     max_dist = max(float(buffer_blocks), 1.0)
     weight = np.clip(1.0 - dist_from_boundary / max_dist, 0.0, 1.0)
     weight[~ring] = 0.0
+    if _use_pad:                                    # crop the halo'd weight to inner
+        weight = weight[pad_px:pad_px + H, pad_px:pad_px + W]
     sy_f = surface_y.astype(np.float32)
     for _ in range(max(1, passes)):
         blurred = _gf_seam(sy_f, sigma)
@@ -3221,11 +3237,17 @@ def decorate_surface(
     # smoothing in a wide ring centered on it.
     if cfg.get("sand_dune_smoothing", {}).get("enabled", True):
         _sds_cfg = cfg.get("sand_dune_smoothing", {})
+        # S95-R3: pass the halo'd biome grid so the smoother's WEIGHT field is
+        # seam-symmetric (mainland passes the same biome_grid_padded -> identical).
+        _bgp_pad = ((biome_grid_padded.shape[0] - H) // 2
+                    if (biome_grid_padded is not None and biome_grid_padded.ndim == 2
+                        and biome_grid_padded.shape[0] > H) else 0)
         _smooth_all_biome_boundaries_y(
             surface_y, biome_grid,
             buffer_blocks=int(_sds_cfg.get("buffer_blocks", 24)),
             sigma=float(_sds_cfg.get("sigma", 8.0)),
             passes=int(_sds_cfg.get("passes", 3)),
+            biome_grid_padded=biome_grid_padded, pad_px=_bgp_pad,
         )
         # Ocean-coastline smoothing — treat underwater-threshold as the
         # "other side" of the boundary.  Smooths beach cliff cutoffs.

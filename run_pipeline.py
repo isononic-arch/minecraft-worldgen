@@ -906,6 +906,18 @@ def _process_tile(args: dict) -> dict:
         biome_grid_padded = biome_grid_padded,  # S93c cross-tile ecotone
     )
 
+    # Island offset-render fix (S95): place_schematics returns world coords in
+    # tile-LOCAL space (px_off = tile_x*W, no world offset). chunk_writer culls
+    # each placement via `local = world - tile_world_x` where tile_world_x =
+    # col_off + woff_x — so with a nonzero offset every placement fell out of
+    # [0,W) and was dropped (=> ZERO trees on every offset island tile; geology
+    # unaffected, since columns add woff at write time). Shift placements by the
+    # same offset the column write applies. Mainland passes woff=0 -> no-op.
+    if (woff_x or woff_z) and placements:
+        for _p in placements:
+            _p.world_x += woff_x
+            _p.world_z += woff_z
+
     # ---- Step 9: Chunk write ----
     if not dry_run:
         # River water level — S72: per-pixel water_y_field from the WP
