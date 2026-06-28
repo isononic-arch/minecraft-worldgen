@@ -278,8 +278,8 @@ def _compute_xz_waviness(
     wave_amp  = max(1, band_scale_y // 6)
     wave_cell = 32
 
-    row_u = (np.arange(H, dtype=np.uint32) + tile_world_z)
-    col_u = (np.arange(W, dtype=np.uint32) + tile_world_x)
+    row_u = (np.arange(H, dtype=np.int64) + np.int64(tile_world_z)).astype(np.uint32)
+    col_u = (np.arange(W, dtype=np.int64) + np.int64(tile_world_x)).astype(np.uint32)
 
     rci = (row_u // wave_cell).astype(np.int32)
     cci = (col_u // wave_cell).astype(np.int32)
@@ -320,7 +320,7 @@ def _build_band_lut(
     variant index in [0, n_v).  Band thicknesses are drawn uniformly from
     [band_min, band_max] inclusive, cycling through variants.
     """
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(seed & 0x7FFFFFFFFFFFFFFF)   # S95: non-negative for islands at negative world coords (identity for mainland seeds < 2^63)
     lut = np.empty(lut_size, dtype=np.int32)
     pos = 0
     vi = 0
@@ -341,8 +341,8 @@ def _compute_fault_field(
     """Smoothed hash-noise field (H, W) float32 in roughly [-1, 1].
     Zero-crossings of this field form continuous curves at world scale —
     used as fault-trace proxy.  Seam-deterministic (world-coord hash)."""
-    row_u = (np.arange(H, dtype=np.uint32) + tile_world_z)
-    col_u = (np.arange(W, dtype=np.uint32) + tile_world_x)
+    row_u = (np.arange(H, dtype=np.int64) + np.int64(tile_world_z)).astype(np.uint32)
+    col_u = (np.arange(W, dtype=np.int64) + np.int64(tile_world_x)).astype(np.uint32)
     rci = (row_u // fault_scale_blocks).astype(np.int32)
     cci = (col_u // fault_scale_blocks).astype(np.int32)
     rf = ((row_u % fault_scale_blocks).astype(np.float32)) / fault_scale_blocks
@@ -576,8 +576,8 @@ def _apply_strata_fill_v2(
     # Build band_idx data per axis
     if axis == "XZ_cols":
         col_size = max(1, int(strata_cfg.get("col_size_blocks", 2)))
-        col_x = ((np.arange(W, dtype=np.uint32) + tile_world_x) // col_size)
-        col_z = ((np.arange(H, dtype=np.uint32) + tile_world_z) // col_size)
+        col_x = (((np.arange(W, dtype=np.int64) + np.int64(tile_world_x)).astype(np.uint32)) // col_size)
+        col_z = (((np.arange(H, dtype=np.int64) + np.int64(tile_world_z)).astype(np.uint32)) // col_size)
         salt_a = np.uint32(0xC4F12345 ^ ((gid * 1779033703) & 0xFFFFFFFF))
         salt_b = np.uint32(0x9E373B17 ^ ((gid * 2654435769) & 0xFFFFFFFF))
         _h = (col_z[:, None] * salt_a) ^ (col_x[None, :] * salt_b)
@@ -829,7 +829,7 @@ def _fill_geology_layers(
     _col_world_x = np.arange(W, dtype=np.float32) + tile_world_x
 
     # Per-column Y noise field (will be sized per group from strata.noise_amp_blocks)
-    _noise_rng_default = np.random.default_rng(tile_world_x * 73856093 ^ tile_world_z * 19349669)
+    _noise_rng_default = np.random.default_rng((tile_world_x * 73856093 ^ tile_world_z * 19349669) & 0x7FFFFFFFFFFFFFFF)
 
     for gid, palette_idx_list in id_to_pal.items():
         group_cols = (lithology_tile == gid)  # (H, W)
@@ -1185,7 +1185,7 @@ def build_column_array(
         kr, kc = np.where(is_kelp)
         # Per-column RNG for stalk height
         _kelp_rng = np.random.default_rng(
-            (tile_world_x * 7919) ^ (tile_world_z * 31337) ^ 0xC0FFEE
+            ((tile_world_x * 7919) ^ (tile_world_z * 31337) ^ 0xC0FFEE) & 0x7FFFFFFFFFFFFFFF
         )
         stalk_heights = _kelp_rng.integers(5, 16, size=len(kr))   # [5, 15]
         for i in range(len(kr)):
@@ -1441,6 +1441,9 @@ def stamp_schematic(
     place_y:    int,          # world MC Y of schematic origin
     surface_y:  np.ndarray | None = None,  # (H, W) int16 — terrain surface
     water_col_mask: np.ndarray | None = None,  # (H, W) bool — S71: water columns (river+ocean)
+    clip_oob:   bool = True,   # S95 tree-seam STEP A: OOB columns are the NEIGHBOUR's
+                               # territory (culled/clipped), NOT "underwater" -> don't
+                               # whole-reject a tree just for extending past the tile edge.
 ) -> None:
     """
     Stamp a schematic into the volume array.
@@ -1558,6 +1561,7 @@ def stamp_schematic(
         MAX_TREE_SINK        = 16  # max gap we'll seat by sinking; reject beyond
         if surface_y is not None:
             col_reject = np.zeros((sl, sw), dtype=bool)
+            col_oob    = np.zeros((sl, sw), dtype=bool)   # S95 tree-seam STEP A: out-of-tile columns
             col_desink = np.full((sl, sw), -(1 << 30), dtype=np.int64)
             # Precompute non-air + log masks in one pass via unique (much
             # cheaper than str() per cell).
@@ -1615,11 +1619,13 @@ def stamp_schematic(
                 tz = local_z + _sz
                 if not (0 <= tz < tile_H):
                     col_reject[_sz, :] = True
+                    col_oob[_sz, :] = True            # S95 STEP A: row outside tile
                     continue
                 for _sx in range(sw):
                     tx = local_x + _sx
                     if not (0 <= tx < tile_W):
                         col_reject[_sz, _sx] = True
+                        col_oob[_sz, _sx] = True       # S95 STEP A: col outside tile
                         continue
                     col_desink[_sz, _sx] = int(surface_y[tz, tx])
                     # S64: footprint water gate — reject any column whose
@@ -1653,8 +1659,13 @@ def stamp_schematic(
                         continue
                     if not non_air[:, _sz, _sx].any():
                         continue
-                    # Below-sea reject (oceans, deep lakes)
-                    if col_desink[_sz, _sx] < 63:
+                    # Below-sea reject (oceans, deep lakes). S95 tree-seam STEP A:
+                    # an OOB column has the sentinel col_desink (-big) and is the
+                    # NEIGHBOUR's territory (clipped, not this tile's water) -> it must
+                    # NOT trigger the whole-stamp underwater reject, else every tree
+                    # touching the far tile edge is dropped = the seam trench. A truly
+                    # in-bounds underwater column still whole-rejects (S64/S65/S71 intact).
+                    if (not (clip_oob and col_oob[_sz, _sx])) and col_desink[_sz, _sx] < 63:
                         _uwater_hit = True
                         break
                     # S71: river-water reject (carved channels above sea level).
@@ -2234,16 +2245,28 @@ def _chunk_to_nbt_bytes(
     # Downsample Vandir biomes to (4, 4) biome-cell quanta
     biome_vandir_q = biome_vandir_zx[::4, ::4]  # (4, 4)
 
+    # S95-T4: ocean-first fallback. An empty / "ocean" / "_OCEAN" biome resolves
+    # to minecraft:ocean BEFORE the _DEFAULT(plains) fallback. Mainland never
+    # emits these (assign_biomes fills every cell with a named biome or "_OCEAN",
+    # which is already a BIOME_TO_MC key, and out-of-tile padding is "_DEFAULT"),
+    # so this only catches the currently-wrong island / far-ocean case.
+    _OCEAN_BIOME = BIOME_TO_MC["_OCEAN"]   # "minecraft:ocean"
+    def _mc_ground(b) -> str:
+        s = str(b)
+        hit = BIOME_TO_MC.get(s)
+        if hit is not None:
+            return hit
+        if s in ("", "ocean", "_OCEAN"):
+            return _OCEAN_BIOME
+        return BIOME_TO_MC["_DEFAULT"]
+
     # Ground MC biome per-cell (used for cells at or below surface)
-    ground_q = np.vectorize(
-        lambda b: BIOME_TO_MC.get(str(b), BIOME_TO_MC["_DEFAULT"])
-    )(biome_vandir_q)  # (4, 4) MC biome strings
+    ground_q = np.vectorize(_mc_ground)(biome_vandir_q)  # (4, 4) MC biome strings
 
     # Sky MC biome per-cell (cells strictly above surface).  Falls back to
     # ground biome when Vandir biome not in BIOME_TO_MC_SKY.
     def _sky_of(b: str) -> str:
-        return BIOME_TO_MC_SKY.get(str(b),
-               BIOME_TO_MC.get(str(b), BIOME_TO_MC["_DEFAULT"]))
+        return BIOME_TO_MC_SKY.get(str(b), _mc_ground(b))
     sky_q = np.vectorize(_sky_of)(biome_vandir_q)  # (4, 4)
 
     # S89: STONY_PEAKS runtime-snow suppression. MC re-snows bare rock during
@@ -2693,6 +2716,7 @@ def write_tile(
         water_col_mask = (surface_y < 63)
 
     # Step 2 — stamp schematics
+    _clip_oob = bool((cfg or {}).get("tree_seam", {}).get("clip_oob", True))  # S95 tree-seam STEP A
     for p in placements:
         local_x = p.world_x - tile_world_x
         local_z = p.world_z - tile_world_z
@@ -2703,7 +2727,7 @@ def write_tile(
             schem_data._rotation = getattr(p, 'rotation', 0)
             stamp_schematic(vol, pal, schem_data, local_x, local_z,
                            p.place_y, surface_y=surface_y,
-                           water_col_mask=water_col_mask)
+                           water_col_mask=water_col_mask, clip_oob=_clip_oob)
         except Exception as e:
             import traceback
             print(f"  [warn] schematic stamp failed: {p.schem_path}: {e}",

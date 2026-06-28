@@ -403,6 +403,25 @@ def compute_eco_gradients(
     }
     _DEFAULT_FREQ = (0.03, 0.02, 0.02, 0.10)  # conservative fallback
 
+    # ── Island treeline-breaks config (S95-polish, island-gated) ──────────
+    # This key is ABSENT from config/thresholds.json (grep -c = 0).  The island
+    # bake (islands/render_islands.py) SETS it in its cfg delta.  When the key
+    # is None/absent every branch below short-circuits and the mainland code
+    # path is bit-for-bit identical.  Read once here so PART 1 (meadow_terrain
+    # boost) + PART 2 (per-biome meadow frequency override) share it.
+    _itb = None
+    if isinstance(cfg, dict):
+        _eg_itb = cfg.get("eco_gradients")
+        if isinstance(_eg_itb, dict):
+            _itb_candidate = _eg_itb.get("island_treeline_breaks")
+            if isinstance(_itb_candidate, dict) and _itb_candidate.get("enabled"):
+                _itb = _itb_candidate
+    # Per-biome climate factor: scales the WHOLE break/finger strength.
+    # tropical/jungle ~0.2-0.3 (dense unbroken canopy edge), temperate ~0.6-0.8,
+    # boreal/cold ~1.0 (most broken + fingered).  Default 0.6 if unlisted.
+    _itb_climate = (_itb.get("climate_by_biome") or {}) if _itb else {}
+    _itb_climate_default = float(_itb.get("climate_default", 0.6)) if _itb else 0.6
+
     if land_mask.any():
         # -- Terrain probability fields --
         # Meadow: wet basins on flat ground
@@ -414,6 +433,66 @@ def compute_eco_gradients(
         )
         # (Bare patches removed — rock_exposure gradient handles alpine rock
         #  and cliff faces globally with proper treeline ecology.)
+
+        # ── ISLAND TREELINE BREAKS (S95-polish) — meadow_terrain edge boost ──
+        # Island-gated (mainland byte-identical when `_itb` is None).  Reuses
+        # the SAME meadow drivers the mainland already computes; only ADDS a
+        # term in the upper (near-treeline) relative-elevation band so the
+        # forest edge breaks into grassy meadow fingers.  Climate-aware:
+        # boreal islands break hard, jungle islands barely at all.
+        #
+        # Shape:
+        #   _frac   = relative elevation 0 (sea) .. 1 (~99.5th-pct island peak),
+        #             matching render_islands.paint_override's band shape so the
+        #             breaks line up with the painted biome bands.
+        #   _band   = 0 below `band_lo`, ramps to 1 at the peak -> effect only
+        #             near the treeline, lowland forest untouched.
+        #   _expose = exposed/convex/windward upper flanks get the meadow
+        #             (forest retreats); sheltered concave upper gullies keep
+        #             low _expose so forest fingers DOWN them.  Built from
+        #             wind_exposure (convexity+elevation) blended with
+        #             (1-concavity_norm), with a flat floor `wind_mix` so a
+        #             baseline break still forms.
+        # The boost is climate-scaled per biome, so jungle vs boreal differ.
+        if _itb is not None and biome_grid is not None:
+            _syl = sy[land_mask]
+            _lo_itb = 63.0
+            _hi_itb = max(float(np.percentile(_syl, 99.5)), 70.0)
+            _frac_itb = np.clip((sy - _lo_itb) / max(_hi_itb - _lo_itb, 1.0),
+                                0.0, 1.0).astype(np.float32)
+            _band_lo = float(_itb.get("band_lo", 0.45))
+            _band_itb = np.clip(
+                (_frac_itb - _band_lo) / max(1.0 - _band_lo, 1e-6),
+                0.0, 1.0,
+            ).astype(np.float32)
+            # Exposure mix: exposed ridges break, sheltered gullies stay forest.
+            _wmix = float(_itb.get("wind_mix", 0.65))
+            # fringe_concavity_gain pulls the break toward CONVEX terrain
+            # (low concavity_norm -> high (1 - concavity_norm) -> stronger
+            # meadow); fringe_wind_gain weights wind_exposure (convexity+elev).
+            _cgain = float(_itb.get("fringe_concavity_gain", 0.5))
+            _wgain = float(_itb.get("fringe_wind_gain", 1.0))
+            _expose = (
+                (1.0 - _wmix)
+                + _wmix * (
+                    _wgain * wind_exposure
+                    + _cgain * (1.0 - concavity_norm)
+                ) / max(_wgain + _cgain, 1e-6)
+            ).astype(np.float32)
+            _expose = np.clip(_expose, 0.0, 1.0)
+            _boost_base = float(_itb.get("meadow_freq_boost", 0.8))
+            # Per-biome climate scaling of the boost (vectorised over biomes).
+            _climate_grid = np.full(meadow_terrain.shape, _itb_climate_default,
+                                    dtype=np.float32)
+            for _bn in np.unique(biome_grid):
+                _cf = _itb_climate.get(str(_bn))
+                if _cf is not None:
+                    _climate_grid[biome_grid == _bn] = float(_cf)
+            _itb_boost = (_boost_base * _climate_grid
+                          * _band_itb * _expose).astype(np.float32)
+            meadow_terrain = np.clip(meadow_terrain + _itb_boost, 0.0, 1.5)
+            del _syl, _frac_itb, _band_itb, _expose, _climate_grid, _itb_boost
+        # ── End ISLAND TREELINE BREAKS ──────────────────────────────────────
 
         # -- World-space simplex noise for patch shapes --
         # Two-octave noise: large scale sets patch regions, small scale
@@ -972,6 +1051,35 @@ def compute_eco_gradients(
         del _ocean, water_mask_bch
         # ── End beach ────────────────────────────────────────────────────
 
+        # ── Beach FROM MASK (gap==9) — island path, config-gated (S95-T2) ──
+        # When eco_gradients.beach_gap.from_mask is set AND a beach.tif was baked
+        # (islands/render_islands.synth_shore_beach_wide), paint sand straight from
+        # the pre-dithered mask, bypassing the _any_beach_biome gate that suppresses
+        # sand on island coastal biomes (BIRCH/MIXED_FOREST etc.). Mainland config
+        # has NO beach_gap key -> from_mask is falsy -> this block is skipped ->
+        # mainland byte-identical. Same eligibility tuple as the biome block; only
+        # claims gap 0/1/4 so it never overwrites rock(5)/snow(7)/dune(8).
+        _bch_cfg_fm = cfg.get("eco_gradients", {}).get("beach_gap", {})
+        if _bch_cfg_fm.get("from_mask") and beach is not None:
+            from scipy.ndimage import distance_transform_edt as _edt_fm
+            _wm_fm = (river_meta > 0) if river_meta is not None else np.zeros((H, W), dtype=bool)
+            _ocean_fm = (surface_y < 63) & ~_wm_fm
+            if _ocean_fm.any() and (~_ocean_fm).any():
+                _dist_fm = _edt_fm(~_ocean_fm).astype(np.float32)
+                _max_y_fm = np.int16(_bch_cfg_fm.get("max_surface_y", 65))
+                _thr_fm = np.float32(_bch_cfg_fm.get("mask_threshold", 0.0))
+                _elig_fm = (
+                    land_mask & ~_wm_fm
+                    & ((gap_mask == 0) | (gap_mask == 1) | (gap_mask == 4))
+                    & (beach.astype(np.float32) > _thr_fm)
+                    & (_dist_fm > 0)
+                    & (surface_y <= _max_y_fm)
+                )
+                gap_mask[_elig_fm] = 9
+                del _dist_fm, _elig_fm
+            del _ocean_fm, _wm_fm
+        # ── End beach FROM MASK ────────────────────────────────────────────
+
         # -- Per-biome meadow thresholding --
         # Floodplain + rock/alpine + windthrow already claimed their pixels.
         if biome_grid is not None:
@@ -984,6 +1092,18 @@ def compute_eco_gradients(
                     continue
 
                 freqs = _GAP_FREQ.get(str(biome), _DEFAULT_FREQ)
+                # ── ISLAND TREELINE BREAKS (PART 2) — per-biome meadow freq ──
+                # Island-gated (mainland byte-identical: `_itb` is None when the
+                # island_treeline_breaks key is absent from cfg, so `freqs` is
+                # untouched).  Raises the meadow target fraction for the
+                # forest-edge biomes so the upper-band boost (PART 1) actually
+                # crosses the per-biome percentile threshold; tropical/jungle is
+                # kept LOW here (dense canopy) and broken only at altitude.
+                if _itb is not None:
+                    _bf = (_itb.get("biome_meadow_freq") or {}).get(str(biome))
+                    if _bf is not None:
+                        freqs = (float(_bf),) + tuple(freqs[1:])
+                # ── End ISLAND TREELINE BREAKS (PART 2) ─────────────────────
                 freq_m = freqs[0]
 
                 # Meadow clearings

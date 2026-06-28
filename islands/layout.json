@@ -163,7 +163,7 @@
     },
     {
       "name": "Grenada outliers / Grenadines",
-      "dem_path": "C:\\Users\\nicho\\Downloads\\12_445_-61_217_13_4096_4096_16bit.png",
+      "dem_path": "C:\\Users\\nicho\\minecraft-worldgen\\islands\\prerot_dems\\12_445_prerot_16bit.png",
       "world_offset_px": [
         27337,
         47763
@@ -177,11 +177,13 @@
       "declip": true,
       "flipx": false,
       "flipz": false,
-      "rot_deg": 342.0,
+      "rot_deg": 0.0,
       "footprint_blocks": [
         10544,
         10550
-      ]
+      ],
+      "prerot_from": "C:\\Users\\nicho\\Downloads\\12_445_-61_217_13_4096_4096_16bit.png",
+      "prerot_sea_raw": 2399.0
     },
     {
       "name": "Grand Turk / Caicos",

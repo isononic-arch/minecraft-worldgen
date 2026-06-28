@@ -4,12 +4,11 @@ terrain, trees, lithology are untouched, so the studio biomes' varied vegetation
 stays while the GRASS reads uniform jungle:
 
     land cell  -> minecraft:jungle       (uniform tropical grass over LUSH/decid/mangrove)
-    ocean cell -> minecraft:warm_ocean   (teal Caribbean shallows on the kept shelf;
-                  far-ocean chunks are cropped away by install_islands -> regenerate as
-                  the noise gen's minecraft:ocean, so this IS the feathered ring)
+    ocean cell -> UNCHANGED (native minecraft:ocean)   # S95 #8: warm_ocean KILLED
 
-land vs ocean is read from each cell's EXISTING biome (ocean-family -> warm_ocean),
-so no mask/offset alignment is needed. Run AFTER render, BEFORE install_islands crop.
+land vs ocean is read from each cell's EXISTING biome. Ocean cells are left as-is so
+the shelf shallows match the superflat far-ocean (both blue); only LAND is tinted.
+Run AFTER render, BEFORE install crop.
 
     py islands/biome_tint_overlay.py            # all tint-set islands
     py islands/biome_tint_overlay.py <key|name>
@@ -52,7 +51,11 @@ def _retint(biomes):
         cells = [0] * 64
     else:
         cells = _unpack([int(x) for x in biomes["data"]], 64, max(1, (len(pal) - 1).bit_length()))
-    names = [OCEAN_MC if _is_ocean(pal[i]) else LAND_MC for i in cells]
+    # S95 #8: KILL warm_ocean. Ocean cells KEEP their native biome (minecraft:ocean)
+    # so the shelf shallows match the superflat far-ocean (both blue) — the old
+    # warm_ocean rewrite put stone on beaches and didn't read right across coasts.
+    # Only LAND is still tinted to jungle (the wanted tropical grass).
+    names = [pal[i] if _is_ocean(pal[i]) else LAND_MC for i in cells]
     return _build_biomes_nbt(np.array(names, dtype=object).reshape(4, 4, 4))
 
 

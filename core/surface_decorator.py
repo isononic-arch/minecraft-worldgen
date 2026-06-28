@@ -2913,6 +2913,10 @@ def _smooth_all_biome_boundaries_y(
     passes: int = 3,
     biome_grid_padded: "np.ndarray | None" = None,
     pad_px: int = 0,
+    precarve_padded: "np.ndarray | None" = None,
+    precarve_pad: int = 0,
+    seam_symmetric: bool = False,
+    full_halo: bool = False,
 ) -> None:
     """S67: Gaussian-smooth Y at EVERY biome boundary pixel.  Replaces per-
     biome target list — now biome-agnostic.  Detects boundaries via 4-neighbour
@@ -2925,11 +2929,73 @@ def _smooth_all_biome_boundaries_y(
     weight independently -> asymmetric weight -> visible Y steps on STEEP terrain
     (islands exposed this; mainland is seam-free only by luck of gentle terrain).
     When the padded biome grid is supplied, compute the boundary/EDT/weight on the
-    HALO'D grid and crop to inner so the weight is identical on both sides."""
+    HALO'D grid and crop to inner so the weight is identical on both sides.
+
+    S95-polish (island-gated `seam_symmetric`): the WEIGHT is now halo-symmetric,
+    but the iterative `_gf_seam` blur still splices a LIVE-evolving inner into a
+    STALE pre-carve halo ring -> across `passes` the inner diverges from the ring
+    the neighbour tile reads -> the blurred VALUE desyncs at the seam (measured:
+    doubled the >=3-block seam count on steep volcanic NV).  When `seam_symmetric`
+    and a fully pre-carve padded field are supplied, blend toward a blur of THAT
+    field instead: its inner AND halo derive from the one global height spline, so
+    the blurred value is identical on both sides of every seam BY CONSTRUCTION.
+    Only valid where live surface_y == pre-carve on land (islands carve no rivers);
+    the mainland keeps the live-Y blur (respects river carving) -> byte-identical
+    when the flag is absent.
+
+    S96 island-gated `full_halo` (THE real interior-seam fix): the S95-R3 weight is
+    halo-symmetric and the blur reads a halo, but the BLEND still ran per-tile
+    iteratively on the inner — so each side of a seam converged its iterative
+    blend toward its own interior mean (the 96px halo + sigma-8 blur can't undo
+    that across 3 passes), leaving a ~1-block residual seam that the LIVE-Y blur,
+    pre-carve blur, and even a true-neighbour-value blur ALL share (measured on the
+    steep efate rocky seam (6,7)|(6,8): all ~1.0, raw 0.45). FIX: run the ENTIRE
+    smoother (boundary detect + EDT weight + iterative blur + blend) on the PADDED
+    grid built from real neighbour data, then crop to inner. Both tiles process
+    byte-identical overlapping windows -> the seam pixel is computed identically on
+    both sides -> seam-clean BY CONSTRUCTION (steep efate seam 1.00 -> 0.24, ge3
+    34 -> 0). Needs surface halo (`_SEAM_HALO`) AND biome halo (`biome_grid_padded`)
+    at a common pad >= buffer_blocks. Island-gated; mainland (flag absent) keeps
+    the exact S95-R3 path -> byte-identical."""
     if biome_grid.size == 0:
         return
     from scipy.ndimage import binary_dilation, gaussian_filter, distance_transform_edt
     H, W = surface_y.shape
+
+    # ── S96 FULL-HALO interior-seam fix (island-gated) ────────────────────────
+    # Run the whole smoother on a padded grid (real neighbour surface + biome),
+    # crop to inner. Both tiles -> identical overlap -> seam-clean by construction.
+    if full_halo and biome_grid_padded is not None and pad_px > 0 \
+            and _SEAM_HALO is not None \
+            and biome_grid_padded.shape == (H + 2 * pad_px, W + 2 * pad_px):
+        _halo_arr, _halo_pad = _SEAM_HALO
+        # Need the surface halo at the SAME pad as the biome halo. The surface
+        # halo (`_SEAM_HALO`, typically pad 96) is wider-or-equal; slice it down.
+        if _halo_arr.shape == (H + 2 * _halo_pad, W + 2 * _halo_pad) \
+                and _halo_pad >= pad_px:
+            _d = _halo_pad - pad_px
+            syp = _halo_arr[_d:_d + H + 2 * pad_px,
+                            _d:_d + W + 2 * pad_px].astype(np.float32, copy=True)
+            # Stamp the authoritative live inner so the inner matches `surface_y`
+            # exactly (the halo's inner was already stamped upstream, but be safe).
+            syp[pad_px:pad_px + H, pad_px:pad_px + W] = surface_y.astype(np.float32)
+            bgp = biome_grid_padded
+            bnd = np.zeros(bgp.shape, dtype=bool)
+            bnd[:-1, :] |= (bgp[:-1, :] != bgp[1:, :]); bnd[1:, :] |= (bgp[:-1, :] != bgp[1:, :])
+            bnd[:, :-1] |= (bgp[:, :-1] != bgp[:, 1:]); bnd[:, 1:] |= (bgp[:, :-1] != bgp[:, 1:])
+            if bnd.any():
+                _ringp = binary_dilation(bnd, iterations=buffer_blocks)
+                _dfb = distance_transform_edt(~bnd).astype(np.float32)
+                _wp = np.clip(1.0 - _dfb / max(float(buffer_blocks), 1.0), 0.0, 1.0)
+                _wp[~_ringp] = 0.0
+                for _ in range(max(1, passes)):
+                    _bl = gaussian_filter(syp, sigma, mode="nearest")
+                    syp = _wp * _bl + (1.0 - _wp) * syp
+            surface_y[:] = np.round(
+                syp[pad_px:pad_px + H, pad_px:pad_px + W]).astype(surface_y.dtype)
+            return
+        # else: halo shape/pad mismatch -> fall through to the S95-R3 path below.
+
     _use_pad = (biome_grid_padded is not None and pad_px > 0
                 and biome_grid_padded.shape == (H + 2 * pad_px, W + 2 * pad_px))
     bg = biome_grid_padded if _use_pad else biome_grid
@@ -2952,9 +3018,21 @@ def _smooth_all_biome_boundaries_y(
     if _use_pad:                                    # crop the halo'd weight to inner
         weight = weight[pad_px:pad_px + H, pad_px:pad_px + W]
     sy_f = surface_y.astype(np.float32)
-    for _ in range(max(1, passes)):
-        blurred = _gf_seam(sy_f, sigma)
+    # S95: island seam-symmetric path — blend toward a blur of the FULLY pre-carve
+    # padded field (seam-clean by construction). See docstring.
+    _pc = np.asarray(precarve_padded) if precarve_padded is not None else None
+    _pc_ok = (seam_symmetric and _pc is not None and precarve_pad > 0
+              and _pc.shape == (H + 2 * precarve_pad, W + 2 * precarve_pad))
+    if _pc_ok:
+        b = _pc.astype(np.float32)
+        for _ in range(max(1, passes)):
+            b = gaussian_filter(b, sigma)
+        blurred = b[precarve_pad:precarve_pad + H, precarve_pad:precarve_pad + W]
         sy_f = weight * blurred + (1.0 - weight) * sy_f
+    else:
+        for _ in range(max(1, passes)):
+            blurred = _gf_seam(sy_f, sigma)
+            sy_f = weight * blurred + (1.0 - weight) * sy_f
     surface_y[:] = np.round(sy_f).astype(surface_y.dtype)
 
 
@@ -3248,6 +3326,14 @@ def decorate_surface(
             sigma=float(_sds_cfg.get("sigma", 8.0)),
             passes=int(_sds_cfg.get("passes", 3)),
             biome_grid_padded=biome_grid_padded, pad_px=_bgp_pad,
+            # S95 island seam fix: blend toward the seam-symmetric pre-carve field
+            # (relief_rough_padded, 96px halo). Island-gated -> mainland unchanged.
+            precarve_padded=relief_rough_padded, precarve_pad=int(seam_pad_px or 0),
+            seam_symmetric=bool(_sds_cfg.get("seam_symmetric", False)),
+            # S96 island interior-seam fix: run the whole smoother on the padded
+            # grid + crop (seam-clean by construction). Flag ABSENT from
+            # config/thresholds.json -> mainland False -> byte-identical.
+            full_halo=bool(_sds_cfg.get("full_halo", False)),
         )
         # Ocean-coastline smoothing — treat underwater-threshold as the
         # "other side" of the boundary.  Smooths beach cliff cutoffs.

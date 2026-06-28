@@ -65,6 +65,53 @@ def sparse_install(dst_region: Path, names=None):
     return n
 
 
+def fast_install(dst_region: Path, names=None):
+    """S95 FAST path for a FRESH world (empty region/, nothing to overlay): raw
+    shutil.copy2 each island region (no NBT decode) and per-chunk-merge ONLY the
+    handful of regions two islands contest. sparse_install decodes EVERY chunk of
+    EVERY region (~2.75min/region -> ~60h for 1300+) even for non-overlapping fresh
+    worlds; this does 1300+ regions in ~1min. Bigger island wins contested chunks."""
+    import shutil
+    lay = json.loads((ISL / "layout.json").read_text())["islands"]
+    recs = []
+    for e in lay:
+        nm = safe_name(e["name"]); d = MASKS_OUT / nm; o = OUT / nm
+        if names and not any(n in nm or n in e["dem_path"] for n in names):
+            continue
+        if not o.exists() or not list(o.glob("r.*.mca")):
+            continue
+        man = json.loads((d / "manifest.json").read_text()) if (d / "manifest.json").exists() else {"world_hw": [0, 0]}
+        recs.append((nm, o, man["world_hw"][0] * man["world_hw"][1]))
+    # region name -> [(area, mca_path), ...]
+    regmap: dict[str, list] = {}
+    for nm, odir, area in recs:
+        for mca in odir.glob("r.*.mca"):
+            if not re.match(r"r\.(-?\d+)\.(-?\d+)\.mca", mca.name):
+                continue
+            regmap.setdefault(mca.name, []).append((area, mca))
+    dst_region.mkdir(parents=True, exist_ok=True)
+    n_copy = n_merge = 0
+    for rname, lst in regmap.items():
+        dpath = dst_region / rname
+        if len(lst) == 1 and not dpath.exists():
+            # FRESH-DST fast path: raw sector copy, no decode. Guarded by
+            # `not dpath.exists()` so we NEVER wholesale-overwrite (and silently
+            # drop) pre-existing chunks when installing into a non-fresh world
+            # (e.g. the real Vandir prerender) — that case falls to the merge.
+            shutil.copy2(lst[0][1], dpath); n_copy += 1
+        else:
+            # Merge: start from any pre-existing dst region, then overlay island
+            # chunks (island land+shelf REPLACES the dst slot), bigger island last
+            # so it wins contested chunks. Preserves every non-island dst chunk.
+            merged: dict = read_region(dpath) if dpath.exists() else {}
+            for _area, mca in sorted(lst, key=lambda x: x[0]):     # smaller first -> bigger overwrites
+                for (cx, cz), raw in read_region(mca).items():
+                    merged[(cx, cz)] = raw
+            write_region(dpath, merged); n_merge += 1
+    print(f"fast_install: {n_copy} raw-copied + {n_merge} merged regions -> {dst_region}")
+    return n_copy + n_merge
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--world", required=True)
