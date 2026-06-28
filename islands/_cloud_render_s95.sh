@@ -19,6 +19,12 @@ IMG=396927540
 START=$(date +%s)
 log(){ echo "[$(date +%H:%M:%S)] $*"; }
 
+# S97: deterministic code bundle (include-list, asserts DEMs present) + the
+# early-failure/idle watchdog. Replaces the hand-typed `tar` whose recursive
+# --exclude silently dropped the prerot DEM and idled a box an hour.
+source "$ROOT/islands/box_watchdog.sh"
+bash "$ROOT/islands/make_tarball.sh" || { log "!! make_tarball failed; aborting"; exit 1; }
+
 # ---- per-box plan (index 0..7) ----
 NAME=(isl-b1 isl-b2 isl-b3 isl-b4 isl-b5 isl-b6 isl-b7 isl-b8)
 TYPE=(ccx63 ccx63 ccx63 ccx63 ccx63 ccx63 ccx63 ccx63)  # snapshot needs 960GB disk -> ccx63 only
@@ -104,6 +110,7 @@ tmux new-session -d -s isl "cd /root/minecraft-worldgen && /root/venv/bin/python
 echo launched
 EOF
   log "  ${NAME[$i]} LAUNCHED (workers=${WORK[$i]} keys=${KEYS[$i]})"
+  box_arm_selfdestruct "$ip" 180   # S97: box can't outlive 3h even if orchestrator dies
 }
 for i in $(seq 0 $((N-1))); do deploy "$i" & done
 wait
@@ -118,6 +125,18 @@ while :; do
     [ -z "${IP[$i]:-}" ] && { DONE[$i]=1; continue; }
     alive=1
     ip=${IP[$i]}
+    # S97 watchdog: reap a crashed/stalled box immediately instead of idling to
+    # the 3h cap (the S96 FileNotFoundError-idled-an-hour scenario).
+    case "$(box_state "$ip" 600)" in
+      FAIL)
+        log "  !! ${NAME[$i]} EARLY-FAIL (run.log crash signature); saving log + deleting"
+        ssh $SSHO root@"$ip" "cat /root/run.log" > "$COL/${NAME[$i]}.FAIL.log" 2>/dev/null
+        del_box "$i"; DONE[$i]=1; continue;;
+      STALL)
+        log "  !! ${NAME[$i]} STALLED (no run.log progress >10m); saving log + deleting"
+        ssh $SSHO root@"$ip" "cat /root/run.log" > "$COL/${NAME[$i]}.STALL.log" 2>/dev/null
+        del_box "$i"; DONE[$i]=1; continue;;
+    esac
     if ssh $SSHO root@"$ip" "test -f /root/all_done" 2>/dev/null; then
       log "${NAME[$i]} all_done; collecting"
       ssh $SSHO root@"$ip" "cd /root/minecraft-worldgen && tar czf /tmp/out.tgz islands/out 2>/dev/null" 2>/dev/null
