@@ -21,6 +21,7 @@ TGZ="${TGZ:-/tmp/rv_code.tgz}"
 # scp'd separately by the cloud script, NOT bundled here.
 INCLUDE=(
   core
+  tools
   run_pipeline.py
   derive_masks_from_height.py
   config/thresholds.json
@@ -55,5 +56,9 @@ if ls islands/prerot_dems/*.png >/dev/null 2>&1; then
 fi
 assert_in "run_pipeline.py"
 assert_in "derive_masks_from_height.py"
+# the bake shells out to these (render_islands.py:853,863) — stale snapshot
+# versions crashed the S97 render; ship the current ones.
+assert_in "tools/build_lithology.py"
+assert_in "tools/build_terrain_derived.py"
 
 echo "built $TGZ ($(du -h "$TGZ" | cut -f1), $(printf '%s\n' "$LISTING" | wc -l) entries)"
