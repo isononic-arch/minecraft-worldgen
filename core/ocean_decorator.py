@@ -74,10 +74,35 @@ def _paint_tier(tier_mask, blocks, sub_blocks, surface_blk, sub_blk, pal_noise):
 
 
 def _coarse_simplex(seed: int, H: int, W: int, tile_wx: int, tile_wz: int,
-                    scale: float, step: int = 4) -> np.ndarray:
+                    scale: float, step: int = 4,
+                    seam_safe: bool = False) -> np.ndarray:
     """Low-resolution simplex grid at world coordinates, upsampled to (H,W).
-    step=4 sampling + bilinear upscale is ~16× faster than per-pixel simplex."""
+    step=4 sampling + bilinear upscale is ~16× faster than per-pixel simplex.
+
+    seam_safe (S95-T3): the default `_zoom` path is corner-aligned per tile and
+    has NO neighbour sample past the far edge, so the bilinear upsample steps at
+    every tile seam -> a visible ocean-floor material/relief seam every 512
+    blocks. The seam_safe path samples a GLOBAL world-coord lattice (offsets that
+    are multiples of `step`, with one guard sample past each far edge) and maps
+    each output pixel to its exact lattice fraction via map_coordinates, so
+    adjacent tiles share boundary samples and the field is continuous across
+    seams. Island-only (config `ocean.seam_safe_noise`); mainland keeps the old
+    `_zoom` path -> byte-identical."""
     sim = OpenSimplex(seed=seed)
+    if seam_safe:
+        from scipy.ndimage import map_coordinates
+        gy = np.arange(0, H + step, step)   # +1 guard sample past the far edge
+        gx = np.arange(0, W + step, step)
+        coarse = np.empty((len(gy), len(gx)), dtype=np.float32)
+        for i, y in enumerate(gy):
+            for j, x in enumerate(gx):
+                coarse[i, j] = sim.noise2((tile_wx + int(x)) / scale,
+                                          (tile_wz + int(y)) / scale)
+        oy = (np.arange(H, dtype=np.float32) / step)   # output -> coarse-row coord
+        ox = (np.arange(W, dtype=np.float32) / step)   # output -> coarse-col coord
+        yy, xx = np.meshgrid(oy, ox, indexing="ij")
+        full = map_coordinates(coarse, [yy, xx], order=1, mode="nearest")
+        return full.astype(np.float32).reshape(H, W)
     gy = np.arange(0, H, step)
     gx = np.arange(0, W, step)
     coarse = np.empty((len(gy), len(gx)), dtype=np.float32)
@@ -107,6 +132,7 @@ def decorate_ocean(
     ocfg = cfg.get("ocean", {})
     if not ocfg.get("enabled", False):
         return {}
+    _seam_safe = bool(ocfg.get("seam_safe_noise", False))   # S95-T3: island-only seam-continuous floor noise
 
     # ISOLATION GUARD — ocean mask computed ONCE, reused for every write.
     # S65: dropped biome gate.  User's override.tif paints land biomes on
@@ -145,7 +171,8 @@ def decorate_ocean(
     scale = float(noise_cfg.get("scale_blocks", 30.0))
     seed = int(noise_cfg.get("seed", 747))
     if amp > 0:
-        noise = _coarse_simplex(seed, H, W, tile_world_x, tile_world_z, scale, step=4)
+        noise = _coarse_simplex(seed, H, W, tile_world_x, tile_world_z, scale, step=4,
+                                seam_safe=_seam_safe)
         noise_int = np.round(noise * amp).astype(np.int16)
         # Apply only to ocean pixels.
         surface_y[is_ocean] = (surface_y[is_ocean] + noise_int[is_ocean]).astype(np.int16)
@@ -180,7 +207,7 @@ def decorate_ocean(
         # Palette-selection noise — separate seed, finer scale so tiers
         # break into patches not bands.
         pal_noise = _coarse_simplex(seed + 1, H, W, tile_world_x, tile_world_z,
-                                    scale=15.0, step=2)
+                                    scale=15.0, step=2, seam_safe=_seam_safe)
         # Normalize to [0, 1] — clamp to avoid edge issues
         pal_noise = (pal_noise + 1.0) * 0.5
         pal_noise = np.clip(pal_noise, 0.0, 0.9999)
@@ -278,7 +305,7 @@ def decorate_ocean(
         veg_noise_seed = int(noise_cfg.get("seed", 747)) + 2
         veg_noise = _coarse_simplex(veg_noise_seed, H, W,
                                      tile_world_x, tile_world_z,
-                                     scale=8.0, step=2)
+                                     scale=8.0, step=2, seam_safe=_seam_safe)
         # Normalize to [0,1]
         veg_noise = (veg_noise + 1.0) * 0.5
         veg_noise = np.clip(veg_noise, 0.0, 0.9999)
@@ -290,7 +317,8 @@ def decorate_ocean(
         # all"; `coin` then decides per-pixel within vegetated areas.
         clump_noise = _coarse_simplex(veg_noise_seed + 50, H, W,
                                        tile_world_x, tile_world_z,
-                                       scale=35.0, step=4)  # low-freq = big clumps
+                                       scale=35.0, step=4,
+                                       seam_safe=_seam_safe)  # low-freq = big clumps
         clump_noise = (clump_noise + 1.0) * 0.5
         clump_noise = np.clip(clump_noise, 0.0, 1.0)
         # S66: kelp-forest shape — strong clumping, bare gaps between.  At
@@ -345,6 +373,7 @@ def decorate_ocean(
         _place_ocean_features(
             is_ocean, surface_y, surface_blk, sub_blk, biome_grid,
             feat_cfg, tile_world_x, tile_world_z, stats,
+            seam_safe=_seam_safe,
         )
 
     return stats
@@ -353,6 +382,7 @@ def decorate_ocean(
 def _place_ocean_features(
     is_ocean, surface_y, surface_blk, sub_blk, biome_grid,
     feat_cfg, tile_world_x, tile_world_z, stats,
+    seam_safe: bool = False,
 ) -> None:
     """S65: sparse visual accents on the ocean floor.  Overwrites surface_blk
     only.  Does NOT modify ground_cover or surface_y.  All fully isolated
@@ -378,7 +408,7 @@ def _place_ocean_features(
             # Mix cobblestone/mossy_cobblestone/stone/tuff
             rock_noise = _coarse_simplex(rng_base ^ 0xBA11, H, W,
                                           tile_world_x, tile_world_z,
-                                          scale=6.0, step=2)
+                                          scale=6.0, step=2, seam_safe=seam_safe)
             rock_noise = (rock_noise + 1.0) * 0.5
             rock_pick = np.floor(rock_noise * 4).astype(int) % 4
             names = ["cobblestone", "mossy_cobblestone", "stone", "tuff"]
@@ -410,7 +440,7 @@ def _place_ocean_features(
                 blob = binary_dilation(centers, iterations=2) & c_mask
                 sp_noise = _coarse_simplex(rng_base ^ 0xC0FB, H, W,
                                             tile_world_x, tile_world_z,
-                                            scale=4.0, step=2)
+                                            scale=4.0, step=2, seam_safe=seam_safe)
                 sp_noise = (sp_noise + 1.0) * 0.5
                 sp_pick = np.floor(sp_noise * 5).astype(int) % 5
                 coral_names = [
@@ -432,7 +462,7 @@ def _place_ocean_features(
         if cl_mask.any():
             cl_noise = _coarse_simplex(rng_base ^ 0xC1A7, H, W,
                                         tile_world_x, tile_world_z,
-                                        scale=10.0, step=2)
+                                        scale=10.0, step=2, seam_safe=seam_safe)
             cl_noise = (cl_noise + 1.0) * 0.5
             # Patches where noise > 0.75 (about 25% of mid tier)
             clay_patch = cl_mask & (cl_noise > 0.72)

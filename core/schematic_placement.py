@@ -107,6 +107,25 @@ CANOPY_RADIUS: dict[str, int] = {
     "lg": 8,
 }
 
+# S96 tree-canopy SEAM fix (STEP B): world-coordinate splitmix64 hash.
+# Scalar mirror of the vectorized hash in run_pipeline.py:611-620.  Two
+# X-adjacent tiles compute IDENTICAL values for a shared seam cell (same
+# world_x/world_z + salt -> same u01), so the deterministic rim pass below
+# reconstructs the SAME seam trees from both sides; each tile renders its
+# in-bounds half (STEP A clip in chunk_writer), closing the canopy trench.
+_WC_MASK64 = 0xFFFFFFFFFFFFFFFF
+
+
+def _wc_u01s(wx: int, wz: int, salt: int) -> float:
+    """Deterministic uniform [0,1) keyed on world (x,z) + a per-purpose salt."""
+    h = (int(wx) * 0x9E3779B97F4A7C15
+         + int(wz) * 0xBF58476D1CE4E5B9
+         + int(salt) * 0x165667B19E3779F9) & _WC_MASK64
+    h = ((h ^ (h >> 30)) * 0xBF58476D1CE4E5B9) & _WC_MASK64
+    h = ((h ^ (h >> 27)) * 0x94D049BB133111EB) & _WC_MASK64
+    h = h ^ (h >> 31)
+    return (h & _WC_MASK64) / 2.0 ** 64
+
 # S89 Option A: per-biome canopy-radius control. The exclusion radius is the
 # TRUE density ceiling (past BASE_DENSITY ~0.5 the forest is packing-limited,
 # not probability-limited). radius_mult < 1 packs trees tighter (denser forest);
@@ -825,6 +844,40 @@ def _compute_extra_inset(
     return extra
 
 
+def _compute_extra_inset_u(
+    size: str,
+    method: str,
+    base_y: int,
+    lowest_leaf_y: int,
+    surface_y: int,
+    u: float,
+) -> int:
+    """RNG-FREE twin of _compute_extra_inset (S96 BUG 1).
+
+    Identical draw logic, but the uniform is the caller-supplied *u* ∈ [0,1)
+    instead of rng.random().  The S96 seam rim pass keys *u* on the world
+    ANCHOR cell via _wc_u01s so both adjacent tiles compute the SAME extra_inset
+    for a shared seam tree — without it the tile-local rng (advanced by a
+    different amount on each side) gave the two clipped halves a 1-2 block Y
+    step at the seam."""
+    if method == "no_trunk_lowest_solid":
+        return 0
+    dist = SIZE_VARIATION[size][1]
+    extra = 0
+    cumulative = 0.0
+    for i, p in enumerate(dist):
+        cumulative += p
+        if u < cumulative:
+            extra = i
+            break
+    if extra == 0:
+        return 0
+    leaf_world_y = base_y + lowest_leaf_y - extra
+    if leaf_world_y <= surface_y:
+        return 0
+    return extra
+
+
 # ---------------------------------------------------------------------------
 # CANOPY EXCLUSION GRID
 # ---------------------------------------------------------------------------
@@ -879,6 +932,9 @@ def place_schematics(
     surface_blocks: np.ndarray | None = None,  # (H,W) object str — for snow-surface skip (S58)
     cliff_cap_tile: np.ndarray | None = None,  # (H,W) float32 [0,1] — walk #12: suppress trees on cap
     biome_grid_padded: np.ndarray | None = None,  # (H+2p,W+2p) object str — S93c cross-tile ecotone halo
+    surface_y_padded: np.ndarray | None = None,  # (H+2sp,W+2sp) int — S96 seam rim pass surface halo
+    seam_pad_px: int = 0,                         # half-pad width of surface_y_padded
+    surface_y_precarve_padded: np.ndarray | None = None,  # (H+2sp,W+2sp) PRE-CARVE LUT surface — S96 BUG2 symmetric place_y
 ) -> list[PlacementRecord]:
     """
     Compute schematic placements for one tile.
@@ -980,13 +1036,26 @@ def place_schematics(
         # the surviving dark-tier pixels is already thinned by the 30->55 slope
         # penalty downstream, so they read as sparse, not forested.
         _rl_on_sp = bool(cfg.get("lithology", {}).get("rock_layers", {}).get("enabled", False)) if isinstance(cfg, dict) else False
+        # S95: islands derive a true-monotone slope -> a BROAD 32-45deg rock band, so the
+        # S89 dark-tier exemption (below) leaves ~21% of trees on bare rock. When the
+        # island flag is set, suppress ALL gap==5 trees (pre-S89 mainland behavior).
+        # Mainland (flag unset) keeps the dark-tier sparse-tree exemption byte-for-byte.
+        _all_gap5_off = bool(cfg.get("lithology", {}).get("rock_layers", {}).get("suppress_all_gap5_trees", False)) if isinstance(cfg, dict) else False
         _rock_sup = (gap == 5)
-        if _rl_on_sp and cliff_deg is not None:
+        if _rl_on_sp and cliff_deg is not None and not _all_gap5_off:
             _t2_sp = float(cfg.get("lithology", {}).get("rock_layers", {}).get("t2_deg", 45.0))
             _rock_sup = (gap == 5) & (cliff_deg >= _t2_sp)
+        # S95-T2 #5b: islands paint a WIDE beach from beach.tif (gap==9,
+        # max_surface_y=80). Unlike the mainland's thin Y64/65 band — which keeps
+        # trees off via the 14px water buffer because the whole beach sits inside
+        # it — the island sand escapes the buffer, so trees land ON the sand. When
+        # the island beach.tif path is active (eco_gradients.beach_gap.from_mask),
+        # suppress trees on gap==9. Mainland (flag unset) keeps buffer behavior.
+        _beach_from_mask = bool(cfg.get("eco_gradients", {}).get("beach_gap", {}).get("from_mask", False)) if isinstance(cfg, dict) else False
+        _beach_sup = (gap == 9) if _beach_from_mask else np.zeros(gap.shape, dtype=bool)
         full_suppress = (
             ((gap == 1) | (gap == 2) | (gap == 4) | _rock_sup
-             | (gap == 7) | (gap == 8))
+             | (gap == 7) | (gap == 8) | _beach_sup)
             & ~sand_dune_in_desert & ~snow_in_arctic & ~floodplain_ok
         )
         # Walk #12: also suppress trees on cliff_cap pixels (bare peak tops
@@ -1368,6 +1437,17 @@ def place_schematics(
     # clip rejection below (loaded lazily, edge-strip candidates only).
     _schem_extent_cache: dict[str, int] = {}
 
+    # S96 tree-canopy SEAM fix.  The interior `for idx in order` loop — INCLUDING
+    # the S91/S92 edge-guard/substitute — is UNCHANGED and runs identically
+    # regardless of tree_seam (gating it would shift the interior rng stream =
+    # the S91 "forests RE-ROLL" mainland regression).  The fix is a PURE
+    # POST-LOOP ADDITION: a world-coord DETERMINISTIC rim pass (below, gated on
+    # _seam_on AND surface_y_padded) that fills each tile's LOW edge so the seam
+    # canopy meets.  When _seam_on is False (or no padded surface, e.g. the
+    # validators), the rim pass is skipped and behaviour is exactly pre-S96.
+    _seam_cfg = cfg.get("tree_seam", {}) if isinstance(cfg, dict) else {}
+    _seam_on = bool(_seam_cfg.get("enabled", True))
+
     # S89 krummholz: stunted trees on/near rock.  Where rock_gap (gap==5) fires
     # on or within rock_dilate_blocks of a TREE candidate, OR at/above
     # min_elevation_y, restrict selection to the smallest (size=="sm") variants
@@ -1732,6 +1812,16 @@ def place_schematics(
             # 2*center_off+1 under-covers badly), loaded lazily and cached;
             # only candidates within _EDGE_GUARD of the far edges pay the
             # load. max(X,Z) also covers all 4 rotations.
+            # S96 NOTE: the S92 edge-guard is INTENTIONALLY left always-on here
+            # (NOT gated by tree_seam).  Gating it changes the interior rng draw
+            # sequence for every subsequent candidate (the S91 "forests RE-ROLL"
+            # footgun) — measured as a ~5pt shift in DEEP-interior canopy, which
+            # violates the mainland-density invariant + the 48_48/51_53 baselines.
+            # Keeping it intact makes flag-OFF byte-identical to the pre-S96
+            # baseline AND keeps flag-ON's interior stream identical to flag-OFF;
+            # the world-coord rim pass (after this loop) is then a pure ADDITION
+            # whose seam trees coexist with the S92 substitutes via the shared
+            # exclusion grid (rim trees overlapping a guard tree are excluded).
             _EDGE_GUARD = 24
             if (jittered_col >= W - _EDGE_GUARD) or (jittered_row >= H - _EDGE_GUARD):
                 def _edge_extent(_e):
@@ -1857,6 +1947,305 @@ def place_schematics(
                         _kr_dbg_reg[_b] += 1
             else:
                 bush_exclusion.mark(row, col, max(1, radius // 2))
+
+    # ====================================================================
+    # S96 SEAM RIM PASS — world-coord DETERMINISTIC tree+bush reconstruction
+    # --------------------------------------------------------------------
+    # Runs AFTER the interior loop (interior is canonical at the PAD edge).
+    # For every cell within rim_halo_px of a tile edge — INCLUDING a halo of
+    # negative / >=W,H local coords owned by the neighbour — both adjacent
+    # tiles compute IDENTICAL world_x/world_z and feed them through _wc_u01s,
+    # so they accept/reject/jitter/species/rotate the SAME seam trees.  Each
+    # tile appends the record; chunk_writer's anchor-cull (STEP A) drops the
+    # copy whose anchor is OOB for that tile, and the OTHER tile renders it
+    # with an in-bounds anchor + clips the overhang.  Net: the shared seam
+    # tree renders once, clipped at the seam, from both sides — no trench.
+    # Density/species use ONLY world-coord-shared inputs (world-coord density
+    # noise + global index weights) so the two tiles agree bit-for-bit.  The rim
+    # RENDERS a tree only when its jittered ANCHOR lands IN-BOUNDS on a LOW edge
+    # (col<RIM or row<RIM): that's the only path chunk_writer stamps (min-corner
+    # anchoring + canopy in +X/+Z means the low edge is what the interior loop
+    # under-covers; high edges are interior-owned).  OOB-anchor candidates are
+    # DROPPED (not appended) — chunk_writer culls them anyway, and emitting them
+    # would risk an asymmetric "floating half-canopy" (S96 BUG 4).  Each rendered
+    # rim tree is gated by the SAME land_mask the interior used (water buffer +
+    # gap full-suppress + clearing + snow surface — S96 BUG 3), seats on the
+    # PRE-CARVE padded surface so its Y matches the neighbour's view at a
+    # river/relief seam (S96 BUG 2), and draws extra_inset from a world-anchor
+    # hash so both clipped halves seat identically (S96 BUG 1).
+    if _seam_on and surface_y_padded is not None:
+        _RIM = int(_seam_cfg.get("rim_halo_px", 24))
+        # S96 rim-density parity (island canopy-seam trench fix).  The interior
+        # loop places greedily from a shuffled candidate list (dense); the rim
+        # rolls a single per-cell coin (sparse), so the low edge filled to only
+        # ~half interior density -> a residual ~10-15px canopy trench at every
+        # tile seam (worst on dense LUSH jungle islands).  Boost the rim's
+        # per-cell accept probability toward interior parity; the shared
+        # exclusion grid still prevents over-stacking.  Rim-path ONLY (the
+        # interior accept test is untouched), so flag-OFF + mainland-byte
+        # behaviour are unchanged.
+        _RIM_DEN_BOOST = float(_seam_cfg.get("rim_density_boost", 1.0))
+        # Pad offsets: biome_grid_padded uses its OWN half-pad (S93c ecotone
+        # pad, typically 48); surface_y_padded uses seam_pad_px (typically 96).
+        _bg_pad = None
+        if (biome_grid_padded is not None and getattr(biome_grid_padded, "ndim", 0) == 2
+                and biome_grid_padded.shape[0] > H and biome_grid_padded.shape[1] > W
+                and (biome_grid_padded.shape[0] - H) == (biome_grid_padded.shape[1] - W)):
+            _bg_pad = (biome_grid_padded.shape[0] - H) // 2
+        _sy_pad = int(seam_pad_px)
+        _sy_ok = (getattr(surface_y_padded, "ndim", 0) == 2
+                  and surface_y_padded.shape[0] >= H + 2 * _sy_pad
+                  and surface_y_padded.shape[1] >= W + 2 * _sy_pad)
+        # S96 BUG 2: PRE-CARVE padded surface for symmetric place_y.  Falls back
+        # to the (post-carve-inner) surface_y_padded if not supplied or mis-sized.
+        _pc_pad = surface_y_precarve_padded
+        if (_pc_pad is None or getattr(_pc_pad, "ndim", 0) != 2
+                or _pc_pad.shape != surface_y_padded.shape):
+            _pc_pad = surface_y_padded
+        # Only run if BOTH halos cover the rim band (else fall through silently).
+        if _bg_pad is not None and _bg_pad >= _RIM and _sy_ok and _sy_pad >= _RIM:
+            # Determinism diagnostic: when SEAM_RIM_DUMP is set, record EVERY rim
+            # emission's (world_x, world_z, species, type) — regardless of cull —
+            # so two adjacent tiles can be cross-checked for IDENTICAL seam trees.
+            import os as _os_rim
+            _rim_dbg = _os_rim.environ.get("SEAM_RIM_DUMP")
+            _rim_dbg_rows: list = [] if _rim_dbg else None
+            # Tree biomes that exist in the index with TREE entries (precompute
+            # the per-biome tree/bush entry lists + base weights ONCE).
+            _rim_entries_cache: dict[tuple[str, str], tuple] = {}
+
+            def _rim_entries(_biome, _ptype):
+                _k = (_biome, _ptype)
+                _c = _rim_entries_cache.get(_k)
+                if _c is not None:
+                    return _c
+                _all = index.get(_biome)
+                if not _all:
+                    _rim_entries_cache[_k] = ((), ())
+                    return ((), ())
+                _es = tuple(_filter_entries(_all, _ptype))
+                _ws = tuple(float(max(e.weight, 0.0)) for e in _es)
+                if not _es or sum(_ws) <= 0.0:
+                    _rim_entries_cache[_k] = ((), ())
+                    return ((), ())
+                _rim_entries_cache[_k] = (_es, _ws)
+                return (_es, _ws)
+
+            def _rim_pick(_es, _ws, u):
+                # Deterministic cumulative weighted pick (mirrors rng.choices).
+                _tot = 0.0
+                for _w in _ws:
+                    _tot += _w
+                _r = u * _tot
+                _acc = 0.0
+                for _e, _w in zip(_es, _ws):
+                    _acc += _w
+                    if _r < _acc:
+                        return _e
+                return _es[-1]
+
+            # Enumerate ONLY the TOP and LEFT bands — the rim fills a tile's LOW
+            # edges (rows/cols near 0); the HIGH (right/bottom) edges are
+            # interior-owned (canopy overhangs them).  A high-edge cell can never
+            # jitter (±3) below _RIM, so iterating it is pure waste.  Each band
+            # spans local coords in [-_RIM, _RIM) on its edge axis and the FULL
+            # tile + halo on the other, so a neighbour-owned anchor at -_RIM that
+            # jitters in-bounds is still considered.  Sets dedup the corner.
+            _rim_cells: set[tuple[int, int]] = set()
+            for _r in range(-_RIM, _RIM):                 # top (low-Z) band
+                for _c in range(-_RIM, W + _RIM):
+                    _rim_cells.add((_r, _c))
+            for _c in range(-_RIM, _RIM):                 # left (low-X) band
+                for _r in range(-_RIM, H + _RIM):
+                    _rim_cells.add((_r, _c))
+
+            _DEN_FLOOR_R = den_floor
+            _DEN_SCALE_R = den_scale
+            _DEN_OCT_R = den_oct
+            _SNOW_BLOCKS_R = _SNOW_SURFACE_BLOCKS
+
+            for (_lr, _lc) in _rim_cells:
+                world_x = px_off + _lc
+                world_z = py_off + _lr
+                # Biome from the ecotone halo (covers the rim overhang).
+                _bi = int(_lr + _bg_pad)
+                _bj = int(_lc + _bg_pad)
+                _biome_r = str(biome_grid_padded[_bi, _bj])
+                # Surface from the seam halo.
+                _si = int(_lr + _sy_pad)
+                _sj = int(_lc + _sy_pad)
+                _sy_r = int(surface_y_padded[_si, _sj])
+                if _sy_r < 63:
+                    continue  # not land
+
+                # World-coord-shared density noise (identical from both tiles).
+                _nz = _fbm(den_gen, world_x / _DEN_SCALE_R, world_z / _DEN_SCALE_R, _DEN_OCT_R)
+                _dmult = _DEN_FLOOR_R + (1.0 - _DEN_FLOOR_R) * _nz
+
+                for _ptype, _excl, _salt_a, _salt_sp, _salt_jx, _salt_jz, _salt_rot in (
+                    ("tree", exclusion, 0xA1, 0xE5, 0xB2, 0xB3, 0xF0),
+                    ("bush", bush_exclusion, 0xA2, 0xE6, 0xB4, 0xB5, 0xF1),
+                ):
+                    _es, _ws = _rim_entries(_biome_r, _ptype)
+                    if not _es:
+                        continue
+                    # final_d uses ONLY world-coord-SHARED inputs so both
+                    # adjacent tiles compute the SAME threshold for a shared seam
+                    # cell: BASE_DENSITY[biome] (biome-keyed const) × world-coord
+                    # density noise × biome-keyed scalar multipliers.  The
+                    # tile-LOCAL eco_density_tile / karst_density_mult are
+                    # DELIBERATELY EXCLUDED — edge-replicating them gave each tile
+                    # a different value at the halo (plan risk #2), which broke
+                    # the accept/reject coin symmetry (measured: rim emissions
+                    # agreed only ~9% across the seam).  On flat forest eco≈1 so
+                    # the density is unchanged; on a steep/treeline seam the slope
+                    # thinning is dropped here, slightly over-placing at the very
+                    # edge — bounded by the canopy-exclusion spacing, and the rim
+                    # only fills the LOW edge (≤RIM px).
+                    base_d = BASE_DENSITY.get(_biome_r, 0.05)
+                    final_d = base_d * _dmult
+                    if _ptype == "bush":
+                        _abs_bush = BUSH_DENSITY_ABS.get(_biome_r)
+                        if _abs_bush is not None:
+                            final_d *= (_abs_bush / max(base_d, 1e-9))
+                            if _biome_r in SPARSE_BUSH_BIOMES:
+                                final_d *= 0.5
+                        else:
+                            final_d *= 0.4
+                            if _biome_r in SPARSE_BUSH_BIOMES:
+                                final_d *= 0.5
+                            final_d *= BUSH_DENSITY_MULT.get(_biome_r, 1.0)
+                            if _biome_r == "CONTINENTAL_STEPPE":
+                                final_d *= 4.0
+                    else:
+                        if _biome_r == "ARCTIC_TUNDRA":
+                            final_d *= 0.05
+                        if _biome_r == "FROZEN_FLATS":
+                            final_d *= 0.03
+
+                    # Rim-density parity boost (both tree + bush rim paths share
+                    # this accept test).  Lifts the sparse per-cell rim coin to
+                    # ~interior density so the low edge fills enough that canopy
+                    # reaches the seam; the shared exclusion grid caps stacking.
+                    # Clamp <=1.0 so a high biome density * boost can't overflow.
+                    final_d = min(final_d * _RIM_DEN_BOOST, 1.0)
+
+                    if _wc_u01s(world_x, world_z, _salt_a) >= final_d:
+                        continue
+
+                    # Deterministic species pick (world-coord-shared weights).
+                    entry = _rim_pick(_es, _ws, _wc_u01s(world_x, world_z, _salt_sp))
+                    radius = _biome_canopy_radius(entry.size, _biome_r, cfg)
+
+                    # Deterministic jitter — true coords (anchor may be OOB).
+                    jx = int(_wc_u01s(world_x, world_z, _salt_jx) * 7) - 3
+                    jz = int(_wc_u01s(world_x, world_z, _salt_jz) * 7) - 3
+                    j_lr = _lr + jz
+                    j_lc = _lc + jx
+
+                    # S96: the rim RENDERS only IN-BOUNDS, LOW-edge anchors.  An
+                    # OOB jittered anchor (j_lc<0 / >=W / j_lr<0 / >=H) is culled
+                    # by chunk_writer, so we DROP it here (no asymmetric float —
+                    # BUG 4).  A HIGH-edge in-bounds anchor (col>=RIM and row>=RIM)
+                    # is interior-owned, skip it too.  What survives is exactly the
+                    # set THIS tile stamps: its low edge.
+                    _low_edge_anchor = (0 <= j_lr < H) and (0 <= j_lc < W) and (
+                        j_lc < _RIM or j_lr < _RIM)
+                    if not _low_edge_anchor:
+                        continue
+
+                    # BUG 3: gate by the SAME land_mask the interior used — water
+                    # buffer + gap full-suppress (rock/snow/floodplain/meadow/
+                    # windthrow/sand_dune/beach, honouring all interior exceptions)
+                    # + clearing-interior + snow-surface.  j_lr,j_lc are in-bounds
+                    # here so the inner mask is directly indexable.
+                    if not bool(land_mask[j_lr, j_lc]):
+                        continue
+
+                    # Share the interior exclusion grids (this tile owns them;
+                    # interior ran first → canonical at the boundary).
+                    if _ptype == "tree":
+                        if not _excl.is_clear(j_lr, j_lc, radius):
+                            continue
+                    else:
+                        _br = max(1, radius // 2)
+                        if not _excl.is_clear(j_lr, j_lc, _br):
+                            continue
+                        if not exclusion.is_clear(j_lr, j_lc, _br):
+                            continue
+
+                    # Snow-surface skip (land_mask already folds snow_surface_mask
+                    # in, but that mask exempts AT/FF/SBT — keep the hard block
+                    # check too so no tree seats on raw snow/ice at the seam).
+                    if (_ptype == "tree" and surface_blocks is not None
+                            and _SNOW_BLOCKS_R
+                            and str(surface_blocks[j_lr, j_lc]) in _SNOW_BLOCKS_R):
+                        continue
+
+                    # BUG 2: place_y surface.  Because the rim now stamps ONLY
+                    # in-bounds LOW-edge anchors (each seam tree rendered by its
+                    # ONE owning tile, never duplicated), the accurate POST-CARVE
+                    # inner surface_y is directly available and is what the
+                    # interior trees on this tile use — so a rim tree seats
+                    # exactly like its interior neighbour (no Y step where the
+                    # rim meets the interior fill).  We compare it against the
+                    # PRE-CARVE padded surface and take the LOWER (deeper) of the
+                    # two so a tree never floats over a carved channel/relief dip
+                    # that the post-carve value already reflects; this also keeps
+                    # the two sides of the seam (interior high-edge vs rim
+                    # low-edge) reading the same seam-continuous carved terrain.
+                    sy_j = int(surface_y[j_lr, j_lc])
+                    _jsi = int(j_lr + _sy_pad)
+                    _jsj = int(j_lc + _sy_pad)
+                    if (0 <= _jsi < _pc_pad.shape[0]
+                            and 0 <= _jsj < _pc_pad.shape[1]):
+                        sy_j = min(sy_j, int(_pc_pad[_jsi, _jsj]))
+                    base_y = sy_j - entry.anchor_y - entry.inset_depth
+                    # BUG 1: extra_inset from a world-ANCHOR hash (not tile rng) so
+                    # both adjacent tiles compute the SAME inset for a shared tree.
+                    _u_extra = _wc_u01s(px_off + j_lc, py_off + j_lr, 0xE7)
+                    extra = _compute_extra_inset_u(
+                        entry.size, entry.method, base_y,
+                        entry.lowest_leaf_y, sy_j, _u_extra)
+                    place_y = base_y - extra
+                    rotation = int(_wc_u01s(world_x, world_z, _salt_rot) * 4) & 3
+
+                    if _rim_dbg_rows is not None:
+                        _rim_dbg_rows.append(
+                            (px_off + j_lc, py_off + j_lr, _ptype,
+                             entry.species, entry.path, 1))
+
+                    placements.append(PlacementRecord(
+                        schem_path  = entry.path,
+                        world_x     = px_off + j_lc,
+                        world_z     = py_off + j_lr,
+                        place_y     = place_y,
+                        anchor_y    = entry.anchor_y,
+                        inset_depth = entry.inset_depth,
+                        extra_inset = extra,
+                        size        = entry.size,
+                        schem_type  = entry.schem_type,
+                        biome       = _biome_r,
+                        rotation    = rotation,
+                        species     = entry.species,
+                    ))
+                    # All kept rim cells are in-bounds → mark the shared grid.
+                    if _ptype == "tree":
+                        _excl.mark(j_lr, j_lc, radius)
+                    else:
+                        _excl.mark(j_lr, j_lc, max(1, radius // 2))
+
+            if _rim_dbg_rows is not None:
+                try:
+                    import numpy as _np_rd
+                    _np_rd.save(
+                        f"{_rim_dbg}/rim_{tile_x}_{tile_y}.npy",
+                        _np_rd.array(_rim_dbg_rows, dtype=object),
+                        allow_pickle=True)
+                    print(f"[SEAM_RIM_DUMP] tile=({tile_x},{tile_y}) "
+                          f"rim emissions: {len(_rim_dbg_rows)}", flush=True)
+                except Exception as _rd_e:
+                    print(f"[SEAM_RIM_DUMP] WARN: {_rd_e}", flush=True)
 
     if _KR_DBG:
         _lbls = ["<450", "450-500", "500-550", "550-575", "575-650", ">=650"]

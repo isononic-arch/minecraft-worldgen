@@ -57,6 +57,7 @@ OVERRIDE_BIOME_MAP: dict[int, str] = {
     220: "TIDAL_JUNGLE_FRINGE",
     230: "MANGROVE_COAST",
     240: "FRESHWATER_FEN",
+    254: "_OCEAN",   # S95-T4: island-only open-ocean sentinel. Mainland override never emits 254; islands paint it on ~land so re-snapped sea-level cells short-circuit Stage 0 to _OCEAN instead of mis-classifying as coastal → SAND_DUNE_DESERT.
 }
 
 # Reverse map: biome name → override value
