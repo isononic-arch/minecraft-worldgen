@@ -82,7 +82,13 @@ def main():
     from islands.install_sparse import fast_install              # S95: ~1min vs sparse_install ~60h
     names = [n.strip() for n in a.names.split(",") if n.strip()] or None
     fast_install(dst / "region", names=names)
-    print(f"\nworld ready: {dst}\n  islands+shelf installed (raw-copy fast path) + superflat ocean + datapack")
+    # S98: drop island regions with nothing above water so the world's noise-ocean
+    # generator fills them -> no tile-stepped rendered-ocean boundary around islands
+    # (esp. Madre's scattered fjords). Decodes each region (~25m full world); out/
+    # keeps the full render so it's reversible.
+    from islands._drop_ocean_regions import drop_ocean_regions
+    drop_ocean_regions(dst / "region", apply=True)
+    print(f"\nworld ready: {dst}\n  islands+shelf installed (raw-copy fast path) + open-ocean tiles dropped to noise-ocean + datapack")
     print("  Open in MC 1.21.x; fly to the island world-coords. NEVER load this world under an old ocean.json.")
 
 
