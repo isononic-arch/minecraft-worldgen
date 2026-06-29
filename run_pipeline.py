@@ -815,6 +815,17 @@ def _process_tile(args: dict) -> dict:
         relief_rough_padded = _relief_rough_pad,
     )
 
+    # S98 flat-coral-platform fix (per-island `surface_stone_to_sand`): La Tortuga
+    # + Grand Turk are flat limestone/coral platforms whose low-relief shelf falls
+    # through to BARE STONE at the surface (the gray apron the user flagged). Swap
+    # surface stone -> sand on those islands so the platform reads as a coral sand
+    # flat. Flag absent from mainland + every other island config -> no-op
+    # (byte-identical). Island-only, set by render_islands.bake_island.
+    if isinstance(cfg, dict) and cfg.get("surface_stone_to_sand"):
+        _ss = np.asarray(surface_blk) == "stone"
+        if _ss.any():
+            surface_blk[_ss] = "sand"
+
     # S89 floating-tree fix: snapshot surface_y AFTER decorate (post rock-relief /
     # grass-terrace).  Schematics (Step 8) anchor on THIS surface; Step 9's
     # water/bank/bed smoothing then perturbs surface_y and -- with peak_crunch
