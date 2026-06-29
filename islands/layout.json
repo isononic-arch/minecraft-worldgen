@@ -9,7 +9,7 @@
   "islands": [
     {
       "name": "New Vincentia (St Kitts/Nevis/Statia)",
-      "dem_path": "C:\\Users\\nicho\\Downloads\\17_288_-62_743_13_4096_4096_16bit.png",
+      "dem_path": "C:\\Users\\nicho\\minecraft-worldgen\\islands\\prerot_dems\\17_288_prerot_16bit.png",
       "world_offset_px": [
         255,
         6552
@@ -22,12 +22,14 @@
       "mcy_peak": 442.4,
       "declip": true,
       "flipx": false,
-      "flipz": true,
-      "rot_deg": 115.0,
+      "flipz": false,
+      "rot_deg": 0.0,
       "footprint_blocks": [
         10871,
         10877
-      ]
+      ],
+      "prerot_from": "C:\\Users\\nicho\\Downloads\\17_288_-62_743_13_4096_4096_16bit.png",
+      "prerot_sea_raw": 2802.0
     },
     {
       "name": "Kostati (St Vincent/Grenadines)",
@@ -97,7 +99,7 @@
     },
     {
       "name": "Anguilla / St Maarten + outliers",
-      "dem_path": "C:\\Users\\nicho\\Downloads\\18_299_-63_070_13_4096_4096_16bit.png",
+      "dem_path": "C:\\Users\\nicho\\minecraft-worldgen\\islands\\prerot_dems\\18_299_prerot_16bit.png",
       "world_offset_px": [
         27417,
         51209
@@ -111,11 +113,13 @@
       "declip": true,
       "flipx": false,
       "flipz": false,
-      "rot_deg": 29.0,
+      "rot_deg": 0.0,
       "footprint_blocks": [
         11059,
         11053
-      ]
+      ],
+      "prerot_from": "C:\\Users\\nicho\\Downloads\\18_299_-63_070_13_4096_4096_16bit.png",
+      "prerot_sea_raw": 359.0
     },
     {
       "name": "La Tortuga",
@@ -141,7 +145,7 @@
     },
     {
       "name": "Los Roques (atoll)",
-      "dem_path": "C:\\Users\\nicho\\Downloads\\11_863_-66_783_13_4096_4096_16bit.png",
+      "dem_path": "C:\\Users\\nicho\\minecraft-worldgen\\islands\\prerot_dems\\11_863_prerot_16bit.png",
       "world_offset_px": [
         27186,
         45397
@@ -155,11 +159,13 @@
       "declip": false,
       "flipx": false,
       "flipz": false,
-      "rot_deg": 313.0,
+      "rot_deg": 0.0,
       "footprint_blocks": [
         11847,
         11853
-      ]
+      ],
+      "prerot_from": "C:\\Users\\nicho\\Downloads\\11_863_-66_783_13_4096_4096_16bit.png",
+      "prerot_sea_raw": 2632.0
     },
     {
       "name": "Grenada outliers / Grenadines",
@@ -209,7 +215,7 @@
     },
     {
       "name": "Admiralty Islands (Papua New Guinea)",
-      "dem_path": "C:\\Users\\nicho\\Downloads\\-1_509_149_782_13_4096_4096_16bit.png",
+      "dem_path": "C:\\Users\\nicho\\minecraft-worldgen\\islands\\prerot_dems\\-1_509_prerot_16bit.png",
       "world_offset_px": [
         53867,
         46584
@@ -223,15 +229,17 @@
       "declip": false,
       "flipx": false,
       "flipz": false,
-      "rot_deg": 318.0,
+      "rot_deg": 0.0,
       "footprint_blocks": [
         12095,
         12101
-      ]
+      ],
+      "prerot_from": "C:\\Users\\nicho\\Downloads\\-1_509_149_782_13_4096_4096_16bit.png",
+      "prerot_sea_raw": 61811.0
     },
     {
       "name": "Ouvea atoll",
-      "dem_path": "C:\\Users\\nicho\\Downloads\\-20_529_166_479_13_4096_4096_16bit.png",
+      "dem_path": "C:\\Users\\nicho\\minecraft-worldgen\\islands\\prerot_dems\\-20_529_prerot_16bit.png",
       "world_offset_px": [
         47096,
         50416
@@ -244,16 +252,18 @@
       "mcy_peak": 76.1,
       "declip": false,
       "flipx": false,
-      "flipz": true,
-      "rot_deg": 53.0,
+      "flipz": false,
+      "rot_deg": 0.0,
       "footprint_blocks": [
         11237,
         11237
-      ]
+      ],
+      "prerot_from": "C:\\Users\\nicho\\Downloads\\-20_529_166_479_13_4096_4096_16bit.png",
+      "prerot_sea_raw": 1835.0
     },
     {
       "name": "Loyalty islets",
-      "dem_path": "C:\\Users\\nicho\\Downloads\\-21_008_167_833_13_4096_4096_16bit.png",
+      "dem_path": "C:\\Users\\nicho\\minecraft-worldgen\\islands\\prerot_dems\\-21_008_prerot_16bit.png",
       "world_offset_px": [
         44567,
         58495
@@ -266,12 +276,14 @@
       "mcy_peak": 92.5,
       "declip": false,
       "flipx": false,
-      "flipz": true,
-      "rot_deg": 48.0,
+      "flipz": false,
+      "rot_deg": 0.0,
       "footprint_blocks": [
         11302,
         11297
-      ]
+      ],
+      "prerot_from": "C:\\Users\\nicho\\Downloads\\-21_008_167_833_13_4096_4096_16bit.png",
+      "prerot_sea_raw": 561.0
     },
     {
       "name": "Efate (Vanuatu)",
