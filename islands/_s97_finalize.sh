@@ -12,12 +12,14 @@ NAMES_SAFE="grenada_outliers_grenadines kostati_st_vincent_grenadines new_vincen
 # DEM tokens (unambiguous for topdown_fast --name; 'grenad' alone hits Kostati)
 declare -A TOK=( [grenada_outliers_grenadines]=12_445 [kostati_st_vincent_grenadines]=13_130 [new_vincentia_st_kitts_nevis_statia]=17_288 )
 
-echo "=== 1. clear stale local out + extract collected tarballs ==="
-for n in $NAMES_SAFE; do rm -f "islands/out/$n"/r.*.mca 2>/dev/null; done
+echo "=== 1. extract collected tarballs (RELATIVE paths; tar reads C:/ as host:path) ==="
 shopt -s nullglob
+# Extract FIRST (relative archive + -C . so tar never sees a C: drive), THEN the
+# fresh .mca overwrite the stale ones. (The old order — rm then extract — wiped
+# out/ when the C:-path tar failed.)
 got=0
-for t in "$COL"/*.tgz; do echo "  extract $(basename "$t")"; tar xzf "$t" -C "$ROOT" && got=$((got+1)); done
-[ "$got" = 0 ] && { echo "!! no tarballs in $COL — render not collected yet?"; exit 1; }
+for t in islands/_collect_s97/*.tgz; do echo "  extract $(basename "$t")"; tar xzf "$t" -C . && got=$((got+1)); done
+[ "$got" = 0 ] && { echo "!! no tarballs in islands/_collect_s97 — render not collected yet?"; exit 1; }
 echo "  extracted $got tarball(s)"
 for n in $NAMES_SAFE; do
   c=$(ls "islands/out/$n"/r.*.mca 2>/dev/null | wc -l); echo "  out/$n : $c region files"

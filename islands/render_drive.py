@@ -1,7 +1,8 @@
 """render_drive.py — drive run_pipeline._process_tile over an island's content
 tiles, reading masks LOCALLY and writing blocks at the world offset."""
 from __future__ import annotations
-import json, sys, time, math
+import os, json, sys, time, math
+os.environ.setdefault("VANDIR_ISLAND_RENDER", "1")  # S98: island-only schematic filters (apine out of maquis). Inherited by ProcessPool workers via the OS env.
 from pathlib import Path
 import numpy as np
 import rasterio

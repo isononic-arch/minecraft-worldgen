@@ -79,23 +79,98 @@ BANDS = {
   "13_130":  A(bands=[(0.0,230),(0.04,160),(0.60,60)],         snow=1.5,  rock=30, wind=0.12, litho="mossy_temperate", keep_box=[0.0,0.78,0.0,1.0]),  # Kostati St Vincent — lush tropical: mangrove coast → LUSH jungle → highland broadleaf. keep_box x<0.78: the real St Vincent + Grenadines chain all sit at centroid x<0.75; the rot=80 crop drags an off-frame secondary landmass into the far-right (comp cx0.82-0.87, centroid 0.33 of the bbox-diagonal from St Vincent) — the v6 "eastern boundary cutoff/artifacts" slab. x<0.78 oceans it while keeping every real Grenadine.
   "-1_509":  A(bands=[(0.0,230),(0.04,160),(0.72,60)],         snow=1.5,  rock=32, wind=0.10, litho="mossy_temperate"),  # Admiralty PNG — equatorial rainforest, LUSH-dominant
   "-17_622": A(bands=[(0.0,230),(0.04,160),(0.55,60)],         snow=1.5,  rock=28, wind=0.15, litho="mossy_temperate"),  # Efate Vanuatu — tropical + tradewind (W-wet/E-dry) windward/leeward
-  "12_445":  A(bands=[(0.0,230),(0.05,160),(0.55,210)],        snow=1.5,  rock=30, wind=0.10, litho="mossy_temperate"),  # Grenadines — wet windward LUSH, dry leeward maquis
+  "12_445":  A(bands=[(0.0,230),(0.05,160),(0.55,200)],        snow=1.5,  rock=30, wind=0.10, litho="mossy_temperate"),  # Grenadines — wet windward LUSH, dry leeward (S98: maquis 210->200 SEMI_ARID brushy)
   "49_722":  A(bands=[(0.0,10),(0.10,30),(0.55,35)],           snow=0.62, rock=30, wind=0.0,  litho="deepslate_metamorphic"),  # Fogo Island NL — boreal cold; Precambrian Canadian-Shield gneiss (northernmost; Jan Mayen deleted)
   # ── metamorphic massif → deepslate_metamorphic ──────────────────────────────
-  "11_060":  A(bands=[(0.0,150),(0.10,200),(0.45,210),(0.78,90)],snow=1.5,rock=29, wind=-0.10,litho="deepslate_metamorphic", keep_box=[0.45,1.0,0.0,1.0]),# Margarita — dry continental schist/gneiss (Cerro El Copey). keep_box x>0.45: real Isla Margarita (BOTH east + Macanao west lobes are ONE connected 6.2Mpx component spanning 4238 blocks at cx0.73) sits in the right two-thirds; the crop also catches a SEPARATE 2.96Mpx off-frame mainland-coast landmass at cx0.25 whose centroid is 4085 blocks (0.34 of the bbox-diagonal) west of the real island — the v6 "land cutoff" slab. x>0.45 oceans it + keeps Coche/Cubagua (cx0.74-0.95) and the real island intact.
+  "11_060":  A(bands=[(0.0,150),(0.10,200),(0.45,200),(0.78,90)],snow=1.5,rock=29, wind=-0.10,litho="deepslate_metamorphic", keep_box=[0.45,1.0,0.0,1.0]),# Margarita (S98: maquis 210->200 SEMI_ARID brushy) — dry continental schist/gneiss (Cerro El Copey). keep_box x>0.45: real Isla Margarita (BOTH east + Macanao west lobes are ONE connected 6.2Mpx component spanning 4238 blocks at cx0.73) sits in the right two-thirds; the crop also catches a SEPARATE 2.96Mpx off-frame mainland-coast landmass at cx0.25 whose centroid is 4085 blocks (0.34 of the bbox-diagonal) west of the real island — the v6 "land cutoff" slab. x>0.45 oceans it + keeps Coche/Cubagua (cx0.74-0.95) and the real island intact.
   # ── carbonate / coral / marble karst → limestone ────────────────────────────
   "-50_393": A(bands=[(0.0,70),(0.10,20),(0.45,100),(0.75,30)],snow=0.72, rock=28, wind=0.10, litho="limestone", keep_box=[0.0,0.80,0.0,0.80], skip_erase=True, ocean_margin_px=32),# Madre de Dios — fjord/marble KARST. keep_box (centroid x<0.80 & y<0.80) keeps the THREE real fjord islands (white center-mass cx0.53 / green lower-left cx0.44 / fragmented medium island cx0.56-0.67) and oceans the unwanted mainland-coast cluster (cx>0.83) + two bottom-center blobs (cy0.88/0.91). Replaces frag_cut_east=0.75 which leaked ~298kpx (junk straddled the 0.75 col) and could not be fixed by frag_keep_largest=3 (the largest junk blob 2.9Mpx outranks the fragmented real medium island, largest fragment 1.43Mpx).
-  "18_299":  A(bands=[(0.0,150),(0.12,210),(0.55,220)],        snow=1.5,  rock=30, wind=0.05, litho="limestone"),           # Anguilla/St Maarten — limestone-dominant
+  "18_299":  A(bands=[(0.0,150),(0.12,200),(0.55,220)],        snow=1.5,  rock=30, wind=0.05, litho="limestone"),           # Anguilla/St Maarten — limestone (S98: maquis 210->200 SEMI_ARID brushy)
   "10_941":  A(bands=[(0.0,9),(0.06,200)],                     snow=1.5,  rock=34, wind=-0.10,litho="limestone", stone_to_sand=True),           # La Tortuga — arid carbonate: SEMI_ARID_SHRUBLAND only; NO SAND_DUNE_DESERT(170) -> no dune columns. Beaches via beach.tif gap==9 (sentinel 9 -> next band 200)
   "21_395":  A(bands=[(0.0,9),(0.06,200),(0.40,150)],          snow=1.5,  rock=34, wind=-0.05,litho="limestone", height_gain=9.0, keep_box=[0.0,1.0,0.34,1.0], stone_to_sand=True),# Grand Turk — dry coral; VERY flat DEM -> bigger gain to clear sea (median land Y64.4). keep_box y>0.34: the height_gain=9 inflates the shallow Caicos Bank, and one inflated wedge forms a hard-edged TRIANGULAR slab (the v6 upper "land cutoff", single 96kpx component, straight diagonal hypotenuse, centroid cy0.30) that reads as junk vs the lumpy/fractal real cays (all at cy>0.37). y>0.34 oceans the triangle + a thin northern bank strip (cy0.24) and keeps Grand Turk + every real cay cluster.
   "23_887":  A(bands=[(0.0,9),(0.06,150),(0.40,200)],          snow=1.5,  rock=34, wind=0.0,  litho="limestone", height_gain=5.0),# Bahamas — coral platform; spline mapped land to Y64 pancake ("nO BAHAMAS") -> gain lifts interior to ~Y66-78
   "11_863":  A(bands=[(0.0,230),(0.10,220)],                   snow=1.5,  rock=34, wind=0.0,  litho="limestone"),           # Los Roques — coral atoll
   "-20_529": A(bands=[(0.0,230),(0.10,220)],                   snow=1.5,  rock=34, wind=0.0,  litho="limestone"),           # Ouvea — raised coral atoll
-  "-21_008": A(bands=[(0.0,9),(0.08,150),(0.40,210)],          snow=1.5,  rock=33, wind=0.0,  litho="limestone"),           # Loyalty — raised coral limestone
+  "-21_008": A(bands=[(0.0,9),(0.08,150),(0.40,200)],          snow=1.5,  rock=33, wind=0.0,  litho="limestone", stone_to_sand=True),  # Loyalty — raised coral limestone (S98: stone->sand + maquis 210->200 SEMI_ARID brushy)
 }
-DEFAULT_BAND = A(bands=[(0.0,9),(0.06,150),(0.4,210)], snow=1.5, rock=30, wind=0.0, litho="temperate_basaltic")
+DEFAULT_BAND = A(bands=[(0.0,9),(0.06,150),(0.4,200)], snow=1.5, rock=30, wind=0.0, litho="temperate_basaltic")  # S98: maquis 210->200 SEMI_ARID
 VEX = 1.5   # vertical exaggeration of the no-override fallback peak (1.0 = geographically true 1:1;
             # islands/spline_overrides.json overrides this per-island via the spline editor)
+
+# S98 island polish — dead coral that paints on LAND (palette bug) and the names of the
+# "scree" talus blocks the user wants softened to natural soil.
+_DEAD_CORAL = {"dead_bubble_coral_block", "dead_fire_coral_block", "dead_tube_coral_block",
+               "dead_horn_coral_block", "dead_brain_coral_block"}
+_CORAL_REPL = {"granitic": "andesite", "limestone": "andesite", "temperate_basaltic": "deepslate",
+               "mossy_temperate": "tuff", "arid_basaltic": "basalt", "deepslate_metamorphic": "andesite"}
+_TALUS_SOFTEN = {"suspicious_gravel": "gravel", "packed_mud": "coarse_dirt"}
+_JM_BIOMES = ("MANGROVE_COAST", "TIDAL_JUNGLE_FRINGE", "LUSH_RAINFOREST_COAST")
+
+
+def apply_island_polish(cfg):
+    """S98 ISLAND-ONLY config deltas (written into thresholds_island.json, NOT the shared
+    config/thresholds.json -> the S94-validated mainland render stays byte-identical):
+      #3a de-coral: dead-coral palette entries -> stone-family (coral-on-land is a bug);
+      #3b soften the talus 'scree' apron (suspicious_gravel/packed_mud -> gravel/coarse_dirt);
+      #5  jungle/mangrove mud -> 40% moss / 20% grass / 25% podzol / 10% coarse_dirt, veg maxed.
+    Idempotent (safe to re-apply to an already-patched thresholds_island.json)."""
+    groups = cfg.get("lithology", {}).get("groups", {})
+    for gname, g in groups.items():
+        rep = _CORAL_REPL.get(gname, "stone")
+        for pk in ("palette", "cap_palette", "concavity_palette", "wash_palette",
+                   "talus_palette", "varnish_palette", "bedrock_drainage_palette"):
+            lst = g.get(pk)
+            if isinstance(lst, list):
+                lst = [rep if b in _DEAD_CORAL else b for b in lst]
+                if pk == "talus_palette":
+                    lst = [_TALUS_SOFTEN.get(b, b) for b in lst]
+                g[pk] = lst
+        for band in ("strata",):  # strata band primaries can carry coral too
+            sb = g.get(band)
+            if isinstance(sb, dict):
+                for bk in ("band_a", "band_b"):
+                    bb = sb.get(bk, {})
+                    for key in ("primary", "secondary"):
+                        if bb.get(key) in _DEAD_CORAL:
+                            bb[key] = rep
+    # #5 mud swap (faithful redistribution): base fill -> moss; overpaint grass/podzol/coarse;
+    # keep a little mud for wet patches. Approx 40/20/25/10/(5 mud).
+    nlb = cfg.setdefault("noise_layers_biome", {})
+    for biome in _JM_BIOMES:
+        layers = nlb.get(biome)
+        if not layers:
+            continue
+        seen_base = False
+        for l in layers:
+            if l.get("block") == "mud":
+                if l.get("is_base") and not seen_base:
+                    l["block"] = "moss_block"; l["sub"] = "dirt"; l["name"] = "moss (S98 mud-swap base)"
+                    seen_base = True
+                else:
+                    l["block"] = "coarse_dirt"; l["coverage"] = 0.10; l["name"] = "mud->coarse (S98)"
+        # add the grass/podzol overpaint layers if not already present (idempotent by name)
+        names = {l.get("name") for l in layers}
+        for blk, cov, nm in (("grass_block", 0.20, "grass (S98 mud-swap)"),
+                             ("podzol", 0.25, "podzol (S98 mud-swap)"),
+                             ("mud", 0.10, "mud wet-patch (S98)")):
+            if nm not in names:
+                layers.append({"name": nm, "noise": "simplex_fbm", "enabled": True,
+                               "block": blk, "sub": "dirt", "coverage": cov, "scale": 28,
+                               "seed": 4242, "is_base": False})
+        nlb[biome] = layers
+    # #5 veg density (island-only; BASE_DENSITY is shared code, radius_mult is config).
+    # S98 walk: dense but slightly DIALED BACK from max (user). Plus tight bush packing
+    # for the now-treeless SEMI_ARID_SHRUBLAND so the brushy fill reads (small radius ->
+    # small bush exclusion -> bushes pack shoulder-to-shoulder).
+    rm = cfg.setdefault("tree_spacing", {}).setdefault("radius_mult_by_biome", {})
+    for biome in _JM_BIOMES:                 # MANGROVE_COAST, TIDAL_JUNGLE_FRINGE, LUSH_RAINFOREST_COAST
+        rm[biome] = 0.5
+    rm["SEMI_ARID_SHRUBLAND"] = 0.18   # S98: tighter -> radius//2 hits 0 -> bushes pack adjacent
+    # #10 atoll mud/coral: DISABLE the MANGROVE_COAST ocean variant entirely so the
+    # seabed near mangrove/atoll coasts uses the standard ocean palette (user: "default
+    # to whatever the beach is" — kills the brackish mud + dead-coral override). Island-only.
+    cfg.setdefault("ocean", {}).setdefault("biome_variants", {}).setdefault("MANGROVE_COAST", {})["enabled"] = False
+    return cfg
 
 
 def _key(dem_path):
@@ -845,6 +920,7 @@ def bake_island(entry):
     # (washes.min_flow=0.003, width_max) fire thin drainage channels on islands
     # identically to the mainland -> dark/mid/light rock_layers tiers read
     # through. The old _WASH_ROCK_COVERAGE percentile band-aid is deleted.
+    apply_island_polish(cfg)   # S98 island-only: de-coral + soften talus + jungle/mangrove mud-swap + max veg
     isl_cfg = od / "thresholds_island.json"
     isl_cfg.write_text(json.dumps(cfg))
 

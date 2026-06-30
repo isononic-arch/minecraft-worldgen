@@ -109,7 +109,14 @@ class Island:
         self.bpp = float(entry.get("blocks_per_px", 1.0))   # world blocks per NATIVE DEM px (= derive hstep)
         # TRUE horizontal scale: web-mercator m/px at this lat/zoom ÷ blocks_per_px = real metres per block.
         t = fn.split("_")
-        lat = float(f"{t[0]}.{t[1]}"); zoom = int(t[4])
+        try:
+            lat = float(f"{t[0]}.{t[1]}"); zoom = int(t[4])
+        except (IndexError, ValueError):
+            # S98 pre-rotated DEMs (e.g. "17_288_prerot_16bit.png") drop the lat/zoom
+            # tokens -> recover lat from the island key, zoom is z13 for every source DEM.
+            kt = self.key.split("_")
+            lat = abs(float(f"{kt[0]}.{kt[1]}")) if len(kt) >= 2 else 20.0
+            zoom = 13
         self.m_per_block = (156543.03392 * math.cos(math.radians(lat)) / (2 ** zoom)) / self.bpp
         self.relief_1x = self.peak_m / self.m_per_block      # 1:1 peak relief above sea, in blocks
         self.mcy_peak_default = self.peak_y(1.5)             # project default = 1.5× true proportion
@@ -413,7 +420,7 @@ class SplineStudio(QMainWindow):
         btn_clear.clicked.connect(self._clear)
         # vertical-scale dropdown (1x true / 1.5x / 2x / custom) — rescales the curve
         self.vscale = QComboBox()
-        for mult in (1.0, 1.5, 2.0, None):          # None = "custom" (hand-tuned)
+        for mult in (1.0, 1.5, 2.0, 3.0, 4.0, 8.0, None):   # None = "custom" (hand-tuned); 3/4/8x for very flat islands
             self.vscale.addItem("", mult)
         self.vscale.setStyleSheet("color:#ffcc88;")
         self.vscale.currentIndexChanged.connect(self._set_vscale)

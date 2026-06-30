@@ -250,6 +250,14 @@ BUSH_DENSITY_ABS: dict[str, float] = {
     "DRY_WOODLAND_MAQUIS":      0.50,  # user: way more generic (non-pine) bush
 }
 
+# S98 ISLAND walk: treeless semi-arid shrubland on islands should be SO brushy the
+# ground is hidden. Push the bush probability past the KARST 0.70 "lots" benchmark to
+# the packing ceiling. Env-gated (VANDIR_ISLAND_RENDER) so mainland semi-arid is untouched.
+import os as _os_isl
+_SARID_ISLAND_DENSE = bool(_os_isl.environ.get("VANDIR_ISLAND_RENDER"))
+if _SARID_ISLAND_DENSE:
+    BUSH_DENSITY_ABS["SEMI_ARID_SHRUBLAND"] = 0.95
+
 
 # ---------------------------------------------------------------------------
 # DATA STRUCTURES
@@ -427,12 +435,21 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
     # all other juniper + all pinon use spruce_leaves.  User wants only the
     # spruce-leaf set.  Filter by path substring.
     if "SEMI_ARID_SHRUBLAND" in grouped:
-        _SARID_REJECT = ("sarid_tree_juniper_a_sm", "sarid_tree_juniper_b_sm",
-                         "sarid_tree_juniper_c_sm")
-        grouped["SEMI_ARID_SHRUBLAND"] = [
-            e for e in grouped["SEMI_ARID_SHRUBLAND"]
-            if not any(rej in e.path for rej in _SARID_REJECT)
-        ]
+        import os as _os
+        if _os.environ.get("VANDIR_ISLAND_RENDER"):
+            # S98 ISLAND: semi-arid shrubland is TREELESS + maximally brushy (user) —
+            # drop every tree, keep only bushes (density pumped via BUSH_DENSITY_ABS=0.95).
+            grouped["SEMI_ARID_SHRUBLAND"] = [
+                e for e in grouped["SEMI_ARID_SHRUBLAND"] if e.schem_type != "tree"
+            ]
+        else:
+            # mainland: keep only the spruce-leaf species (drop acacia-leaf juniper).
+            _SARID_REJECT = ("sarid_tree_juniper_a_sm", "sarid_tree_juniper_b_sm",
+                             "sarid_tree_juniper_c_sm")
+            grouped["SEMI_ARID_SHRUBLAND"] = [
+                e for e in grouped["SEMI_ARID_SHRUBLAND"]
+                if not any(rej in e.path for rej in _SARID_REJECT)
+            ]
 
     # S87: per-biome tree weighting from cross-section walk.
     # Heights are from tools/diag_tree_cross_section.py output (Y dim of bbox).
@@ -703,10 +720,13 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
     # ~8% pine-leaf coverage among maquis trees, dominantly broadleaf
     # (carob/hoak/olive) per Mediterranean palette intent.
     if "DRY_WOODLAND_MAQUIS" in grouped:
+        # S98: keep only apine_d (the bushy one) + broadleaf carob/holm-oak/olive;
+        # drop the spindly apine a/b/c pines. Global — and on islands the maquis biome
+        # is entirely replaced by SEMI_ARID_SHRUBLAND anyway (BANDS 210->200).
         _MAQUIS_PINE_REJECT = (
+            "maquis_tree_apine_a_sm",
             "maquis_tree_apine_b_sm",
             "maquis_tree_apine_c_md",
-            "maquis_tree_apine_d_lg",
         )
         grouped["DRY_WOODLAND_MAQUIS"] = [
             e for e in grouped["DRY_WOODLAND_MAQUIS"]
@@ -1788,6 +1808,10 @@ def place_schematics(
                     continue
             else:
                 bush_r = max(1, radius // 2)
+                # S98 island-only: SEMI_ARID packs bushes shoulder-to-shoulder ("can't
+                # see the ground") -> drop the exclusion floor below 1 (adjacent OK).
+                if _SARID_ISLAND_DENSE and biome_str == "SEMI_ARID_SHRUBLAND":
+                    bush_r = radius // 2
                 if not bush_exclusion.is_clear(row, col, bush_r):
                     continue
                 # Cross-check: don't place a bush where a tree was placed.
@@ -1946,7 +1970,9 @@ def place_schematics(
                     else:
                         _kr_dbg_reg[_b] += 1
             else:
-                bush_exclusion.mark(row, col, max(1, radius // 2))
+                _bmark = (radius // 2 if (_SARID_ISLAND_DENSE and biome_str == "SEMI_ARID_SHRUBLAND")
+                          else max(1, radius // 2))
+                bush_exclusion.mark(row, col, _bmark)
 
     # ====================================================================
     # S96 SEAM RIM PASS — world-coord DETERMINISTIC tree+bush reconstruction

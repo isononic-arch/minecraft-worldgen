@@ -623,6 +623,20 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     ],
 }
 
+# S98 island-only: SEMI_ARID_SHRUBLAND reads as a dense brushy steppe — the ground is
+# CARPETED in short/tall grass so you "can't see the ground" (user), on top of the packed
+# bushes (schematic_placement BUSH_DENSITY_ABS 0.95 + tighter radius_mult/exclusion). Grass
+# species sum > 1 -> ~full per-pixel coverage. Env-gated VANDIR_ISLAND_RENDER so the mainland
+# steppe palette stays byte-identical.
+import os as _os_sd
+if _os_sd.environ.get("VANDIR_ISLAND_RENDER"):
+    GROUND_COVER_PALETTES["SEMI_ARID_SHRUBLAND"] = [
+        ("short_grass", 0.80), ("tall_grass", 0.45),
+        ("short_dry_grass", 0.28), ("tall_dry_grass", 0.20),
+        ("bush", 0.10), ("dead_bush", 0.01),
+        ("dandelion", 0.008), ("poppy", 0.008),
+    ]
+
 # Double-tall blocks — chunk_writer must place [half=upper] at Y+1 above these
 DOUBLE_TALL_BLOCKS: frozenset[str] = frozenset({
     "tall_grass", "large_fern",

@@ -204,22 +204,17 @@ def apply_flow_erosion(
     if _seam:
         dy = dy[pad:pad + H, pad:pad + W]   # crop displacement to inner tile
     sy2 = surface_y.astype(np.float32) + dy
-    # never push a rock cell below sea (it would read as water-filled gully)
-    if fcfg.get("rock_only_sea_clamp", False):
-        # ISLAND fix (S97 archipelago flood): the SEA_LEVEL+1 floor must apply
-        # ONLY to the ROCK cells that `dy` actually touched. The old whole-array
-        # clip raised EVERY non-rock cell to SEA_LEVEL+1 too -- including the flat
-        # below-sea OCEAN shelf -- so any tile that merely CONTAINED some rock
-        # (every islet tile) had its entire inter-island sea (which sits at
-        # ~Y48-62, just under Y63) lifted to Y64 = solid land. Dense archipelagos
-        # (Grenadines/Kostati/New Vincentia) flooded wholesale; consolidated
-        # islands have little shelf so it went unseen. Clamp rock cells only;
-        # non-rock ocean/land keep their carved surface_y. Mainland (flag absent)
-        # keeps the exact old whole-array clip -> byte-identical.
-        from core.column_generator import MC_Y_MIN as _MC_Y_MIN
-        _rock_inner = rock[pad:pad + H, pad:pad + W] if _seam else rock
-        sy2 = np.clip(sy2, float(_MC_Y_MIN + 4), float(MC_Y_MAX - 1))
-        sy2 = np.where(_rock_inner, np.maximum(sy2, float(SEA_LEVEL + 1)), sy2)
-    else:
-        sy2 = np.clip(sy2, float(SEA_LEVEL + 1), float(MC_Y_MAX - 1))
+    # Never push a ROCK cell below sea (it would read as a water-filled gully) -- but
+    # leave NON-rock cells (the flat below-sea OCEAN shelf) at their carved depth.
+    # S98: this rock-only clamp is now UNCONDITIONAL (was island-gated by
+    # `rock_only_sea_clamp`). The old mainland whole-array `clip(sy2, SEA+1, ..)` floored
+    # EVERY below-sea cell to Y64 in any tile that merely CONTAINED rock -> a flat invented
+    # land LIP at the waterline of mainland coastal-cliff tiles (USER-CONFIRMED S98) and
+    # the S97 archipelago flood. Clamping rock cells only fixes both. Pure-land tiles are
+    # unchanged (all cells already >= SEA+1), so only the handful of rock+ocean coastal
+    # tiles differ -> the rest of the mainland render stays byte-identical.
+    from core.column_generator import MC_Y_MIN as _MC_Y_MIN
+    _rock_inner = rock[pad:pad + H, pad:pad + W] if _seam else rock
+    sy2 = np.clip(sy2, float(_MC_Y_MIN + 4), float(MC_Y_MAX - 1))
+    sy2 = np.where(_rock_inner, np.maximum(sy2, float(SEA_LEVEL + 1)), sy2)
     return np.round(sy2).astype(surface_y.dtype)
