@@ -1187,7 +1187,13 @@ def build_column_array(
         _kelp_rng = np.random.default_rng(
             ((tile_world_x * 7919) ^ (tile_world_z * 31337) ^ 0xC0FFEE) & 0x7FFFFFFFFFFFFFFF
         )
-        stalk_heights = _kelp_rng.integers(5, 16, size=len(kr))   # [5, 15]
+        # S98: taller, config-driven plumes (match the generator's kelp forests).
+        # Always capped 1 block below sea (top_y) so they never breach the surface;
+        # in deep water they read as tall plumes, in shallow water they stay short.
+        _veg_cfg = (cfg or {}).get("ocean", {}).get("vegetation", {})
+        _kmin = int(_veg_cfg.get("kelp_min", 7))
+        _kmax = max(_kmin + 1, int(_veg_cfg.get("kelp_max", 24)))
+        stalk_heights = _kelp_rng.integers(_kmin, _kmax + 1, size=len(kr))
         for i in range(len(kr)):
             r, c = int(kr[i]), int(kc[i])
             sy_base = int(surface_y[r, c])

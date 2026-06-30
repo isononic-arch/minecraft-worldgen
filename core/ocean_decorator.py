@@ -321,9 +321,13 @@ def decorate_ocean(
                                        seam_safe=_seam_safe)  # low-freq = big clumps
         clump_noise = (clump_noise + 1.0) * 0.5
         clump_noise = np.clip(clump_noise, 0.0, 1.0)
-        # S66: kelp-forest shape — strong clumping, bare gaps between.  At
-        # clump_noise > 0.6, full probability; below 0.3, near-zero (bare).
-        clump_gate = np.clip((clump_noise - 0.30) / 0.30, 0.0, 1.0).astype(np.float32)
+        # S66: kelp-forest shape — clumping with bare gaps between.  S98: config-
+        # driven so density matches the generator.  gate = clip((noise - lo)/width).
+        # LOWER clump_lo => smaller bare fraction => denser overall (default 0.18,
+        # was 0.30).  clump_lo + clump_width = noise level at which density is full.
+        _clump_lo = float(veg_cfg.get("clump_lo", 0.18))
+        _clump_w  = max(1e-3, float(veg_cfg.get("clump_width", 0.32)))
+        clump_gate = np.clip((clump_noise - _clump_lo) / _clump_w, 0.0, 1.0).astype(np.float32)
 
         # Per-pixel uniform edge-softener
         rng_veg = np.random.default_rng(veg_noise_seed + 100)

@@ -146,15 +146,11 @@
           ],
           [
             "clay",
-            0.2
+            0.22
           ],
           [
             "dirt",
             0.08
-          ],
-          [
-            "tuff",
-            0.02
           ]
         ],
         "sub_blocks": [
@@ -180,27 +176,19 @@
         "blocks": [
           [
             "gravel",
-            0.45
+            0.6
           ],
           [
             "clay",
-            0.25
+            0.18
           ],
           [
             "sand",
-            0.15
+            0.14
           ],
           [
             "dirt",
             0.08
-          ],
-          [
-            "tuff",
-            0.05
-          ],
-          [
-            "stone",
-            0.02
           ]
         ],
         "sub_blocks": [
@@ -332,8 +320,12 @@
       }
     },
     "vegetation": {
-      "_comment": "S63+S65: underwater vegetation. S65 bumped kelp density ~4x in deep/mid. Only placed on soft substrates (sand/gravel/dirt/clay/coarse_dirt/rooted_dirt). Sum within a tier is the total 'any vegetation' probability.",
+      "_comment": "S63+S65+S98: underwater vegetation, denser to MATCH the ocean generator (vanilla deep_ocean kelp forests + seagrass). Only on soft substrates (sand/gravel/dirt/clay/coarse_dirt/rooted_dirt). Per-tier item sum = total 'any vegetation' probability, then modulated by the clump field. clump_lo/clump_width shape the bare-patch field: LOWER clump_lo = fewer bare spots = denser overall (gate = clip((clump_noise - clump_lo)/clump_width, 0, 1)). kelp_min/kelp_max = kelp plume stalk height range (capped 1 block below sea).",
       "enabled": true,
+      "clump_lo": 0.18,
+      "clump_width": 0.32,
+      "kelp_min": 7,
+      "kelp_max": 24,
       "shallow": {
         "depth_range": [
           1,
@@ -362,15 +354,15 @@
         "items": [
           [
             "seagrass",
-            0.12
+            0.18
           ],
           [
             "tall_seagrass",
-            0.08
+            0.11
           ],
           [
             "kelp",
-            0.18
+            0.30
           ]
         ]
       },
@@ -382,15 +374,15 @@
         "items": [
           [
             "kelp",
-            0.3
+            0.42
           ],
           [
             "tall_seagrass",
-            0.04
+            0.08
           ],
           [
             "seagrass",
-            0.03
+            0.05
           ]
         ]
       }
