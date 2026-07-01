@@ -1194,24 +1194,27 @@ def build_column_array(
         _kmin = int(_veg_cfg.get("kelp_min", 7))
         _kmax = max(_kmin + 1, int(_veg_cfg.get("kelp_max", 24)))
         stalk_heights = _kelp_rng.integers(_kmin, _kmax + 1, size=len(kr))
-        for i in range(len(kr)):
-            r, c = int(kr[i]), int(kc[i])
-            sy_base = int(surface_y[r, c])
-            if sy_base >= SEA_Y:
-                continue  # not actually underwater
-            top_y = min(sy_base + int(stalk_heights[i]), SEA_Y - 1)
-            stalk_lo = sy_base + 1
-            if top_y <= stalk_lo:
-                continue
-            # Fill Y = sy+1 .. top_y-1 with kelp_plant
-            for wy in range(stalk_lo, top_y):
-                yi = wy - Y_MIN
-                if 0 <= yi < Y_RANGE:
-                    vol[yi, r, c] = KELP_PLANT_IDX
-            # Top: mature kelp
-            top_yi = top_y - Y_MIN
-            if 0 <= top_yi < Y_RANGE:
-                vol[top_yi, r, c] = KELP_TOP_IDX
+        # S98 perf: vectorised column stamping (was a per-column Python double-loop
+        # that dragged on dense/deep-ocean tiles). Build the ragged set of plant-cell
+        # (yi, r, c) in one shot via a repeat/cumsum ramp, then scatter the mature tops.
+        # Byte-identical to the loop: same RNG draw order, same SEA_Y-1 cap + guards.
+        sy_base = surface_y[kr, kc].astype(np.int64)
+        top_y = np.minimum(sy_base + stalk_heights, SEA_Y - 1)   # mature-kelp world Y
+        stalk_lo = sy_base + 1                                    # first plant world Y
+        valid = (sy_base < SEA_Y) & (top_y > stalk_lo)           # underwater + >=1 plant cell
+        if valid.any():
+            krv, kcv = kr[valid], kc[valid]
+            lo = (stalk_lo[valid] - Y_MIN)                       # first plant yi
+            hi = (top_y[valid] - Y_MIN)                          # mature yi (= last plant yi + 1)
+            lens = hi - lo                                       # plant cells per column (>=1)
+            total = int(lens.sum())
+            col = np.repeat(np.arange(len(krv)), lens)           # plant cell -> column index
+            within = np.arange(total) - np.repeat(np.cumsum(lens) - lens, lens)
+            yi_p = np.repeat(lo, lens) + within                  # plant-cell yi
+            m = (yi_p >= 0) & (yi_p < Y_RANGE)
+            vol[yi_p[m], krv[col][m], kcv[col][m]] = KELP_PLANT_IDX
+            mt = (hi >= 0) & (hi < Y_RANGE)
+            vol[hi[mt], krv[mt], kcv[mt]] = KELP_TOP_IDX
 
     # River water fill — above-sea-level rivers need water from carved
     # surface up to river_water_y (1 block below original terrain)
