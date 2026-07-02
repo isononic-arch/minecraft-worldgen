@@ -29,6 +29,22 @@ sys.path.insert(0, str(ROOT))
 from core.biome_assignment import OVERRIDE_BIOME_MAP
 from tools.world_biome_map import BIOME_COLORS
 
+def _ensure_scratch():
+    """Regenerate the 1:8 (6250x6250) before-snapshots from masks/ if missing, so the
+    repaint is reproducible from just this committed tool + masks/{override,height}.tif
+    (the scratch npys are untracked sandbox and may be swept)."""
+    import rasterio
+    from rasterio.enums import Resampling
+    for name, src in (("scratch_ov8.npy", "override.tif"), ("scratch_h8.npy", "height.tif")):
+        p = ROOT / name
+        if not p.exists():
+            print(f"[repaint] regenerating {name} from masks/{src} (1:8 NEAREST)...")
+            a = rasterio.open(ROOT / "masks" / src).read(1, out_shape=(6250, 6250),
+                                                          resampling=Resampling.nearest)
+            np.save(p, a)
+
+
+_ensure_scratch()
 OV8 = np.load(ROOT / "scratch_ov8.npy")
 H8 = np.load(ROOT / "scratch_h8.npy")
 DS = OV8.shape[0]
