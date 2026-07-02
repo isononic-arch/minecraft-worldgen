@@ -332,9 +332,10 @@
     {
       "name": "Madre de Dios (fjords/karst)",
       "dem_path": "C:\\Users\\nicho\\Downloads\\-50_393_-75_223_12_4096_4096_16bit.png",
+      "apron_seed_min_px": 256,
       "world_offset_px": [
         6886,
-        -5816
+        -8888
       ],
       "blocks_per_px": 2.6658,
       "full_w": 4096,

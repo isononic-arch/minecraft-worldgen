@@ -202,7 +202,7 @@ BASE_DENSITY: dict[str, float] = {
     "TEMPERATE_DECIDUOUS":     0.22,
     "RAINFOREST_COAST":        0.80,   # S89 walk: user — up much closer to BA (was 0.32)
     "RIPARIAN_WOODLAND":       0.18,
-    "DRY_OAK_SAVANNA":         0.25,   # S89 walk: user — up a bit, too sparse (was 0.15)
+    "DRY_OAK_SAVANNA":         0.25,   # S99: openness via tree_spacing radius_mult (light oak woodland), +maquis trees mixed in
     "KARST_BARRENS":           0.70,   # S89: ~2x per user (ref "Mountain rock exposure in valley")
     "BIRCH_FOREST":            1.00,   # S89 walk2: user — way denser; real lever was canopy radius (0.55), BASE saturates
     "EASTERN_TEMPERATE_COAST": 0.06,
@@ -254,9 +254,13 @@ BUSH_DENSITY_ABS: dict[str, float] = {
 # ground is hidden. Push the bush probability past the KARST 0.70 "lots" benchmark to
 # the packing ceiling. Env-gated (VANDIR_ISLAND_RENDER) so mainland semi-arid is untouched.
 import os as _os_isl
-_SARID_ISLAND_DENSE = bool(_os_isl.environ.get("VANDIR_ISLAND_RENDER"))
-if _SARID_ISLAND_DENSE:
-    BUSH_DENSITY_ABS["SEMI_ARID_SHRUBLAND"] = 0.95
+# S99: dense packed semi-arid is now the default everywhere (mainland too) — was
+# env-gated VANDIR_ISLAND_RENDER; the new mainland semi-arid look (retires maquis).
+_SARID_ISLAND_DENSE = True
+BUSH_DENSITY_ABS["SEMI_ARID_SHRUBLAND"] = 0.95
+# S99: semi-arid brushy-grove amplitude — runtime knob (env) for fast A/B iteration.
+# final_d *= this (grove cores saturate thicker at higher values). Default 2.0.
+_SARID_BUSH_AMP = float(_os_isl.environ.get("VANDIR_SARID_BUSH_AMP", "0.6"))
 
 
 # ---------------------------------------------------------------------------
@@ -435,21 +439,12 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
     # all other juniper + all pinon use spruce_leaves.  User wants only the
     # spruce-leaf set.  Filter by path substring.
     if "SEMI_ARID_SHRUBLAND" in grouped:
-        import os as _os
-        if _os.environ.get("VANDIR_ISLAND_RENDER"):
-            # S98 ISLAND: semi-arid shrubland is TREELESS + maximally brushy (user) —
-            # drop every tree, keep only bushes (density pumped via BUSH_DENSITY_ABS=0.95).
-            grouped["SEMI_ARID_SHRUBLAND"] = [
-                e for e in grouped["SEMI_ARID_SHRUBLAND"] if e.schem_type != "tree"
-            ]
-        else:
-            # mainland: keep only the spruce-leaf species (drop acacia-leaf juniper).
-            _SARID_REJECT = ("sarid_tree_juniper_a_sm", "sarid_tree_juniper_b_sm",
-                             "sarid_tree_juniper_c_sm")
-            grouped["SEMI_ARID_SHRUBLAND"] = [
-                e for e in grouped["SEMI_ARID_SHRUBLAND"]
-                if not any(rej in e.path for rej in _SARID_REJECT)
-            ]
+        # S99: semi-arid shrubland is TREELESS + maximally brushy everywhere (was
+        # island-only via VANDIR_ISLAND_RENDER) — the new mainland semi-arid look
+        # that replaces the retired dry-woodland-maquis.
+        grouped["SEMI_ARID_SHRUBLAND"] = [
+            e for e in grouped["SEMI_ARID_SHRUBLAND"] if e.schem_type != "tree"
+        ]
 
     # S87: per-biome tree weighting from cross-section walk.
     # Heights are from tools/diag_tree_cross_section.py output (Y dim of bbox).
@@ -732,6 +727,25 @@ def load_index(index_path: Path) -> dict[str, list[_SchematicEntry]]:
             e for e in grouped["DRY_WOODLAND_MAQUIS"]
             if not any(rej in e.path for rej in _MAQUIS_PINE_REJECT)
         ]
+
+    # S99: mix the (de-apine'd) maquis trees into DRY_OAK_SAVANNA so the savanna
+    # carries carob/holm-oak/olive/apine_d alongside its oaks (user: "mix present
+    # dry woodland maquis and dry oak savanna together"). Maquis is retired as a
+    # zone (rebanded 210->200 in the override) but its tree set lives on here.
+    if "DRY_WOODLAND_MAQUIS" in grouped and "DRY_OAK_SAVANNA" in grouped:
+        _maquis_trees = [
+            _SchematicEntry(
+                path=e.path, biome="DRY_OAK_SAVANNA", size=e.size,
+                schem_type=e.schem_type, anchor_y=e.anchor_y,
+                inset_depth=e.inset_depth, lowest_leaf_y=e.lowest_leaf_y,
+                method=e.method, weight=e.weight, anchor_review=False,
+                species=e.species,
+            )
+            for e in grouped["DRY_WOODLAND_MAQUIS"] if e.schem_type == "tree"
+        ]
+        grouped["DRY_OAK_SAVANNA"].extend(_maquis_trees)
+        # (openness is controlled by tree_spacing.radius_mult_by_biome in config,
+        # NOT by dropping sizes — smaller crowns pack TIGHTER and close the canopy.)
 
     # S71-3 swap: ARCTIC_TUNDRA + FROZEN_FLATS both mirror SBT size=sm trees
     # (smallest pines).  AT uses these very-very sparsely (×0.05 tree mult);
@@ -1735,6 +1749,15 @@ def place_schematics(
                     final_d *= (float(_kr_dens[row, col]) if _kr_dens is not None
                                 else _kr_density_mult)
 
+            # S99: SEMI_ARID_SHRUBLAND brushy GROVES (user) — DON'T flatten the density
+            # (that made a uniform carpet); keep the tree-style grove noise already in
+            # final_d (= 0.95 × density_mult × eco, the same blobby field the trees clump
+            # with) and AMPLIFY it so grove cores saturate THICK (packed via exclusion-off
+            # below) while only the noise minima stay as subtle, traversable "finger" gaps.
+            # Net: much thicker groves, lighter overall than the flat carpet.
+            if pass_type == "bush" and biome_str == "SEMI_ARID_SHRUBLAND":
+                final_d = min(1.0, final_d * _SARID_BUSH_AMP)
+
             if rng.random() >= final_d:
                 continue
 
@@ -1770,7 +1793,10 @@ def place_schematics(
             radius = CANOPY_RADIUS.get(entry.size, 4)
             reject_radius = radius * 2
             is_dupe = False
-            for prev in placements[max(0, len(placements)-60):]:
+            # S99: no anti-clustering for the insanely-brushy semi-arid — let same
+            # species pack together (skip the no-repeat scan entirely).
+            _sarid_brushy = (pass_type == "bush" and biome_str == "SEMI_ARID_SHRUBLAND")
+            for prev in ([] if _sarid_brushy else placements[max(0, len(placements)-60):]):
                 if prev.schem_path == entry_path or (
                     entry_species != "generic"
                     and getattr(prev, "species", "generic") == entry_species
@@ -1807,16 +1833,18 @@ def place_schematics(
                 if not exclusion.is_clear(row, col, radius):
                     continue
             else:
-                bush_r = max(1, radius // 2)
-                # S98 island-only: SEMI_ARID packs bushes shoulder-to-shoulder ("can't
-                # see the ground") -> drop the exclusion floor below 1 (adjacent OK).
-                if _SARID_ISLAND_DENSE and biome_str == "SEMI_ARID_SHRUBLAND":
-                    bush_r = radius // 2
-                if not bush_exclusion.is_clear(row, col, bush_r):
-                    continue
-                # Cross-check: don't place a bush where a tree was placed.
-                if not exclusion.is_clear(row, col, bush_r):
-                    continue
+                # S99: SEMI_ARID_SHRUBLAND "insanely brushy" (user) — override ALL
+                # spacing: no exclusion radius, no clear-check, so bushes pack and
+                # overlap freely. Other biomes keep their canopy-spacing rules.
+                if biome_str == "SEMI_ARID_SHRUBLAND":
+                    bush_r = 0
+                else:
+                    bush_r = max(1, radius // 2)
+                    if not bush_exclusion.is_clear(row, col, bush_r):
+                        continue
+                    # Cross-check: don't place a bush where a tree was placed.
+                    if not exclusion.is_clear(row, col, bush_r):
+                        continue
 
             # Position jitter: ±3 blocks to break grid regularity (S71-3 was ±2)
             jitter_x = rng.randint(-3, 3)

@@ -47,9 +47,13 @@ from core.layers.protocol import (
 SEA_LEVEL_Y = 63
 
 # Arid biomes for desert pavement (NOT sand dune desert).
+# S99: SEMI_ARID_SHRUBLAND removed — it's now the dense brushy green-carpet biome
+# (replacing dry-woodland-maquis); wind-scoured packed-mud/coarse-dirt pavement
+# fought the "can't-see-the-ground" grass carpet the user wants there. Its own
+# palette (8/10 grass_block + sand/gravel dry pockets) + boosted ground cover now
+# read as green steppe. Other arid biomes keep their pavement.
 PAVEMENT_BIOMES: frozenset[str] = frozenset({
     "DESERT_STEPPE_TRANSITION",
-    "SEMI_ARID_SHRUBLAND",
     "DRY_OAK_SAVANNA",
     "DRY_WOODLAND_MAQUIS",
     "DRY_PINE_BARRENS",

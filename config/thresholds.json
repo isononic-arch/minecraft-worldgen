@@ -2381,7 +2381,8 @@
       "MIXED_FOREST": 0.7,
       "BIRCH_FOREST": 0.55,
       "TEMPERATE_DECIDUOUS": 0.8,
-      "RAINFOREST_COAST": 0.9
+      "RAINFOREST_COAST": 0.9,
+      "DRY_OAK_SAVANNA": 1.4
     }
   },
   "species_habitats": {

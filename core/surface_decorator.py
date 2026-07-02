@@ -511,11 +511,14 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
     # ── Dry / Arid ───────────────────────────────────────────────────────
     # S60: up density of all + very rare prairie wildflowers per user.
     # S70: flowers ×0.5 per user.
+    # S99: mixed with the DRY_WOODLAND_MAQUIS understory + density bumped (user:
+    # "mix present dry woodland maquis and dry oak savanna together and up the
+    # density a bit"). Adds maquis's living short_grass / leaf_litter / bush /
+    # allium accents on top of the dry-grass savanna base.
     "DRY_OAK_SAVANNA": [
-        ("short_dry_grass", 0.52), ("tall_dry_grass", 0.34),
-        ("short_grass", 0.22), ("bush", 0.10), ("dead_bush", 0.02),
-        # S70 oak-savanna wildflowers (halved from S60)
-        ("dandelion", 0.005), ("oxeye_daisy", 0.005), ("poppy", 0.004),
+        ("short_dry_grass", 0.58), ("short_grass", 0.42), ("tall_dry_grass", 0.38),
+        ("bush", 0.13), ("leaf_litter", 0.06), ("tall_grass", 0.02), ("dead_bush", 0.02),
+        ("allium", 0.012), ("poppy", 0.015), ("oxeye_daisy", 0.006), ("dandelion", 0.005),
     ],
     # S60: way more short_grass + tall_dry_grass (single-block) + very rare steppe flowers.
     # S71-3: intense grassland vibe per user walk — flowers ÷10, bush block
@@ -628,14 +631,20 @@ GROUND_COVER_PALETTES: dict[str, list[tuple[str, float]]] = {
 # bushes (schematic_placement BUSH_DENSITY_ABS 0.95 + tighter radius_mult/exclusion). Grass
 # species sum > 1 -> ~full per-pixel coverage. Env-gated VANDIR_ISLAND_RENDER so the mainland
 # steppe palette stays byte-identical.
-import os as _os_sd
-if _os_sd.environ.get("VANDIR_ISLAND_RENDER"):
-    GROUND_COVER_PALETTES["SEMI_ARID_SHRUBLAND"] = [
-        ("short_grass", 0.80), ("tall_grass", 0.45),
-        ("short_dry_grass", 0.28), ("tall_dry_grass", 0.20),
-        ("bush", 0.10), ("dead_bush", 0.01),
-        ("dandelion", 0.008), ("poppy", 0.008),
-    ]
+# S99: the dense brushy semi-arid carpet is now the DEFAULT (mainland too) — user
+# wants the island look as the new mainland semi-arid, replacing the retired
+# dry-woodland-maquis (rebanded 210->200 in the override). Was env-gated
+# VANDIR_ISLAND_RENDER; un-gated so the rebanded maquis areas read dense everywhere.
+GROUND_COVER_PALETTES["SEMI_ARID_SHRUBLAND"] = [
+    # S99: grass species BOOSTED ~2.8x over the island values to counter the
+    # mainland density_mult suppression (eco_density_mod ~0.7 x slope_mod on the
+    # sloped east flank) so the "can't-see-the-ground" carpet fires on the mainland
+    # too. Coverage = clip(density_mult * palette_sum, 0, 1) -> self-caps on flats.
+    ("short_grass", 2.2), ("tall_grass", 1.1),
+    ("short_dry_grass", 0.8), ("tall_dry_grass", 0.55),
+    ("bush", 0.25), ("dead_bush", 0.02),
+    ("dandelion", 0.012), ("poppy", 0.012),
+]
 
 # Double-tall blocks — chunk_writer must place [half=upper] at Y+1 above these
 DOUBLE_TALL_BLOCKS: frozenset[str] = frozenset({

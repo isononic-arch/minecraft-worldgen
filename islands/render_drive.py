@@ -22,28 +22,42 @@ def _safe(name):
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
-def _content_tiles(mdir: Path, world_w: int, world_h: int, buffer_tiles: int = 0):
+def _content_tiles(mdir: Path, world_w: int, world_h: int, buffer_tiles: int = 0,
+                   apron_seed_min_px: int = 0):
     """Tiles whose local window contains land (height>sea), optionally DILATED by
     `buffer_tiles` rings to also render the surrounding feathered shelf + a little
     deep ocean. With buffer_tiles>=1 the coast/shelf render fully (no cropped coast)
-    so the tiles slot into the world seamlessly; buffer_tiles=0 = land-only (legacy)."""
-    land = []
+    so the tiles slot into the world seamlessly; buffer_tiles=0 = land-only (legacy).
+
+    `apron_seed_min_px` (per-island, default 0 = off): a land tile must hold at least
+    this many land pixels to *seed* the apron dilation. EVERY land tile is still
+    rendered (no islet is ever dropped); this only suppresses the surrounding ocean
+    apron around tiles whose "land" is a sub-threshold sliver (a handful of stray
+    pixels at the bbox frame), which otherwise drag in all-ocean shelf tiles. Scoped
+    to scattered archipelagos (e.g. Madre) where the frame carries 1-50px noise
+    slivers; leave at 0 for normal islands so their shelf renders unchanged."""
+    from rasterio.windows import Window
+    land = []          # (tx, ty) of every tile with >=1 land pixel  -> always rendered
+    seed = []          # (tx, ty) of tiles substantial enough to seed apron dilation
     ntx = math.ceil(world_w / TILE); nty = math.ceil(world_h / TILE)
     hpath = mdir / "height.tif"
     with rasterio.open(str(hpath)) as src:
         for ty in range(nty):
             for tx in range(ntx):
-                from rasterio.windows import Window
                 w = min(TILE, world_w - tx*TILE); h = min(TILE, world_h - ty*TILE)
                 if w <= 0 or h <= 0:
                     continue
                 a = src.read(1, window=Window(tx*TILE, ty*TILE, w, h))
-                if a.size and (a > SEA_RAW + 40).any():
-                    land.append((tx, ty))
+                if a.size:
+                    npx = int((a > SEA_RAW + 40).sum())
+                    if npx > 0:
+                        land.append((tx, ty))
+                        if npx >= apron_seed_min_px:
+                            seed.append((tx, ty))
     if buffer_tiles <= 0:
-        return land
-    sel = set(land)
-    for (tx, ty) in land:
+        return sorted(land)
+    sel = set(land)    # keep every land tile, including sub-threshold slivers
+    for (tx, ty) in seed:
         for dx in range(-buffer_tiles, buffer_tiles + 1):
             for dy in range(-buffer_tiles, buffer_tiles + 1):
                 nx, ny = tx + dx, ty + dy
@@ -79,8 +93,10 @@ def render_island(entry, threads=2, only_tile=None, fast=True, buffer_tiles=1):
     man = json.loads((mdir / "manifest.json").read_text())
     world_h, world_w = man["world_hw"]
     odir = OUT / name; odir.mkdir(parents=True, exist_ok=True)
-    tiles = [only_tile] if only_tile else _content_tiles(mdir, world_w, world_h, buffer_tiles=buffer_tiles)
-    print(f"[render] {name}: {len(tiles)} tiles (land + {buffer_tiles}-tile shelf buffer), offset={entry['world_offset_px']} fast={fast} threads={threads}", flush=True)
+    seed_min = int(entry.get("apron_seed_min_px", 0))  # per-island ocean-apron sliver trim (0=off)
+    tiles = [only_tile] if only_tile else _content_tiles(
+        mdir, world_w, world_h, buffer_tiles=buffer_tiles, apron_seed_min_px=seed_min)
+    print(f"[render] {name}: {len(tiles)} tiles (land + {buffer_tiles}-tile shelf buffer, apron_seed_min_px={seed_min}), offset={entry['world_offset_px']} fast={fast} threads={threads}", flush=True)
     t0 = time.time()
     if only_tile or threads <= 1:
         for t in tiles:
