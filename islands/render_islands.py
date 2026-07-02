@@ -282,6 +282,164 @@ def synth_snow_gap(mcy, land, bands):
     snowline = 63.0 + sf * (hi - 63.0)
     return (land & (mcy >= snowline)).astype(np.uint8)
 
+def _near_ocean_disk(land, radius):
+    """EXACT memory-lean equivalent of `distance_transform_edt(land) <= radius`
+    (S101): a cell's EDT to the nearest ~land cell is <= r iff a ~land cell lies
+    within the CLOSED Euclidean disk of radius r, i.e. binary_dilation of ~land
+    with the exact disk footprint {dx^2+dz^2 <= r^2}. Byte-identical output;
+    scipy's EDT allocates ~2.7GB of int32/float64 internals on a 10.9k^2 bbox
+    (OOM'd the 7.4GB local bake box at NV), the dilation peaks at ~3 bool copies."""
+    from scipy.ndimage import binary_dilation
+    r = int(radius)
+    yy, xx = np.mgrid[-r:r + 1, -r:r + 1]
+    disk = (yy * yy + xx * xx) <= r * r
+    return binary_dilation(~land, structure=disk)
+
+
+# ── S101 EDGE DEPTH TAPER (bake-time) ────────────────────────────────────────
+# Five islands' real DEMs carry shallow banks (Caicos Bank ~5-15 blocks deep) that
+# run to the edge of the RENDER FOOTPRINT (content tiles + 1 buffer ring, see
+# render_drive._content_tiles). Where the bank meets that boundary, the world shows
+# a 50-80-block vertical underwater wall on a dead-straight tile line, dropping to
+# the ocean-generator fill (seabed -30..-14, cap Y-14) / prerendered mainland floor
+# (~Y-17). Fix at BAKE time: blend OCEAN cells within TAPER_BAND_PX of the render
+# boundary DOWN toward TAPER_TARGET_MCY with a smoothstep ease, hitting the target
+# exactly AT the boundary. Never raises terrain, never touches land, never touches
+# cells already at/below the target. ISLAND-ONLY (bake path; mainland untouched).
+TAPER_BAND_PX = 320        # band width in px; per-island override: BANDS key `taper_band_px` (0 = off)
+TAPER_TARGET_MCY = -17.0   # deep target = prerendered mainland ocean floor ~Y-17 (raw via mcy_to_world_raw, NOT hardcoded)
+TAPER_BUFFER_TILES = 1     # MUST mirror render_drive.render_island(buffer_tiles=1) / CLI --buffer default
+_TAPER_TILE = 512          # render_drive.TILE
+
+
+def _footprint_tiles_from_height(height, apron_seed_min_px=0, buffer_tiles=TAPER_BUFFER_TILES):
+    """Replicate render_drive._content_tiles for an IN-MEMORY height array (the drive
+    reads the WRITTEN height.tif; the taper runs before the write, but it only DEEPENS
+    ocean cells — the drive's land test `> SEA_RAW+40` is unaffected, so the tile set
+    computed here pre-taper == the set the drive computes post-taper). Returns a
+    (nty, ntx) bool grid of rendered tiles: every tile with >=1 land px, PLUS a
+    `buffer_tiles` Chebyshev ring around tiles holding >= apron_seed_min_px land px
+    (sub-threshold slivers render but do NOT seed the apron — Madre's frame noise)."""
+    H, W = height.shape
+    landpx = height > (SEA_RAW + 40)
+    cnt = np.add.reduceat(np.add.reduceat(landpx.astype(np.int64),
+                                          np.arange(0, H, _TAPER_TILE), axis=0),
+                          np.arange(0, W, _TAPER_TILE), axis=1)
+    land_t = cnt > 0
+    seed_t = land_t & (cnt >= int(apron_seed_min_px))
+    if buffer_tiles <= 0:
+        return land_t
+    from scipy.ndimage import binary_dilation, binary_fill_holes
+    k = 2 * int(buffer_tiles) + 1
+    # S101b: FILL ENCLOSED HOLES — an all-ocean tile fully surrounded by rendered
+    # tiles (Ouvea's atoll-lagoon center) must RENDER from the DEM (shallow
+    # lagoon), not fall to the deep generator fill with a taper ring around it.
+    # Mirrors render_drive._content_tiles + world_map_baked (same S101b rule).
+    return binary_fill_holes(land_t | binary_dilation(seed_t, structure=np.ones((k, k), bool)))
+
+
+def _edge_distance_field(sel_t, H, W, band):
+    """Exact per-pixel Euclidean distance (pixel-center metric, adjacent cell = 1.0)
+    from every cell to the nearest cell OUTSIDE the render footprint, where outside
+    = non-rendered tiles inside the bbox + everything beyond the bbox frame (the
+    footprint is clipped to the bbox, so the frame IS a render boundary wherever a
+    rendered tile touches it). MEMORY-LEAN + EXACT without scipy's EDT (whose int32/
+    float64 internals cost ~2.7GB on a 10.9k^2 bbox — the S101 OOM lesson at
+    _near_ocean_disk): the outside region is a union of 512-aligned RECTANGLES, so
+    d = min(analytic frame ramp, per-rect point-to-rect distance), and only outside
+    rects 8-adjacent to a rendered tile can contain the nearest outside cell (any
+    nearer cell would have a rendered neighbour). One full float32 array total."""
+    from scipy.ndimage import binary_dilation
+    rows = np.arange(H, dtype=np.float32)[:, None]
+    cols = np.arange(W, dtype=np.float32)[None, :]
+    d = np.minimum(np.minimum(rows + 1.0, np.float32(H) - rows),
+                   np.minimum(cols + 1.0, np.float32(W) - cols))   # (H,W) float32 frame ramp
+    near_out = (~sel_t) & binary_dilation(sel_t, structure=np.ones((3, 3), bool))
+    pad = int(math.ceil(band)) + 2
+    for ty, tx in zip(*np.nonzero(near_out)):
+        r0, r1 = ty * _TAPER_TILE, min((ty + 1) * _TAPER_TILE, H)
+        c0, c1 = tx * _TAPER_TILE, min((tx + 1) * _TAPER_TILE, W)
+        wr0, wr1 = max(r0 - pad, 0), min(r1 + pad, H)
+        wc0, wc1 = max(c0 - pad, 0), min(c1 + pad, W)
+        rr = np.arange(wr0, wr1, dtype=np.float32)[:, None]
+        cc = np.arange(wc0, wc1, dtype=np.float32)[None, :]
+        dr = np.maximum(np.maximum(np.float32(r0) - rr, rr - np.float32(r1 - 1)), 0.0)
+        dc = np.maximum(np.maximum(np.float32(c0) - cc, cc - np.float32(c1 - 1)), 0.0)
+        np.minimum(d[wr0:wr1, wc0:wc1], np.sqrt(dr * dr + dc * dc),
+                   out=d[wr0:wr1, wc0:wc1])
+    return d
+
+
+def _expand_tiles_to_px(sel_t, H, W):
+    return np.repeat(np.repeat(sel_t, _TAPER_TILE, axis=0), _TAPER_TILE, axis=1)[:H, :W]
+
+
+def _apply_edge_depth_taper(height, mcy, land, band_px, target_mcy, apron_seed_min_px):
+    """Mutates height (uint16 raw) + mcy in place on OCEAN cells within `band_px` of
+    the render-footprint boundary: mcy_new = mcy - (mcy - target)*w, w = smoothstep of
+    t = (band - d)/(band - 1) so w=1 (exact target) at the boundary ring (d=1) and
+    w=0 at the inner band edge. Gates: rendered-footprint px only, ~land only (after
+    the bake's re-snap, ~land <=> raw <= SEA_RAW; this deliberately INCLUDES cells at
+    exactly SEA_RAW — frag-kill/keep_box slabs are snapped to SEA_RAW = Y63 and are
+    the TALLEST walls, e.g. Grand Turk's oceaned bank triangle at 80 blocks above the
+    deep floor), and only cells above the target (never raise, never touch land).
+    Returns a stats dict for the manifest, or None if the island has no land."""
+    H, W = height.shape
+    sel_t = _footprint_tiles_from_height(height, apron_seed_min_px)
+    if not sel_t.any():
+        return None
+    band = float(band_px)
+    d = _edge_distance_field(sel_t, H, W, band)
+    rend = _expand_tiles_to_px(sel_t, H, W)
+    # S101c: ALL pre-taper Y values below derive from the RAW height, NOT the
+    # caller's mcy — the bake's re-snap (masks['height'][~land]=min(.,SEA_RAW))
+    # mutates height WITHOUT updating mcy, so gray-zone cells (mcy 63..63.4,
+    # snapped to raw 17050) carry a stale mcy up to 0.4 above their true Y63.
+    # v1 wrote the taper output from that stale mcy, which RE-RAISED snapped
+    # cells (raw 17050 -> up to 17145) wherever w~0, pushing 390 px above the
+    # drive's land test (raw 17090) on Grand Turk -> 6 phantom content tiles ->
+    # the render boundary MOVED off the tapered edge. Raw-domain gating is also
+    # exact: the spline is monotone, so raw > target_raw <=> mcy > target.
+    tgt_raw = int(mcy_to_world_raw(np.array([target_mcy]))[0])
+    ring = rend & (d < 1.5)                       # outermost rendered ring (d=1 or sqrt2)
+    ring_oc = ring & ~land
+    pre_max_above = (float(np.max(raw_to_mcy(height[ring_oc]) - target_mcy))
+                     if ring_oc.any() else 0.0)
+    pre_n_above3 = (int(np.sum(raw_to_mcy(height[ring_oc]) > target_mcy + 3.0))
+                    if ring_oc.any() else 0)
+    n_land_ring = int((ring & land).sum())
+    selm = d <= band
+    selm &= rend
+    n_land_band = int(np.sum(selm & land))        # land inside the band: NEVER touched, report only
+    selm &= ~land
+    selm &= height > tgt_raw
+    del rend, ring, ring_oc
+    n_sel = int(selm.sum())
+    if n_sel:
+        dsel = d[selm]
+        del d
+        t = np.clip((band - dsel) / max(band - 1.0, 1.0), 0.0, 1.0)
+        w = t * t * (3.0 - 2.0 * t)               # smoothstep: C1 at both band edges
+        del dsel, t
+        mcy_sel = raw_to_mcy(height[selm])
+        mcy_new = mcy_sel - (mcy_sel - float(target_mcy)) * w
+        height[selm] = mcy_to_world_raw(mcy_new)
+        mcy[selm] = mcy_new
+        max_deep = float(np.max(mcy_sel - mcy_new))
+        del w, mcy_sel, mcy_new
+    else:
+        del d
+        max_deep = 0.0
+    del selm
+    return dict(band_px=band, target_mcy=float(target_mcy),
+                target_raw=int(mcy_to_world_raw(np.array([target_mcy]))[0]),
+                buffer_tiles=TAPER_BUFFER_TILES, apron_seed_min_px=int(apron_seed_min_px),
+                tapered_px=n_sel, max_deepened_blocks=round(max_deep, 2),
+                ring_ocean_max_above_target_before=round(pre_max_above, 2),
+                ring_ocean_n_above3_before=pre_n_above3,
+                land_px_on_ring=n_land_ring, land_px_in_band=n_land_band)
+
+
 def synth_shore_beach(land, mcy, slope_u16, beach_band=3.0, gentle_deg=10.0):
     """Mainland rebuild_beach formula (height-derived): sand where ocean meets land
     near sea level on GENTLE slopes — elev-gate (tight band above Y63) x gentle-slope
@@ -293,8 +451,7 @@ def synth_shore_beach(land, mcy, slope_u16, beach_band=3.0, gentle_deg=10.0):
     deg = slope_u16.astype(np.float32) / 65535.0 * 45.0
     gentle = np.clip(1.0 - deg / gentle_deg, 0.0, 1.0)
     beach = (gate * gentle * land * 255).astype(np.uint8)
-    dist = distance_transform_edt(land)
-    shore = (land & (dist <= 6)).astype(np.uint8)
+    shore = (land & _near_ocean_disk(land, 6)).astype(np.uint8)
     return shore, beach
 
 
@@ -328,11 +485,14 @@ def synth_shore_beach_wide(land, mcy, slope_u16, world_offset_px=(0, 0),
     beach_land = mcy > 63.4
     ocean = ~beach_land
     if not ocean.any() or not beach_land.any():
-        shore = (land & (distance_transform_edt(land) <= 6)).astype(np.uint8)
+        shore = (land & _near_ocean_disk(land, 6)).astype(np.uint8)
         return shore, np.zeros((H, W), np.uint8)
     dist_from_ocean = distance_transform_edt(~ocean).astype(np.float32)
     deg = slope_u16.astype(np.float32) / 65535.0 * 45.0
     gentle = deg < float(gentle_slope_deg)
+    del deg      # S101b marginal-OOM: free each full-bbox float as soon as it is
+                 # dead, not in one block at the end — NV (10.9k^2) OOM'd at the
+                 # `t=` line below with ~3.5GB of already-dead floats still live.
 
     # world-coord splitmix64 hash -> [0,1], same kernel as eco_gradients beach
     wx = (np.int64(ox) + np.arange(W, dtype=np.int64))[None, :].astype(np.uint64)
@@ -352,9 +512,11 @@ def synth_shore_beach_wide(land, mcy, slope_u16, world_offset_px=(0, 0),
     std_wn = np.float32((1.0 / np.sqrt(12.0)) / (2.0 * np.sqrt(np.pi) * BCH_SIGMA))
     width_noise = np.clip((wn - np.float32(0.5)) / (np.float32(2.5) * std_wn),
                           -1.0, 1.0).astype(np.float32)
+    del wn       # S101b marginal-OOM: dead past here
     amp = np.float32(beach_core_width * 0.4)            # +-40% width jitter
     core_width = np.maximum(np.float32(beach_core_width) + amp * width_noise,
                             0.0).astype(np.float32)
+    del width_noise                                     # S101b
     dither_width = core_width * np.float32(beach_dither_mult)
     total_width = core_width + dither_width
 
@@ -366,9 +528,12 @@ def synth_shore_beach_wide(land, mcy, slope_u16, world_offset_px=(0, 0),
     core = beach_land & (dist_from_ocean >= 1.0) & (dist_from_ocean <= core_width)
     in_dither = (beach_land & gentle & (dist_from_ocean > core_width)
                  & (dist_from_ocean <= total_width))
+    del beach_land, gentle, total_width                  # S101b: dead past here
     t = np.clip((dist_from_ocean - core_width) / np.maximum(dither_width, np.float32(0.5)),
                 0.0, 1.0)
+    del dist_from_ocean, core_width, dither_width        # S101b: dead past here
     place_prob = np.clip(1.0 - t, 0.15, 0.85).astype(np.float32)
+    del t                                                # S101b
 
     DC_SIGMA = 1.0
     dc = gaussian_filter(_hash01(0xD17BEA), sigma=DC_SIGMA)
@@ -377,8 +542,16 @@ def synth_shore_beach_wide(land, mcy, slope_u16, world_offset_px=(0, 0),
                    0.0, 1.0).astype(np.float32)
     dithered = in_dither & (coin < place_prob)
 
+    # S101 OOM fix (now mostly moved up to point-of-death dels, S101b): release
+    # the remaining full-bbox intermediates BEFORE the shore step so the 7.4GB
+    # local box can bake a 10.9k² island (NV crashed at the `t=` line above at
+    # 2.4GB free even WITH the old end-block dels — under ambient memory
+    # pressure the block came too late).
+    del place_prob, dc, coin, in_dither, ocean
+
     beach = ((core | dithered).astype(np.uint8)) * 255
-    shore = (land & (distance_transform_edt(land) <= 6)).astype(np.uint8)
+    del core, dithered
+    shore = (land & _near_ocean_disk(land, 6)).astype(np.uint8)
     return shore, beach
 
 
@@ -598,6 +771,7 @@ def bake_island(entry):
                           cval=cval, prefilter=False)
             a = np.clip(a, 0, 65535).astype(np.uint16)
         masks[nm] = np.ascontiguousarray(a)
+    del out, dem, a, arr   # S101b marginal-OOM: DEM + pre-rotation pyramids are dead here (~270MB)
     H, W = masks["height"].shape
     mcy = raw_to_mcy(masks["height"])
     # ── CORAL-PLATFORM HEIGHT GAIN (per-island `height_gain`, default 1.0 = NO-OP) ──
@@ -751,6 +925,37 @@ def bake_island(entry):
     # re-snap rotation halo: ocean-ish cells forced below sea so coastline is crisp
     masks["height"][~land] = np.minimum(masks["height"][~land], SEA_RAW)
 
+    # ── S101 EDGE DEPTH TAPER ── deepen ocean shelf toward TAPER_TARGET_MCY at the
+    # render-footprint boundary (kills the 50-80-block underwater tile-line walls
+    # where a real shallow bank runs off the footprint edge). INSERTION POINT: after
+    # ALL land/height mutations (erase, frag kills, keep_box, margin rim, mainland
+    # removal, re-snap) so the content-tile set is FINAL, and before every derived-
+    # mask synth + the height.tif write, so override/bog/rock/snow/shore/beach AND
+    # the build_lithology/build_terrain_derived subprocesses all see ONE coherent
+    # tapered height. (shore/beach are bit-identical either way: their land test is
+    # mcy>63.4 and the taper only lowers cells already <= SEA_RAW.) slope/flow/
+    # erosion are NOT recomputed — same convention as every other post-derive height
+    # edit (height_gain dome, frag kills), and deliberate: the stale-gentle slope
+    # keeps synth_rock_gap from painting rock on the new offshore ramp (which would
+    # also re-trip the S97 flow_erosion rock-clamp on ocean cells).
+    _taper_band = float(bands.get("taper_band_px", TAPER_BAND_PX))
+    _taper_stats = None
+    if _taper_band > 0:
+        _taper_stats = _apply_edge_depth_taper(
+            masks["height"], mcy, land, band_px=_taper_band,
+            target_mcy=TAPER_TARGET_MCY,
+            apron_seed_min_px=int(entry.get("apron_seed_min_px", 0)))
+        if _taper_stats:
+            print(f"[bake]   edge depth taper: band={_taper_band:.0f}px -> Y{TAPER_TARGET_MCY:.0f} "
+                  f"(raw {_taper_stats['target_raw']}): {_taper_stats['tapered_px']}px deepened "
+                  f"(max {_taper_stats['max_deepened_blocks']:.1f} blocks); boundary-ring ocean was "
+                  f"{_taper_stats['ring_ocean_n_above3_before']}px >3 blocks above target "
+                  f"(max {_taper_stats['ring_ocean_max_above_target_before']:.1f})", flush=True)
+            if _taper_stats["land_px_in_band"]:
+                print(f"[bake]   WARNING: {_taper_stats['land_px_in_band']}px of LAND inside the "
+                      f"taper band ({_taper_stats['land_px_on_ring']}px on the boundary ring) — "
+                      f"left untouched; nearby ocean deepens around it", flush=True)
+
     cfg = json.loads((ROOT / "config" / "thresholds.json").read_text())
     rock_deg = float(cfg["lithology"]["rock_layers"].get("t1_deg", 38.0))   # align synth rock_gap to rock_layers t1
 
@@ -833,7 +1038,8 @@ def bake_island(entry):
     manifest = dict(name=entry["name"], dem=entry["dem_path"],
                     world_offset_px=[int(entry["world_offset_px"][0]), int(entry["world_offset_px"][1])],
                     world_hw=[H, W], land_px=int(land.sum()),
-                    peak_m=peak_m, mcy_peak=mcy_peak, rot=rot, flipx=flipx, flipz=flipz)
+                    peak_m=peak_m, mcy_peak=mcy_peak, rot=rot, flipx=flipx, flipz=flipz,
+                    edge_depth_taper=_taper_stats)
     (od / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
     # ---- ROUTE THROUGH THE REAL MAINLAND GENERATOR ----

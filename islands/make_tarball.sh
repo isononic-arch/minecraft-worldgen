@@ -31,6 +31,11 @@ INCLUDE=(
   islands/spline_overrides.json
   islands/cache/vandir_seabed_patch.npy
   islands/prerot_dems
+  # S101: bake inputs the bundle silently LACKED — on-box fresh bakes ran with
+  # no erase masks and no NV land-cover raster, diverging from locally-validated
+  # masks. Ship them so cloud bakes reproduce the local bake bit-for-bit.
+  islands/erase_masks
+  islands/island_geo_data
 )
 # all islands/*.py (the render system) — globbed so new helpers are auto-included
 for f in islands/*.py; do INCLUDE+=("$f"); done

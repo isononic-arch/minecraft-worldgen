@@ -63,7 +63,17 @@ def _content_tiles(mdir: Path, world_w: int, world_h: int, buffer_tiles: int = 0
                 nx, ny = tx + dx, ty + dy
                 if 0 <= nx < ntx and 0 <= ny < nty:
                     sel.add((nx, ny))
-    return sorted(sel)
+    # S101b: FILL ENCLOSED HOLES — an all-ocean tile fully surrounded by selected
+    # tiles (Ouvea's atoll-lagoon center) must RENDER from the DEM (shallow
+    # lagoon), not fall to the deep generator fill with an edge-taper ring around
+    # it. Mirrors render_islands._footprint_tiles_from_height + world_map_baked.
+    import numpy as _np
+    from scipy.ndimage import binary_fill_holes as _bfh
+    g = _np.zeros((nty, ntx), bool)
+    for (tx, ty) in sel:
+        g[ty, tx] = True
+    gy, gx = _np.where(_bfh(g))
+    return sorted(zip(gx.tolist(), gy.tolist()))
 
 
 def _snap(v):

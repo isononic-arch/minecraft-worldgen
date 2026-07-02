@@ -42,7 +42,11 @@ def main():
         name = safe_name(e["name"])
         man = json.loads((MASKS_OUT / name / "manifest.json").read_text())
         wh, ww = man["world_hw"]
-        tiles = _content_tiles(MASKS_OUT / name, ww, wh, buffer_tiles=BUFFER)
+        # S101: pass the per-island apron sliver cull (render_drive:96 is canonical) —
+        # omitting it made cloud Madre render ~24 extra noise-sliver apron tiles vs
+        # the S99-verified 240-tile / 0-mainland-overlap placement.
+        tiles = _content_tiles(MASKS_OUT / name, ww, wh, buffer_tiles=BUFFER,
+                               apron_seed_min_px=int(e.get("apron_seed_min_px", 0)))
         print(f"  {name}: {len(tiles)} tiles (land + {BUFFER}-buffer)", flush=True)
         (OUT / name).mkdir(parents=True, exist_ok=True)
         for f in (OUT / name).glob("r.*.mca"):

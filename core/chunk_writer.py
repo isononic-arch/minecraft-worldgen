@@ -201,11 +201,12 @@ _CLIFF_BANDS: dict[str, list[str]] = {
 class BlockPalette:
     """Bidirectional map: block-name string ↔ uint16 index."""
 
-    __slots__ = ("_names", "_idx")
+    __slots__ = ("_names", "_idx", "_stamp_luts")
 
     def __init__(self):
         self._names: list[str] = ["air"]   # index 0 is always air
         self._idx: dict[str, int] = {"air": 0}
+        self._stamp_luts = None            # S100 stamp-perf: lazy LUT cache
 
     # -- single lookup --
     def idx(self, name: str) -> int:
@@ -1246,22 +1247,56 @@ def build_column_array(
             # bed-top block (surface_y+1) is actually river water.
             sg_place = river_px & (_sg_norm < 0.20) & (water_depth >= 1)
             sg_rows, sg_cols = np.where(sg_place)
-            for r, c in zip(sg_rows, sg_cols):
-                bed_yi = int(surface_y[r, c]) + 1 - Y_MIN
-                if 0 <= bed_yi < Y_RANGE and vol[bed_yi, r, c] == WATER_IDX:
-                    vol[bed_yi, r, c] = SEAGRASS_IDX
+            # S100 perf: vectorised (was a per-cell scalar loop).  Cells are
+            # unique (row,col) pairs so writes never interact; same bounds
+            # guard + same water-at-bed check — byte-identical result.
+            if len(sg_rows):
+                _bed_yi = surface_y[sg_rows, sg_cols].astype(np.int64) + 1 - Y_MIN
+                _ok = (_bed_yi >= 0) & (_bed_yi < Y_RANGE)
+                _sr, _sc, _by = sg_rows[_ok], sg_cols[_ok], _bed_yi[_ok]
+                _hit = vol[_by, _sr, _sc] == WATER_IDX
+                vol[_by[_hit], _sr[_hit], _sc[_hit]] = SEAGRASS_IDX
 
         # Safety: ensure no air pockets in river water columns
         # Any non-water, non-seagrass block between surface and water_y → water
         if river_px.any():
             rp_rows, rp_cols = np.where(river_px)
-            for r, c in zip(rp_rows, rp_cols):
-                sy_i = int(surface_y[r, c]) + 1 - Y_MIN
-                wy_i = int(river_water_y[r, c]) - Y_MIN
-                for yi in range(sy_i, min(wy_i + 1, Y_RANGE)):
-                    blk_idx = vol[yi, r, c]
-                    if blk_idx != WATER_IDX and blk_idx != SEAGRASS_IDX:
-                        vol[yi, r, c] = WATER_IDX
+            # S100 perf: vectorised via a Y-band mask (was a per-column
+            # per-Y scalar loop).  Columns are unique (row,col) pairs and
+            # each write targets its own (yi,row,col) cell, so batching is
+            # order-independent.  Columns whose start index would be
+            # negative (surface_y < Y_MIN - 1; never happens in practice)
+            # keep the original scalar loop because Python's negative
+            # indexing semantics there can't be reproduced by a masked
+            # range — preserves exact legacy behaviour.
+            _sy_i = surface_y[rp_rows, rp_cols].astype(np.int64) + 1 - Y_MIN
+            _wy_i = river_water_y[rp_rows, rp_cols].astype(np.int64) - Y_MIN
+            _neg = _sy_i < 0
+            if _neg.any():
+                for r, c in zip(rp_rows[_neg], rp_cols[_neg]):
+                    sy_i = int(surface_y[r, c]) + 1 - Y_MIN
+                    wy_i = int(river_water_y[r, c]) - Y_MIN
+                    for yi in range(sy_i, min(wy_i + 1, Y_RANGE)):
+                        blk_idx = vol[yi, r, c]
+                        if blk_idx != WATER_IDX and blk_idx != SEAGRASS_IDX:
+                            vol[yi, r, c] = WATER_IDX
+            _pos = ~_neg
+            if _pos.any():
+                _rr2 = rp_rows[_pos]; _cc2 = rp_cols[_pos]
+                _lo = _sy_i[_pos]
+                _hi = np.minimum(_wy_i[_pos] + 1, Y_RANGE)   # exclusive end
+                _nonempty = _hi > _lo
+                _rr2, _cc2 = _rr2[_nonempty], _cc2[_nonempty]
+                _lo, _hi = _lo[_nonempty], _hi[_nonempty]
+                if len(_rr2):
+                    _y0 = int(_lo.min()); _y1 = int(_hi.max())
+                    _band = vol[_y0:_y1, _rr2, _cc2]          # (band_h, n) copy
+                    _yy = np.arange(_y0, _y1, dtype=np.int64)[:, None]
+                    _fix = ((_yy >= _lo[None, :]) & (_yy < _hi[None, :])
+                            & (_band != WATER_IDX) & (_band != SEAGRASS_IDX))
+                    if _fix.any():
+                        _fy, _fk = np.nonzero(_fix)
+                        vol[_y0 + _fy, _rr2[_fk], _cc2[_fk]] = WATER_IDX
 
     # ── steep-river STRUCTURE_VOID seal (S94d MASK rework) ─────────────────
     # On steep slopes MC's fluid update cascades the placed river water and it
@@ -1362,21 +1397,30 @@ def build_column_array(
     })
     veg_indices = frozenset(pal._idx.get(n, -1) for n in _VEGETATION_BLOCKS) - {-1}
     if veg_indices and cover_mask.any():
-        for i in range(len(r_idx)):
-            r, c = int(r_idx[i]), int(c_idx[i])
-            sy_i = int(sy_flat[i]) - Y_MIN
-            cov_yi = sy_i + 1
-            if cov_yi < 0 or cov_yi >= Y_RANGE or sy_i < 0:
-                continue
-            blk_at_cover = vol[cov_yi, r, c]
-            if blk_at_cover in veg_indices:
-                # S60: check both water AND air below — either is a floater.
-                below_idx = vol[sy_i, r, c]
-                if below_idx == WATER_IDX or below_idx == AIR_IDX:
-                    vol[cov_yi, r, c] = AIR_IDX
-                    # Also clear upper half if double-tall
-                    if cov_yi + 1 < Y_RANGE and vol[cov_yi + 1, r, c] in veg_indices:
-                        vol[cov_yi + 1, r, c] = AIR_IDX
+        # S100 perf: vectorised (was a 262k-iteration scalar loop over every
+        # tile pixel).  (row,col) pairs are unique, and each iteration only
+        # ever touches its OWN column (reads at sy / sy+1 / sy+2, writes at
+        # sy+1 / sy+2), so batch order matches loop order exactly.  Set
+        # membership becomes a boolean LUT over palette indices.
+        _veg_lut = np.zeros(len(pal._names), dtype=bool)
+        _veg_lut[np.fromiter(veg_indices, dtype=np.int64)] = True
+        _sy_i_all = sy_flat.astype(np.int64) - Y_MIN
+        _cov_yi_all = _sy_i_all + 1
+        _okc = (_cov_yi_all >= 0) & (_cov_yi_all < Y_RANGE) & (_sy_i_all >= 0)
+        _rv, _cv = r_idx[_okc], c_idx[_okc]
+        _syv, _covv = _sy_i_all[_okc], _cov_yi_all[_okc]
+        _below = vol[_syv, _rv, _cv]
+        _floater = (_veg_lut[vol[_covv, _rv, _cv]]
+                    & ((_below == WATER_IDX) | (_below == AIR_IDX)))
+        if _floater.any():
+            _fr, _fc, _fy = _rv[_floater], _cv[_floater], _covv[_floater]
+            vol[_fy, _fr, _fc] = AIR_IDX
+            # Also clear upper half if double-tall
+            _up = _fy + 1
+            _upok = _up < Y_RANGE
+            _ur, _uc, _uy = _fr[_upok], _fc[_upok], _up[_upok]
+            _upveg = _veg_lut[vol[_uy, _ur, _uc]]
+            vol[_uy[_upveg], _ur[_upveg], _uc[_upveg]] = AIR_IDX
 
     # ── Walk #9 NEW: rock_zone Y-2..Y-5 cleanup ──────────────────────────
     # On rock_gap (gap_mask==5) pixels, force the top-6 column blocks
@@ -1409,21 +1453,37 @@ def build_column_array(
                     _stone_idx_fb = pal.idx("stone")
                     # Find rock pixels' (row, col, surface_y)
                     _rr, _cc = np.where(_rock_zone)
-                    _bad_arr = np.array(list(_bad_indices), dtype=np.int32)
-                    for _idx in range(len(_rr)):
-                        _r, _c = int(_rr[_idx]), int(_cc[_idx])
-                        _gid_here = int(lithology_tile[_r, _c]) if lithology_tile.shape == _rock_zone.shape else 0
-                        _rock_idx = _gid_to_rock_idx.get(_gid_here, _stone_idx_fb)
-                        _sy_abs = int(surface_y[_r, _c])
-                        # Check Y-2 down to Y-5 (4 blocks)
-                        for _y_off in range(2, 6):
-                            _y_abs = _sy_abs - _y_off
-                            _y_rel = _y_abs - Y_MIN
-                            if _y_rel < 0 or _y_rel >= Y_RANGE:
-                                continue
-                            _cur = int(vol[_y_rel, _r, _c])
-                            if _cur in _bad_indices:
-                                vol[_y_rel, _r, _c] = _rock_idx
+                    # S100 perf: vectorised (was a per-pixel × per-Y scalar
+                    # loop).  Every (pixel, y_off) pair targets a distinct
+                    # (y,row,col) cell, so batching per y_off is order-safe.
+                    # gid→rock mapping replays dict.get exactly (unmapped or
+                    # out-of-range ids fall back to stone); bad-block set
+                    # membership becomes a boolean LUT over palette indices.
+                    if lithology_tile.shape == _rock_zone.shape:
+                        _gids = lithology_tile[_rr, _cc].astype(np.int64)
+                    else:
+                        _gids = np.zeros(len(_rr), dtype=np.int64)
+                    _rock_for_px = np.full(len(_rr), _stone_idx_fb,
+                                           dtype=np.uint16)
+                    for _g, _ri in _gid_to_rock_idx.items():
+                        _gm = _gids == _g
+                        if _gm.any():
+                            _rock_for_px[_gm] = _ri
+                    _bad_lut = np.zeros(len(pal._names), dtype=bool)
+                    _bad_lut[np.fromiter(_bad_indices, dtype=np.int64)] = True
+                    _sy_px = surface_y[_rr, _cc].astype(np.int64)
+                    # Check Y-2 down to Y-5 (4 blocks)
+                    for _y_off in range(2, 6):
+                        _y_rel = _sy_px - _y_off - Y_MIN
+                        _okr = (_y_rel >= 0) & (_y_rel < Y_RANGE)
+                        if not _okr.any():
+                            continue
+                        _yr = _y_rel[_okr]
+                        _r2 = _rr[_okr]; _c2 = _cc[_okr]
+                        _bad = _bad_lut[vol[_yr, _r2, _c2]]
+                        if _bad.any():
+                            vol[_yr[_bad], _r2[_bad], _c2[_bad]] = \
+                                _rock_for_px[_okr][_bad]
                 del _rock_zone
 
     # Re-assert the bedrock floor LAST so nothing overwrites it. vol[0] (Y_MIN,
@@ -1440,6 +1500,160 @@ def build_column_array(
 # ---------------------------------------------------------------------------
 # SCHEMATIC STAMPER
 # ---------------------------------------------------------------------------
+# S100 stamp-perf support.  stamp_schematic's per-block string path
+# (str(cell) + pal.name_of() per visited cell — profiled 40.7M name_of
+# calls / 61.7s over 9,796 stamps on a dense tile) now runs in the integer
+# domain:
+#   * _schem_stamp_data factors a schematic ONCE per file+rotation into a
+#     unique-name list + int32 code grid, cached on the SchemData instance
+#     (schematic_loader.load_schem caches per path per process);
+#   * _pal_stamp_luts keeps incremental boolean classification LUTs over
+#     palette indices ON the BlockPalette (protected-overwrite keys, soft
+#     soil, log->wood eligibility, fence candidates) so per-cell substring
+#     tests become one fancy-index.
+# Byte-identical to the legacy scalar path — gated by
+# tools/diag_nbt_emit_equiv.py stamp cases.
+
+# Exact key tuple from the legacy per-cell overwrite check.
+_STAMP_PROTECT_KEYS = ("log", "leaves", "fence", "planks",
+                       "stairs", "slab", "vine")
+
+# Hoisted verbatim from the legacy root-anchor loop's _SOFT_SOIL_NAMES.
+_STAMP_SOFT_SOIL = frozenset({
+    "dirt", "grass_block", "podzol", "coarse_dirt",
+    "rooted_dirt", "mud", "packed_mud", "moss_block",
+    "mycelium", "mud_block", "snow_block", "sand",
+    "red_sand",
+})
+
+# Rotate directional blockstate properties to match spatial rotation.
+# rot=1 (90° CW): north→east→south→west→north
+# rot=2 (180°): north↔south, east↔west
+# rot=3 (270° CW): north→west→south→east→north
+_STAMP_DIR_REMAP = {
+    1: {"north": "east", "east": "south", "south": "west", "west": "north"},
+    2: {"north": "south", "south": "north", "east": "west", "west": "east"},
+    3: {"north": "west", "west": "south", "south": "east", "east": "north"},
+}
+
+
+def _rotate_blockstate_name(name: str, remap: dict) -> str:
+    """Exact clone of the legacy in-function _rotate_blockstate."""
+    if "[" not in name:
+        return name
+    base, state = name.split("[", 1)
+    state = state.rstrip("]")
+    pairs = []
+    for pair in state.split(","):
+        k, sep, v = pair.partition("=")
+        k = k.strip()
+        v = v.strip()
+        # Rotate directional keys (fence connections: north=true)
+        if k in remap:
+            k = remap[k]
+        # Rotate facing values (gate/stair: facing=north)
+        if k == "facing" and v in remap:
+            v = remap[v]
+        pairs.append(f"{k}={v}")
+    return f"{base}[{','.join(pairs)}]"
+
+
+def _pal_stamp_luts(pal: BlockPalette) -> dict:
+    """Incremental per-palette boolean classification LUTs for the stamp
+    path, stored on the BlockPalette instance.  The palette only APPENDS,
+    so previously-classified prefixes stay valid; each call classifies only
+    names added since the last call.  Each LUT replays the corresponding
+    legacy per-name substring test exactly."""
+    luts = pal._stamp_luts
+    if luts is None:
+        luts = {"n": 0,
+                "protected": np.zeros(0, dtype=bool),
+                "soil":      np.zeros(0, dtype=bool),
+                "logswap":   np.zeros(0, dtype=bool),
+                "fence":     np.zeros(0, dtype=bool)}
+        pal._stamp_luts = luts
+    n = len(pal._names)
+    if n > luts["n"]:
+        new = pal._names[luts["n"]:n]
+        prot, soil, logsw, fence = [], [], [], []
+        for nm in new:
+            prot.append(any(k in nm for k in _STAMP_PROTECT_KEYS))
+            bare = nm.replace("minecraft:", "").split("[")[0]
+            soil.append(bare in _STAMP_SOFT_SOIL)
+            # log->wood eligibility: "_log" in name, and horizontal
+            # (axis=x / axis=z) logs skipped — same tests as legacy body.
+            ok = "_log" in nm
+            if ok and "[" in nm:
+                props = nm.split("[", 1)[1].rstrip("]")
+                if "axis=x" in props or "axis=z" in props:
+                    ok = False
+            logsw.append(ok)
+            fence.append(("fence" in nm) and ("fence_gate" not in nm))
+        luts["protected"] = np.concatenate(
+            [luts["protected"], np.array(prot, dtype=bool)])
+        luts["soil"] = np.concatenate(
+            [luts["soil"], np.array(soil, dtype=bool)])
+        luts["logswap"] = np.concatenate(
+            [luts["logswap"], np.array(logsw, dtype=bool)])
+        luts["fence"] = np.concatenate(
+            [luts["fence"], np.array(fence, dtype=bool)])
+        luts["n"] = n
+    return luts
+
+
+def _schem_stamp_data(schem_data, rot: int):
+    """Factored stamp data for one SchemData + rotation, cached on the
+    instance (one np.unique per schematic FILE per process instead of one
+    per placement; one rot90+rename per rotation actually used).
+
+    Returns (u_strs, codes, counts, u_air, u_log, u_bare):
+      u_strs — final block-name string per code (post rotation-rename)
+      codes  — int32 (Y,Z,X) grid of indices into u_strs (rotated)
+      counts — cells per code (rotation-invariant)
+      u_air  — "air" in name (substring, matching legacy behaviour)
+      u_log  — "log" in name or "wood" in name
+      u_bare — name with every "minecraft:" occurrence stripped
+
+    Rotation renames operate on the NAME LIST, never on the object array;
+    if a rename collides with another unique the two codes simply share a
+    name — identical downstream behaviour to the legacy in-array rename."""
+    blocks = schem_data.blocks
+    cache = getattr(schem_data, "_stamp_cache", None)
+    if cache is None or cache.get("blocks_id") != id(blocks):
+        u_vals, inv = np.unique(blocks, return_inverse=True)
+        base_strs = [str(u) for u in u_vals]
+        base_codes = inv.reshape(blocks.shape).astype(np.int32)
+        counts = np.bincount(base_codes.ravel(), minlength=len(base_strs))
+        cache = {"blocks_id": id(blocks),
+                 "base": (base_strs, base_codes, counts),
+                 "rot": {}}
+        try:
+            schem_data._stamp_cache = cache
+        except Exception:
+            pass   # exotic schem_data object — just recompute per call
+    # Legacy: rotation applied only when rot > 0; np.rot90 reduces k mod 4
+    # and _DIR_REMAP.get(rot % 4) is None for k==0 — so rot%4==0 == base.
+    key = (rot % 4) if rot > 0 else 0
+    ent = cache["rot"].get(key)
+    if ent is None:
+        base_strs, base_codes, counts = cache["base"]
+        if key == 0:
+            u_strs, codes = base_strs, base_codes
+        else:
+            codes = np.rot90(base_codes, k=key, axes=(1, 2)).copy()
+            remap = _STAMP_DIR_REMAP[key]
+            u_strs = [_rotate_blockstate_name(s, remap) if "[" in s else s
+                      for s in base_strs]
+        nU = len(u_strs)
+        u_air = np.fromiter(("air" in s for s in u_strs),
+                            dtype=bool, count=nU)
+        u_log = np.fromiter((("log" in s) or ("wood" in s) for s in u_strs),
+                            dtype=bool, count=nU)
+        u_bare = [s.replace("minecraft:", "") for s in u_strs]
+        ent = (u_strs, codes, counts, u_air, u_log, u_bare)
+        cache["rot"][key] = ent
+    return ent
+
 
 def stamp_schematic(
     vol:        np.ndarray,   # (Y_RANGE, H, W) uint16 �� modified in-place
@@ -1470,9 +1684,6 @@ def stamp_schematic(
     lowest post-desink schem block has a ≥2-block gap to ground are rejected
     entirely (no floating leaves).
     """
-    # Caches for overwrite check (reset per call)
-    _OVERWRITABLE_CACHE: set[int] = set()
-    _PROTECTED_CACHE: set[int] = set()
     tile_H = vol.shape[1]
     tile_W = vol.shape[2]
 
@@ -1489,54 +1700,20 @@ def stamp_schematic(
             if 0 <= yi < Y_RANGE and 0 <= tile_z < tile_H and 0 <= tile_x < tile_W:
                 vol[yi, tile_z, tile_x] = pal.idx(bare)
     else:
-        # SchemData dataclass — blocks is (Y, Z, X) object array
-        blk_arr = schem_data.blocks
-        # Apply rotation in XZ plane (axes 1=Z, 2=X)
+        # SchemData dataclass — blocks is (Y, Z, X) object array.
+        # S100 stamp-perf: rotation (XZ plane, axes 1=Z, 2=X) + blockstate
+        # property rotation + the unique-name factoring all live in
+        # _schem_stamp_data (cached per SchemData + rotation).  From here on
+        # the schematic is an int32 `codes` grid + per-code name LUTs; the
+        # object block array is never touched again.
         if hasattr(schem_data, '_rotation'):
             rot = schem_data._rotation
         else:
             rot = 0
-        if rot > 0:
-            blk_arr = np.rot90(blk_arr, k=rot, axes=(1, 2)).copy()
-            # Rotate directional blockstate properties to match spatial rotation.
-            # rot=1 (90° CW): north→east→south→west→north
-            # rot=2 (180°): north↔south, east↔west
-            # rot=3 (270° CW): north→west→south→east→north
-            _DIR_REMAP = {
-                1: {"north": "east", "east": "south", "south": "west", "west": "north"},
-                2: {"north": "south", "south": "north", "east": "west", "west": "east"},
-                3: {"north": "west", "west": "south", "south": "east", "east": "north"},
-            }
-            remap = _DIR_REMAP.get(rot % 4)
-            if remap:
-                import re
-                def _rotate_blockstate(name):
-                    if "[" not in name:
-                        return name
-                    base, state = name.split("[", 1)
-                    state = state.rstrip("]")
-                    pairs = []
-                    for pair in state.split(","):
-                        k, sep, v = pair.partition("=")
-                        k = k.strip()
-                        v = v.strip()
-                        # Rotate directional keys (fence connections: north=true)
-                        if k in remap:
-                            k = remap[k]
-                        # Rotate facing values (gate/stair: facing=north)
-                        if k == "facing" and v in remap:
-                            v = remap[v]
-                        pairs.append(f"{k}={v}")
-                    return f"{base}[{','.join(pairs)}]"
-                # Apply to entire array (vectorized via unique values)
-                unique_blocks = np.unique(blk_arr)
-                for ub in unique_blocks:
-                    s = str(ub)
-                    if "[" in s:
-                        rotated = _rotate_blockstate(s)
-                        if rotated != s:
-                            blk_arr[blk_arr == ub] = rotated
-        sh, sl, sw = blk_arr.shape   # height, length (Z), width (X)
+        u_strs, codes, u_counts, u_air, u_log, u_bare = \
+            _schem_stamp_data(schem_data, rot)
+        nU = len(u_strs)
+        sh, sl, sw = codes.shape   # height, length (Z), width (X)
 
         # ── S61-f5: TRUNK EXTENSION anchor + bush sink fallback ────────────
         # Before rejecting a floating placement, try to ANCHOR it by extending
@@ -1574,26 +1751,23 @@ def stamp_schematic(
         MAX_TRUNK_EXT        = 8   # residual downhill fill after sink
         MAX_TREE_SINK        = 16  # max gap we'll seat by sinking; reject beyond
         if surface_y is not None:
-            col_reject = np.zeros((sl, sw), dtype=bool)
-            col_oob    = np.zeros((sl, sw), dtype=bool)   # S95 tree-seam STEP A: out-of-tile columns
-            col_desink = np.full((sl, sw), -(1 << 30), dtype=np.int64)
-            # Precompute non-air + log masks in one pass via unique (much
-            # cheaper than str() per cell).
-            non_air = np.ones(blk_arr.shape, dtype=bool)
-            is_log  = np.zeros(blk_arr.shape, dtype=bool)
+            # Precompute non-air + log masks from the per-code LUTs.
+            non_air = ~u_air[codes]
+            is_log  = u_log[codes]
             # Count logs by BARE name (no blockstate) so axis=x/y/z variants
             # of the same species aggregate → primary picks correct species.
+            # Iterated in sorted final-name order — matches the legacy
+            # np.unique(blk_arr) walk including its dict insertion order
+            # (max() tie-breaks on first-inserted).
             log_bare_counts: dict = {}
-            for _u in np.unique(blk_arr):
-                su = str(_u)
+            for _k in sorted(range(nU), key=u_strs.__getitem__):
+                su = u_strs[_k]
                 if "air" in su:
-                    non_air[blk_arr == _u] = False
                     continue
                 if "log" in su or "wood" in su:
-                    is_log[blk_arr == _u] = True
                     bare = su.replace("minecraft:", "").split("[")[0]
                     log_bare_counts[bare] = (
-                        log_bare_counts.get(bare, 0) + int((blk_arr == _u).sum())
+                        log_bare_counts.get(bare, 0) + int(u_counts[_k])
                     )
             any_col           = non_air.any(axis=0)    # (sl, sw) bool
             lowest_sy_col     = non_air.argmax(axis=0) # (sl, sw) int
@@ -1609,51 +1783,55 @@ def stamp_schematic(
             # "trunks", causing trunk-extension to fill fake side-trunks
             # under leaf clusters → bushy "no visible trunk" look).
             TRUNK_RUN_FRAC = 0.85   # S70-f5b: bumped from 0.6 — adjacent biome (DESERT_STEPPE_TRANSITION) still showed bushy fake trunks at 0.6
+            # S100 stamp-perf: consecutive-log run length from the lowest
+            # log, vectorised (was a per-column python scan).  run = index
+            # of the first non-log at/after `first`, minus `first`; no
+            # break → runs to the top (sh - first).
             runs = np.zeros((sl, sw), dtype=np.int32)
-            for _sz in range(sl):
-                for _sx in range(sw):
-                    if not log_any_col[_sz, _sx]:
-                        continue
-                    first = int(lowest_log_sy_col[_sz, _sx])
-                    if first > TRUNK_FIRST_MAX_Y:
-                        continue  # logs start too high — branch, not trunk
-                    run = 0
-                    for _sy in range(first, sh):
-                        if is_log[_sy, _sz, _sx]:
-                            run += 1
-                        else:
-                            break
-                    runs[_sz, _sx] = run
+            _elig = log_any_col & (lowest_log_sy_col <= TRUNK_FIRST_MAX_Y)
+            if _elig.any():
+                _yy3 = np.arange(sh)[:, None, None]
+                _brk = (~is_log) & (_yy3 >= lowest_log_sy_col[None, :, :])
+                _has_brk = _brk.any(axis=0)
+                _first_brk = _brk.argmax(axis=0)
+                _run_all = np.where(_has_brk,
+                                    _first_brk - lowest_log_sy_col,
+                                    sh - lowest_log_sy_col)
+                runs[_elig] = _run_all[_elig].astype(np.int32)
             max_run = int(runs.max()) if runs.size else 0
             trunk_threshold = max(TRUNK_RUN_MIN, int(max_run * TRUNK_RUN_FRAC))
             is_trunk_col = (runs >= trunk_threshold) & (runs > 0)
             has_trunks = bool(is_trunk_col.any())
-            # Bbox out-of-tile reject + desink cutoff per column
-            for _sz in range(sl):
-                tz = local_z + _sz
-                if not (0 <= tz < tile_H):
-                    col_reject[_sz, :] = True
-                    col_oob[_sz, :] = True            # S95 STEP A: row outside tile
-                    continue
-                for _sx in range(sw):
-                    tx = local_x + _sx
-                    if not (0 <= tx < tile_W):
-                        col_reject[_sz, _sx] = True
-                        col_oob[_sz, _sx] = True       # S95 STEP A: col outside tile
-                        continue
-                    col_desink[_sz, _sx] = int(surface_y[tz, tx])
-                    # S64: footprint water gate — reject any column whose
-                    # surface is below sea level so trees never leave leaves
-                    # hanging over water from multi-column canopies.
-                    # S71: extended to also reject river-water columns (carved
-                    # rivers above sea level) via water_col_mask.  This catches
-                    # trees with canopy hanging over a river even though the
-                    # placement-time 14px buffer should prevent it — defence
-                    # in depth.  Whole-stamp reject below trips on this too.
-                    if col_desink[_sz, _sx] < 63:
-                        col_reject[_sz, _sx] = True
-                    elif water_col_mask is not None and water_col_mask[tz, tx]:
-                        col_reject[_sz, _sx] = True
+            # Bbox out-of-tile reject + desink cutoff per column (S100:
+            # vectorised — same flags; the legacy below-sea/water elif both
+            # set the same reject bit, so the union is identical).
+            _tz_arr = local_z + np.arange(sl)
+            _tx_arr = local_x + np.arange(sw)
+            _z_in = (_tz_arr >= 0) & (_tz_arr < tile_H)
+            _x_in = (_tx_arr >= 0) & (_tx_arr < tile_W)
+            _inb = _z_in[:, None] & _x_in[None, :]
+            col_oob = ~_inb                    # S95 STEP A: outside tile
+            col_reject = col_oob.copy()
+            col_desink = np.full((sl, sw), -(1 << 30), dtype=np.int64)
+            _wm_grid = None
+            if _inb.any():
+                _ix = np.ix_(np.where(_z_in)[0], np.where(_x_in)[0])
+                _tzv = _tz_arr[_z_in][:, None]
+                _txv = _tx_arr[_x_in][None, :]
+                col_desink[_ix] = surface_y[_tzv, _txv].astype(np.int64)
+                # S64: footprint water gate — reject any column whose
+                # surface is below sea level so trees never leave leaves
+                # hanging over water from multi-column canopies.
+                # S71: extended to also reject river-water columns (carved
+                # rivers above sea level) via water_col_mask.  This catches
+                # trees with canopy hanging over a river even though the
+                # placement-time 14px buffer should prevent it — defence
+                # in depth.  Whole-stamp reject below trips on this too.
+                col_reject |= _inb & (col_desink < 63)
+                if water_col_mask is not None:
+                    _wm_grid = np.zeros((sl, sw), dtype=bool)
+                    _wm_grid[_ix] = water_col_mask[_tzv, _txv]
+                    col_reject |= _wm_grid
             # S65: WHOLE-SCHEMATIC REJECT if ANY footprint column would
             # stand underwater.  Previous S64 fix only skipped underwater
             # columns, but land-side columns still left leaf clusters
@@ -1664,33 +1842,22 @@ def stamp_schematic(
             # branch leaves WORSE by adding fake logs under them.  User
             # wants floating leaves above ground (natural look), not
             # synthesized trunks under every leaf cluster.
-            _uwater_hit = False
-            for _sz in range(sl):
-                if _uwater_hit:
-                    break
-                for _sx in range(sw):
-                    if not col_reject[_sz, _sx]:
-                        continue
-                    if not non_air[:, _sz, _sx].any():
-                        continue
-                    # Below-sea reject (oceans, deep lakes). S95 tree-seam STEP A:
-                    # an OOB column has the sentinel col_desink (-big) and is the
-                    # NEIGHBOUR's territory (clipped, not this tile's water) -> it must
-                    # NOT trigger the whole-stamp underwater reject, else every tree
-                    # touching the far tile edge is dropped = the seam trench. A truly
-                    # in-bounds underwater column still whole-rejects (S64/S65/S71 intact).
-                    if (not (clip_oob and col_oob[_sz, _sx])) and col_desink[_sz, _sx] < 63:
-                        _uwater_hit = True
-                        break
-                    # S71: river-water reject (carved channels above sea level).
-                    # Need world coords to query water_col_mask.
-                    if water_col_mask is not None:
-                        tz_chk = local_z + _sz
-                        tx_chk = local_x + _sx
-                        if (0 <= tz_chk < tile_H and 0 <= tx_chk < tile_W
-                                and water_col_mask[tz_chk, tx_chk]):
-                            _uwater_hit = True
-                            break
+            # Below-sea reject (oceans, deep lakes). S95 tree-seam STEP A:
+            # an OOB column has the sentinel col_desink (-big) and is the
+            # NEIGHBOUR's territory (clipped, not this tile's water) -> it must
+            # NOT trigger the whole-stamp underwater reject, else every tree
+            # touching the far tile edge is dropped = the seam trench. A truly
+            # in-bounds underwater column still whole-rejects (S64/S65/S71 intact).
+            # S71: river-water reject (carved channels above sea level) via
+            # _wm_grid (in-bounds columns only, matching the legacy bounds
+            # check).  S100: vectorised — legacy early-break scan == any().
+            _cand = col_reject & any_col
+            _a_hit = _cand & (col_desink < 63)
+            if clip_oob:
+                _a_hit &= ~col_oob
+            _uwater_hit = bool(_a_hit.any())
+            if (not _uwater_hit) and _wm_grid is not None:
+                _uwater_hit = bool((_cand & _wm_grid).any())
             if _uwater_hit and not deterministic_seat:
                 # S100: band trees skip the whole-stamp reject (asymmetric across
                 # tiles); their per-column col_reject still skips water columns,
@@ -1700,16 +1867,13 @@ def stamp_schematic(
                 # Strategy A — SINK then small extension. Compute worst trunk gap
                 # (how far the lowest trunk floats above its own column ground).
                 # S70-f5: reverted f4 — back to original (skip col_reject).
-                max_trunk_gap = 0
-                for _sz in range(sl):
-                    for _sx in range(sw):
-                        if not is_trunk_col[_sz, _sx] or col_reject[_sz, _sx]:
-                            continue
-                        ls = int(col_desink[_sz, _sx])
-                        log_wy = place_y + int(lowest_log_sy_col[_sz, _sx])
-                        gap = log_wy - ls
-                        if gap > max_trunk_gap:
-                            max_trunk_gap = gap
+                _tcols = is_trunk_col & ~col_reject
+                if _tcols.any():
+                    _tgaps = ((place_y + lowest_log_sy_col.astype(np.int64))
+                              - col_desink)
+                    max_trunk_gap = max(0, int(_tgaps[_tcols].max()))
+                else:
+                    max_trunk_gap = 0
                 if (not deterministic_seat) and max_trunk_gap > MAX_TREE_SINK:
                     return  # slope too steep to seat the tree cleanly — reject
                 # S89 walk-3: SINK the whole schematic so the lowest trunk drops to
@@ -1735,20 +1899,15 @@ def stamp_schematic(
                 # single-log small trees as trees instead of bushes).
                 # This bush-sink path now only runs for schematics with
                 # genuinely zero log blocks anywhere — true leafy bushes.
-                max_gap = 0
-                any_ground_col = False
-                for _sz in range(sl):
-                    for _sx in range(sw):
-                        if col_reject[_sz, _sx] or not any_col[_sz, _sx]:
-                            continue
-                        lsy = int(lowest_sy_col[_sz, _sx])
-                        if lsy > GROUND_COL_Y:
-                            continue
-                        ls = int(col_desink[_sz, _sx])
-                        gap = (place_y + lsy) - ls
-                        any_ground_col = True
-                        if gap > max_gap:
-                            max_gap = gap
+                _gcols = ((~col_reject) & any_col
+                          & (lowest_sy_col <= GROUND_COL_Y))
+                any_ground_col = bool(_gcols.any())
+                if any_ground_col:
+                    _bgaps = ((place_y + lowest_sy_col.astype(np.int64))
+                              - col_desink)
+                    max_gap = max(0, int(_bgaps[_gcols].max()))
+                else:
+                    max_gap = 0
                 if (not deterministic_seat) and any_ground_col and max_gap > PLACE_MAX_FLOAT_BUSH:
                     return
                 if (not deterministic_seat) and max_gap > 1:
@@ -1768,42 +1927,38 @@ def stamp_schematic(
             non_air = None
             primary_log_idx = None
 
-        for sy in range(sh):
-            world_y = place_y + sy
-            yi = world_y - Y_MIN
-            if yi < 0 or yi >= Y_RANGE:
-                continue
-            for sz in range(sl):
-                tile_z = local_z + sz
-                if tile_z < 0 or tile_z >= tile_H:
-                    continue
-                for sx in range(sw):
-                    tile_x = local_x + sx
-                    if tile_x < 0 or tile_x >= tile_W:
-                        continue
-                    # S61 column-level gates
-                    if col_reject is not None:
-                        if col_reject[sz, sx]:
-                            continue
-                        if world_y <= col_desink[sz, sx]:
-                            continue
-                    block_name = str(blk_arr[sy, sz, sx])
-                    if "air" in block_name:
-                        continue
-                    bare = block_name.replace("minecraft:", "")
-                    # Don't overwrite existing schematic blocks
-                    existing_idx = vol[yi, tile_z, tile_x]
-                    if existing_idx not in _OVERWRITABLE_CACHE:
-                        existing_name = pal.name_of(existing_idx)
-                        if any(k in existing_name for k in
-                               ("log", "leaves", "fence", "planks",
-                                "stairs", "slab", "vine")):
-                            _PROTECTED_CACHE.add(existing_idx)
-                        else:
-                            _OVERWRITABLE_CACHE.add(existing_idx)
-                    if existing_idx in _PROTECTED_CACHE:
-                        continue
-                    vol[yi, tile_z, tile_x] = pal.idx(bare)
+        # ── main stamp (S100: vectorised; boolean masking follows C order,
+        # identical to the legacy sy→sz→sx visit order) ─────────────────────
+        _sy_lo = max(0, Y_MIN - place_y)
+        _sy_hi = min(sh, Y_RANGE + Y_MIN - place_y)
+        _sz_lo = max(0, -local_z);  _sz_hi = min(sl, tile_H - local_z)
+        _sx_lo = max(0, -local_x);  _sx_hi = min(sw, tile_W - local_x)
+        if _sy_hi > _sy_lo and _sz_hi > _sz_lo and _sx_hi > _sx_lo:
+            _codes_c = codes[_sy_lo:_sy_hi, _sz_lo:_sz_hi, _sx_lo:_sx_hi]
+            _wmask = ~u_air[_codes_c]
+            # S61 column-level gates
+            if col_reject is not None:
+                _wmask &= ~col_reject[_sz_lo:_sz_hi, _sx_lo:_sx_hi][None, :, :]
+                _wys = place_y + np.arange(_sy_lo, _sy_hi, dtype=np.int64)
+                _wmask &= (_wys[:, None, None]
+                           > col_desink[_sz_lo:_sz_hi, _sx_lo:_sx_hi][None, :, :])
+            if _wmask.any():
+                _dest = vol[place_y + _sy_lo - Y_MIN:place_y + _sy_hi - Y_MIN,
+                            local_z + _sz_lo:local_z + _sz_hi,
+                            local_x + _sx_lo:local_x + _sx_hi]
+                # Don't overwrite existing schematic blocks (legacy per-cell
+                # name_of + substring test → palette-index LUT; _dest is a
+                # view — existing values all predate this placement's writes)
+                _wmask &= ~_pal_stamp_luts(pal)["protected"][_dest]
+                if _wmask.any():
+                    _sel = _codes_c[_wmask]   # C order == legacy visit order
+                    # pal.idx in first-encounter order → palette growth
+                    # order identical to the per-cell scalar loop
+                    _uq, _fi = np.unique(_sel, return_index=True)
+                    _dest_lut = np.zeros(nU, dtype=np.uint16)
+                    for _k in _uq[np.argsort(_fi, kind="stable")]:
+                        _dest_lut[_k] = pal.idx(u_bare[_k])
+                    _dest[_wmask] = _dest_lut[_sel]
 
         # ── S61-f6: TRUNK EXTENSION pass (post-stamp, per-column log type) ──
         # For each trunk column, fill any gap between local_surf+1 and the
@@ -1822,6 +1977,15 @@ def stamp_schematic(
                 and primary_log_idx is not None and non_air is not None):
             AIR_IDX_EXT = pal.air
             _col_log_idx_cache: dict = {}
+            # S100 stamp-perf: root-anchor soil test via palette LUT (was
+            # pal.name_of + split per probed cell).  Snapshot is safe: the
+            # cells this pass READS (at/below each trunk column's own
+            # surface) are disjoint from the cells it WRITES (other columns
+            # / above-surface fills), so no read ever sees an index newer
+            # than the snapshot; the length guard replays name_of()'s
+            # out-of-range -> "" -> not-soil behaviour.
+            _soil_lut = _pal_stamp_luts(pal)["soil"]
+            _soil_n = len(_soil_lut)
             for _sz in range(sl):
                 if not is_trunk_col[_sz].any():
                     continue
@@ -1844,7 +2008,7 @@ def stamp_schematic(
                         if place_y + _sy > ls:
                             target_sy = _sy
                             # Per-column: take THIS column's log type, bare
-                            col_log_name = str(blk_arr[_sy, _sz, _sx])
+                            col_log_name = u_strs[codes[_sy, _sz, _sx]]
                             bare = col_log_name.replace("minecraft:", "").split("[")[0]
                             fill_idx = _col_log_idx_cache.get(bare)
                             if fill_idx is None:
@@ -1867,21 +2031,15 @@ def stamp_schematic(
                     # inside the `target_wy <= ls + 1: continue` branch so
                     # flat-terrain columns never got roots.
                     ROOT_ANCHOR_DEPTH = 6
-                    _SOFT_SOIL_NAMES = frozenset({
-                        "dirt", "grass_block", "podzol", "coarse_dirt",
-                        "rooted_dirt", "mud", "packed_mud", "moss_block",
-                        "mycelium", "mud_block", "snow_block", "sand",
-                        "red_sand",
-                    })
+                    # (soft-soil set hoisted to module _STAMP_SOFT_SOIL;
+                    # the test itself is the _soil_lut palette LUT above)
                     for drop in range(1, ROOT_ANCHOR_DEPTH + 1):
                         fill_wy_down = ls - drop + 1  # ls is surface Y, so fill ls..ls-5
                         yi_down = fill_wy_down - Y_MIN
                         if not (0 <= yi_down < Y_RANGE):
                             continue
                         existing = vol[yi_down, tile_z, tile_x]
-                        exist_name = pal.name_of(existing)
-                        exist_bare = exist_name.replace("minecraft:", "").split("[")[0]
-                        if exist_bare in _SOFT_SOIL_NAMES:
+                        if existing < _soil_n and _soil_lut[existing]:
                             vol[yi_down, tile_z, tile_x] = fill_idx
 
                     # Only run the UP-extension fill if needed
@@ -2206,6 +2364,177 @@ def _build_heightmaps_nbt(chunk_vol: np.ndarray) -> "nbtlib.Compound":
     })
 
 
+# ---------------------------------------------------------------------------
+# S100 PERF — index-domain NBT emit helpers.
+#
+# _chunk_to_nbt_bytes used to materialise the full (Y_RANGE,16,16) chunk as
+# object-dtype STRINGS and run np.full / np.unique / np.isin over python
+# string objects per section (profiled 50.3s cumulative on a dense tile:
+# np.full 14s, per-section object-unique ~18s, heightmap np.isin 8.4s,
+# to_strings 1.5s).  The volume is ALREADY uint16 palette indices, so all of
+# that now runs in the integer domain:
+#   * per-section np.unique over uint16 (radix-cheap) + a NAME-order re-sort
+#     that reproduces EXACTLY the lexicographic palette order np.unique on
+#     strings produced (palette order changes the emitted bytes);
+#   * palette-entry Compounds memoized per block name (module scope — output
+#     depends only on the name).  Compound instances are SHARED across
+#     sections/chunks/tiles: nbtlib serialization reads but never mutates
+#     (same contract as the S84 _AIR_BLOCK_STATES_NBT cache) and
+#     List.cast_item passes existing Compound instances through untouched;
+#   * biome-section Compounds memoized by their 64-cell value pattern
+#     (uniform-biome tiles hit a handful of patterns);
+#   * heightmap air/fluid tests become an integer compare + a boolean LUT
+#     over palette indices.
+# The original string-domain builders above are kept intact (reference
+# implementations; islands/biome_tint_overlay.py imports _build_biomes_nbt).
+# Byte-for-byte equivalence gated by tools/diag_nbt_emit_equiv.py.
+# ---------------------------------------------------------------------------
+
+_PALETTE_ENTRY_NBT_CACHE: dict = {}          # block name -> palette Compound
+_SINGLE_BLOCK_STATES_NBT_CACHE: dict = {}    # block name -> 1-entry block_states
+_BIOME_NBT_CACHE: dict = {}                  # 64-cell name tuple -> biomes Compound
+_BIOME_NBT_CACHE_MAX = 8192                  # safety valve (entries are tiny)
+_EMPTY_SEC_U16 = np.zeros((16, 16, 16), dtype=np.uint16)  # read-only all-air
+
+
+def _palette_entry_nbt(name: str):
+    """Cached block_states palette-entry Compound for one block-name string.
+
+    Exact clone of _build_block_states_nbt's inner _entry parse (optional
+    "[key=value,...]" properties, namespace default to minecraft:, leaf
+    persistent/distance injection, sea_pickle waterlogged injection) —
+    built once per distinct name instead of once per section."""
+    ent = _PALETTE_ENTRY_NBT_CACHE.get(name)
+    if ent is not None:
+        return ent
+    import nbtlib
+    key = name
+    props_dict = {}
+    if "[" in name:
+        base, _, state_str = name.partition("[")
+        state_str = state_str.rstrip("]")
+        for pair in state_str.split(","):
+            k, _, v = pair.partition("=")
+            if k and v:
+                props_dict[k.strip()] = nbtlib.String(v.strip())
+        name = base
+    ns, _, bare = name.rpartition(":")
+    full_name = f"{'minecraft' if not ns else ns}:{bare}"
+    # Prevent leaf decay on schematic-placed leaves
+    if "leaves" in bare and "persistent" not in props_dict:
+        props_dict["persistent"] = nbtlib.String("true")
+        props_dict.setdefault("distance", nbtlib.String("1"))
+    # S64: ensure waterlogged=true for sea_pickle placed in ocean water
+    if bare == "sea_pickle" and "waterlogged" not in props_dict:
+        props_dict["waterlogged"] = nbtlib.String("true")
+    entry = {"Name": nbtlib.String(full_name)}
+    if props_dict:
+        entry["Properties"] = nbtlib.Compound(props_dict)
+    ent = nbtlib.Compound(entry)
+    _PALETTE_ENTRY_NBT_CACHE[key] = ent
+    return ent
+
+
+def _build_block_states_nbt_u16(sec_u16: np.ndarray, pal: BlockPalette):
+    """Index-domain equivalent of _build_block_states_nbt(pal.to_strings(s)).
+
+    np.unique runs on the uint16 indices (~50x cheaper than an argsort over
+    4096 python-string objects); the unique indices are then mapped to names
+    and re-ordered BY NAME so the palette list and the packed data longs
+    reproduce exactly the bytes of np.unique on the string array (which
+    sorts lexicographically — object-dtype np.sort uses Python str `<`,
+    same total order as sorted()).  Relies on the BlockPalette name<->index
+    bijection (idx() dedups; every index maps to a distinct name)."""
+    import nbtlib
+    u_idx, inv = np.unique(sec_u16.ravel(), return_inverse=True)
+    names = [pal._names[i] for i in u_idx]
+    if len(names) == 1:
+        name = names[0]
+        cached = _SINGLE_BLOCK_STATES_NBT_CACHE.get(name)
+        if cached is None:
+            cached = nbtlib.Compound({
+                "palette": nbtlib.List[nbtlib.Compound](
+                    [_palette_entry_nbt(name)])
+            })
+            _SINGLE_BLOCK_STATES_NBT_CACHE[name] = cached
+        return cached
+    order = sorted(range(len(names)), key=names.__getitem__)
+    rank = np.empty(len(order), dtype=np.int64)
+    rank[np.asarray(order, dtype=np.int64)] = np.arange(len(order),
+                                                        dtype=np.int64)
+    sorted_names = [names[k] for k in order]
+    palette = nbtlib.List[nbtlib.Compound](
+        [_palette_entry_nbt(n) for n in sorted_names])
+    longs = _pack_indices(rank[inv], len(sorted_names))
+    return nbtlib.Compound({"palette": palette,
+                             "data":    nbtlib.LongArray(longs.tolist())})
+
+
+def _build_biomes_nbt_cached(names_yzx: np.ndarray):
+    """Value-keyed cache over _build_biomes_nbt.
+
+    Output depends only on the 64 cell strings, so the Compound is memoized
+    on their tuple.  The SAME Compound instance is shared across sections /
+    chunks (serialization-only use, see module comment above)."""
+    key = tuple(names_yzx.ravel().tolist())
+    hit = _BIOME_NBT_CACHE.get(key)
+    if hit is None:
+        if len(_BIOME_NBT_CACHE) >= _BIOME_NBT_CACHE_MAX:
+            _BIOME_NBT_CACHE.clear()
+        hit = _build_biomes_nbt(names_yzx)
+        _BIOME_NBT_CACHE[key] = hit
+    return hit
+
+
+def _build_heightmaps_nbt_u16(chunk_u16: np.ndarray,
+                              pal: BlockPalette) -> "nbtlib.Compound":
+    """Index-domain equivalent of _build_heightmaps_nbt(pal.to_strings(v)).
+
+    air == index 0 (BlockPalette invariant), and the fluid test is a boolean
+    LUT over palette indices instead of np.isin over 196k object strings
+    (profiled 8.4s/tile).  Packing math identical to _build_heightmaps_nbt."""
+    import nbtlib
+    CHUNK_SZ = 16
+    flat = chunk_u16.reshape(Y_RANGE, CHUNK_SZ * CHUNK_SZ)   # (Y_RANGE, 256)
+
+    is_air = (flat == 0)
+    fluid_lut = np.zeros(len(pal._names), dtype=bool)
+    for _fn in _FLUID_NAMES:
+        _fi = pal._idx.get(_fn)
+        if _fi is not None:
+            fluid_lut[_fi] = True
+    is_fluid = fluid_lut[flat]
+
+    def _highest_yi(solid_mask: np.ndarray) -> np.ndarray:
+        """solid_mask: (Y_RANGE, 256) bool — return (256,) stored heightmap values."""
+        flipped  = solid_mask[::-1, :]
+        has_any  = solid_mask.any(axis=0)
+        first_hi = np.argmax(flipped, axis=0)
+        highest  = np.where(has_any, Y_RANGE - 1 - first_hi, 0)
+        return highest.astype(np.int64)          # stored = yi = MC_Y - Y_MIN
+
+    def _pack_hm(values: np.ndarray) -> "nbtlib.LongArray":
+        bpe     = _math.ceil(_math.log2(Y_RANGE + 1))
+        vpl     = 64 // bpe                      # 7 values/long @ 9bpe; 6 @ 10bpe
+        n_longs = _math.ceil(len(values) / vpl)  # 37 @ 9bpe; 43 @ 10bpe
+        pad     = n_longs * vpl - len(values)
+        padded  = np.concatenate([values, np.zeros(pad, dtype=np.int64)])
+        reshaped    = padded.reshape(n_longs, vpl)
+        bit_offsets = (np.arange(vpl, dtype=np.int64) * bpe).reshape(1, vpl)
+        longs = np.bitwise_or.reduce(reshaped << bit_offsets, axis=1)
+        return nbtlib.LongArray(longs.tolist())
+
+    ws = _highest_yi(~is_air)                    # water counts as surface
+    of = _highest_yi(~is_air & ~is_fluid)        # highest non-fluid solid
+
+    return nbtlib.Compound({
+        "WORLD_SURFACE":             _pack_hm(ws),
+        "OCEAN_FLOOR":               _pack_hm(of),
+        "MOTION_BLOCKING":           _pack_hm(ws),
+        "MOTION_BLOCKING_NO_LEAVES": _pack_hm(of),  # no leaves in terrain yet
+    })
+
+
 def _chunk_to_nbt_bytes(
     cx: int, cz: int,
     vol: np.ndarray,            # (Y_RANGE, tile_h, tile_w) uint16 palette indices
@@ -2234,8 +2563,11 @@ def _chunk_to_nbt_bytes(
     if bx_hi > bx_lo and bz_hi > bz_lo:
         chunk_u16[:, lz_lo:lz_hi, lx_lo:lx_hi] = vol[:, bz_lo:bz_hi, bx_lo:bx_hi]
 
-    # Convert to strings for NBT building (small: 512×16×16 = 131K cells)
-    chunk_vol = pal.to_strings(chunk_u16)
+    # S100 perf: NO string materialisation.  Everything downstream (palette
+    # build, all-air checks, solid masks, heightmaps, edge water ticks) now
+    # works directly on the uint16 chunk_u16 — pal.to_strings on the full
+    # (Y_RANGE,16,16) slab plus the object-dtype compares it fed were the
+    # dominant emit cost.  Index 0 is always "air" (BlockPalette invariant).
 
     # Vandir biome (Z,X) grid for this chunk — default _DEFAULT for out-of-tile area
     biome_vandir_zx = np.full((CHUNK_SZ, CHUNK_SZ), "_DEFAULT", dtype=object)
@@ -2247,7 +2579,7 @@ def _chunk_to_nbt_bytes(
     # biome name for the MC tag emit.  S67 extends with a mountaincap dither
     # zone for SNOWY_BOREAL_TAIGA in Y[200, 250].
     if BIOME_ALTITUDE_REMAPS:
-        _solid_for_remap = (chunk_vol != "air")
+        _solid_for_remap = (chunk_u16 != 0)
         _has_any_r = _solid_for_remap.any(axis=0)
         _first_hi_r = np.argmax(_solid_for_remap[::-1, :, :], axis=0)
         _surf_yi_r = np.where(_has_any_r, Y_RANGE - 1 - _first_hi_r, 0)
@@ -2331,7 +2663,7 @@ def _chunk_to_nbt_bytes(
     # patch landed in ground (taiga) cells and snow still fell on BOREAL_ALPINE.
     # MIN guarantees every cell that CONTAINS any surface becomes sky — the
     # trade-off is more grass cells get plains tint on mixed-height patches.
-    solid_mask = (chunk_vol != "air")                 # (Y_RANGE, 16, 16)
+    solid_mask = (chunk_u16 != 0)                     # (Y_RANGE, 16, 16)
     has_any    = solid_mask.any(axis=0)               # (16, 16)
     # argmax on reversed axis → index of first solid from top
     first_hi   = np.argmax(solid_mask[::-1, :, :], axis=0)
@@ -2349,22 +2681,37 @@ def _chunk_to_nbt_bytes(
     sections = []
     _sec_y_max = (_TEST_SECTION_Y_MAX + 1) if _TEST_SECTION_Y_MAX is not None \
                  else (_SECTION_Y_MIN + _N_SECTIONS)
+
+    # S100 perf: uniform-biome fast path — when sky == ground the (4,4,4)
+    # biome quanta are IDENTICAL for every section of this chunk, so the
+    # biomes Compound is built once (value-cached) and the same instance is
+    # shared by all sections (serialization re-reads it; bytes unchanged).
+    _uniform_biomes_nbt = None
+    if not sky_active:
+        # Same values as the original per-section np.stack([ground_q] * 4).
+        _uniform_biomes_nbt = _build_biomes_nbt_cached(
+            np.stack([ground_q] * 4, axis=0))
+
     for sec_y in range(_SECTION_Y_MIN, _sec_y_max):
         yi_base = sec_y * CHUNK_SZ - Y_MIN   # vol Y-index of section's lowest block
 
-        # Extract (16,16,16) block array in (Y,Z,X) order — fill with air
-        sec_blk = np.full((CHUNK_SZ, CHUNK_SZ, CHUNK_SZ), "air", dtype=object)
+        # S100 perf: section block data is a zero-copy uint16 VIEW of
+        # chunk_u16 — the out-of-tile area is already 0 == "air", exactly
+        # what the old per-section np.full("air") object buffer provided
+        # (~50k np.full calls / 14s per dense tile, now gone).  Sections
+        # overhanging the vol Y range (only possible with a non-default
+        # _TEST_SECTION_Y_MAX / world-height change) get a zero-padded copy.
         yi_lo = max(0, yi_base);  yi_hi = min(Y_RANGE, yi_base + CHUNK_SZ)
-        by_lo = yi_lo - yi_base;  by_hi = yi_hi - yi_base
-        # S84: track whether section is all-air (no copy needed if outside
-        # vol range; if copied, check the copied data).
-        _sec_populated = yi_hi > yi_lo and bx_hi > bx_lo and bz_hi > bz_lo
-        if _sec_populated:
-            sec_blk[by_lo:by_hi, lz_lo:lz_hi, lx_lo:lx_hi] = \
-                chunk_vol[yi_lo:yi_hi, lz_lo:lz_hi, lx_lo:lx_hi]
-            _is_all_air = bool((sec_blk == "air").all())
+        if yi_hi - yi_lo == CHUNK_SZ:
+            sec_u16 = chunk_u16[yi_lo:yi_hi]
+        elif yi_hi > yi_lo:
+            sec_u16 = np.zeros((CHUNK_SZ, CHUNK_SZ, CHUNK_SZ), dtype=np.uint16)
+            sec_u16[yi_lo - yi_base:yi_hi - yi_base] = chunk_u16[yi_lo:yi_hi]
         else:
-            _is_all_air = True  # section was outside vol range, sec_blk is the np.full default
+            sec_u16 = _EMPTY_SEC_U16   # entirely outside vol range → all air
+        # S84 all-air fast path, now an integer test (index 0 is always
+        # "air" and BlockPalette.idx dedups, so no other index maps to it).
+        _is_all_air = not sec_u16.any()
 
         # Build (4, 4, 4) biome quanta for this section — 4 vertical cells,
         # each covering a 4-block Y range.  Rule: cell painted sky iff
@@ -2378,9 +2725,10 @@ def _chunk_to_nbt_bytes(
                 cell_bottom_wy = sec_bottom_wy + yy * 4     # scalar
                 above = cell_bottom_wy >= surface_wy_q      # (4, 4) bool
                 biome_q4[yy] = np.where(above, sky_q, ground_q)
+            _biomes_nbt = _build_biomes_nbt_cached(biome_q4)
         else:
             # Uniform-column fast path (original S60 behaviour)
-            biome_q4 = np.stack([ground_q] * 4, axis=0)     # (4, 4, 4)
+            _biomes_nbt = _uniform_biomes_nbt
 
         # S60: emit ALL sections, including fully-air ones. The biome_q4 tag
         # (desert/taiga/etc.) applies vertically through the entire column so
@@ -2395,16 +2743,14 @@ def _chunk_to_nbt_bytes(
         # BOREAL_ALPINE and friends kills altitude snow without datapacks.
         # S84: fast path for all-air sections. Skip np.unique + _entry
         # parsing + Compound construction; reuse the cached air palette.
-        # Biome compound still emitted per-section (biome can differ at
-        # altitude vs ground, e.g. BOREAL_ALPINE sky override).
         _block_states_nbt = (
             _get_air_block_states_nbt() if _is_all_air
-            else _build_block_states_nbt(sec_blk)
+            else _build_block_states_nbt_u16(sec_u16, pal)
         )
         sections.append(nbtlib.Compound({
             "Y":            nbtlib.Byte(sec_y),
             "block_states": _block_states_nbt,
-            "biomes":       _build_biomes_nbt(biome_q4),
+            "biomes":       _biomes_nbt,
             # SkyLight / BlockLight intentionally omitted — isLightOn=0 tells MC
             # to compute lighting itself, so providing arrays is unnecessary.
         }))
@@ -2418,8 +2764,14 @@ def _chunk_to_nbt_bytes(
 
     fluid_tick_list = []
 
+    # S100 perf: edge columns are scanned in the index domain.  The old
+    # string compare matched the literal name "water" only (not
+    # "minecraft:water"), so the index compare uses that exact name; -1
+    # sentinel (name absent from palette) can never equal a uint16 cell.
+    _water_tick_idx = pal._idx.get("water", -1)
+
     def _add_water_ticks(edge_vol, lx_fixed, lz_fixed):
-        """edge_vol: (Y_RANGE, 16) slice. lx_fixed/lz_fixed: scalar or None (other axis varies).
+        """edge_vol: (Y_RANGE, 16) uint16 slice. lx_fixed/lz_fixed: scalar or None (other axis varies).
         Only ticks the topmost water block per column — interior water is stable and never needs ticking.
 
         S86: tick OCEAN ONLY by checking river_water_y per column.  Any column
@@ -2433,7 +2785,7 @@ def _chunk_to_nbt_bytes(
         and re-settle on chunk load."""
         for other in range(edge_vol.shape[1]):
             col = edge_vol[:, other]
-            water_ys = np.where(col == "water")[0]
+            water_ys = np.where(col == _water_tick_idx)[0]
             if len(water_ys) == 0:
                 continue
             yi = int(water_ys[-1])  # topmost water block only
@@ -2466,13 +2818,13 @@ def _chunk_to_nbt_bytes(
             }))
 
     if cx == cx0_tile:  # west edge — neighbour chunk (cx-1) is outside tile
-        _add_water_ticks(chunk_vol[:, :, 0],  lx_fixed=0,  lz_fixed=None)
+        _add_water_ticks(chunk_u16[:, :, 0],  lx_fixed=0,  lz_fixed=None)
     if cx == cx1_tile:  # east edge — neighbour chunk (cx+1) is outside tile
-        _add_water_ticks(chunk_vol[:, :, 15], lx_fixed=15, lz_fixed=None)
+        _add_water_ticks(chunk_u16[:, :, 15], lx_fixed=15, lz_fixed=None)
     if cz == cz0_tile:  # north edge — neighbour chunk (cz-1) is outside tile
-        _add_water_ticks(chunk_vol[:, 0, :],  lx_fixed=None, lz_fixed=0)
+        _add_water_ticks(chunk_u16[:, 0, :],  lx_fixed=None, lz_fixed=0)
     if cz == cz1_tile:  # south edge — neighbour chunk (cz+1) is outside tile
-        _add_water_ticks(chunk_vol[:, 15, :], lx_fixed=None, lz_fixed=15)
+        _add_water_ticks(chunk_u16[:, 15, :], lx_fixed=None, lz_fixed=15)
 
     fluid_ticks_nbt = (nbtlib.List[nbtlib.Compound](fluid_tick_list)
                        if fluid_tick_list else nbtlib.List([]))
@@ -2490,7 +2842,7 @@ def _chunk_to_nbt_bytes(
         "fluid_ticks":    fluid_ticks_nbt,
         "block_ticks":    nbtlib.List([]),
         "PostProcessing": nbtlib.List[nbtlib.List]([nbtlib.List([]) for _ in sections]),
-        "Heightmaps":     _build_heightmaps_nbt(chunk_vol),
+        "Heightmaps":     _build_heightmaps_nbt_u16(chunk_u16, pal),
         "structures":     nbtlib.Compound({
             "References": nbtlib.Compound({}),
             "starts":     nbtlib.Compound({}),

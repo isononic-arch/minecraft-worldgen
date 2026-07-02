@@ -58,6 +58,10 @@ if str(_PROJECT_ROOT) not in sys.path:
 if str(_THIS.parent) not in sys.path:
     sys.path.insert(0, str(_THIS.parent))
 
+# S101: bit-identical vectorized noise, same patch run_pipeline applies.
+from core.fast_simplex import install as _fast_simplex_install  # noqa: E402
+_fast_simplex_install()
+
 from _pipeline_runner import run_tile_prelude, TileArtifacts, TILE_SIZE  # noqa: E402
 
 # Reuse existing checks from validate_test_tile. These are all single-tile.

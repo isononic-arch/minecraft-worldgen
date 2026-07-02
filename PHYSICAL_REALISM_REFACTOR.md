@@ -2532,3 +2532,11 @@ Hotkeys: Ctrl+Z/Y/Shift+Z undo/redo, Ctrl+S save, [ and ] brush size, E eraser.
 - Full 50k regen after roster walk.
 - World overview map refresh after regen.
 - Resolved by user this session via Override Studio: LRFC<->TEMP_RAINFOREST transition (painted), Rock groups by geography (painted region pass).  Snow NW-only deferred (user declined).
+
+### S101 (2026-07-02) — perf overhaul (byte-gated 5-6×) + island placement finalized
+*(§18 entries S70-S100 live in the session memory handoffs; this entry restores the log for a milestone session. Phase-state block: Landed this session: none of §11's phases — §11's physical-realism phases were completed/retired by S59; this is infrastructure. §11 currently at: complete. Next session starts: V9 island render walk.)*
+
+- **Four byte-identity-gated optimizations** (details + measured decomposition: `memory/S101_perf_audit.md`): vectorized OpenSimplex (`core/fast_simplex.py`, bitwise-proven, was 61% of land-tile time as pure Python), chunk_writer NBT-emit rework + stamp_schematic index-domain rework, hydro_region_overlay exact numpy scanline (replaces matplotlib points_in_path). Gate: `r.21.30.mca` md5 identical pre/post, with and without schematics. Dense tile 200-320s class → 37.8s bare / 50.6s with 4,898 trees. Equality harnesses: `tools/diag_{fast_simplex,nbt_emit,river_raster}_equiv.py`.
+- **Island placement:** all 15 masks re-baked (S98 ocean cfg unified, S100 tree_seam band_pass inherited, Efate reband, Fogo/Madre new offsets, apron-cull fix in `_box_all_run.py`, bake inputs erase_masks+island_geo_data added to make_tarball); shelf-edge depth taper (boundary walls 80→0 blocks vs Y-17); footprint enclosed-hole fill (Ouvea lagoon); `islands/region_ownership_s101.json` + `cloud_bake/mainland_skip_regions_s101.txt` (206 regions, 0 mainland land, verified).
+- **Splice corrections:** mainland deep floor is Y-17 (`ocean_decorator max_depth_for_reshape=80`), NOT the spline — deep-spline plan dropped; `install_sparse.py` is the only mainland-safe merger.
+- **validate_3x3 RETIRED** (user decision); `validate_test_tile.py` carve_rivers 4-tuple unpack fixed.

@@ -388,6 +388,11 @@ def main() -> int:
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
+    # S101: bit-identical vectorized noise, same patch run_pipeline applies —
+    # keeps this tool's output byte-comparable to production renders.
+    from core.fast_simplex import install as _fast_simplex_install
+    _fast_simplex_install()
+
     # Pre-flight: check all required files exist
     required_files = {
         "core/__init__.py":            project_root / "core" / "__init__.py",
@@ -550,7 +555,12 @@ def main() -> int:
     # ---- Step 6a: River carving (v2 — precomputed hydrology) ----
     print("[validate] Step 6a: river carving…")
     pre_carve_y = surface_y.copy()
-    surface_y, river_meta, conn_channel_mask = core_river.carve_rivers(
+    # S101: carve_rivers grew a 4th return (per-pixel water_y_field, S72) — the
+    # 3-tuple unpack crashed this tool at Step 6a (same drift validate_3x3 had
+    # until S91). This tool still derives its own legacy river_water_y below
+    # (~line 745) instead of consuming water_y_field — align that during the
+    # validator-baseline re-sync session.
+    surface_y, river_meta, conn_channel_mask, water_y_field = core_river.carve_rivers(
         surface_y        = surface_y,
         flow_tile        = masks["flow"],
         river_tile       = masks.get("river", np.zeros_like(masks["flow"])),

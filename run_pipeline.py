@@ -43,6 +43,14 @@ from typing import Optional
 
 import numpy as np
 
+# S101: bit-identical vectorized OpenSimplex (was 61% of land-tile wall time as
+# a pure-Python per-point loop; numba unavailable on Py3.14). Class-method
+# patch reaches every instance; spawn workers re-import this module so children
+# get it too. VANDIR_FAST_NOISE=0 disables. Equality proof:
+# tools/diag_fast_simplex_equiv.py (bitwise, 49 seed×case combos).
+from core.fast_simplex import install as _fast_simplex_install
+_fast_simplex_install()
+
 # ---------------------------------------------------------------------------
 # STDOUT IPC HELPERS — flush after every line, no exceptions
 # ---------------------------------------------------------------------------

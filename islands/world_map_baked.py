@@ -72,7 +72,13 @@ def baked_tiles(mdir: Path, world_w: int, world_h: int, off_x: int, off_z: int,
                         if npx >= apron_seed_min_px:
                             seed[ty, tx] = True
     if buffer_tiles > 0:
-        kept = land | binary_dilation(seed, iterations=buffer_tiles)
+        # S101b: square (Chebyshev) structure to actually mirror render_drive's
+        # dx,dy double loop — the default cross missed buffer-ring CORNER tiles.
+        # + fill enclosed holes (atoll lagoons render, same S101b rule as
+        # render_drive._content_tiles / render_islands._footprint_tiles_from_height).
+        from scipy.ndimage import binary_fill_holes as _bfh
+        k = 2 * int(buffer_tiles) + 1
+        kept = _bfh(land | binary_dilation(seed, structure=np.ones((k, k), bool)))
     else:
         kept = land
     rx0 = _snap(off_x) // TILE

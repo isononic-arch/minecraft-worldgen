@@ -1951,6 +1951,115 @@ def _windowed_map_coordinates(arr_8k, rows_f, cols_f, order, cval):
                  mode="constant", cval=cval)
 
 
+def _polygon_contains_grid_exact(poly, xs64, ys64):
+    """Bit-exact numpy port of matplotlib's polygon inside-test,
+    specialised to a rectangular grid of test points.
+
+    S100 PERF: ``matplotlib._path.points_in_path`` cost 65.5s over 2
+    polygons on dense river tile (21,30) — a scalar C loop testing all
+    262k tile cells against every vertex of every bbox-passing spline
+    polygon (~30k verts each). This port exploits the grid structure to
+    do the same test as a scanline fill in ~ms, with BIT-IDENTICAL
+    output (gated on real tiles by tools/diag_river_raster_equiv.py).
+
+    The rule being replicated (matplotlib 3.10 ``_path.h:
+    point_in_path_impl``, ``contains_points`` with default radius=0.0,
+    identity transform, codes=None → one implicitly-closed subpath):
+    even-odd crossings test in float64 where, for each edge
+    (x0,y0)→(x1,y1) with ``(y0 >= ty) != (y1 >= ty)``, point (tx,ty)
+    toggles iff::
+
+        ((y1 - ty)*(x0 - x1) >= (x1 - tx)*(y0 - y1)) == (y1 >= ty)
+
+    Exactness of the port:
+      * For a fixed edge and row, the RHS ``(x1 - tx)*(y0 - y1)`` is a
+        float64-monotone function of tx (IEEE subtraction/multiplication
+        are monotone) and the required comparison outcome is fixed by
+        the crossing direction, so the toggled cells form a PREFIX of
+        the ascending x grid — found by binary search that evaluates
+        the EXACT matplotlib float64 comparison at each probe (no
+        division, no epsilon).
+      * Grid rows are consecutive integers, so the rows crossed by an
+        edge are the integer interval (min(y0,y1), max(y0,y1)] —
+        computed exactly with floor().
+      * Vertices are widened to float64 exactly like ``Path.__init__``;
+        the grid coords passed in must be the float64 cast of the
+        float32 tile coords (exact — integer-valued, < 2**24).
+
+    Args:
+      poly: (N, 2) array of [x, y] vertices (any float dtype).
+      xs64 / ys64: 1-D float64 ascending integer-valued grid coords.
+
+    Returns an (H, W) bool inside-mask (H=len(ys64), W=len(xs64)).
+    Raises on non-finite vertices / unexpected shape — the caller falls
+    back to matplotlib for that polygon.
+    """
+    V = np.asarray(poly, dtype=np.float64)
+    H = ys64.size
+    W = xs64.size
+    inside = np.zeros((H, W), dtype=bool)
+    if V.ndim != 2 or V.shape[1] != 2:
+        raise ValueError(f"bad polygon shape {V.shape}")
+    if V.shape[0] < 3:
+        return inside  # matplotlib: total_vertices() < 3 → all False
+    if not np.isfinite(V).all():
+        raise ValueError("non-finite polygon vertex")
+    x0 = V[:, 0]
+    y0 = V[:, 1]
+    x1 = np.roll(x0, -1)  # edge set v0→v1, …, v(N-1)→v0 (implicit close)
+    y1 = np.roll(y0, -1)
+    # Integer rows crossed by each edge: ty ∈ (min, max] — exact for
+    # integer ty (floor is exact for |y| < 2**52).
+    ylo = np.minimum(y0, y1)
+    yhi = np.maximum(y0, y1)
+    r_first = np.maximum(np.floor(ylo) + 1.0, ys64[0])
+    r_last = np.minimum(np.floor(yhi), ys64[-1])
+    counts_f = r_last - r_first + 1.0
+    e_sel = np.where(counts_f > 0.0)[0]
+    if e_sel.size == 0:
+        return inside
+    cnt = counts_f[e_sel].astype(np.int64)
+    m_pairs = int(cnt.sum())
+    edge = np.repeat(e_sel, cnt)
+    csum = np.cumsum(cnt)
+    offs = np.arange(m_pairs, dtype=np.int64) - np.repeat(csum - cnt, cnt)
+    ty = np.repeat(r_first[e_sel], cnt) + offs  # exact integer float64
+    px0 = x0[edge]
+    py0 = y0[edge]
+    px1 = x1[edge]
+    py1 = y1[edge]
+    yflag1 = py1 >= ty
+    lhs = (py1 - ty) * (px0 - px1)  # constant per (edge, row) pair
+    slope = py0 - py1               # RHS = (px1 - tx) * slope
+    # Binary search for the first x-grid index where the toggle
+    # predicate is False (True on a prefix). cutoff = first_false - 1;
+    # -1 → the crossing is left of the whole grid, toggles nothing.
+    lo = np.zeros(m_pairs, dtype=np.int64)
+    hi = np.full(m_pairs, W, dtype=np.int64)
+    while True:
+        active = lo < hi
+        if not active.any():
+            break
+        mid = np.minimum((lo + hi) >> 1, W - 1)
+        tog = (lhs >= (px1 - xs64[mid]) * slope) == yflag1
+        adv = active & tog
+        ret = active & ~tog
+        lo[adv] = mid[adv] + 1
+        hi[ret] = mid[ret]
+    cutoff = lo - 1
+    has = cutoff >= 0
+    if not has.any():
+        return inside
+    rows = (ty[has] - ys64[0]).astype(np.int64)
+    # Each pair toggles columns [0, cutoff] → parity via diff + cumsum.
+    diff = np.zeros((H, W + 1), dtype=np.int64)
+    np.add.at(diff, (rows, 0), 1)
+    np.add.at(diff, (rows, cutoff[has] + 1), -1)
+    np.cumsum(diff, axis=1, out=diff)
+    np.bitwise_and(diff[:, :W], 1, out=diff[:, :W])
+    return diff[:, :W].astype(bool)
+
+
 def _rasterize_river_edges_tile(
     col_off: int, row_off: int, tile_size: int,
 ):
@@ -2055,7 +2164,21 @@ def _rasterize_river_edges_tile(
         # skipped contains_points call: ~262K-vertex-O ops saved (minutes).
         # For an ocean tile this drops _rasterize_river_edges_tile from
         # ~20 min to ~negligible.
-        from matplotlib.path import Path as _MplPath
+        # S100 PERF: the inside-test is now a bit-exact numpy scanline
+        # port of matplotlib's crossings test (_polygon_contains_grid_
+        # exact above) — points_in_path was 65.5s over 2 polygons on
+        # dense tile (21,30). Pixel-identity gated on real tiles by
+        # tools/diag_river_raster_equiv.py. Set env VANDIR_SLOW_RASTER=1
+        # to force the original matplotlib path for A/B.
+        import os as _os_ras
+        _use_slow_raster = bool(_os_ras.environ.get("VANDIR_SLOW_RASTER"))
+        if _use_slow_raster:
+            from matplotlib.path import Path as _MplPath
+        # Exact float64 view of the tile grid coords (tile_pts is the
+        # float32 meshgrid of these same integer values — the cast is
+        # exact, so both paths test bit-identical coordinates).
+        _xs64 = xs.astype(np.float64)
+        _ys64 = ys.astype(np.float64)
         inside_mask_flat = np.zeros(tile_pts.shape[0], dtype=bool)
         _tile_min_x = float(col_off)
         _tile_max_x = float(col_off + tile_size)
@@ -2079,10 +2202,26 @@ def _rasterize_river_edges_tile(
                 _n_skipped += 1
                 continue
             _n_tested += 1
+            if _use_slow_raster:
+                try:
+                    inside_mask_flat |= _MplPath(poly).contains_points(
+                        tile_pts)
+                except Exception:
+                    pass
+                continue
             try:
-                inside_mask_flat |= _MplPath(poly).contains_points(tile_pts)
+                inside_mask_flat |= _polygon_contains_grid_exact(
+                    poly, _xs64, _ys64).ravel()
             except Exception:
-                pass
+                # Non-finite vertices / unexpected shape — fall back to
+                # matplotlib for THIS polygon only (same silent-skip
+                # semantics as before if that also fails).
+                try:
+                    from matplotlib.path import Path as _MplPathFB
+                    inside_mask_flat |= _MplPathFB(poly).contains_points(
+                        tile_pts)
+                except Exception:
+                    pass
         # Lightweight diagnostic (per-tile, one line) to surface savings.
         if (_n_tested + _n_skipped) > 0:
             print(
