@@ -68,8 +68,13 @@ for ((i=0;i<NBOXES;i++)); do
   ssh root@"$ip" "cd /root/minecraft-worldgen && git fetch origin && git reset --hard origin/$BRANCH && git log --oneline -1" 2>&1 | tee -a "$OUT_ROOT/box$i.boxlog"
   RP="python run_pipeline.py --config config/thresholds.json --masks masks/ --schem-index schematic_index.json --output output/"
   ROWCMDS=""
+  # S101: --skip-list excludes the 206 island-owned ocean regions (islands
+  # replace them at install; see islands/region_ownership_s101.json). The
+  # PRE-WARM below deliberately does NOT get the flag — if tile (0,R0) were
+  # skipped the bed cache would never build and 40 workers would race the
+  # v17->v19 migration (the exact S93 failure the pre-warm exists to prevent).
   for z in $rows; do z1=$((z+1))
-    ROWCMDS+="echo ROW_${z}_START >> /root/job.log; $RP --tile-x0 0 --tile-x1 $GRID --tile-z0 $z --tile-z1 $z1 --threads $THREADS >> /root/job.log 2>&1; "
+    ROWCMDS+="echo ROW_${z}_START >> /root/job.log; $RP --tile-x0 0 --tile-x1 $GRID --tile-z0 $z --tile-z1 $z1 --skip-list cloud_bake/mainland_skip_regions_s101.txt --threads $THREADS >> /root/job.log 2>&1; "
   done
   JOB="source /root/venv/bin/activate; export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=$OMP OPENBLAS_NUM_THREADS=$OMP MKL_NUM_THREADS=$OMP; cd /root/minecraft-worldgen; rm -f /root/done /root/job.log; "
   JOB+="echo HEAL_START >> /root/job.log; python tools/heal_height_seams.py --inplace >> /root/job.log 2>&1; "

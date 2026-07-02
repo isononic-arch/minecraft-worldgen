@@ -1810,6 +1810,12 @@ def main() -> int:
     parser.add_argument("--tile-list",  type=str, default=None,
                         help="S62: comma-separated tx,tz pairs separated by semicolons, "
                              "e.g. '20,53;32,7;59,90'. Overrides --tile-x0..--tile-z1.")
+    parser.add_argument("--skip-list",  type=str, default=None,
+                        help="S101: file of 'tx tz' lines to EXCLUDE from the run "
+                             "(cloud_bake/mainland_skip_regions_s101.txt = the 206 "
+                             "island-owned ocean regions; island renders replace them "
+                             "at install, so rendering them wastes box time and risks "
+                             "install-order clobber).")
     parser.add_argument("--dry-run",    action="store_true",
                         help="Run all steps but skip chunk writing")
     args = parser.parse_args()
@@ -1876,6 +1882,18 @@ def main() -> int:
             for tz in range(tz0, tz1)
             for tx in range(tx0, tx1)
         ]
+    if args.skip_list:
+        _sk_path = Path(args.skip_list)
+        _skip = set()
+        for _ln in _sk_path.read_text().splitlines():
+            _ln = _ln.strip()
+            if _ln and not _ln.startswith("#"):
+                _sx, _sz = _ln.split()
+                _skip.add((int(_sx), int(_sz)))
+        _before = len(tile_coords)
+        tile_coords = [t for t in tile_coords if t not in _skip]
+        _log(f"skip-list {_sk_path.name}: {_before - len(tile_coords)} of "
+             f"{len(_skip)} listed tiles excluded from this run")
     total = len(tile_coords)
 
     _log(f"Pipeline start: {total} tiles, {args.threads} workers, dry_run={args.dry_run}")
