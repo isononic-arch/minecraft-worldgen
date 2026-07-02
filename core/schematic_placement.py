@@ -282,6 +282,9 @@ class PlacementRecord:
     biome:        str        # biome name (for debug/logging)
     rotation:     int = 0    # 0-3 = 0°/90°/180°/270° CW rotation in XZ plane
     species:      str = "generic"  # S71-3 species — used for anti-clustering re-roll
+    band:         bool = False  # S100 seam-band tree: world-deterministic, emitted by BOTH
+                                # adjacent tiles (anchor may be OOB); chunk_writer stamps the
+                                # in-bounds portion with deterministic_seat (no sink/whole-reject)
 
 
 @dataclass
@@ -1481,6 +1484,15 @@ def place_schematics(
     # validators), the rim pass is skipped and behaviour is exactly pre-S96.
     _seam_cfg = cfg.get("tree_seam", {}) if isinstance(cfg, dict) else {}
     _seam_on = bool(_seam_cfg.get("enabled", True))
+    # S100 seam-band pass: symmetric cross-tile ownership of the [edge-B, edge)
+    # anchor band.  Interior TREE placements whose jittered anchor lands within
+    # _BAND_PX of a FAR edge are DROPPED (all rng draws + exclusion marks kept →
+    # stream byte-identical); a world-coord lattice pass (below) re-emits the
+    # band trees IDENTICALLY on both adjacent tiles, each stamping its in-bounds
+    # portion.  Fixes the (c+1)/(2r+1) anchor-starvation ramp at every seam that
+    # the low-edge rim alone cannot (col 0 has only one legal anchor column).
+    _BAND_ON = _seam_on and bool(_seam_cfg.get("band_pass", False))
+    _BAND_PX = int(_seam_cfg.get("band_px", 16))
 
     # S89 krummholz: stunted trees on/near rock.  Where rock_gap (gap==5) fires
     # on or within rock_dilate_blocks of a TREE candidate, OR at/above
@@ -1973,20 +1985,30 @@ def place_schematics(
             world_x = px_off + jittered_col
             world_z = py_off + jittered_row
 
-            placements.append(PlacementRecord(
-                schem_path  = entry.path,
-                world_x     = world_x,
-                world_z     = world_z,
-                place_y     = place_y,
-                anchor_y    = entry.anchor_y,
-                inset_depth = entry.inset_depth,
-                extra_inset = extra,
-                size        = entry.size,
-                schem_type  = entry.schem_type,
-                biome       = biome_str,
-                rotation    = rotation,
-                species     = entry.species,
-            ))
+            # S100 band drop: a far-edge-band TREE is re-emitted symmetrically
+            # by the seam-band pass on BOTH adjacent tiles — drop the tile-local
+            # copy here (it would double-place + it's what built the S92
+            # small-schematic substitution "wall").  ALL rng draws for this
+            # candidate already happened and the exclusion marks below still
+            # run, so the interior stream + packing state stay byte-identical.
+            _band_drop = (_BAND_ON and pass_type == "tree"
+                          and (jittered_col >= W - _BAND_PX
+                               or jittered_row >= H - _BAND_PX))
+            if not _band_drop:
+                placements.append(PlacementRecord(
+                    schem_path  = entry.path,
+                    world_x     = world_x,
+                    world_z     = world_z,
+                    place_y     = place_y,
+                    anchor_y    = entry.anchor_y,
+                    inset_depth = entry.inset_depth,
+                    extra_inset = extra,
+                    size        = entry.size,
+                    schem_type  = entry.schem_type,
+                    biome       = biome_str,
+                    rotation    = rotation,
+                    species     = entry.species,
+                ))
 
             # Mark exclusion zone
             if pass_type == "tree":
@@ -2140,6 +2162,8 @@ def place_schematics(
                     ("tree", exclusion, 0xA1, 0xE5, 0xB2, 0xB3, 0xF0),
                     ("bush", bush_exclusion, 0xA2, 0xE6, 0xB4, 0xB5, 0xF1),
                 ):
+                    if _BAND_ON and _ptype == "tree":
+                        continue  # S100: the seam-band pass owns seam TREES; rim keeps bushes
                     _es, _ws = _rim_entries(_biome_r, _ptype)
                     if not _es:
                         continue
@@ -2288,6 +2312,109 @@ def place_schematics(
                         _excl.mark(j_lr, j_lc, radius)
                     else:
                         _excl.mark(j_lr, j_lc, max(1, radius // 2))
+
+            # ── S100 SEAM-BAND PASS ──────────────────────────────────────────
+            # Symmetric cross-tile ownership of the [edge-_BAND_PX, edge) anchor
+            # band around EVERY tile edge.  One candidate per world-coord lattice
+            # cell (hash-jittered position = built-in spacing, no shared exclusion
+            # state), gated ONLY on world-symmetric inputs (biome halo, PRE-CARVE
+            # surface halo, world-coord noise/coins) so both adjacent tiles emit
+            # byte-identical band trees.  Each tile stamps the in-bounds portion
+            # (chunk_writer deterministic_seat; anchor may be OOB).  The interior
+            # loop dropped its own far-band trees (marks kept), so the band is
+            # exclusively owned by this pass — no wall, no starvation ramp.
+            if _BAND_ON:
+                _B = _BAND_PX
+                _LAT = max(2, int(_seam_cfg.get("band_lattice_px", 5)))
+                _BAND_BOOST = float(_seam_cfg.get("band_density_boost", 6.0))
+                _FP_RANGE_B = {"sm": 4, "md": 3, "lg": 2}
+                _COFF_B = {"sm": 2, "md": 3, "lg": 4}
+                if _bg_pad >= _B and _sy_pad >= _B + 10:
+
+                    def _in_band(_r, _c):
+                        return (((-_B <= _c < 0 or W - _B <= _c < W)
+                                 and -_B <= _r < H + _B)
+                                or ((-_B <= _r < 0 or H - _B <= _r < H)
+                                    and -_B <= _c < W + _B))
+
+                    _gx0 = (px_off - _B) // _LAT
+                    _gx1 = (px_off + W + _B - 1) // _LAT
+                    _gz0 = (py_off - _B) // _LAT
+                    _gz1 = (py_off + H + _B - 1) // _LAT
+                    for _gz in range(_gz0, _gz1 + 1):
+                        _r_lo = _gz * _LAT - py_off
+                        _row_int = (_B <= _r_lo and _r_lo + _LAT <= H - _B)
+                        for _gx in range(_gx0, _gx1 + 1):
+                            _c_lo = _gx * _LAT - px_off
+                            if _row_int and _B <= _c_lo and _c_lo + _LAT <= W - _B:
+                                continue  # lattice cell fully interior
+                            # One hash-jittered candidate per world lattice cell —
+                            # identical on both tiles by construction.
+                            bwx = _gx * _LAT + int(_wc_u01s(_gx, _gz, 0xC2) * _LAT)
+                            bwz = _gz * _LAT + int(_wc_u01s(_gx, _gz, 0xC3) * _LAT)
+                            _lc = bwx - px_off
+                            _lr = bwz - py_off
+                            if not _in_band(_lr, _lc):
+                                continue
+                            _biome_b = str(biome_grid_padded[_lr + _bg_pad,
+                                                             _lc + _bg_pad])
+                            _es_b, _ws_b = _rim_entries(_biome_b, "tree")
+                            if not _es_b:
+                                continue
+                            sy_b = int(_pc_pad[_lr + _sy_pad, _lc + _sy_pad])
+                            if sy_b < 63:
+                                continue
+                            _nz_b = _fbm(den_gen, bwx / _DEN_SCALE_R,
+                                         bwz / _DEN_SCALE_R, _DEN_OCT_R)
+                            _dm_b = _DEN_FLOOR_R + (1.0 - _DEN_FLOOR_R) * _nz_b
+                            final_db = BASE_DENSITY.get(_biome_b, 0.05) * _dm_b
+                            if _biome_b == "ARCTIC_TUNDRA":
+                                final_db *= 0.05
+                            if _biome_b == "FROZEN_FLATS":
+                                final_db *= 0.03
+                            final_db = min(final_db * _BAND_BOOST, 1.0)
+                            if _wc_u01s(bwx, bwz, 0xC1) >= final_db:
+                                continue
+                            entry_b = _rim_pick(_es_b, _ws_b,
+                                                _wc_u01s(bwx, bwz, 0xC5))
+                            # Symmetric footprint gates from the PRE-CARVE halo:
+                            # any-water reject + slope-range reject.  Both tiles
+                            # read identical halo values → identical verdicts
+                            # (no one-sided reject = no half-tree, S96 BUG 4).
+                            _co_b = _COFF_B.get(entry_b.size, 3)
+                            _br0 = _lr - 1 + _sy_pad
+                            _bc0 = _lc - 1 + _sy_pad
+                            _fpb = _pc_pad[_br0:_br0 + 2 * _co_b + 2,
+                                           _bc0:_bc0 + 2 * _co_b + 2]
+                            if _fpb.size == 0 or int(_fpb.min()) < 63:
+                                continue
+                            if int(_fpb.max() - _fpb.min()) > _FP_RANGE_B.get(
+                                    entry_b.size, 3):
+                                continue
+                            base_yb = sy_b - entry_b.anchor_y - entry_b.inset_depth
+                            extra_b = _compute_extra_inset_u(
+                                entry_b.size, entry_b.method, base_yb,
+                                entry_b.lowest_leaf_y, sy_b,
+                                _wc_u01s(bwx, bwz, 0xC7))
+                            if _rim_dbg_rows is not None:
+                                _rim_dbg_rows.append(
+                                    (bwx, bwz, "band", entry_b.species,
+                                     entry_b.path, 1))
+                            placements.append(PlacementRecord(
+                                schem_path  = entry_b.path,
+                                world_x     = bwx,
+                                world_z     = bwz,
+                                place_y     = base_yb - extra_b,
+                                anchor_y    = entry_b.anchor_y,
+                                inset_depth = entry_b.inset_depth,
+                                extra_inset = extra_b,
+                                size        = entry_b.size,
+                                schem_type  = "tree",
+                                biome       = _biome_b,
+                                rotation    = int(_wc_u01s(bwx, bwz, 0xC0) * 4) & 3,
+                                species     = entry_b.species,
+                                band        = True,
+                            ))
 
             if _rim_dbg_rows is not None:
                 try:

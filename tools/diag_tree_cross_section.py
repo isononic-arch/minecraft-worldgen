@@ -92,9 +92,11 @@ def main():
         print(f"ERROR: key {key!r} not in index. Available: {sorted(idx.keys())}")
         return 1
     items = idx[key]
-    trees = [it for it in items if "_tree_" in it.get("path", "")]
+    match = sys.argv[2] if len(sys.argv) > 2 else "_tree_"   # 2nd arg: path substring (e.g. "bush_" for foliage)
+    trees = [it for it in items if match in it.get("path", "")]
+    _seen = set(); trees = [t for t in trees if not (t["path"] in _seen or _seen.add(t["path"]))]
     if not trees:
-        print(f"No trees found for biome key {key!r}.")
+        print(f"No schematics matching {match!r} for biome key {key!r}.")
         return 1
     print(f"Biome key: {key}, {len(trees)} tree schematics")
 

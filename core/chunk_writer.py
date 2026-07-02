@@ -1453,6 +1453,11 @@ def stamp_schematic(
     clip_oob:   bool = True,   # S95 tree-seam STEP A: OOB columns are the NEIGHBOUR's
                                # territory (culled/clipped), NOT "underwater" -> don't
                                # whole-reject a tree just for extending past the tile edge.
+    deterministic_seat: bool = False,  # S100 seam-band: place_y is world-deterministic and
+                               # the anchor may be OOB — SKIP the whole-stamp sink/reject
+                               # decisions (they see only in-bounds columns, so the two
+                               # tiles stamping the same tree would seat/reject differently
+                               # = mismatched halves).  Per-column gates still apply.
 ) -> None:
     """
     Stamp a schematic into the volume array.
@@ -1686,7 +1691,10 @@ def stamp_schematic(
                                 and water_col_mask[tz_chk, tx_chk]):
                             _uwater_hit = True
                             break
-            if _uwater_hit:
+            if _uwater_hit and not deterministic_seat:
+                # S100: band trees skip the whole-stamp reject (asymmetric across
+                # tiles); their per-column col_reject still skips water columns,
+                # and the placement-side symmetric footprint gate pre-filters.
                 return
             if has_trunks:
                 # Strategy A — SINK then small extension. Compute worst trunk gap
@@ -1702,14 +1710,17 @@ def stamp_schematic(
                         gap = log_wy - ls
                         if gap > max_trunk_gap:
                             max_trunk_gap = gap
-                if max_trunk_gap > MAX_TREE_SINK:
+                if (not deterministic_seat) and max_trunk_gap > MAX_TREE_SINK:
                     return  # slope too steep to seat the tree cleanly — reject
                 # S89 walk-3: SINK the whole schematic so the lowest trunk drops to
                 # ~1 above ground and the CANOPY comes down with it (no flagpole).
                 # Uphill blocks that now fall below their column ground are hidden
                 # by the per-column underground cull in the stamp loop. A small
                 # residual gap is closed by the trunk extension fill below.
-                if max_trunk_gap > 1:
+                # S100: band trees keep the authored world-deterministic place_y
+                # (the gap is computed over in-bounds columns only → the two
+                # tiles would sink the same tree by different amounts).
+                if (not deterministic_seat) and max_trunk_gap > 1:
                     place_y -= (max_trunk_gap - 1)
                 # Pick primary log type for canopy-only-column fallback.
                 # Bare name (no axis) → MC defaults to axis=y (vertical).
@@ -1738,9 +1749,9 @@ def stamp_schematic(
                         any_ground_col = True
                         if gap > max_gap:
                             max_gap = gap
-                if any_ground_col and max_gap > PLACE_MAX_FLOAT_BUSH:
+                if (not deterministic_seat) and any_ground_col and max_gap > PLACE_MAX_FLOAT_BUSH:
                     return
-                if max_gap > 1:
+                if (not deterministic_seat) and max_gap > 1:
                     place_y -= (max_gap - 1)
                 primary_log_idx = None
                 # S74 canopy-reject CANCELED in S75: user reviewed the 26-
@@ -2726,17 +2737,29 @@ def write_tile(
 
     # Step 2 — stamp schematics
     _clip_oob = bool((cfg or {}).get("tree_seam", {}).get("clip_oob", True))  # S95 tree-seam STEP A
+    _band_px_cw = int((cfg or {}).get("tree_seam", {}).get("band_px", 16))    # S100 seam-band
     for p in placements:
         local_x = p.world_x - tile_world_x
         local_z = p.world_z - tile_world_z
-        if not (0 <= local_x < W and 0 <= local_z < H):
+        _band_p = bool(getattr(p, "band", False))
+        if _band_p:
+            # S100 seam-band tree: emitted identically by BOTH adjacent tiles;
+            # the anchor may be OOB (neighbour's territory).  Stamp the
+            # IN-BOUNDS portion via per-column clipping instead of anchor-
+            # culling, and seat deterministically (whole-stamp sink/reject
+            # decisions see only in-bounds columns → would desync the halves).
+            if not (-_band_px_cw <= local_x < W + _band_px_cw
+                    and -_band_px_cw <= local_z < H + _band_px_cw):
+                continue
+        elif not (0 <= local_x < W and 0 <= local_z < H):
             continue  # outside tile bounds (edge overlap)
         try:
             schem_data = schem_loader.load_schem(Path(p.schem_path))
             schem_data._rotation = getattr(p, 'rotation', 0)
             stamp_schematic(vol, pal, schem_data, local_x, local_z,
                            p.place_y, surface_y=surface_y,
-                           water_col_mask=water_col_mask, clip_oob=_clip_oob)
+                           water_col_mask=water_col_mask, clip_oob=_clip_oob,
+                           deterministic_seat=_band_p)
         except Exception as e:
             import traceback
             print(f"  [warn] schematic stamp failed: {p.schem_path}: {e}",

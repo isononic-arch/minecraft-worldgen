@@ -880,10 +880,16 @@ def _process_tile(args: dict) -> dict:
                 surface_blocks = surface_blk,
                 cliff_cap_tile = masks.get("cliff_cap"),
                 biome_grid_padded = biome_grid_padded,  # S93c cross-tile ecotone
+                # S100: keep the dump path identical to the real Step-8 call —
+                # the rim pass gates on these (see Step-8 note).
+                surface_y_padded = surface_y_padded,
+                seam_pad_px = (_SEAM_PAD_PX if surface_y_padded is not None else 0),
+                surface_y_precarve_padded = _relief_rough_pad,
             )
             _np_sd.save(f"{_surf_dump_dir}/plc_{tile_x}_{tile_y}.npy",
                         np.asarray([(p.world_x, p.world_z, p.place_y, p.size,
-                                     p.schem_type, p.species, p.schem_path)
+                                     p.schem_type, p.species, p.schem_path,
+                                     bool(getattr(p, "band", False)))
                                     for p in _sd_plc], dtype=object),
                         allow_pickle=True)
         if surface_y_padded is not None:
@@ -915,6 +921,12 @@ def _process_tile(args: dict) -> dict:
         surface_blocks = surface_blk,
         cliff_cap_tile = masks.get("cliff_cap"),
         biome_grid_padded = biome_grid_padded,  # S93c cross-tile ecotone
+        # S100: the S96 seam rim pass gates on these three and was DEAD CODE in
+        # every production render until now — neither call site passed them
+        # (the S95 plan's "plumb at both run_pipeline call sites" step was lost).
+        surface_y_padded = surface_y_padded,
+        seam_pad_px = (_SEAM_PAD_PX if surface_y_padded is not None else 0),
+        surface_y_precarve_padded = _relief_rough_pad,
     )
 
     # Island offset-render fix (S95): place_schematics returns world coords in
