@@ -43,12 +43,21 @@ scp $SSHO -q masks/lithology.tif       root@"$IP":/root/minecraft-worldgen/masks
 scp $SSHO -q masks/lithology_region.png root@"$IP":/root/minecraft-worldgen/masks/lithology_region.png
 scp $SSHO -q masks/clearing_mask.tif   root@"$IP":/root/minecraft-worldgen/masks/clearing_mask.tif
 
-JOB="source /root/venv/bin/activate; export PYTHONUNBUFFERED=1; cd /root/minecraft-worldgen; rm -f /root/done /root/job.log; "
-JOB+="rm -f masks/_bed_cache_v17.pkl masks/_bed_cache_v19.pkl; "   # regen vs new override
-JOB+="python run_pipeline.py --config config/thresholds.json --masks masks/ --schem-index schematic_index.json --output output/ --tile-list '$TILELIST' --threads 8 >> /root/job.log 2>&1; "
-JOB+="touch /root/done"
-ssh $SSHO root@"$IP" "tmux kill-session -t tt 2>/dev/null; tmux new -d -s tt '$JOB'" < /dev/null
-log "dispatched 8 tiles"
+# Write the job to a remote FILE via heredoc (unquoted EOF -> $TILELIST expands
+# HERE into a properly single-quoted --tile-list on one line). Avoids the
+# nested-single-quote + semicolon word-split that only rendered tile 1 last run.
+# `rm -rf output` clears stale snapshot output so the collect tar is clean.
+ssh $SSHO root@"$IP" "cat > /root/job.sh" <<EOF
+source /root/venv/bin/activate
+export PYTHONUNBUFFERED=1
+cd /root/minecraft-worldgen
+rm -rf output /root/done /root/job.log
+rm -f masks/_bed_cache_v17.pkl masks/_bed_cache_v19.pkl
+python run_pipeline.py --config config/thresholds.json --masks masks/ --schem-index schematic_index.json --output output/ --tile-list '$TILELIST' --threads 8 >> /root/job.log 2>&1
+touch /root/done
+EOF
+ssh $SSHO root@"$IP" "tmux kill-session -t tt 2>/dev/null; tmux new -d -s tt 'bash /root/job.sh'" < /dev/null
+log "dispatched 8 tiles (job file)"
 
 DEADLINE=$((START+3600))
 while :; do
