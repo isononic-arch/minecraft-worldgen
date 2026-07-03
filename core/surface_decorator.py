@@ -3273,6 +3273,7 @@ def decorate_surface(
     use_new_surface_pipeline: bool = False,  # Phase 2.0: run new layer-based surface pipeline for temperate cliffs
     lithology_tile: np.ndarray | None = None,  # (H/8, W/8) uint8 lithology group IDs — upscaled internally
     clearing_field: np.ndarray | None = None,  # (H, W) float32 [0,1] — meadow clearing noise (S57 Phase 3a)
+    clearing_mask_tile: np.ndarray | None = None,  # (H, W) float32 [0,1] — S101 island DEM clearing mask (grass re-assertion; None on mainland)
     biome_grid_padded: np.ndarray | None = None,  # (H+2*pad, W+2*pad) str — neighbour-tile biome halo (S58 Phase 3b)
     cliff_cap_tile: np.ndarray | None = None,         # (H, W) float32 [0,1] — cap-rock intensity (S88)
     talus_apron_tile: np.ndarray | None = None,       # (H, W) float32 [0,1] — debris-apron intensity (S88)
@@ -4822,6 +4823,30 @@ def decorate_surface(
                     _fade_paint(_bm_l, _pal)
             else:
                 _fade_paint(_fade_mask, _DEFAULT_STONE_PAL)
+
+    # --- S101 DEM-clearing grass RE-ASSERTION (islands only) -----------------
+    # The Step-5 clearing conversion paints forest floor -> grass_block, but
+    # LATER passes (eco_ridge / erosion / strata — heavy on convex island
+    # terrain) overwrite up to a third of a deep clearing back to coarse_dirt/
+    # podzol (measured 62% grass on efate (8,10)). Physical-Realism rule: the
+    # decisive feature must be LAST — re-assert grass in the DEM-mask interior
+    # (mask > 0.5; the feathered edge below that stays with the aligned
+    # dithered pass, so the boundary keeps its salt-and-pepper). Runs BEFORE
+    # ground cover so the clearing GC mix (dithered tall/short grass) rolls on
+    # the reclaimed grass. clearing_mask_tile is None on the mainland (no such
+    # mask file) -> byte-identical no-op there.
+    if clearing_mask_tile is not None and clearing_mask_tile.max() > 0:
+        _cmr_biome = np.zeros((H, W), dtype=bool)
+        for _cb in _CLEARING_BIOMES:
+            _cmr_biome |= (biome_grid == _cb)
+        _cmr = _cmr_biome & (clearing_mask_tile > 0.5)
+        if _cmr.any():
+            _FF_RE = ("podzol", "dirt", "coarse_dirt", "moss_block", "rooted_dirt")
+            _ff_re = np.zeros((H, W), dtype=bool)
+            for _b in _FF_RE:
+                _ff_re |= (surface_blocks == _b)
+            surface_blocks[_cmr & _ff_re] = "grass_block"
+        del _cmr_biome, _cmr
 
     # --- Ground cover --------------------------------------------------------
     # NOTE: ground cover is applied here provisionally; if the surface pipeline

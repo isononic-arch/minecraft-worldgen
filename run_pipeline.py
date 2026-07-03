@@ -521,6 +521,14 @@ def _process_tile(args: dict) -> dict:
     clearing_field = core_clearing.compute_meadow_clearing_field(
         tile_x, tile_y, H=surface_y.shape[0], W=surface_y.shape[1]
     )
+    # S101 island DEM-derived clearings: clearing_mask.tif (bake-synth, islands
+    # only — mainland lacks the file -> streamer None -> byte-identical). Field
+    # semantics: LOW = clearing (interior < 0.38, dither band ±0.06); mask
+    # strength s pulls the field to (1 - s), so s=1 = definite clearing and
+    # the feathered mask edge crosses the dither band naturally.
+    _cm = masks.get("clearing_mask")
+    if _cm is not None and _cm.max() > 0:
+        clearing_field = np.minimum(clearing_field, (1.0 - _cm).astype(np.float32))
 
     # ---- Step 6e: Rock-gap surface crunch (S87 Phase 2A, S87-tune-1) ----
     # Displace surface_y by per-pixel noise scaled by SLOPE so fade-band rock
@@ -807,6 +815,10 @@ def _process_tile(args: dict) -> dict:
         use_new_surface_pipeline = _use_sp,
         lithology_tile = lithology_tile if _use_sp else None,
         clearing_field = clearing_field,
+        # S101 island DEM clearings: late grass re-assertion inside the mask
+        # interior (later eco_ridge/erosion passes were reverting a third of
+        # deep clearings to coarse_dirt). None on mainland -> no-op.
+        clearing_mask_tile = masks.get("clearing_mask"),
         biome_grid_padded = biome_grid_padded,
         # S88: 3 terrain-derived rock-variant masks (cap, talus, bedrock).
         # decorate_surface will skip painting where the tile is None.

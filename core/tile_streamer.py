@@ -36,6 +36,10 @@ MASK_NAMES = [
     "hydro_centerline",
     "hydro_floodplain",
     "wind_windthrow",
+    # S101 island DEM-derived clearings (islands/synth_eco_masks.py; blended
+    # into the Step-6d clearing field by run_pipeline). Mainland has no such
+    # file -> None -> unchanged behavior.
+    "clearing_mask",
     "rock_gap",
     "snow_gap",
     # S89 physics snow A/B (built by tools/build_snow_physics.py)

@@ -1145,6 +1145,11 @@ def bake_island(entry):
         print(f"[bake]   painted lithology applied over temperate_basaltic default", flush=True)
     _sp.run([sys.executable, str(ROOT / "tools" / "build_terrain_derived.py"),
              *_common, "--world-size", str(W), "--scale", "4"], check=True)
+    # S101: DEM-derived windthrow (gap 2) + floodplain (gap 4) + clearing mask
+    # — islands previously had NONE of these (mainland-only precomputes), so
+    # those gaps never fired on island trees. Reads the just-written masks.
+    from islands.synth_eco_masks import synth_eco_masks as _synth_eco
+    _synth_eco(od, world_offset_px=(_ox, _oz))
     print(f"[bake]   wrote {od}  bbox={W}x{H} land={int(land.sum())}px ({land.mean()*100:.1f}%)", flush=True)
     return manifest
 
