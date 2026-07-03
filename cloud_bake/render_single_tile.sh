@@ -20,7 +20,7 @@ if [ "$#" -ne 3 ]; then
 fi
 
 TX="$1"; TZ="$2"; IP="$3"
-BRANCH="s85-cherry-picks"
+BRANCH="master"
 LOCAL_OVERRIDE="masks/override.tif"
 VANDIRTEST10="/c/Users/nicho/AppData/Roaming/ModrinthApp/profiles/test/saves/Vandirtest10/region"
 OUT_DIR="output_single_${TX}_${TZ}"

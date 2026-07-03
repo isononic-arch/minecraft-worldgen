@@ -23,15 +23,16 @@
 #   DEST=<world>/region     if set, MCAs copied there after collect
 #   KEEP_ALIVE=1   leave boxes up after collect (default: leave up; auto-killer is backstop)
 #
-# NOTE: this does NOT upload override/lithology and does NOT flip flags or
-# rebuild derived masks — the snapshot already ships rock/snow masks + the
-# correct override, and rock_layers/snow_physics are committed ON. If you ever
-# change the override or snow config, that must be re-baked into the snapshot
-# FIRST (a local render would use the stale local override — see
-# memory/override_tif_stale_vs_render.md).
+# NOTE (S101): this DOES now upload override/lithology/lithology_region per box
+# (the promoted S100 override + baby-continent repaint post-date the snapshot —
+# see the per-box scp below), and passes --skip-list to exclude the 206
+# island-owned ocean regions. It still does NOT flip flags or rebuild derived
+# masks — the snapshot ships rock/snow masks and rock_layers/snow_physics are
+# committed ON. If you change SNOW config or other derived masks, re-bake the
+# snapshot FIRST (memory/override_tif_stale_vs_render.md).
 set -u
 TOKEN_FILE="/c/Users/nicho/.hetzner_token"
-SNAPSHOT_ID="${SNAPSHOT_ID:-396927540}"; BRANCH="s85-cherry-picks"
+SNAPSHOT_ID="${SNAPSHOT_ID:-396927540}"; BRANCH="master"
 NBOXES="${NBOXES:-8}"; GRID=97
 THREADS="${THREADS:-40}"; OMP="${OMP:-1}"
 TTL_MIN="${TTL_MIN:-300}"
@@ -66,6 +67,14 @@ for ((i=0;i<NBOXES;i++)); do
     ssh -o ConnectTimeout=5 -o BatchMode=yes root@"$ip" true 2>/dev/null && { log "box$i ssh up"; break; }
     [ "$n" = 40 ] && { echo "FATAL box$i ssh"; exit 2; }; sleep 10; done
   ssh root@"$ip" "cd /root/minecraft-worldgen && git fetch origin && git reset --hard origin/$BRANCH && git log --oneline -1" 2>&1 | tee -a "$OUT_ROOT/box$i.boxlog"
+  # S101: the snapshot's masks are STALE vs the promoted S100 override (S87
+  # banding + S99 baby-continent repaint) — upload the 3 changed masks per box
+  # (mirrors render_single_tile.sh STEP 4; option B from the S99 handoff, no
+  # snapshot re-bake needed). Everything else still provisions from snapshot.
+  log "box$i: uploading override + lithology masks (snapshot copies are stale)"
+  scp -q masks/override.tif        root@"$ip":/root/minecraft-worldgen/masks/override.tif
+  scp -q masks/lithology.tif       root@"$ip":/root/minecraft-worldgen/masks/lithology.tif
+  scp -q masks/lithology_region.png root@"$ip":/root/minecraft-worldgen/masks/lithology_region.png
   RP="python run_pipeline.py --config config/thresholds.json --masks masks/ --schem-index schematic_index.json --output output/"
   ROWCMDS=""
   # S101: --skip-list excludes the 206 island-owned ocean regions (islands

@@ -1222,6 +1222,30 @@ def place_schematics(
         slope_penalty = np.clip(1.0 - (cliff_deg - slope_start) / slope_span, 0.0, 1.0)
         eco_density_tile = eco_density_tile * slope_penalty
 
+        # ── S101c realism: RIPARIAN CANOPY DENSIFICATION ──────────────────
+        # riparian_proximity (1 at channel -> 0 by rip_max_px) drove SPECIES
+        # (willow/alder win near water) but never DENSITY, so gallery forests
+        # read as a color shift at upland density. Boost density up to
+        # `riparian_boost`x at the channel, tapering to 1.0 away. Gated so a
+        # 0 amplitude = byte-identical to the old behavior.
+        _rip_boost = float(ep_cfg.get("riparian_density_boost", 0.0))
+        if _rip_boost > 0.0 and hasattr(eco_grads, "riparian_proximity"):
+            _rip_mult = (1.0 + _rip_boost * eco_grads.riparian_proximity).astype(np.float32)
+            eco_density_tile = eco_density_tile * _rip_mult
+
+        # ── S101c realism: ASPECT ASYMMETRY (sun-baked south slopes thin) ──
+        # north_factor: 1 = north-facing (moist/shaded), 0 = south-facing
+        # (dry/sun-stressed), 0.5 = flat. Real continental/Mediterranean
+        # ridges are visibly sparser on south flanks. Multiply density by
+        # (1 - amp) on full-south up to 1.0 on full-north; flat = 1 - amp/2.
+        # amp=0 -> no-op (byte-identical). Slope-scaled so flats are untouched.
+        _asp_amp = float(ep_cfg.get("aspect_density_amp", 0.0))
+        if _asp_amp > 0.0 and hasattr(eco_grads, "north_factor"):
+            # scale the effect by how sloped the cell is (0 at flat -> 1 by 20deg)
+            _asp_slope_scale = np.clip(cliff_deg / 20.0, 0.0, 1.0).astype(np.float32)
+            _asp_mult = (1.0 - _asp_amp * (1.0 - eco_grads.north_factor) * _asp_slope_scale).astype(np.float32)
+            eco_density_tile = eco_density_tile * _asp_mult
+
     # ── Rock exposure gradient thinning ────────────────────────────────────
     # Trees thin smoothly from 100% at gradient=0 to ~5% at gradient=0.3
     # (alpine meadow threshold).  Above 0.3 is gap_mask==6 (alpine meadow)
@@ -1257,12 +1281,20 @@ def place_schematics(
         y_top_tile = np.full((H, W), float(_default.get("y_top", 230)), dtype=np.float32)
         fade_tile  = np.full((H, W), float(_default.get("fade_blocks", 30)), dtype=np.float32)
         for biome, entry in treelines_cfg.items():
-            if biome == "_default" or not isinstance(entry, dict):
+            if biome in ("_default", "aspect_amplitude") or not isinstance(entry, dict):
                 continue
             mask = (biome_grid == biome)
             if mask.any():
                 y_top_tile[mask] = float(entry.get("y_top", _default.get("y_top", 230)))
                 fade_tile[mask]  = float(entry.get("fade_blocks", _default.get("fade_blocks", 30)))
+        # S101c realism: ASPECT-DEPENDENT TREELINE. Real treelines sit higher on
+        # sun-facing (south) slopes (longer growing season, earlier snowmelt) and
+        # lower on shaded north slopes -> a sawtooth forest edge along ridges
+        # instead of a flat altitude line. Raise y_top by +amp on full-south,
+        # -amp on full-north (north_factor 0=S..1=N). amplitude=0 -> no-op.
+        _tl_asp_amp = float(treelines_cfg.get("aspect_amplitude", 0.0))
+        if _tl_asp_amp > 0.0 and eco_grads is not None and hasattr(eco_grads, "north_factor"):
+            y_top_tile = y_top_tile + _tl_asp_amp * (1.0 - 2.0 * eco_grads.north_factor).astype(np.float32)
         # Compute linear-ramp density mult: 1.0 below y_top, 0.0 above y_top+fade.
         sy_f = surface_y.astype(np.float32)
         treeline_mult = np.clip(1.0 - (sy_f - y_top_tile) / np.maximum(fade_tile, 1.0), 0.0, 1.0).astype(np.float32)
