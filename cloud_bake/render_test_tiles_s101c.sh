@@ -54,7 +54,7 @@ cd /root/minecraft-worldgen
 rm -rf output /root/done /root/job.log
 rm -f masks/_bed_cache_v17.pkl masks/_bed_cache_v19.pkl
 python run_pipeline.py --config config/thresholds.json --masks masks/ --schem-index schematic_index.json --output output/ --tile-list '$TILELIST' --threads 8 >> /root/job.log 2>&1
-touch /root/done
+touch /root/done /root/all_done
 EOF
 ssh $SSHO root@"$IP" "tmux kill-session -t tt 2>/dev/null; tmux new -d -s tt 'bash /root/job.sh'" < /dev/null
 log "dispatched 8 tiles (job file)"
