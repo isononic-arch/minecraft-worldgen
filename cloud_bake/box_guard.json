@@ -1,0 +1,6 @@
+{
+  "default_ttl_min": 300,
+  "name_patterns": [".*"],
+  "protected_patterns": [],
+  "sweep_interval_min": 15
+}

@@ -558,9 +558,16 @@ def synth_shore_beach_wide(land, mcy, slope_u16, world_offset_px=(0, 0),
     del _filled                                         # S101b
     _edt_land = beach_land
     if _holes.any():
-        _surv = binary_erosion(_holes, iterations=int(min_pond_radius_px))
-        _bigp = binary_propagation(_surv, mask=_holes)
-        del _surv                                       # S101b
+        # S105 DRY-DONUT FIX (V14 walk): anchor sand only at inland water that will
+        # RENDER as water — cells below Y63.0 (>=1 block of depth). Basins in the
+        # 63.0..63.4 gray zone render as LAND (surface at water level, nothing on
+        # top), so their rims read as a sand doughnut around a grass bowl. Size the
+        # pond test on the WET extent: a broad dry basin holding a puddle anchors
+        # nothing unless the puddle itself has inradius >= min_pond_radius_px.
+        _wet = _holes & (mcy < np.float32(63.0))
+        _surv = binary_erosion(_wet, iterations=int(min_pond_radius_px))
+        _bigp = binary_propagation(_surv, mask=_wet)
+        del _surv, _wet                                 # S101b
         _edt_land = beach_land | (_holes & ~_bigp)
         del _bigp                                       # S101b
     del _holes                                          # S101b
@@ -1110,7 +1117,7 @@ def bake_island(entry):
     # than 7 blocks above sea (V13 audit: old sand climbed 8-25 blocks up).
     shore, beach = synth_shore_beach_wide(land, mcy, masks["slope"],
                                           world_offset_px=(_ox, _oz),
-                                          beach_max_width=12.0,
+                                          beach_max_width=24.0,
                                           flat_slope_deg=6.0,
                                           steep_slope_deg=20.0,
                                           width_jitter=0.20,

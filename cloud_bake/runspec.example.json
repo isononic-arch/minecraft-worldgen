@@ -1,0 +1,26 @@
+{
+  "_comment": "render_monitor.py runspec — the dispatch script fills boxes[] after creation (ids/ips known then) and launches: py cloud_bake/render_monitor.py cloud_bake/runspec_v15.json",
+  "run_name": "v15",
+  "kind": "islands",
+  "ttl_min": 120,
+  "wall_cap_min": 240,
+  "stall_secs": 900,
+  "poll_secs": 45,
+  "collect_retries": 3,
+  "unreach_grace": 4,
+  "collect_dir": "islands/_collect_v15",
+  "boxes": [
+    {
+      "name": "v15-b1",
+      "id": 0,
+      "ip": "0.0.0.0",
+      "flag": "/root/all_done",
+      "log": "/root/run.log",
+      "collect": "cd /root/minecraft-worldgen && tar czf /tmp/out.tgz islands/out",
+      "remote_tar": "/tmp/out.tgz",
+      "job_restart": "cd /root/minecraft-worldgen && tmux new-session -d -s isl \"/root/venv/bin/python islands/_box_all_run.py 44 -17_622 > /root/run.log 2>&1\"",
+      "work_units": ["-17_622"],
+      "min_regions": 10
+    }
+  ]
+}

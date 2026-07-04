@@ -1070,7 +1070,13 @@ def compute_eco_gradients(
                 _thr_fm = np.float32(_bch_cfg_fm.get("mask_threshold", 0.0))
                 _elig_fm = (
                     land_mask & ~_wm_fm
-                    & ((gap_mask == 0) | (gap_mask == 1) | (gap_mask == 4))
+                    # S105: also claim windthrow(2) on the first 6 blocks from the
+                    # water — a windward gentle shore must still show sand AT the
+                    # waterline (detached-band read on V14); windthrow resumes
+                    # behind the strip. rock(5) stays unclaimed: steep coasts keep
+                    # rock-to-water by design.
+                    & ((gap_mask == 0) | (gap_mask == 1) | (gap_mask == 4)
+                       | ((gap_mask == 2) & (_dist_fm <= np.float32(6.0))))
                     & (beach.astype(np.float32) > _thr_fm)
                     & (_dist_fm > 0)
                     & (surface_y <= _max_y_fm)

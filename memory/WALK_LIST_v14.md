@@ -1,5 +1,14 @@
 # VandirIslandsV14 WALK LIST — S104 island fixes (2026-07-04)
 
+**VERIFIED FRESH (S105, 2026-07-04):** V14 world == islands/out V11 render byte-for-byte
+(1365/1365 regions; only diffs = MC re-saves of the 10 regions you walked at 15:09 + the
+10 island-overlap regions merged at assembly). Decoded proof the fixes ARE in-game:
+NV coast r.8.22 sand 13.6%→5.3% of land (coastline outline unchanged — the beach redo
+thins the *sand band*, it does not reshape the coast); Anguilla r.64.112 interior columns
+above Y66 went 6.7k→62.6k (rolling, but gentle: Y63–71 — easy to read as "still flat"
+from the air; look at ground level). All 15 renders newer than their masks; manifest
+matches disk; datapack present. If it "looks stale", it's the subtlety, not the data.
+
 World: `VandirIslandsV14` (Modrinth test profile, NVMe). ALL 15 islands re-rendered
 with: beaches redone (slope-driven, steep=rock-to-water), flat-island spline variation,
 lightened shallow kelp, and 4 tree-placement fixes (no floating leaves over water, clearings
