@@ -87,8 +87,8 @@ BANDS = {
   "-50_393": A(bands=[(0.0,70),(0.10,20),(0.45,100),(0.75,30)],snow=0.72, rock=28, wind=0.10, litho="limestone", keep_box=[0.0,0.80,0.0,0.80], skip_erase=True, ocean_margin_px=32),# Madre de Dios — fjord/marble KARST. keep_box (centroid x<0.80 & y<0.80) keeps the THREE real fjord islands (white center-mass cx0.53 / green lower-left cx0.44 / fragmented medium island cx0.56-0.67) and oceans the unwanted mainland-coast cluster (cx>0.83) + two bottom-center blobs (cy0.88/0.91). Replaces frag_cut_east=0.75 which leaked ~298kpx (junk straddled the 0.75 col) and could not be fixed by frag_keep_largest=3 (the largest junk blob 2.9Mpx outranks the fragmented real medium island, largest fragment 1.43Mpx).
   "18_299":  A(bands=[(0.0,150),(0.12,200),(0.55,220)],        snow=1.5,  rock=30, wind=0.05, litho="limestone"),           # Anguilla/St Maarten — limestone (S98: maquis 210->200 SEMI_ARID brushy)
   "10_941":  A(bands=[(0.0,9),(0.06,200)],                     snow=1.5,  rock=34, wind=-0.10,litho="limestone", stone_to_sand=True),           # La Tortuga — arid carbonate: SEMI_ARID_SHRUBLAND only; NO SAND_DUNE_DESERT(170) -> no dune columns. Beaches via beach.tif gap==9 (sentinel 9 -> next band 200)
-  "21_395":  A(bands=[(0.0,9),(0.06,200),(0.40,150)],          snow=1.5,  rock=34, wind=-0.05,litho="limestone", height_gain=9.0, keep_box=[0.0,1.0,0.34,1.0], stone_to_sand=True),# Grand Turk — dry coral; VERY flat DEM -> bigger gain to clear sea (median land Y64.4). keep_box y>0.34: the height_gain=9 inflates the shallow Caicos Bank, and one inflated wedge forms a hard-edged TRIANGULAR slab (the v6 upper "land cutoff", single 96kpx component, straight diagonal hypotenuse, centroid cy0.30) that reads as junk vs the lumpy/fractal real cays (all at cy>0.37). y>0.34 oceans the triangle + a thin northern bank strip (cy0.24) and keeps Grand Turk + every real cay cluster.
-  "23_887":  A(bands=[(0.0,9),(0.06,150),(0.40,200)],          snow=1.5,  rock=34, wind=0.0,  litho="limestone", height_gain=5.0),# Bahamas — coral platform; spline mapped land to Y64 pancake ("nO BAHAMAS") -> gain lifts interior to ~Y66-78
+  "21_395":  A(bands=[(0.0,9),(0.06,200),(0.40,150)],          snow=1.5,  rock=34, wind=-0.05,litho="limestone", height_gain=9.0, lift_cap_y=76.0, keep_box=[0.0,1.0,0.34,1.0], stone_to_sand=True),# Grand Turk — dry coral; VERY flat DEM -> bigger gain to clear sea (median land Y64.4). S104: lift_cap_y 74->76 + rolling dome (lift_roll_amp default 0.45) + raised spline = gentle Y65-74 undulation (V13 "super flat" fix). keep_box y>0.34: the height_gain=9 inflates the shallow Caicos Bank, and one inflated wedge forms a hard-edged TRIANGULAR slab (the v6 upper "land cutoff", single 96kpx component, straight diagonal hypotenuse, centroid cy0.30) that reads as junk vs the lumpy/fractal real cays (all at cy>0.37). y>0.34 oceans the triangle + a thin northern bank strip (cy0.24) and keeps Grand Turk + every real cay cluster.
+  "23_887":  A(bands=[(0.0,9),(0.06,150),(0.40,200)],          snow=1.5,  rock=34, wind=0.0,  litho="limestone", height_gain=5.0, lift_cap_y=78.0),# Bahamas — coral platform; spline mapped land to Y64 pancake ("nO BAHAMAS") -> gain lifts interior. S104: lift_cap_y 74->78 SOFT cap (V13 audit: the hard clamp mesa'd the tops at exactly Y74) + rolling dome + raised spline -> rolling Y65-77 interior
   "11_863":  A(bands=[(0.0,230),(0.10,220)],                   snow=1.5,  rock=34, wind=0.0,  litho="limestone"),           # Los Roques — coral atoll
   "-20_529": A(bands=[(0.0,230),(0.10,220)],                   snow=1.5,  rock=34, wind=0.0,  litho="limestone"),           # Ouvea — raised coral atoll
   "-21_008": A(bands=[(0.0,9),(0.08,150),(0.40,200)],          snow=1.5,  rock=33, wind=0.0,  litho="limestone", stone_to_sand=True),  # Loyalty — raised coral limestone (S98: stone->sand + maquis 210->200 SEMI_ARID brushy)
@@ -455,102 +455,174 @@ def synth_shore_beach(land, mcy, slope_u16, beach_band=3.0, gentle_deg=10.0):
     return shore, beach
 
 
+def _coarse_world_noise01(H, W, ox, oz, cell, salt):
+    """Low-frequency organic noise in [0,1]: splitmix64 hash on a WORLD-ALIGNED
+    lattice (node id = world_px // cell), bilinear-upscaled to full res.
+    Deterministic + offset-stable: ox/oz are the SNAPPED island offsets (multiples
+    of 512) and cell must divide 512, so lattice nodes sit on fixed world
+    coordinates -> re-bakes and any future tiled re-baker agree at every pixel.
+    MEMORY-LEAN (S101b discipline): the hash runs on the tiny (H/cell, W/cell)
+    lattice; only the final bilinear upscale materializes ONE full float32 array
+    (the full-res hash + gaussian pipeline it replaces held 2-3)."""
+    from scipy.ndimage import zoom
+    nz = H // cell + 2
+    nx = W // cell + 2
+    gx = (np.int64(ox) // cell + np.arange(nx, dtype=np.int64))[None, :].astype(np.uint64)
+    gz = (np.int64(oz) // cell + np.arange(nz, dtype=np.int64))[:, None].astype(np.uint64)
+    s64 = np.uint64((salt * 0x94D049BB133111EB) & 0xFFFFFFFFFFFFFFFF)
+    h = (gx * np.uint64(0x9E3779B97F4A7C15) + gz * np.uint64(0xBF58476D1CE4E5B9) + s64)
+    h = (h ^ (h >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+    h = (h ^ (h >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+    h = h ^ (h >> np.uint64(31))
+    grid = (h.astype(np.float64) / np.float64(np.iinfo(np.uint64).max)).astype(np.float32)
+    return zoom(grid, cell, order=1, prefilter=False)[:H, :W]
+
+
 def synth_shore_beach_wide(land, mcy, slope_u16, world_offset_px=(0, 0),
                            beach_core_width=6.0, beach_dither_mult=4.0,
-                           gentle_slope_deg=14.0):
-    """S95-T2: ports the MAINLAND soft-beach recipe (core/eco_gradients.py:826-957)
-    to a full-island bake so island sand reads like the mainland's organic shoreline
-    instead of a hard band. EDT distance-from-ocean -> a per-pixel core width drawn
-    from a WORLD-COORD splitmix64 hash blurred at sigma=12 (normalized by the fixed
-    analytic std, NOT per-tile min-max), a dither zone = core*beach_dither_mult, a
-    linear place_prob clamped to [0.15,0.85], and a second finer splitmix64 dither
-    coin (sigma=1). Result: ~6 core + ~24 dither ~= 30 blocks of soft, ragged-edged
-    sand, gentle-slope gated so steep volcanic cliffs do not grow a 30-block apron.
-    The hash uses (ox+col, oz+row) -> seam-safe for any future tiled re-baker;
-    ox,oz = the SNAPPED island offset (_ox/_oz). beach.tif drives gap==9 downstream
-    via the config-gated from_mask path in eco_gradients. shore stays dist<=6 (feeds
-    the column_generator near-water hard band, kept for mainland parity)."""
+                           gentle_slope_deg=14.0,
+                           beach_max_width=8.0, flat_slope_deg=6.0,
+                           steep_slope_deg=20.0, width_jitter=0.20,
+                           width_mod_amp=0.45, width_mod_cell=64,
+                           max_elev_blocks=7.0, min_pond_radius_px=6):
+    """S104 BEACH REDO — slope-driven realistic shoreline (replaces the S95-T2
+    core+wide-dithered-apron recipe, which read wrong: a fixed ~9-block always-sand
+    core hugged EVERY coast — including steep volcanic headlands — plus a salt-and-
+    pepper dithered apron out to ~45 blocks that scattered sand far inland and up
+    gentle cliffs. Real coasts don't work that way: a flat bay grows a wide beach,
+    a steep rocky headland has thin-to-no beach with rock running to the water.)
+
+    NEW MODEL — beach WIDTH is a smooth function of the COASTAL slope, and the beach
+    is a CONTINUOUS strip from the waterline inward (no per-pixel dither coin, so no
+    speckle):
+      1. dist_from_ocean = EDT into land (blocks from the true waterline).
+      2. coastal slope: the true monotone island slope (deg = slope_u16/65535*45,
+         confirmed TRUE-monotone for islands) lightly blurred (sigma=2) to a coherent
+         "how steep is this stretch of shore" read, then PROPAGATED inland from the
+         waterline by grey-erosion running-minimum (memory-lean; see code comment)
+         so the whole band inherits the slope OF ITS COAST — not the cell's own
+         inland slope, which climbs going up and would wrongly starve a wide flat
+         beach the moment the land began to rise.
+      3. width(slope) = beach_max_width * smoothstep(flat_slope_deg .. steep_slope_deg,
+         inverted) -> full width on flat shore (<=flat_slope_deg), tapering to 0 on
+         steep shore (>=steep_slope_deg). Steep volcanic/karst coasts get NO sand.
+      4. ALONG-SHORE width modulation, two smooth world-coord lattice-noise
+         scales (NO per-pixel coin -> no speckle, ever):
+           - bay-scale swell/pinch: cell=width_mod_cell (64) noise, +-width_mod_amp
+             (45%) -> the band organically widens and narrows over ~100-300-block
+             stretches of coast (V13 walk: old width was near-uniform);
+           - fine edge wobble: cell=16 noise, +-width_jitter (20%) -> the inner
+             edge is naturally ragged at the 10-30-block scale.
+      5. ELEVATION GATE: sand only where mcy <= 63 + max_elev_blocks. The V13
+         audit measured old sand up to 8-25 blocks ABOVE sea (climbing coastal
+         rises); the gate stops the band at the toe of any rise.
+      6. PINHOLE-POND suppression: only the sea + large inland water bodies
+         (inradius > min_pond_radius_px, i.e. real lagoons/salinas) anchor
+         sand; 1-15px DEM pinholes no longer grow doughnut rims.
+      7. beach = 1<=dist<=width & elev-gate. Clean continuous sand at the
+         waterline.
+
+    Deterministic + offset-stable: all noise hashes WORLD-aligned lattice nodes
+    (ox,oz = the SNAPPED island offset _ox/_oz, multiples of 512; cells divide
+    512). beach.tif drives gap==9 downstream via the config-gated from_mask path
+    in eco_gradients; shore stays dist<=6 (feeds the column_generator near-water
+    hard band, kept for mainland parity).
+
+    Back-compat: beach_core_width/beach_dither_mult/gentle_slope_deg are still
+    accepted (legacy callers) — beach_core_width seeds beach_max_width only if
+    beach_max_width is falsy. Mainland is UNTOUCHED (this function has exactly
+    one caller, the island bake)."""
     from scipy.ndimage import distance_transform_edt, gaussian_filter
     ox, oz = int(world_offset_px[0]), int(world_offset_px[1])
     H, W = land.shape
-    # S95 #5a: waterline at MC Y63 (strict). The passed `land` is mcy>63.4, so the
-    # ANCHOR the beach to the RENDER's actual coastline. The final height.tif re-snaps
-    # `height[~land]=min(.,SEA_RAW)` with land=mcy>63.4 (line ~488), so the rendered
-    # land starts at mcy>63.4 and the mcy in [63,63.4) ring is OCEAN. A prior cut used
-    # beach_land=mcy>=63.0, which put the beach band one ring SEAWARD of the real shore
-    # (on cells that then become ocean) -> the true first land ring rendered BARE
-    # rock/grass (measured 92-100% bare) = "land cuts off into ocean". Use the SAME
-    # >63.4 land test so the beach core lands on the first RENDER-land ring -> water
-    # meets sand.
+    # waterline at MC Y63 (strict): the passed `land` is mcy>63.4 and the final
+    # height.tif re-snaps ocean to <=SEA_RAW with the SAME >63.4 test, so anchoring
+    # the beach to mcy>63.4 lands the first sand ring on the first RENDER-land ring
+    # (water meets sand; a >=63.0 anchor would sit one ring seaward = bare shore).
     beach_land = mcy > 63.4
     ocean = ~beach_land
     if not ocean.any() or not beach_land.any():
         shore = (land & _near_ocean_disk(land, 6)).astype(np.uint8)
         return shore, np.zeros((H, W), np.uint8)
-    dist_from_ocean = distance_transform_edt(~ocean).astype(np.float32)
-    deg = slope_u16.astype(np.float32) / 65535.0 * 45.0
-    gentle = deg < float(gentle_slope_deg)
-    del deg      # S101b marginal-OOM: free each full-bbox float as soon as it is
-                 # dead, not in one block at the end — NV (10.9k^2) OOM'd at the
-                 # `t=` line below with ~3.5GB of already-dead floats still live.
+    # S104b PINHOLE-POND FIX (V13 after-preview): 1-15px inland mcy pinholes
+    # (DEM noise + micro salinas) each seeded a sand DOUGHNUT ring — read as
+    # acne on la_tortuga/efate flats. Anchor beaches only to the SEA + LARGE
+    # inland water (real lagoons/salinas, e.g. Ouvea's atoll lagoon): geodesic
+    # reconstruction (erosion seed + binary_propagation, memory-lean, no full
+    # int32 label array) keeps enclosed water bodies whose inradius survives
+    # min_pond_radius_px; smaller ponds count as LAND for the distance field
+    # (they still render as water — they just grow no sand rim).
+    from scipy.ndimage import binary_erosion, binary_propagation, binary_fill_holes
+    _filled = binary_fill_holes(beach_land)
+    _holes = _filled & ~beach_land        # inland water only (the sea touches the frame)
+    del _filled                                         # S101b
+    _edt_land = beach_land
+    if _holes.any():
+        _surv = binary_erosion(_holes, iterations=int(min_pond_radius_px))
+        _bigp = binary_propagation(_surv, mask=_holes)
+        del _surv                                       # S101b
+        _edt_land = beach_land | (_holes & ~_bigp)
+        del _bigp                                       # S101b
+    del _holes                                          # S101b
+    # EDT distance into land (blocks from the true waterline). NO return_indices —
+    # its int32/float64 internals cost ~1GB on a 7.8k^2 bbox and OOM the 7.4GB box
+    # (the S101 lesson). Coastal slope is propagated inland by a cheap min-dilation
+    # instead (below).
+    dist_from_ocean = distance_transform_edt(_edt_land).astype(np.float32)
+    if _edt_land is not beach_land:
+        del _edt_land                                   # S101b
 
-    # world-coord splitmix64 hash -> [0,1], same kernel as eco_gradients beach
-    wx = (np.int64(ox) + np.arange(W, dtype=np.int64))[None, :].astype(np.uint64)
-    wz = (np.int64(oz) + np.arange(H, dtype=np.int64))[:, None].astype(np.uint64)
+    # coastal slope, propagated inland from the shore. The coast's steepness lives on
+    # the FIRST land ring; a beach cell up to `max_w` blocks inland should inherit
+    # THAT slope (a flat bay stays "flat coast" for the whole band), not its own
+    # inland slope which climbs going up a hill. Memory-lean propagation: seed the
+    # blurred true slope on the near-shore band, +inf elsewhere, then take the running
+    # MINIMUM over `ceil(max_w)` grey-erosion steps (3x3) so each cell inherits the
+    # gentlest slope reachable within the beach reach toward the water -> a genuine
+    # flat bay backed by a hill still reads flat across the sand band. One float32.
+    from scipy.ndimage import grey_erosion
+    deg = gaussian_filter(slope_u16.astype(np.float32) / 65535.0 * 45.0, sigma=2.0)
+    max_w0 = float(beach_max_width if beach_max_width else beach_core_width)
+    _INF = np.float32(1e6)
+    seed = np.where(dist_from_ocean <= (max_w0 + 2.0), deg, _INF).astype(np.float32)
+    del deg
+    reach = int(math.ceil(max_w0)) + 1
+    coastal_deg = grey_erosion(seed, size=(3, 3))          # min over 3x3
+    for _ in range(reach - 1):
+        coastal_deg = grey_erosion(coastal_deg, size=(3, 3))
+    # cells whose reach never touched a seeded shore cell keep _INF -> width 0 (deep
+    # interior, never in the band anyway). Restore finite where dist small.
+    coastal_deg = np.where(coastal_deg >= _INF, np.float32(90.0), coastal_deg)
+    del seed, ocean
 
-    def _hash01(salt):
-        s64 = np.uint64((salt * 0x94D049BB133111EB) & 0xFFFFFFFFFFFFFFFF)
-        h = (wx * np.uint64(0x9E3779B97F4A7C15)
-             + wz * np.uint64(0xBF58476D1CE4E5B9) + s64)
-        h = (h ^ (h >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
-        h = (h ^ (h >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
-        h = h ^ (h >> np.uint64(31))
-        return (h.astype(np.float64) / np.float64(np.iinfo(np.uint64).max)).astype(np.float32)
+    # width(slope): flat -> beach_max_width, steep -> 0, smoothstep between.
+    max_w = float(beach_max_width if beach_max_width else beach_core_width)
+    flo, fhi = float(flat_slope_deg), float(steep_slope_deg)
+    t = np.clip((coastal_deg - flo) / max(fhi - flo, 1e-6), 0.0, 1.0)
+    del coastal_deg
+    slope_w = (1.0 - t * t * (3.0 - 2.0 * t)).astype(np.float32)   # 1 flat -> 0 steep
+    del t
+    width = (np.float32(max_w) * slope_w)
+    del slope_w
 
-    BCH_SIGMA = 12.0
-    wn = gaussian_filter(_hash01(0xBEAC4), sigma=BCH_SIGMA)
-    std_wn = np.float32((1.0 / np.sqrt(12.0)) / (2.0 * np.sqrt(np.pi) * BCH_SIGMA))
-    width_noise = np.clip((wn - np.float32(0.5)) / (np.float32(2.5) * std_wn),
-                          -1.0, 1.0).astype(np.float32)
-    del wn       # S101b marginal-OOM: dead past here
-    amp = np.float32(beach_core_width * 0.4)            # +-40% width jitter
-    core_width = np.maximum(np.float32(beach_core_width) + amp * width_noise,
-                            0.0).astype(np.float32)
-    del width_noise                                     # S101b
-    dither_width = core_width * np.float32(beach_dither_mult)
-    total_width = core_width + dither_width
+    # (4) along-shore width modulation — two smooth world-aligned lattice-noise
+    # scales, both MULTIPLICATIVE (scale the width, never punch interior holes):
+    #   bay-scale (cell=width_mod_cell): the band swells/pinches organically
+    #   along the coast; fine (cell=16): ragged-but-smooth inner edge.
+    wm = _coarse_world_noise01(H, W, ox, oz, int(width_mod_cell), 0xBEAC4)
+    width *= (np.float32(1.0) + np.float32(width_mod_amp)
+              * (wm * np.float32(2.0) - np.float32(1.0)))
+    del wm                                              # S101b: dead past here
+    ej = _coarse_world_noise01(H, W, ox, oz, 16, 0xD17BEA)
+    width *= (np.float32(1.0) + np.float32(width_jitter)
+              * (ej * np.float32(2.0) - np.float32(1.0)))
+    del ej                                              # S101b
 
-    # S95 #6b: CORE sand always hugs the waterline (NO gentle gate) so steep
-    # volcanic coasts still get a continuous thin beach instead of inland specks,
-    # and it starts at the first land ring (dist==1 from true water), not offset
-    # inland. The wide dither apron KEEPS the gentle gate so cliffs don't grow a
-    # 30-block sand apron.
-    core = beach_land & (dist_from_ocean >= 1.0) & (dist_from_ocean <= core_width)
-    in_dither = (beach_land & gentle & (dist_from_ocean > core_width)
-                 & (dist_from_ocean <= total_width))
-    del beach_land, gentle, total_width                  # S101b: dead past here
-    t = np.clip((dist_from_ocean - core_width) / np.maximum(dither_width, np.float32(0.5)),
-                0.0, 1.0)
-    del dist_from_ocean, core_width, dither_width        # S101b: dead past here
-    place_prob = np.clip(1.0 - t, 0.15, 0.85).astype(np.float32)
-    del t                                                # S101b
-
-    DC_SIGMA = 1.0
-    dc = gaussian_filter(_hash01(0xD17BEA), sigma=DC_SIGMA)
-    std_dc = np.float32((1.0 / np.sqrt(12.0)) / (2.0 * np.sqrt(np.pi) * DC_SIGMA))
-    coin = np.clip(np.float32(0.5) + (dc - np.float32(0.5)) / (np.float32(2.5) * std_dc) * np.float32(0.5),
-                   0.0, 1.0).astype(np.float32)
-    dithered = in_dither & (coin < place_prob)
-
-    # S101 OOM fix (now mostly moved up to point-of-death dels, S101b): release
-    # the remaining full-bbox intermediates BEFORE the shore step so the 7.4GB
-    # local box can bake a 10.9k² island (NV crashed at the `t=` line above at
-    # 2.4GB free even WITH the old end-block dels — under ambient memory
-    # pressure the block came too late).
-    del place_prob, dc, coin, in_dither, ocean
-
-    beach = ((core | dithered).astype(np.uint8)) * 255
-    del core, dithered
+    # (5) elevation gate + (6) final band
+    beach = (beach_land & (dist_from_ocean >= 1.0) & (dist_from_ocean <= width)
+             & (mcy <= np.float32(63.0 + float(max_elev_blocks))))
+    del beach_land, dist_from_ocean, width
+    beach = (beach.astype(np.uint8)) * 255
     shore = (land & _near_ocean_disk(land, 6)).astype(np.uint8)
     return shore, beach
 
@@ -810,12 +882,23 @@ def bake_island(entry):
     # lift amplitude in blocks: lift_amp = (height_gain - 1.0) so the old 5.0/9.0
     # become a +4/+8-block interior dome. Optional `lift_feather_px` (default 60)
     # and `lift_cap_y` (default 74) fine-tune the dome. ISLAND-ONLY.
+    # S104 flat-island variation (V13 walk: "super flat island splines need more
+    # variation") — two dome upgrades, both no-op for islands without height_gain:
+    #   a. ROLLING dome: the interior lift is modulated by a low-freq WORLD-COORD
+    #      lattice noise (x0.55..x1.45 over ~200-400-block wavelengths,
+    #      `lift_roll_amp` knob) so a truly-flat DEM (Grand Turk: nearly all land
+    #      at frac<0.1 where spline edits can't bite) gets gentle rolling relief
+    #      instead of one uniform plateau dome.
+    #   b. SOFT cap: mcy above lift_cap_y is COMPRESSED (x0.35), not min-clamped.
+    #      The V13 audit caught the hard clamp red-handed on Bahamas: land
+    #      p99.9 == max == exactly 74.0 = lift_cap_y -> visible flat mesa tops.
     _hgain = float(bands.get("height_gain", 1.0))
     if _hgain != 1.0:
         from scipy.ndimage import distance_transform_edt, gaussian_filter
         _lift_amp = max(_hgain - 1.0, 0.0)                       # +blocks at the dome centre
         _feather = float(bands.get("lift_feather_px", 60.0))     # shore->full ramp width (blocks)
-        _cap_y = float(bands.get("lift_cap_y", 74.0))            # interior elevation ceiling
+        _cap_y = float(bands.get("lift_cap_y", 74.0))            # interior elevation soft ceiling
+        _roll = float(bands.get("lift_roll_amp", 0.45))          # rolling modulation +- fraction
         _seed_land = mcy > 63.4                                  # lift the CURRENT land only
         if _seed_land.any():
             # distance inward from the coast, normalized + smoothstepped -> 0 at the
@@ -825,16 +908,33 @@ def bake_island(entry):
             _t = np.clip(_d / max(_feather, 1.0), 0.0, 1.0)
             _w = _t * _t * (3.0 - 2.0 * _t)                      # smoothstep
             _lift = _lift_amp * _w
+            del _d, _t, _w                                       # S101b
+            if _roll > 0:
+                # (a) rolling interior: world-aligned lattice noise (cell=128 ~
+                # 130-260-block undulations), feather-weighted so the SHORE stays
+                # exactly at its DEM height (roll rides the dome weight _lift).
+                _oxr = round(entry["world_offset_px"][0] / 512) * 512
+                _ozr = round(entry["world_offset_px"][1] / 512) * 512
+                _rn = _coarse_world_noise01(mcy.shape[0], mcy.shape[1],
+                                            _oxr, _ozr, 128, 0xD03E)
+                _lift = _lift * (np.float32(1.0) + np.float32(_roll)
+                                 * (_rn * np.float32(2.0) - np.float32(1.0)))
+                del _rn                                          # S101b
             mcy = mcy + _lift
+            del _lift                                            # S101b
             # smooth away any residual stair (small sigma so the dome shape survives)
             mcy = gaussian_filter(mcy, sigma=3.0).astype(np.float32)
-            # cap the interior so it stays a low coral island, not a mesa
-            np.minimum(mcy, _cap_y, out=mcy, where=(mcy > _cap_y))
+            # (b) SOFT cap: compress (not clamp) above lift_cap_y -> rounded rises,
+            # no mesa. 0.35x keeps a couple of blocks of variation above the cap.
+            _over = mcy > _cap_y
+            mcy[_over] = _cap_y + (mcy[_over] - _cap_y) * np.float32(0.35)
+            del _over                                            # S101b
             masks["height"] = mcy_to_world_raw(mcy)
             _lm = mcy > 63.4
             print(f"[bake]   height_gain={_hgain} (feathered dome amp=+{_lift_amp:.0f} "
-                  f"feather={_feather:.0f}px cap=Y{_cap_y:.0f}): land>63.4 now "
-                  f"{int(_lm.sum())}px, interior median MC-Y={np.median(mcy[_lm]):.1f}", flush=True)
+                  f"feather={_feather:.0f}px roll=+-{_roll:.2f} softcap=Y{_cap_y:.0f}): "
+                  f"land>63.4 now {int(_lm.sum())}px, interior median "
+                  f"MC-Y={np.median(mcy[_lm]):.1f}, max MC-Y={mcy[_lm].max():.1f}", flush=True)
     land = mcy > 63.4
     # KILL border-clipped stragglers: every land component that touches the FINAL frame
     # border EXCEPT the main island -> ocean. These (erase-job leftovers) are what slice
@@ -1003,13 +1103,20 @@ def bake_island(entry):
     rock_gap = synth_rock_gap(masks["slope"], rock_deg, world_offset_px=(_ox, _oz),
                               land=land, max_land_frac=float(bands.get("rock_max_frac", 0.25)))
     snow_gap = synth_snow_gap(mcy, land, bands)
-    # wider beach fringe: capture the coastal rise (Y63..71) + gentler-but-not-flat
-    # flanks so steep volcanic coasts still get a continuous sand band, not specks.
+    # S104 beach redo: slope-driven continuous sand strip. Width tapers with the
+    # COASTAL slope — flat bays get up to beach_max_width blocks of clean sand
+    # (x the +-45% bay-scale swell), steep volcanic/karst headlands get none
+    # (rock to the water). No dither apron, no speckle; sand never sits more
+    # than 7 blocks above sea (V13 audit: old sand climbed 8-25 blocks up).
     shore, beach = synth_shore_beach_wide(land, mcy, masks["slope"],
                                           world_offset_px=(_ox, _oz),
-                                          beach_core_width=9.0,
-                                          beach_dither_mult=4.0,
-                                          gentle_slope_deg=14.0)
+                                          beach_max_width=12.0,
+                                          flat_slope_deg=6.0,
+                                          steep_slope_deg=20.0,
+                                          width_jitter=0.20,
+                                          width_mod_amp=0.45,
+                                          width_mod_cell=64,
+                                          max_elev_blocks=7.0)
 
     _wtif(od / "height.tif", masks["height"])
     _wtif(od / "slope.tif", masks["slope"])
@@ -1085,7 +1192,7 @@ def bake_island(entry):
     cfg.setdefault("lithology", {}).setdefault("rock_layers", {})["suppress_all_gap5_trees"] = True  # E: islands' broad monotone-slope rock_gap -> NO trees on gap==5 (mainland keeps the S89 dark-tier sparse-tree exemption byte-for-byte)
     cfg.setdefault("gaea_gaps", {})["use_query_time"] = False     # no 8k Gaea -> baked rock/snow_gap drive gaps
     cfg.setdefault("eco_gradients", {}).setdefault("beach_gap", {})["from_mask"] = True   # S95-T2: island sand <- baked beach.tif
-    cfg["eco_gradients"]["beach_gap"]["max_surface_y"] = 80        # S95-T2: wide island beach climbs above the mainland Y65 contour
+    cfg["eco_gradients"]["beach_gap"]["max_surface_y"] = 72        # S104: mask self-gates at Y<=70 (max_elev_blocks=7); 72 = +2 headroom for decorate-time surface_y drift (was 80 for the old climbing apron)
     cfg["eco_gradients"]["island_treeline_breaks"] = {            # S95-polish: climate-aware forest-edge meadow fingers near the island treeline (boreal breaks hard, jungle barely)
         "enabled": True, "band_lo": 0.45, "wind_mix": 0.65, "meadow_freq_boost": 0.8,
         "fringe_concavity_gain": 0.5, "fringe_wind_gain": 1.0, "climate_default": 0.6,

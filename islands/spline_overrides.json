@@ -74,7 +74,8 @@
   },
   "23_887": {
     "name": "Bahamas (San Salvador/Rum Cay)",
-    "mcy_peak": 71.8,
+    "_note": "S104 flat-island variation (V13 walk 'super flat'): low/mid fracs lifted (63.1/63.4/64.8 -> 63.5/65.0/69.0) so the platform interior rolls ~Y65-75 instead of a Y64 pancake; peak 71.8->78.0, still a low coral platform (loyalty-islets reference tops at 77.5). Pairs with the S104 ROLLING dome + SOFT lift_cap_y=78 in render_islands BANDS (the old hard clamp mesa'd the tops at exactly Y74).",
+    "mcy_peak": 78.0,
     "fracs": [
       0.0,
       0.06,
@@ -87,17 +88,18 @@
     ],
     "mcys": [
       63.0,
-      63.1,
-      63.4,
-      64.8,
-      66.8,
+      63.5,
+      65.0,
       69.0,
-      70.8,
-      71.8
+      72.5,
+      75.5,
+      77.2,
+      78.0
     ]
   },
   "18_299": {
     "name": "Anguilla / St Maarten + outliers",
+    "_note": "S104 flat-island variation (V13 walk): ~75% of the land sat at frac<0.25 -> a Y64-66 pancake (audit p50=64.5 p75=65.8) even though St Maarten's hills reach ~130. Low band lifted (64.0/66.1 -> 65.0/70.0) so the limestone platform rolls ~Y64-70; mid anchors eased up for continuity; TRUE peak 132.6 UNCHANGED (hills stay hills, no new mountains).",
     "mcy_peak": 132.6,
     "fracs": [
       0.0,
@@ -111,18 +113,19 @@
     ],
     "mcys": [
       63.0,
-      64.0,
-      66.1,
-      76.9,
-      93.5,
-      110.8,
-      124.8,
+      65.0,
+      70.0,
+      82.0,
+      100.0,
+      118.0,
+      128.0,
       132.6
     ]
   },
   "10_941": {
     "name": "La Tortuga",
-    "mcy_peak": 71.8,
+    "_note": "S104 flat-island variation (V13 walk): DEM has real frac spread (0.27-0.86) but the old curve squashed it to Y64-69 (audit p50=65.9). Rescaled toward the loyalty-islets read: land rolls ~Y65-76 (p50 ~71); peak 71.8->78.5, still a low arid carbonate platform.",
+    "mcy_peak": 78.5,
     "fracs": [
       0.0,
       0.06,
@@ -135,18 +138,19 @@
     ],
     "mcys": [
       63.0,
-      63.1,
-      63.4,
-      64.8,
-      66.8,
-      69.0,
-      70.8,
-      71.8
+      63.5,
+      65.5,
+      69.5,
+      73.5,
+      76.0,
+      77.5,
+      78.5
     ]
   },
   "11_863": {
     "name": "Los Roques (atoll)",
-    "mcy_peak": 81.1,
+    "_note": "S104 flat-island variation (V13 walk): half the land sat below Y65.3. Low/mid fracs lifted (63.8/66.6 -> 65.5/70.0) for rolling ~Y65-77 rims + cays; peak 81.1->82.0 (atoll stays low).",
+    "mcy_peak": 82.0,
     "fracs": [
       0.0,
       0.06,
@@ -159,13 +163,13 @@
     ],
     "mcys": [
       63.0,
-      63.3,
-      63.8,
-      66.6,
-      70.9,
-      75.4,
-      79.0,
-      81.1
+      63.7,
+      65.5,
+      70.0,
+      74.5,
+      78.0,
+      80.5,
+      82.0
     ]
   },
   "12_445": {
@@ -194,7 +198,8 @@
   },
   "21_395": {
     "name": "Grand Turk / Caicos",
-    "mcy_peak": 68.5,
+    "_note": "S104 flat-island variation (V13 walk): flattest target — nearly all land at tiny frac, so the spline alone can't bite; the relief comes from the S104 ROLLING height_gain=9 dome (lift_roll_amp 0.45, cell-128 world noise) + SOFT lift_cap_y=76 in render_islands BANDS. Spline low/mid still raised (63.1/63.2 -> 63.5/65.0) so what DEM spread exists reads; peak 68.5->76.0. Net interior ~Y65-77 gentle undulation.",
+    "mcy_peak": 76.0,
     "fracs": [
       0.0,
       0.06,
@@ -207,13 +212,13 @@
     ],
     "mcys": [
       63.0,
-      63.1,
-      63.2,
-      64.1,
-      65.4,
-      66.8,
-      67.9,
-      68.5
+      63.5,
+      65.0,
+      68.5,
+      71.5,
+      74.0,
+      75.2,
+      76.0
     ]
   },
   "-1_509": {
@@ -242,7 +247,8 @@
   },
   "-20_529": {
     "name": "Ouvea atoll",
-    "mcy_peak": 71.8,
+    "_note": "S104 flat-island variation (V13 walk): raised coral atoll was a Y64-66 pancake (audit p50=64.3 p75=65.6). Low/mid fracs lifted (63.1/63.4 -> 63.5/65.3) -> rolling ~Y66-76 (loyalty-like); peak 71.8->78.0, atoll stays low.",
+    "mcy_peak": 78.0,
     "fracs": [
       0.0,
       0.06,
@@ -255,13 +261,13 @@
     ],
     "mcys": [
       63.0,
-      63.1,
-      63.4,
-      64.8,
-      66.8,
-      69.0,
-      70.8,
-      71.8
+      63.5,
+      65.3,
+      69.5,
+      73.5,
+      76.0,
+      77.5,
+      78.0
     ]
   },
   "-21_008": {
