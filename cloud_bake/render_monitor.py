@@ -311,7 +311,12 @@ class Mon:
                     continue
                 if cls == "DONE":
                     if self.collect(box):
-                        self.delete_box(box, "collected")
+                        if self.spec.get("keep_alive"):
+                            st["deleted"] = True   # resolved for the loop; box stays up
+                            self.log(f"  {box['name']} kept ALIVE per spec "
+                                     f"(straggler re-render workflow; box_guard TTL is the net)")
+                        else:
+                            self.delete_box(box, "collected")
                     elif st["collect_fails"] >= self.spec["collect_retries"]:
                         self.reap(box, "collect-retries-exhausted", save_log_suffix="COLLECTFAIL")
                 elif cls == "FAIL":
@@ -343,12 +348,16 @@ class Mon:
         # safety sweep by prefix, then splice guard
         if not status_only:
             pref = self.spec["run_name"]
-            d = self.api("/servers")
-            for s in d.get("servers", []):
-                if s["name"].startswith(pref):
-                    self.log(f"safety-sweep: deleting leftover {s['name']} (id={s['id']})")
-                    if not self.dry:
-                        self.api(f"/servers/{s['id']}", method="DELETE")
+            if self.spec.get("keep_alive"):
+                self.log(f"keep_alive: skipping safety sweep — {pref}* boxes remain up "
+                         f"(box_guard TTL labels are the only net; delete manually when satisfied)")
+            else:
+                d = self.api("/servers")
+                for s in d.get("servers", []):
+                    if s["name"].startswith(pref):
+                        self.log(f"safety-sweep: deleting leftover {s['name']} (id={s['id']})")
+                        if not self.dry:
+                            self.api(f"/servers/{s['id']}", method="DELETE")
             self.splice_guard()
             if self.state["refire"]:
                 self.log(f"=== REFIRE NEEDED: {self.state['refire']} ===")
