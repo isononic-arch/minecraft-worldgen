@@ -5221,6 +5221,57 @@ def decorate_surface(
             print(f"[ocean_decorator] SKIPPED (tile {tile_x},{tile_y}): {_e}",
                   flush=True)
 
+    # ──────────────────────────────────────────────────────────────────
+    # S102 BUG2: FINAL clearing grass RE-ASSERTION (decisive-feature-LAST).
+    # The earlier DEM re-assertion (above, ~"S101 DEM-clearing grass") runs
+    # BEFORE the surface pipeline (WeatheredTop/RiverBar/DesertPavement),
+    # ecotone dither, and the river-bank palette — all of which re-paint
+    # coarse_dirt/mud/podzol back into clearing interiors (measured ~5% of a
+    # deep DEM clearing left as forest floor). Physical-Realism rule #3: the
+    # decisive feature must be the LAST assignment. Re-assert grass ONE more
+    # time here, over BOTH the DEM clearing_mask interior AND the noise
+    # clearing_field interior, so a clearing reliably reads as a grassy
+    # opening. Only touches forest-floor blocks; never a genuinely wet cell
+    # (river_meta>0) or a non-soil feature block (rock/sand/gravel).
+    # clearing_mask_tile is None on tiles without the mask -> DEM branch is a
+    # no-op there; the noise branch always applies (matches the tree-suppression
+    # geometry so grass and tree-absence line up).
+    try:
+        _CLR_LAST = frozenset({
+            "TEMPERATE_RAINFOREST", "TEMPERATE_DECIDUOUS", "BOREAL_TAIGA",
+            "MIXED_FOREST", "BIRCH_FOREST", "RIPARIAN_WOODLAND",
+        })
+        _clr_biome = np.zeros((H, W), dtype=bool)
+        for _cb in _CLR_LAST:
+            _clr_biome |= (biome_grid == _cb)
+        if _clr_biome.any():
+            from core.meadow_clearing_field import (
+                CLEARING_INTERIOR_THRESHOLD as _CF_THR_L,
+            )
+            _clr_interior = np.zeros((H, W), dtype=bool)
+            # DEM clearing interior (mask > 0.5).
+            if clearing_mask_tile is not None and clearing_mask_tile.max() > 0:
+                _clr_interior |= (clearing_mask_tile > 0.5)
+            # Noise clearing interior (field < threshold) — same signal the
+            # tree-suppression pass uses, so grass follows tree absence.
+            if clearing_field is not None:
+                _clr_interior |= (clearing_field < _CF_THR_L)
+            _clr_px = _clr_biome & _clr_interior
+            if river_meta is not None:
+                _clr_px &= (river_meta == 0)  # never overwrite a wet cell
+            if _clr_px.any():
+                _FF_L = ("podzol", "dirt", "coarse_dirt", "moss_block",
+                         "rooted_dirt", "mud")
+                _ff_l = np.zeros((H, W), dtype=bool)
+                for _b in _FF_L:
+                    _ff_l |= (surface_blocks == _b)
+                surface_blocks[_clr_px & _ff_l] = "grass_block"
+            del _clr_interior, _clr_px
+        del _clr_biome
+    except Exception as _clr_exc:  # noqa: BLE001
+        print(f"[clearing_reassert] WARN tile=({tile_x},{tile_y}): "
+              f"{type(_clr_exc).__name__}: {_clr_exc}")
+
     return surface_blocks, subsurface_blocks, ground_cover
 
 

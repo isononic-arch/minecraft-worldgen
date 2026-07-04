@@ -855,6 +855,58 @@ def _process_tile(args: dict) -> dict:
     # water/bank cells keep Step 9's fixes.
     _post_decorate_y = surface_y.copy()
 
+    # S102 tree-realism gates (BUG1/3a/4) — built ONCE here so both the SURF_DUMP
+    # dry-run placement dump and the real Step-8 call see identical inputs.
+    #
+    # BUG1: inner FLOOD mask — cells the carved+filled water will cover.
+    # river_meta>0 marks every carved channel/lake cell; water_y_field>surface
+    # catches any wetted edge the carve marks with a water level above ground.
+    # Placement folds this into its water buffer (interior gallery) and rejects
+    # band-pass trees on it (band pass otherwise ignores tile-local water gates).
+    _river_flood_mask = (river_meta > 0)
+    if water_y_field is not None:
+        _river_flood_mask = _river_flood_mask | (
+            (water_y_field > core_col_gen.SEA_LEVEL) & (water_y_field > surface_y))
+
+    # BUG3a/BUG4: world-symmetric padded clearing + beach signals for the
+    # seam-band pass.  The band pass must read identical values from both
+    # adjacent tiles at a shared cell, so these are computed over the padded
+    # (halo-inclusive) window from world-coord-deterministic sources: the
+    # meadow-clearing noise field (recomputed at padded world coords) blended
+    # with the DEM clearing_mask, and the global beach.tif footprint.
+    _clearing_field_padded = None
+    _beach_padded = None
+    if surface_y_padded is not None and _SEAM_PAD_PX > 0:
+        _pp = _SEAM_PAD_PX
+        _Hs, _Ws = surface_y.shape
+        try:
+            import numpy as _np_cf
+            import opensimplex as _ox_cf
+            _wl_blocks = 256.0
+            _xs = (_np_cf.arange(_Ws + 2 * _pp, dtype=_np_cf.float64)
+                   + tile_x * _Ws - _pp) / _wl_blocks
+            _zs = (_np_cf.arange(_Hs + 2 * _pp, dtype=_np_cf.float64)
+                   + tile_y * _Hs - _pp) / _wl_blocks
+            _ox_cf.seed(core_clearing.DEFAULT_SEED)
+            _cf_pad = ((_ox_cf.noise2array(_xs, _zs) + 1.0) * 0.5).astype(_np_cf.float32)
+            # Blend the DEM clearing_mask (padded read) the same way Step-6d does.
+            _cm_pad_masks = core_tile_stream.read_tile(
+                masks_dir=masks_dir, col_off=col_off, row_off=row_off,
+                width=w, height=h, pad_px=_pp,
+                mask_subset=("clearing_mask", "beach"))
+            _cm_pad = _cm_pad_masks.get("clearing_mask")
+            if _cm_pad is not None and _cm_pad.max() > 0:
+                _cf_pad = _np_cf.minimum(_cf_pad, (1.0 - _cm_pad).astype(_np_cf.float32))
+            _clearing_field_padded = _cf_pad
+            _beach_pad = _cm_pad_masks.get("beach")
+            if _beach_pad is not None:
+                _beach_padded = (_beach_pad > 0.001)
+        except Exception as _cf_exc:  # noqa: BLE001
+            print(f"[band_gates] WARN tile=({tile_x},{tile_y}): "
+                  f"{type(_cf_exc).__name__}: {_cf_exc}")
+            _clearing_field_padded = None
+            _beach_padded = None
+
     # SURF_DUMP seam-bisect hook: dump pre/post-decorate surface_y + the
     # pre-carve neighbour halo, then return early (no schematics, no chunk
     # write).  Lets us reproduce/localise the tile-boundary height seam
@@ -905,6 +957,11 @@ def _process_tile(args: dict) -> dict:
                 surface_y_padded = surface_y_padded,
                 seam_pad_px = (_SEAM_PAD_PX if surface_y_padded is not None else 0),
                 surface_y_precarve_padded = _relief_rough_pad,
+                river_flood_mask = _river_flood_mask,          # S102 BUG1
+                clearing_mask_tile = masks.get("clearing_mask"),  # S102 BUG2b
+                clearing_field_padded = _clearing_field_padded,  # S102 BUG3a
+                beach_padded = _beach_padded,                    # S102 BUG4
+                beach_tile = masks.get("beach"),                 # S102 BUG4
             )
             _np_sd.save(f"{_surf_dump_dir}/plc_{tile_x}_{tile_y}.npy",
                         np.asarray([(p.world_x, p.world_z, p.place_y, p.size,
@@ -947,6 +1004,11 @@ def _process_tile(args: dict) -> dict:
         surface_y_padded = surface_y_padded,
         seam_pad_px = (_SEAM_PAD_PX if surface_y_padded is not None else 0),
         surface_y_precarve_padded = _relief_rough_pad,
+        river_flood_mask = _river_flood_mask,          # S102 BUG1
+        clearing_mask_tile = masks.get("clearing_mask"),  # S102 BUG2b
+        clearing_field_padded = _clearing_field_padded,  # S102 BUG3a
+        beach_padded = _beach_padded,                    # S102 BUG4
+        beach_tile = masks.get("beach"),                 # S102 BUG4
     )
 
     # Island offset-render fix (S95): place_schematics returns world coords in

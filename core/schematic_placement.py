@@ -972,6 +972,11 @@ def place_schematics(
     surface_y_padded: np.ndarray | None = None,  # (H+2sp,W+2sp) int — S96 seam rim pass surface halo
     seam_pad_px: int = 0,                         # half-pad width of surface_y_padded
     surface_y_precarve_padded: np.ndarray | None = None,  # (H+2sp,W+2sp) PRE-CARVE LUT surface — S96 BUG2 symmetric place_y
+    river_flood_mask: np.ndarray | None = None,   # (H,W) bool — cells the carved+filled water FLOODS (river_meta>0 | water_y>surface). S102 BUG1: never seat a trunk in the wetted channel.
+    clearing_mask_tile: np.ndarray | None = None,  # (H,W) float32 — DEM clearing mask (S102 BUG2b: align tree suppression with the surface grass interior, mask>0.5).
+    clearing_field_padded: np.ndarray | None = None,  # (H+2sp,W+2sp) float32 — world-symmetric clearing field (noise ∧ DEM mask) for the band pass (S102 BUG3a). Same seam_pad_px as surface_y_padded.
+    beach_padded: np.ndarray | None = None,       # (H+2sp,W+2sp) bool — world-symmetric beach (gap==9) footprint for the band pass (S102 BUG4). Same seam_pad_px.
+    beach_tile: np.ndarray | None = None,         # (H,W) float32 — authoritative beach.tif footprint (S102 BUG4: suppress trees on ANY beach cell, even where eco_gradients gap!=9).
 ) -> list[PlacementRecord]:
     """
     Compute schematic placements for one tile.
@@ -1009,7 +1014,16 @@ def place_schematics(
     # reject in chunk_writer.stamp_schematic, gives ~16-20 block no-tree-zone
     # from any water edge.
     from scipy.ndimage import binary_dilation as _bd_place
+    # S102 BUG1: the water footprint is the CARVED+FILLED channel, not just the
+    # carved bed.  river_meta>0 already marks carved cells, but the S101c
+    # riparian density boost packs trees right up to the channel and a cell can
+    # be FLOODED (final water_y > surface) without being flagged here — Step-9's
+    # water fill then drowns the trunk, leaving floating leaves.  Fold the
+    # explicit flood mask into the water pixels so the 14px buffer keeps trunks
+    # out of anything the water will cover (rivers AND lake edges).
     water_pixels = (river_meta > 0) | (surface_y < 63)
+    if river_flood_mask is not None:
+        water_pixels = water_pixels | river_flood_mask.astype(bool)
     water_buffer = _bd_place(water_pixels, iterations=14) if water_pixels.any() else water_pixels
     land_mask = (surface_y >= 63) & ~water_buffer
 
@@ -1087,9 +1101,17 @@ def place_schematics(
         # trees off via the 14px water buffer because the whole beach sits inside
         # it — the island sand escapes the buffer, so trees land ON the sand. When
         # the island beach.tif path is active (eco_gradients.beach_gap.from_mask),
-        # suppress trees on gap==9. Mainland (flag unset) keeps buffer behavior.
-        _beach_from_mask = bool(cfg.get("eco_gradients", {}).get("beach_gap", {}).get("from_mask", False)) if isinstance(cfg, dict) else False
-        _beach_sup = (gap == 9) if _beach_from_mask else np.zeros(gap.shape, dtype=bool)
+        # suppress trees on gap==9. S102 BUG4: user wants NO tree on ANY beach
+        # cell — mainland's thin Y63-65 band was mostly covered by the 14px water
+        # buffer, but a handful (~12/coast tile) escaped it just inland (at Y63,
+        # right at the shore). Suppress gap==9 UNCONDITIONALLY (islands + mainland)
+        # AND the authoritative beach.tif footprint (eco_gradients' mainland beach
+        # path marks a THINNER gap==9 than beach.tif, so beach cells slipped
+        # through). The band pass gets the same via beach_padded so no path seats
+        # a tree on sand.
+        _beach_sup = (gap == 9)
+        if beach_tile is not None:
+            _beach_sup = _beach_sup | (beach_tile > 0.001)
         full_suppress = (
             ((gap == 1) | (gap == 2) | (gap == 4) | _rock_sup
              | (gap == 7) | (gap == 8) | _beach_sup)
@@ -1140,6 +1162,16 @@ def place_schematics(
             _cltr_biome |= (biome_grid == _cb)
         if _cltr_biome.any():
             _clearing_interior_px = _cltr_biome & (clearing_field < _CF_THR_TR)
+            # S102 BUG2b: align tree suppression with the SURFACE grass interior.
+            # The surface pass converts to grass wherever clearing_mask>0.5, but
+            # the blended clearing_field only dips below _CF_THR_TR (0.38) where
+            # mask>0.62 — so the mask∈(0.5,0.62) edge band stays grass on the
+            # ground yet keeps trees (the "clearings still forested" edge). Fold
+            # the DEM mask>0.5 interior directly into the tree suppression so
+            # grass and tree-absence share the SAME interior boundary.
+            if clearing_mask_tile is not None and clearing_mask_tile.max() > 0:
+                _clearing_interior_px = _clearing_interior_px | (
+                    _cltr_biome & (clearing_mask_tile > 0.5))
             _clearing_seam_px = _cltr_biome & (np.abs(clearing_field - _CF_THR_TR) < _CF_BAND_TR) & ~_clearing_interior_px
             if _clearing_interior_px.any():
                 land_mask = land_mask & ~_clearing_interior_px
@@ -1525,6 +1557,15 @@ def place_schematics(
     # the low-edge rim alone cannot (col 0 has only one legal anchor column).
     _BAND_ON = _seam_on and bool(_seam_cfg.get("band_pass", False))
     _BAND_PX = int(_seam_cfg.get("band_px", 16))
+    # S102 BUG3a: clearing-interior threshold for the band pass (matches the
+    # interior tree-suppression threshold so band + interior agree on where a
+    # clearing begins). Imported lazily; falls back to the module default.
+    try:
+        from core.meadow_clearing_field import (
+            CLEARING_INTERIOR_THRESHOLD as _CF_THR_BAND,
+        )
+    except Exception:
+        _CF_THR_BAND = 0.38
 
     # S89 krummholz: stunted trees on/near rock.  Where rock_gap (gap==5) fires
     # on or within rock_dilate_blocks of a TREE candidate, OR at/above
@@ -2395,6 +2436,35 @@ def place_schematics(
                                 continue
                             sy_b = int(_pc_pad[_lr + _sy_pad, _lc + _sy_pad])
                             if sy_b < 63:
+                                continue
+                            # S102 BUG3a: clearing suppression for the band pass.
+                            # The band deliberately ignores tile-local gates, so it
+                            # was dropping trees INTO clearings at seams. The
+                            # clearing field is world-coord deterministic (noise ∧
+                            # DEM mask), so both adjacent tiles read the SAME value
+                            # at a shared cell → suppressing here stays symmetric.
+                            if clearing_field_padded is not None:
+                                _cfb = float(clearing_field_padded[_lr + _sy_pad,
+                                                                   _lc + _sy_pad])
+                                if _cfb < _CF_THR_BAND:
+                                    continue
+                            # S102 BUG4: no band tree on a beach (gap==9). The
+                            # beach footprint is world-symmetric (from beach.tif),
+                            # so both tiles agree at a shared cell.
+                            if beach_padded is not None and bool(
+                                    beach_padded[_lr + _sy_pad, _lc + _sy_pad]):
+                                continue
+                            # S102 BUG1: no band tree in the wetted river channel /
+                            # lake footprint (Step-9 water fill would drown the
+                            # trunk → floating leaves). river_flood_mask is inner
+                            # only; an in-bounds anchor is the ONLY thing this tile
+                            # stamps, so gating in-bounds cells removes every
+                            # rendered flooded band tree. (An OOB-anchor band cell
+                            # renders nothing on this tile — its owning neighbour
+                            # applies the same inner gate.)
+                            if (river_flood_mask is not None
+                                    and 0 <= _lr < H and 0 <= _lc < W
+                                    and bool(river_flood_mask[_lr, _lc])):
                                 continue
                             _nz_b = _fbm(den_gen, bwx / _DEN_SCALE_R,
                                          bwz / _DEN_SCALE_R, _DEN_OCT_R)
