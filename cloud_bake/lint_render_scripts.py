@@ -169,8 +169,14 @@ def check_safety_net(path: Path, lines: list[str], text: str) -> list[Finding]:
     line_no = next(i for i, l in enumerate(lines, 1) if re.search(r"-X POST\b.*?/servers", l))
     deletes = [i for i, l in enumerate(lines, 1) if re.search(r"-X DELETE\b.*?/servers", l)]
     if not deletes:
-        fs.append(Finding(path, line_no, HIGH, "NET",
-            "creates servers but has NO delete call at all — guaranteed leak"))
+        if re.search(r"box_guard\.py.*(selfdestruct|set-ttl|arm)|ttl_min", text):
+            fs.append(Finding(path, line_no, WARN, "NET",
+                "no in-script delete — cleanup delegated to box_guard/render_monitor "
+                "(ttl labels/selfdestruct found). Verify the monitor actually gets "
+                "launched after dispatch; the guard sweeper is the only net until then"))
+        else:
+            fs.append(Finding(path, line_no, HIGH, "NET",
+                "creates servers but has NO delete call at all — guaranteed leak"))
     else:
         for di in deletes:
             if re.search(r"\bnohup\b", lines[di - 1]):
