@@ -72,7 +72,7 @@ def main():
         "ttl_min": a.ttl, "wall_cap_min": a.ttl + 30,
         "stall_secs": 1800, "poll_secs": 60,
         "collect_retries": 3, "unreach_grace": 5,
-        "collect_dir": "cloud_bake/_collect_50k",
+        "collect_dir": "D:/render_50k_final/_collect",
         "keep_alive": bool(a.keep_alive),
         "boxes": boxes,
     }

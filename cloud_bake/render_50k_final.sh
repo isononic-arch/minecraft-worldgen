@@ -48,15 +48,23 @@ KEY_IDS=$(hz "$API/ssh_keys" | "$PY" -c "import json,sys;print(','.join(str(k['i
 declare -a BOX_ROWS; for ((b=0;b<NBOXES;b++)); do BOX_ROWS[$b]=""; done
 for ((z=0;z<GRID;z++)); do b=$((z % NBOXES)); BOX_ROWS[$b]="${BOX_ROWS[$b]} $z"; done
 
-# provision
+# provision — S105: spread across locations (round-robin + capacity fallback,
+# was single-$LOC hard-fail) + ttl_min label so box_guard's sweeper covers these
+# boxes independently of the local nohup auto-killer.
+LOCS=($LOC nbg1 hel1 hil fsn1)
 declare -A IP ID
 for ((i=0;i<NBOXES;i++)); do
-  resp=$(hz -X POST "$API/servers" -d "{\"name\":\"vandir-50k-$i\",\"server_type\":\"ccx63\",\"image\":$SNAPSHOT_ID,\"location\":\"$LOC\",\"ssh_keys\":[$KEY_IDS],\"start_after_create\":true}")
-  ID[$i]=$(echo "$resp"|"$PY" -c "import json,sys;print(json.load(sys.stdin).get('server',{}).get('id',''))")
-  IP[$i]=$(echo "$resp"|"$PY" -c "import json,sys;print(json.load(sys.stdin).get('server',{}).get('public_net',{}).get('ipv4',{}).get('ip',''))")
-  [ -n "${ID[$i]}" ] && [ -n "${IP[$i]}" ] || { echo "FATAL create box$i: $resp"; exit 2; }
+  ID[$i]=""; IP[$i]=""
+  for loc in "${LOCS[$((i % 4))]}" "${LOCS[@]:0:4}"; do
+    resp=$(hz -X POST "$API/servers" -d "{\"name\":\"vandir-50k-$i\",\"server_type\":\"ccx63\",\"image\":$SNAPSHOT_ID,\"location\":\"$loc\",\"ssh_keys\":[$KEY_IDS],\"start_after_create\":true,\"labels\":{\"ttl_min\":\"$TTL_MIN\"}}")
+    ID[$i]=$(echo "$resp"|"$PY" -c "import json,sys;print(json.load(sys.stdin).get('server',{}).get('id',''))")
+    IP[$i]=$(echo "$resp"|"$PY" -c "import json,sys;print(json.load(sys.stdin).get('server',{}).get('public_net',{}).get('ipv4',{}).get('ip',''))")
+    [ -n "${ID[$i]}" ] && { log "created vandir-50k-$i id=${ID[$i]} @$loc (ttl ${TTL_MIN}m)"; break; }
+    log "  vandir-50k-$i@$loc create failed; next loc"
+  done
+  [ -n "${ID[$i]}" ] && [ -n "${IP[$i]}" ] || { echo "FATAL create box$i after all locations: $resp"; exit 2; }
   nohup bash -c "sleep $((TTL_MIN*60)); curl -s -X DELETE -H 'Authorization: Bearer $TOKEN' '$API/servers/${ID[$i]}' >> '$OUT_ROOT/autokiller.log' 2>&1; echo killed-${ID[$i]} >> '$OUT_ROOT/autokiller.log'" >/dev/null 2>&1 &
-  log "created vandir-50k-$i id=${ID[$i]} ip=${IP[$i]} (auto-killer ${TTL_MIN}m)"; sleep 3
+  sleep 3
 done
 
 # dispatch: git reset -> heal -> rm bed cache -> single-thread pre-warm -> render rows
@@ -94,6 +102,17 @@ for ((i=0;i<NBOXES;i++)); do
   ssh root@"$ip" "tmux kill-session -t r50 2>/dev/null; tmux new -d -s r50 '$JOB'" < /dev/null
   log "box$i dispatched: $(echo $rows|wc -w) rows (prewarm tile 0,$R0)"
 done
+
+# S105 DISPATCH_ONLY=1: hand poll/collect/delete to cloud_bake/render_monitor.py
+# (bounded retries + tarball verify + splice guard — the V15-proven flow). Write
+# live_boxes.txt NOW (was end-of-script only) so the runspec builder has ids/ips.
+for ((b=0;b<NBOXES;b++)); do echo "${ID[$b]} ${IP[$b]}"; done > "$OUT_ROOT/live_boxes.txt"
+if [ "${DISPATCH_ONLY:-0}" = "1" ]; then
+  log "DISPATCH_ONLY: boxes live, rows rendering. Next:"
+  log "  \"$PY\" cloud_bake/make_mainland_runspec.py --nboxes $NBOXES"
+  log "  \"$PY\" cloud_bake/render_monitor.py cloud_bake/runspec_mainland.json"
+  exit 0
+fi
 
 # monitor (deadline TTL+30); print per-box MCA counts
 DEADLINE=$(( START + (TTL_MIN+30)*60 ))

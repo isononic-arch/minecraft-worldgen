@@ -1164,8 +1164,21 @@ def bake_island(entry):
     # bedrock / lithology all fire identically to the mainland.
     snowy = bands["snow"] < 1.0
     isl_litho = bands.get("litho", "temperate_basaltic")          # per-island real-world geology (default grey volcanic)
-    cfg["lithology"]["zone_to_group"] = {z: isl_litho for z in cfg["lithology"]["zone_to_group"]}
-    print(f"[bake]   lithology group = {isl_litho} (whole island)", flush=True)
+    # S105b (user directive, V15 walk): on mossy_temperate islands the ARID biome
+    # zones (dry leeward slopes of tropical volcanics — Grenadines/Efate leeward,
+    # semi-arid brush) must NOT read as wet mossy cobble. Those zones keep the
+    # mainland's arid_basaltic mapping; every other zone still forces isl_litho.
+    # Limestone / deepslate / basaltic islands are untouched (whole-island as before).
+    _mainland_z2g = cfg["lithology"]["zone_to_group"]
+    if isl_litho == "mossy_temperate":
+        cfg["lithology"]["zone_to_group"] = {
+            z: ("arid_basaltic" if _mainland_z2g.get(z) == "arid_basaltic" else isl_litho)
+            for z in _mainland_z2g}
+        _n_arid = sum(1 for v in cfg["lithology"]["zone_to_group"].values() if v == "arid_basaltic")
+        print(f"[bake]   lithology group = {isl_litho} (arid zones -> arid_basaltic: {_n_arid})", flush=True)
+    else:
+        cfg["lithology"]["zone_to_group"] = {z: isl_litho for z in _mainland_z2g}
+        print(f"[bake]   lithology group = {isl_litho} (whole island)", flush=True)
     # S95 #3 + mossy-palette-target: island-only mossy_temperate repaint (tropical
     # basalt geology). The VISIBLE rock surface on islands comes from _apply_rock_layers
     # reading lithology.rock_layers.groups.<g> tiers (rock_layers.enabled=TRUE on
@@ -1259,6 +1272,32 @@ def bake_island(entry):
         print(f"[bake]   painted lithology applied over temperate_basaltic default", flush=True)
     _sp.run([sys.executable, str(ROOT / "tools" / "build_terrain_derived.py"),
              *_common, "--world-size", str(W), "--scale", "4"], check=True)
+    # S105b TALUS RUN-OUT CLAMP (island-only; user directive, V15 Anguilla walk):
+    # on low-relief limestone build_terrain_derived's apron fired across flats up to
+    # 130 blocks from any rock_gap px (measured r.62.115: 42k px >12 blocks out at
+    # median intensity 80 > the 64 paint threshold) -> gravel/cobblestone/clay/
+    # concrete-powder scatter "everywhere". Physically scree ends within the run-out
+    # of its source face (talus.search_blocks = 40), so: zero the apron beyond 40
+    # blocks of rock_gap, linear-fade 24..40. EDT at 1:4 (S101 OOM lesson), NEAREST up.
+    _tal_p, _rg_p = od / "talus_apron.tif", od / "rock_gap.tif"
+    if _tal_p.exists() and _rg_p.exists():
+        import rasterio as _rio2
+        from scipy.ndimage import distance_transform_edt as _edt_t
+        _tal = _rio2.open(_tal_p).read(1)
+        _rg4 = _rio2.open(_rg_p).read(1)[::4, ::4] > 0
+        _d4 = _edt_t(~_rg4).astype(np.float32) * 4.0            # blocks, 1:4 grid
+        _d = np.repeat(np.repeat(_d4, 4, axis=0), 4, axis=1)[:_tal.shape[0], :_tal.shape[1]]
+        del _rg4, _d4
+        _REACH, _FADE0 = 40.0, 24.0
+        _w = np.clip((_REACH - _d) / (_REACH - _FADE0), 0.0, 1.0).astype(np.float32)
+        del _d
+        _n_before = int((_tal > 0).sum())
+        _tal = (_tal.astype(np.float32) * _w).astype(np.uint8)
+        del _w
+        _wtif(_tal_p, _tal)
+        print(f"[bake]   talus run-out clamp: {_n_before:,} -> {int((_tal>0).sum()):,} px "
+              f"(zeroed beyond {_REACH:.0f} blocks of rock_gap)", flush=True)
+        del _tal
     # S101: DEM-derived windthrow (gap 2) + floodplain (gap 4) + clearing mask
     # — islands previously had NONE of these (mainland-only precomputes), so
     # those gaps never fired on island trees. Reads the just-written masks.
