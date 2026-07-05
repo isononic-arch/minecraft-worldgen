@@ -1,4 +1,11 @@
-# VandirIslandsV14 — HIGHEST-RELIEF walk list (S105, 2026-07-04)
+# VandirIslands V14/V15 — HIGHEST-RELIEF walk list (S105, 2026-07-04)
+
+**V15 UPDATE (same TPs — offsets unchanged):** walk `VandirIslandsV15` — the S105
+beach-fix render (donut rings dead, sand always at the waterline on gentle coasts,
+bays 13–35 blocks wide, steep coasts rock-to-water). BEACH CHECKS: La Tortuga south
+coast `/tp @s 52480 100 64768`; New Vincentia west shore `/tp @s 4350 100 11500`;
+any Bahamas/Grand Turk lagoon rim (wet lagoons keep sand; dry basins now have NONE).
+Efate footprint grew 4 regions (NW ocean gaps from the V14 list likely filled).
 
 Per island: the single 512-tile with the largest land relief (max−min surface MC-Y,
 computed from the S104-baked height masks + each island's own spline, offsets snapped
