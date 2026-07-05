@@ -1118,7 +1118,9 @@ def bake_island(entry):
     # soft dithered EDGE around them; kills core-less pepper and, via the talus
     # run-out clamp below, its halos). LIMESTONE ISLANDS ONLY — the user approved
     # every other island's read as-is.
-    if isl_litho == "limestone" and rock_gap.any():
+    # (bands litho read directly — isl_litho is assigned further down, after the
+    # mask synth block; referencing it here was the V16-b* instant crash)
+    if bands.get("litho", "temperate_basaltic") == "limestone" and rock_gap.any():
         from scipy.ndimage import label as _lbl_rg
         _l_rg, _n_rg = _lbl_rg(rock_gap.astype(bool))
         if _n_rg:
