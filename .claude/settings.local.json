@@ -41,7 +41,20 @@
       "Bash(cd \"C:\\\\Users\\\\nicho\\\\minecraft-worldgen\" && \"C:\\\\Users\\\\nicho\\\\AppData\\\\Local\\\\Python\\\\pythoncore-3.14-64\\\\python.exe\" upscale_override_vectorized.py)",
       "Bash(cd \"C:\\\\Users\\\\nicho\\\\minecraft-worldgen\" && \"C:\\\\Users\\\\nicho\\\\AppData\\\\Local\\\\Python\\\\pythoncore-3.14-64\\\\python.exe\" -c \"import ast; ast.parse\\(open\\('tools/override_aligner.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Bash(cd \"C:\\\\Users\\\\nicho\\\\minecraft-worldgen\" && start \"\" \"C:\\\\Users\\\\nicho\\\\AppData\\\\Local\\\\Python\\\\pythoncore-3.14-64\\\\python.exe\" tools/override_aligner.py)",
-      "Bash(/c/Users/nicho/AppData/Local/Python/pythoncore-3.14-64/python.exe -c \"import py_compile; py_compile.compile\\('tools/world_studio.py', doraise=True\\); print\\('OK'\\)\" 2>&1)"
+      "Bash(/c/Users/nicho/AppData/Local/Python/pythoncore-3.14-64/python.exe -c \"import py_compile; py_compile.compile\\('tools/world_studio.py', doraise=True\\); print\\('OK'\\)\" 2>&1)",
+      "Bash(curl -s -F \"reqtype=fileupload\" -F \"fileToUpload=@islands/_val/nv_labeled.png\" https://catbox.moe/user/api.php)",
+      "Bash(bash -n islands/_v8_finalize.sh)",
+      "Bash(curl -s -H 'Authorization: Bearer __TRACKED_VAR__' https://api.hetzner.cloud/v1/servers)",
+      "Bash(curl -s -F \"reqtype=fileupload\" -F \"fileToUpload=@islands/_val/v8_12_445.png\" https://catbox.moe/user/api.php)",
+      "Bash(curl -s -F \"reqtype=fileupload\" -F \"fileToUpload=@islands/_val/v8_17_288.png\" https://catbox.moe/user/api.php)",
+      "Bash(curl -s -F \"reqtype=fileupload\" -F \"fileToUpload=@islands/_val/v8_18_299.png\" https://catbox.moe/user/api.php)",
+      "Bash(curl -s -F \"reqtype=fileupload\" -F \"fileToUpload=@islands/_val/v8_11_863.png\" https://catbox.moe/user/api.php)",
+      "Bash(curl -s -F \"reqtype=fileupload\" -F \"fileToUpload=@islands/_val/v8_-1_509.png\" https://catbox.moe/user/api.php)",
+      "Bash(curl -s -F \"reqtype=fileupload\" -F \"fileToUpload=@islands/_val/v8_-20_529.png\" https://catbox.moe/user/api.php)",
+      "Bash(curl -s -F \"reqtype=fileupload\" -F \"fileToUpload=@islands/_val/v8_-21_008.png\" https://catbox.moe/user/api.php)",
+      "Bash(curl -s -F \"reqtype=fileupload\" -F \"fileToUpload=@islands/_val/labeled_margarita.png\" https://catbox.moe/user/api.php)",
+      "Bash(curl -s -F \"reqtype=fileupload\" -F \"fileToUpload=@islands/_val/labeled_madre.png\" https://catbox.moe/user/api.php)",
+      "Bash(cd /c/Users/nicho/minecraft-worldgen *)"
     ]
   }
 }
