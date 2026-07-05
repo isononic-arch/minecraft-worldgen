@@ -39,6 +39,7 @@ import numpy as np
 import rasterio
 from rasterio.windows import Window
 from PIL import Image, ImageDraw, ImageFont
+Image.MAX_IMAGE_PIXELS = None   # v3: our own 180-Mpx canvases trip the bomb guard
 
 warnings.filterwarnings("ignore")
 
@@ -54,9 +55,14 @@ TILE = 512                 # world blocks per tile / region
 WORLD = 50000              # mainland span in blocks
 MAINLAND_REGIONS = 97      # regions 0..96 -> 0..49664 blocks
 
-# --- Height -> MC Y spline (from config/thresholds.json terrain_spline / CLAUDE.md) ---
-_GAEA_IN = [0, 17050, 45000, 65496]
-_MCY_OUT = [-64, 63, 200, 448]
+# --- Height -> MC Y spline: v3 reads the LIVE config (Y700 13-point spline; the
+# old hardcoded 4-point Y448 spline understated altitude -> wrong snow/hillshade). ---
+try:
+    _sp = json.loads((ROOT / "config" / "thresholds.json").read_text())["terrain_spline"]
+    _GAEA_IN, _MCY_OUT = _sp["gaea_in"], _sp["mc_y_out"]
+except Exception:                                   # fallback = legacy 448 spline
+    _GAEA_IN = [0, 17050, 45000, 65496]
+    _MCY_OUT = [-64, 63, 200, 448]
 
 def _raw_to_mcy(raw):
     return np.interp(raw.astype(np.float32), _GAEA_IN, _MCY_OUT)
@@ -79,44 +85,71 @@ OVERRIDE_BIOME_MAP = {
 }
 
 # Naturalistic, satellite-style earthy tints per biome (RGB 0..255).
+# v3: palette re-graded against Google Earth reference tones — forests are
+# DARKER + less saturated than screen greens; drylands are browner; nothing
+# neon. Foliage COVERAGE drives lightness: closed canopy dark, open ground pale.
 SAT_COLORS = {
-    "COASTAL_HEATH":           (122, 132,  92),   # muted olive-heath
-    "TEMPERATE_RAINFOREST":    ( 42,  92,  52),   # deep temperate green
-    "BOREAL_TAIGA":            ( 46,  78,  64),   # dark blue-green conifer
-    "SNOWY_BOREAL_TAIGA":      (110, 128, 120),   # frost-grey green
-    "BOREAL_ALPINE":           ( 78, 100,  88),   # cool alpine green-grey
-    "ARCTIC_TUNDRA":           (176, 178, 168),   # pale grey-white
-    "FROZEN_FLATS":            (214, 218, 222),   # near-white ice
-    "TEMPERATE_DECIDUOUS":     ( 72, 112,  54),   # medium leafy green
-    "RAINFOREST_COAST":        ( 38, 108,  50),   # vivid tropical green
-    "RIPARIAN_WOODLAND":       ( 82, 118,  70),   # riverine green
-    "DRY_OAK_SAVANNA":         (150, 148,  90),   # khaki-olive savanna
-    "KARST_BARRENS":           (168, 172, 150),   # pale grey-green limestone
-    "BIRCH_FOREST":            ( 96, 132,  72),   # light birch green
-    "EASTERN_TEMPERATE_COAST": (108, 138,  84),   # coastal grass-green
-    "MIXED_FOREST":            ( 62, 104,  60),   # mixed green
-    "CONTINENTAL_STEPPE":      (156, 150,  96),   # dry khaki grassland
-    "DRY_PINE_BARRENS":        ( 96, 116,  72),   # dusty pine
-    "SCRUBBY_HEATHLAND":       (120, 112, 104),   # muted olive-purple scrub
-    "LUSH_RAINFOREST_COAST":   ( 34, 116,  56),   # lush vivid green
-    "SAND_DUNE_DESERT":        (214, 196, 148),   # pale sand
-    "DESERT_STEPPE_TRANSITION":(188, 172, 118),   # tan-to-steppe
-    "SEMI_ARID_SHRUBLAND":     (170, 156, 110),   # dusty tan-olive
-    "DRY_WOODLAND_MAQUIS":     (132, 128,  86),   # (extinct) dry woodland
-    "TIDAL_JUNGLE_FRINGE":     ( 56, 118,  70),   # mangrove-jungle green
-    "MANGROVE_COAST":          ( 66, 104,  72),   # muddy green
-    "FRESHWATER_FEN":          ( 92, 120,  88),   # wet meadow green
-    "_OCEAN":                  None,               # island ocean sentinel -> flat sea
+    "COASTAL_HEATH":           (114, 119,  82),   # olive heath, open
+    "TEMPERATE_RAINFOREST":    ( 36,  66,  40),   # closed wet canopy, near-black green
+    "BOREAL_TAIGA":            ( 42,  64,  50),   # dark conifer
+    "SNOWY_BOREAL_TAIGA":      (104, 117, 108),   # frost-grey conifer
+    "BOREAL_ALPINE":           ( 86, 100,  88),   # alpine green-grey
+    "ARCTIC_TUNDRA":           (150, 146, 132),   # tan-grey tundra barrens
+    "FROZEN_FLATS":            (222, 226, 230),   # ice sheet
+    "TEMPERATE_DECIDUOUS":     ( 56,  88,  44),   # broadleaf canopy
+    "RAINFOREST_COAST":        ( 32,  72,  38),   # dense tropical canopy
+    "RIPARIAN_WOODLAND":       ( 66,  96,  56),   # gallery forest
+    "DRY_OAK_SAVANNA":         (148, 138,  84),   # tawny savanna, scattered trees
+    "KARST_BARRENS":           (160, 158, 134),   # pale limestone barrens
+    "BIRCH_FOREST":            ( 84, 112,  60),   # lighter open broadleaf
+    "EASTERN_TEMPERATE_COAST": ( 98, 122,  74),   # coastal grass-shrub
+    "MIXED_FOREST":            ( 50,  82,  48),   # mixed canopy
+    "CONTINENTAL_STEPPE":      (158, 144,  95),   # dry grass steppe
+    "DRY_PINE_BARRENS":        ( 88, 102,  62),   # open dusty pine
+    "SCRUBBY_HEATHLAND":       (124, 113,  92),   # brown scrub
+    "LUSH_RAINFOREST_COAST":   ( 30,  78,  42),   # deepest wet green
+    "SAND_DUNE_DESERT":        (205, 184, 140),   # erg sand
+    "DESERT_STEPPE_TRANSITION":(184, 163, 115),   # desert fringe
+    "SEMI_ARID_SHRUBLAND":     (163, 146, 100),   # dusty shrubland
+    "DRY_WOODLAND_MAQUIS":     (128, 121,  82),   # (extinct) dry woodland
+    "TIDAL_JUNGLE_FRINGE":     ( 44,  84,  52),   # mangrove-jungle
+    "MANGROVE_COAST":          ( 58,  84,  58),   # muddy mangrove
+    "FRESHWATER_FEN":          ( 84, 106,  76),   # wet fen
+    "_OCEAN":                  None,               # island ocean sentinel -> bathymetry
 }
 DEFAULT_LAND = (96, 120, 78)     # fallback for zone 0 / unknown on LAND
 
-# v2: ONE flat uniform ocean blue everywhere (mainland sea + island aprons).
-OCEAN_BLUE  = np.array([36, 74, 116], np.float32)
-RIVER_COLOR = np.array([86, 150, 190], np.float32)    # bright river thread
-LAKE_COLOR  = np.array([58, 112, 156], np.float32)    # flat lake blue
-SNOW_TINT   = np.array([236, 240, 244], np.float32)
-ROCK_TINT   = np.array([120, 112, 100], np.float32)   # bare grey-brown rock
-BEACH_TINT  = np.array([224, 210, 168], np.float32)   # pale sand rim
+# v3 GOOGLE-EARTH BATHYMETRY: ocean color = f(water depth), painted GLOBALLY at
+# the end from a composited depth canvas. Mainland depth fills its rect; island
+# depth is written ONLY inside its OWNED regions (region_ownership_s101.json) —
+# exact non-rectangular footprints, so the v1 translucent-bbox-overlap bug that
+# forced v2's flat ocean cannot occur. Ramp (depth blocks -> RGB) eyeballed from
+# GE tropical shelf imagery: sandy flat -> turquoise bank -> shelf -> deep navy.
+OCEAN_DEPTH_STOPS = np.array([0.0, 2.0, 6.0, 14.0, 30.0, 50.0, 75.0], np.float32)
+OCEAN_DEPTH_RGB = np.array([
+    [158, 201, 190],   # awash / wet sand flat
+    [112, 181, 184],   # turquoise very shallow
+    [ 64, 143, 168],   # bank
+    [ 32,  95, 138],   # shelf
+    [ 16,  58, 102],   # slope
+    [ 10,  38,  74],   # deep
+    [  7,  27,  56],   # abyssal navy
+], np.float32)
+OCEAN_BLUE  = np.array([10, 38, 74], np.float32)      # kept for cull panel refs
+RIVER_COLOR = np.array([52, 106, 126], np.float32)    # GE river blue-green
+LAKE_COLOR  = np.array([30,  74, 106], np.float32)    # GE inland lake
+SNOW_TINT   = np.array([238, 241, 245], np.float32)
+ROCK_TINT   = np.array([124, 114, 101], np.float32)   # bare grey-brown rock
+BEACH_TINT  = np.array([221, 205, 166], np.float32)   # pale sand rim
+
+
+def _ocean_color(depth):
+    """(H,W) water depth in blocks -> (H,W,3) float32 GE bathymetry color."""
+    d = np.clip(depth.astype(np.float32), 0.0, OCEAN_DEPTH_STOPS[-1])
+    out = np.empty(d.shape + (3,), np.float32)
+    for c in range(3):
+        out[..., c] = np.interp(d, OCEAN_DEPTH_STOPS, OCEAN_DEPTH_RGB[:, c])
+    return out
 
 # --- Cull/footprint panel colors ---
 CULL_BG        = (16, 18, 24)
@@ -132,6 +165,9 @@ ISLAND_PALETTE = [
     (120, 150, 255), (190, 255,  60), (255,  90,  90), ( 60, 230, 160),
     (240, 160, 220), (160, 200, 120), (110, 220, 235),
 ]
+
+
+_OWNERSHIP_CACHE = None    # v3: {safe: [[rx,rz],...]} loaded in build()
 
 
 def _safe(name: str) -> str:
@@ -175,6 +211,31 @@ def _read_strided_opt(path: Path, stride: int, dtype=None):
     return arr
 
 
+def _read_strided_max(path: Path, stride: int, band_rows_mult=400):
+    """v3: MAX-POOL decimation for thin binary masks (river centerlines are 1-3 px
+    wide — point-decimation keeps only ~1/stride of them, rendering rivers as
+    dashes). Max over each stride x stride block keeps every channel continuous."""
+    if not path.exists():
+        return None
+    with rasterio.open(str(path)) as s:
+        W, H = s.width, s.height
+        out_w = (W + stride - 1) // stride
+        out_h = (H + stride - 1) // stride
+        out = np.zeros((out_h, out_w), s.dtypes[0])
+        band = stride * band_rows_mult
+        for y0 in range(0, H, band):
+            h = min(band, H - y0)
+            a = s.read(1, window=Window(0, y0, W, h))
+            hh = (h // stride) * stride
+            ww = (W // stride) * stride
+            if hh and ww:
+                blk = a[:hh, :ww].reshape(hh // stride, stride, ww // stride, stride)
+                dec = blk.max(axis=(1, 3))
+                oy = y0 // stride
+                out[oy:oy + dec.shape[0], :dec.shape[1]] = dec
+        return out
+
+
 # ---------------------------------------------------------------------------
 # Hillshade (NW light) from a downscaled height field.
 # ---------------------------------------------------------------------------
@@ -194,18 +255,20 @@ def _hillshade(mcy, azimuth_deg=315.0, altitude_deg=45.0, z_exag=2.2):
 # ---------------------------------------------------------------------------
 def _paint(height, override, snow, rock, beach,
            centerline=None, lake=None, width=None):
-    """Return (rgb uint8, land_mask bool) for the given decimated mask block.
+    """Return (rgb uint8, land_mask bool, depth float32) for the decimated block.
 
-    v2: OCEAN = one flat uniform blue (OCEAN_BLUE). No depth shading. Hillshade
-    is applied to LAND only, so every sea pixel in the whole composite is the
-    exact same color."""
+    v3: ocean pixels here are placeholders — the GLOBAL bathymetry pass in
+    build() recolors every non-land canvas pixel from the composited depth
+    canvas, then rivers/lakes go on top. Hillshade still applies to LAND only.
+    `depth` = water depth in blocks (0 on land)."""
     H, W = height.shape
     hi = height.astype(np.int32)
     land = hi > SEA_RAW
     mcy = _raw_to_mcy(height)
+    depth = np.where(land, 0.0, np.clip(63.0 - mcy, 0.0, None)).astype(np.float32)
 
     rgb = np.empty((H, W, 3), np.float32)
-    rgb[:] = OCEAN_BLUE          # flat sea everywhere; land overwrites below
+    rgb[:] = OCEAN_BLUE          # placeholder; global bathymetry repaints ocean
 
     # --- LAND base = naturalistic biome tint ---
     if override is not None:
@@ -246,25 +309,15 @@ def _paint(height, override, snow, rock, beach,
             alt_f = np.clip((mcy - 200.0) / 240.0, 0.35, 0.92)[sm]
             rgb[sm] = (1 - alt_f)[:, None] * rgb[sm] + alt_f[:, None] * SNOW_TINT
 
-    # --- HILLSHADE multiplied over LAND ONLY (ocean stays perfectly flat) ---
+    # --- HILLSHADE multiplied over LAND ONLY (GE shading is subtle) ---
     shade = _hillshade(mcy)
-    sh_land = 0.55 + 0.75 * shade    # 0.55..1.30 -> some brightening on lit faces
+    sh_land = 0.62 + 0.66 * shade    # 0.62..1.28
     sh = np.where(land, sh_land, 1.0)[..., None]
     rgb = np.clip(rgb * sh, 0, 255)
 
-    # --- RIVERS + LAKES painted AFTER shade so they stay crisp blue (mainland) ---
-    if lake is not None:
-        lm = lake > 0
-        if lm.any():
-            rgb[lm] = LAKE_COLOR
-    if centerline is not None:
-        cm = centerline > 0
-        if width is not None:
-            cm = cm | (width > 0)
-        if cm.any():
-            rgb[cm] = RIVER_COLOR
-
-    return rgb.astype(np.uint8), land
+    # v3: rivers/lakes are painted by build() AFTER the global bathymetry pass
+    # (they must sit on top of the recolored ocean/coast pixels).
+    return rgb.astype(np.uint8), land, depth
 
 
 # ---------------------------------------------------------------------------
@@ -315,9 +368,12 @@ def build(stride: int, out_dir: Path):
     def w2c(wx, wz):
         return (wx - min_x) // stride, (wz - min_z) // stride
 
-    # v2: canvas starts as ONE flat uniform ocean blue.
+    # v3: RGB canvas + a global DEPTH canvas (default = abyssal) + a LAND canvas.
+    # The far ocean outside every render footprint gets full deep-navy depth.
     canvas = np.empty((ch, cw, 3), np.uint8)
-    canvas[:] = OCEAN_BLUE.astype(np.uint8)
+    canvas[:] = OCEAN_BLUE.astype(np.uint8)          # placeholder; repainted below
+    depth_canvas = np.full((ch, cw), OCEAN_DEPTH_STOPS[-1], np.float32)
+    land_canvas = np.zeros((ch, cw), bool)
     present_zones = set()
 
     # --- 2. Paint mainland ---
@@ -327,9 +383,10 @@ def build(stride: int, out_dir: Path):
     m_snow = _read_strided_opt(MASKS / "snow_gap.tif", stride, np.uint8)
     m_rock = _read_strided_opt(MASKS / "rock_gap.tif", stride, np.uint8)
     m_beach = _read_strided_opt(MASKS / "beach.tif", stride, np.uint8)
-    m_cl = _read_strided_opt(MASKS / "hydro_centerline.tif", stride, np.uint8)
-    m_wid = _read_strided_opt(MASKS / "hydro_width.tif", stride, np.uint8)
-    m_lake = _read_strided_opt(MASKS / "hydro_lake.tif", stride, np.uint16)
+    # v3: hydro masks read with MAX-POOL so 1-3px painted rivers stay continuous.
+    m_cl = _read_strided_max(MASKS / "hydro_centerline.tif", stride)
+    m_wid = _read_strided_max(MASKS / "hydro_width.tif", stride)
+    m_lake = _read_strided_max(MASKS / "hydro_lake.tif", stride)
     for nm, arr in [("override", m_over), ("snow_gap", m_snow), ("rock_gap", m_rock),
                     ("beach", m_beach), ("hydro_centerline", m_cl),
                     ("hydro_width", m_wid), ("hydro_lake", m_lake)]:
@@ -340,13 +397,14 @@ def build(stride: int, out_dir: Path):
                              if z in OVERRIDE_BIOME_MAP and OVERRIDE_BIOME_MAP[z]
                              and SAT_COLORS.get(OVERRIDE_BIOME_MAP[z]))
 
-    m_rgb, m_land = _paint(m_height, m_over, m_snow, m_rock, m_beach,
-                           centerline=m_cl, lake=m_lake, width=m_wid)
+    m_rgb, m_land, m_depth = _paint(m_height, m_over, m_snow, m_rock, m_beach)
     cx0, cz0 = w2c(0, 0)
     canvas[cz0:cz0 + m_rgb.shape[0], cx0:cx0 + m_rgb.shape[1]] = m_rgb
+    depth_canvas[cz0:cz0 + m_depth.shape[0], cx0:cx0 + m_depth.shape[1]] = m_depth
+    land_canvas[cz0:cz0 + m_land.shape[0], cx0:cx0 + m_land.shape[1]] = m_land
     log(f"[mainland] painted at canvas ({cx0},{cz0}) size {m_rgb.shape[1]}x{m_rgb.shape[0]}, land frac {m_land.mean():.3f}")
     mainland_land = m_land          # kept for the cull panel coastline
-    del m_height, m_over, m_snow, m_rock, m_beach, m_cl, m_wid, m_lake, m_rgb
+    del m_height, m_over, m_snow, m_rock, m_beach, m_rgb, m_depth
 
     # --- 3. Paint each island: ONLY ITS LAND PIXELS overwrite the canvas (v2). ---
     # No ocean blend at all — island aprons/ocean stay the canvas' flat blue, so
@@ -354,6 +412,9 @@ def build(stride: int, out_dir: Path):
     # Land always wins; later islands' land may legitimately overwrite earlier
     # islands' land in the known apron-overlap regions.
     landed = []; clipped = []
+    global _OWNERSHIP_CACHE
+    _OWNERSHIP_CACHE = (json.loads(OWNERSHIP.read_text())["islands"]
+                        if OWNERSHIP.exists() else {})
     for (e, safe, mdir, ox, oz, h, w) in isl_rects:
         hpath = mdir / "height.tif"
         if not hpath.exists():
@@ -364,7 +425,7 @@ def build(stride: int, out_dir: Path):
         i_rk = _read_strided_opt(mdir / "rock_gap.tif", stride, np.uint8)
         i_bc = _read_strided_opt(mdir / "beach.tif", stride, np.uint8)
         # islands: no hydro_* -> no rivers/lakes
-        i_rgb, i_land = _paint(i_h, i_ov, i_sn, i_rk, i_bc)
+        i_rgb, i_land, i_depth = _paint(i_h, i_ov, i_sn, i_rk, i_bc)
         if i_ov is not None:
             present_zones.update(int(z) for z in np.unique(i_ov[i_land])
                                  if z in OVERRIDE_BIOME_MAP and OVERRIDE_BIOME_MAP[z]
@@ -384,24 +445,69 @@ def build(stride: int, out_dir: Path):
         sub_land = i_land[sz0:sz0 + (dz1 - dz0), sx0:sx0 + (dx1 - dx0)]
         dst = canvas[dz0:dz1, dx0:dx1]
         dst[sub_land] = sub[sub_land]        # LAND ALWAYS WINS; ocean untouched
+        land_canvas[dz0:dz1, dx0:dx1] |= sub_land
+        # v3: island BATHYMETRY — write this island's water depth ONLY inside its
+        # OWNED regions (exact footprint from the ownership manifest; no bbox
+        # rectangles => the v1 apron-overlap problem cannot recur). Shows the
+        # shallow banks (Caicos, Bahamas platform) as GE turquoise.
+        own_regs = _OWNERSHIP_CACHE.get(safe) if _OWNERSHIP_CACHE else None
+        if own_regs:
+            for (rx, rz) in own_regs:
+                gx0, gz0 = w2c(rx * TILE, rz * TILE)
+                gx1, gz1 = w2c((rx + 1) * TILE, (rz + 1) * TILE)
+                gx0c, gz0c = max(0, gx0), max(0, gz0)
+                gx1c, gz1c = min(cw, gx1), min(ch, gz1)
+                if gx1c <= gx0c or gz1c <= gz0c:
+                    continue
+                # island-local slice for this region window
+                lx0 = gx0c - tx0; lz0 = gz0c - tz0
+                lx1 = lx0 + (gx1c - gx0c); lz1 = lz0 + (gz1c - gz0c)
+                if lx0 < 0 or lz0 < 0 or lx1 > iw or lz1 > ih:
+                    continue
+                d_sub = i_depth[lz0:lz1, lx0:lx1]
+                depth_canvas[gz0c:gz1c, gx0c:gx1c] = d_sub
         landed.append((safe, ox, oz, iw, ih, was_clipped))
         log(f"[island] {safe}: painted at world({ox},{oz}) canvas({tx0},{tz0}) "
             f"size {iw}x{ih} land {i_land.mean():.3f}{' [CLIPPED]' if was_clipped else ''}")
         if was_clipped:
             clipped.append(safe)
-        del i_h, i_ov, i_sn, i_rk, i_bc, i_rgb, i_land
+        del i_h, i_ov, i_sn, i_rk, i_bc, i_rgb, i_land, i_depth
 
-    # --- 3b. VERIFY flat ocean / no translucent-water overlap: sample a known
-    # island-vs-island bbox overlap area — every non-land pixel there must be the
-    # EXACT flat OCEAN_BLUE (mainland ocean is painted the same constant).
-    ob = OCEAN_BLUE.astype(np.uint8)
-    ovx0, ovz0 = w2c(95 * TILE, 103 * TILE)      # Ouvea x Margarita overlap regions
-    ovx1, ovz1 = w2c(97 * TILE, 104 * TILE)
-    patch = canvas[max(0, ovz0):ovz1, max(0, ovx0):ovx1].reshape(-1, 3)
-    if patch.size:
-        is_flat = (patch == ob).all(axis=1)
-        log(f"[verify] ouvea/margarita bbox-overlap patch: {is_flat.mean()*100:.1f}% "
-            f"pixels are EXACT flat ocean blue (rest = island land) — no alpha-blend water")
+    # --- 3b. v3 GLOBAL BATHYMETRY: recolor every NON-LAND pixel from the depth
+    # canvas (GE ramp), banded to bound RAM; then paint mainland rivers + lakes
+    # ON TOP so painted hydrology stays crisp over the new coastal gradients. ---
+    log("[ocean] global bathymetry recolor (GE depth ramp)...")
+    BAND = 1024
+    for z0 in range(0, ch, BAND):
+        z1 = min(ch, z0 + BAND)
+        sea = ~land_canvas[z0:z1]
+        if not sea.any():
+            continue
+        oc = _ocean_color(depth_canvas[z0:z1])
+        band_rgb = canvas[z0:z1]
+        band_rgb[sea] = oc[sea].astype(np.uint8)
+        canvas[z0:z1] = band_rgb
+    d_sample = depth_canvas[~land_canvas]
+    log(f"[ocean] depth over water px: med {np.median(d_sample):.1f} "
+        f"p10 {np.percentile(d_sample,10):.1f} blocks (shallow banks visible where p10 is low)")
+    del depth_canvas, d_sample
+
+    # mainland painted rivers + lakes (canvas coords at the mainland offset)
+    if m_lake is not None:
+        lm = m_lake > 0
+        sub = canvas[cz0:cz0 + lm.shape[0], cx0:cx0 + lm.shape[1]]
+        sub[lm] = LAKE_COLOR.astype(np.uint8)
+        canvas[cz0:cz0 + lm.shape[0], cx0:cx0 + lm.shape[1]] = sub
+        log(f"[hydro] lakes painted: {int(lm.sum()):,} px")
+    if m_cl is not None:
+        cm = m_cl > 0
+        if m_wid is not None:
+            cm |= (m_wid > 0)
+        sub = canvas[cz0:cz0 + cm.shape[0], cx0:cx0 + cm.shape[1]]
+        sub[cm] = RIVER_COLOR.astype(np.uint8)
+        canvas[cz0:cz0 + cm.shape[0], cx0:cx0 + cm.shape[1]] = sub
+        log(f"[hydro] rivers painted: {int(cm.sum()):,} px (max-pooled — continuous threads)")
+    del m_cl, m_wid, m_lake
 
     # --- 4. Build the three PNGs ---
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -621,6 +727,8 @@ def _draw_grid(img: Image.Image, min_x, min_z, max_x, max_z, stride,
             major = (tz % label_every == 0)
             d.line([(0, py), (W, py)], fill=line_major if major else line, width=1)
 
+    # v3: labels are WORLD BLOCK COORDS at each major intersection — these ARE
+    # the /tp coordinates (x z), so any feature can be located directly.
     for tx in range(tx_start, tx_end + 1):
         if tx % label_every != 0:
             continue
@@ -628,8 +736,10 @@ def _draw_grid(img: Image.Image, min_x, min_z, max_x, max_z, stride,
             if tz % label_every != 0:
                 continue
             px = int((tx * TILE - min_x) / stride); py = int((tz * TILE - min_z) / stride)
-            if 0 <= px < W - 30 and 0 <= py < H - 12:
-                d.text((px + 2, py + 1), f"{tx},{tz}", fill=(255, 255, 120, 220), font=f)
+            if 0 <= px < W - 60 and 0 <= py < H - 12:
+                d.text((px + 3, py + 2), f"{tx * TILE},{tz * TILE}",
+                       fill=(255, 255, 120, 230), font=f,
+                       stroke_width=1, stroke_fill=(0, 0, 0, 180))
 
 
 # ---------------------------------------------------------------------------
@@ -670,24 +780,29 @@ def _compose_with_legend(map_img: Image.Image, zones, min_x, min_z, max_x, max_z
         if col:
             swatch(col, f"{name.replace('_',' ').title()} ({z})")
     ly += 8
-    d.text((lx, ly), "Terrain & water:", fill=(150, 158, 168), font=sf); ly += 22
-    swatch(OCEAN_BLUE, "Ocean (uniform)")
-    swatch(RIVER_COLOR, "River")
-    swatch(LAKE_COLOR, "Lake")
-    swatch(SNOW_TINT, "Snow")
-    swatch(ROCK_TINT, "Bare rock")
+    d.text((lx, ly), "Water (depth-graded bathymetry):", fill=(150, 158, 168), font=sf); ly += 22
+    for dep, lbl in [(1.0, "Awash sand flat (<2 blk)"), (4.0, "Turquoise bank (2-6)"),
+                     (10.0, "Shallow shelf (6-14)"), (22.0, "Shelf edge (14-30)"),
+                     (40.0, "Slope (30-50)"), (70.0, "Deep ocean (50+)")]:
+        swatch(_ocean_color(np.float32([[dep]]))[0, 0], lbl)
+    swatch(RIVER_COLOR, "River (painted hydrology)")
+    swatch(LAKE_COLOR, "Lake (painted hydrology)")
+    ly += 8
+    d.text((lx, ly), "Land overlays:", fill=(150, 158, 168), font=sf); ly += 22
+    swatch(SNOW_TINT, "Snow / ice cap")
+    swatch(ROCK_TINT, "Bare rock (slope-driven)")
     swatch(BEACH_TINT, "Beach / sand rim")
 
     if grid:
         ly += 10
-        d.text((lx, ly), "Tile grid:", fill=(150, 158, 168), font=sf); ly += 22
-        d.text((lx, ly), "512-block tiles. Labels = (tx,tz),", fill=(210, 214, 220), font=sf); ly += 20
-        d.text((lx, ly), "every 8th line. Yellow = major.", fill=(210, 214, 220), font=sf); ly += 26
-        d.text((lx, ly), "TP to tile center:", fill=(235, 238, 242), font=lf); ly += 22
-        d.text((lx, ly), "/tp @s (tx*512+256)", fill=(120, 220, 150), font=sf); ly += 18
-        d.text((lx, ly), "        200 (tz*512+256)", fill=(120, 220, 150), font=sf); ly += 24
-        d.text((lx, ly), "Mainland tx,tz = 0..96.", fill=(180, 186, 192), font=sf); ly += 18
-        d.text((lx, ly), "Islands sit at tx=world_x//512.", fill=(180, 186, 192), font=sf)
+        d.text((lx, ly), "TP grid:", fill=(150, 158, 168), font=sf); ly += 22
+        d.text((lx, ly), "Lines every 512 blocks (1 tile).", fill=(210, 214, 220), font=sf); ly += 20
+        d.text((lx, ly), "Yellow major line every 4096.", fill=(210, 214, 220), font=sf); ly += 20
+        d.text((lx, ly), "Labels = WORLD x,z at the", fill=(210, 214, 220), font=sf); ly += 18
+        d.text((lx, ly), "intersection — TP directly:", fill=(210, 214, 220), font=sf); ly += 24
+        d.text((lx, ly), "/tp @s <label-x> 200 <label-z>", fill=(120, 220, 150), font=lf); ly += 26
+        d.text((lx, ly), "Interpolate between labels:", fill=(180, 186, 192), font=sf); ly += 18
+        d.text((lx, ly), "each small cell = 512 blocks.", fill=(180, 186, 192), font=sf)
 
     return out
 
