@@ -2433,7 +2433,17 @@ def _apply_talus(
     _fade_hi = float(t_cfg.get("fade_hi", floor + edge_band))
     _t = np.clip((inten - _fade_lo) / max(1e-3, _fade_hi - _fade_lo), 0.0, 1.0)
     _steps = max(1, int(t_cfg.get("coverage_steps", 4)))  # higher = smoother/more consistent gradient
-    _cov = np.ceil(_t * _steps) / _steps
+    # S105b `toe_rounding` (config; default "ceil" = mainland byte-identical):
+    # ceil never reaches the documented 0-coverage toe — ANY intensity a hair
+    # above fade_lo paints the bottom step (1/steps = 12.5% at steps=8) FOREVER,
+    # which tiled Anguilla's flats with a uniform cobble/gravel/clay/concrete
+    # scatter ("fires infinitely off the rock gap", V15 walk; measured flat
+    # ~10-11% at every rock/biome distance). "floor" makes the bottom step 0 so
+    # the apron toe actually dies out; islands set it at bake.
+    if str(t_cfg.get("toe_rounding", "ceil")) == "floor":
+        _cov = np.floor(_t * _steps) / _steps
+    else:
+        _cov = np.ceil(_t * _steps) / _steps
     _cov = np.where(_t >= 1.0, 1.0, _cov)
     base_zone = (_cov > 0.0) & (cov_coin < _cov) & ~excl
     if not base_zone.any():

@@ -1109,6 +1109,27 @@ def bake_island(entry):
 
     rock_gap = synth_rock_gap(masks["slope"], rock_deg, world_offset_px=(_ox, _oz),
                               land=land, max_land_frac=float(bands.get("rock_max_frac", 0.25)))
+    # S105b LIMESTONE DESPECKLE (user directive, V15 Anguilla walk @31916,59111):
+    # the blue-noise dither band peppers isolated rock specks across every 33-43°
+    # stretch of rolling limestone; each speck then grows rock tiers + wash + a
+    # legit <=40-block talus halo -> hundreds of overlapping halos read as a
+    # cobblestone/clay/gravel/concrete-powder scatter "firing infinitely off the
+    # rock gap". Drop connected components < min_px (keeps real cliff faces + a
+    # soft dithered EDGE around them; kills core-less pepper and, via the talus
+    # run-out clamp below, its halos). LIMESTONE ISLANDS ONLY — the user approved
+    # every other island's read as-is.
+    if isl_litho == "limestone" and rock_gap.any():
+        from scipy.ndimage import label as _lbl_rg
+        _l_rg, _n_rg = _lbl_rg(rock_gap.astype(bool))
+        if _n_rg:
+            _sz_rg = np.bincount(_l_rg.ravel())
+            _keep_rg = _sz_rg >= int(bands.get("rock_despeckle_min_px", 120))
+            _keep_rg[0] = False
+            _b4 = int(rock_gap.sum())
+            rock_gap = _keep_rg[_l_rg].astype(np.uint8)
+            print(f"[bake]   limestone rock_gap despeckle: {_b4:,} -> {int(rock_gap.sum()):,} px "
+                  f"({_n_rg:,} components -> {int(_keep_rg.sum()):,})", flush=True)
+        del _l_rg
     snow_gap = synth_snow_gap(mcy, land, bands)
     # S104 beach redo: slope-driven continuous sand strip. Width tapers with the
     # COASTAL slope — flat bays get up to beach_max_width blocks of clean sand
@@ -1210,6 +1231,18 @@ def bake_island(entry):
             _mt["wash_palette"] = ["pale_moss_block", "tuff"]
             print("[bake]   mossy_temperate wash -> pale_moss_block/tuff (island-only)", flush=True)
     cfg.setdefault("lithology", {}).setdefault("rock_layers", {})["suppress_all_gap5_trees"] = True  # E: islands' broad monotone-slope rock_gap -> NO trees on gap==5 (mainland keeps the S89 dark-tier sparse-tree exemption byte-for-byte)
+    if isl_litho == "limestone":
+        # S105b: talus OFF on limestone islands (user directive, V15 Anguilla walk).
+        # ELIMINATION-PROVEN: the talus painter was the island-wide ~10-11% uniform
+        # cobblestone/gravel/clay/concrete-powder scatter ("fires infinitely off the
+        # rock gap") — far-land scatter 10.2% -> 0.1% with the overlay off, all other
+        # rock features (tiers/wash/strata/cap) intact. Bare karst = the realistic
+        # carbonate read. toe_rounding=floor kept as belt-and-suspenders for any
+        # future re-enable; despeckle + run-out clamp above already tightened the
+        # mask side. Other islands keep talus (dirt-family palettes read organic).
+        cfg.setdefault("lithology", {}).setdefault("rock_layers", {}).setdefault("overlays", {})["talus"] = False
+        cfg.setdefault("lithology", {}).setdefault("talus", {})["toe_rounding"] = "floor"
+        print("[bake]   limestone: talus overlay OFF (elimination-proven scatter source)", flush=True)
     cfg.setdefault("gaea_gaps", {})["use_query_time"] = False     # no 8k Gaea -> baked rock/snow_gap drive gaps
     cfg.setdefault("eco_gradients", {}).setdefault("beach_gap", {})["from_mask"] = True   # S95-T2: island sand <- baked beach.tif
     cfg["eco_gradients"]["beach_gap"]["max_surface_y"] = 72        # S104: mask self-gates at Y<=70 (max_elev_blocks=7); 72 = +2 headroom for decorate-time surface_y drift (was 80 for the old climbing apron)
