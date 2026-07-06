@@ -479,8 +479,8 @@
     "coast_passes": 2
   },
   "dune_flatten": {
-    "_comment": "S69: Root-cause fix for sand-dune boundary seams. Pulls gap_mask==8 pixels toward a wide-sigma neighbourhood baseline (70% baseline / 30% original), then locally smooths the dune mask + 4-block dilation. Runs BEFORE sand_dune_smoothing in decorate_surface. Disable if duneless worlds are ever wanted.",
-    "enabled": true,
+    "_comment": "S69 flatten pass — DISABLED S106 (user directive): the sigma-30 baseline blend read a LIVE inner spliced into a PRE-FLATTEN neighbour halo, so adjacent tiles blended toward different baselines -> height step at every SAND_DUNE_DESERT tile seam. OFF = raw Gaea dune geometry (seam-consistent by construction, more dune variation). Biome-boundary softening still runs via sand_dune_smoothing.",
+    "enabled": false,
     "sigma_baseline": 30.0,
     "flatten_strength": 0.7,
     "local_smooth_sigma": 8.0,

@@ -975,6 +975,7 @@ def place_schematics(
     river_flood_mask: np.ndarray | None = None,   # (H,W) bool — cells the carved+filled water FLOODS (river_meta>0 | water_y>surface). S102 BUG1: never seat a trunk in the wetted channel.
     clearing_mask_tile: np.ndarray | None = None,  # (H,W) float32 — DEM clearing mask (S102 BUG2b: align tree suppression with the surface grass interior, mask>0.5).
     clearing_field_padded: np.ndarray | None = None,  # (H+2sp,W+2sp) float32 — world-symmetric clearing field (noise ∧ DEM mask) for the band pass (S102 BUG3a). Same seam_pad_px as surface_y_padded.
+    band_gap_padded: dict | None = None,  # S106: {"floodplain","windthrow","snow","dune"} -> (H+2sp,W+2sp) bool padded mask-derived gap footprints. The band pass mirrors the interior full_suppress with these (world-symmetric: both tiles read identical values at a shared cell).
     beach_padded: np.ndarray | None = None,       # (H+2sp,W+2sp) bool — world-symmetric beach (gap==9) footprint for the band pass (S102 BUG4). Same seam_pad_px.
     beach_tile: np.ndarray | None = None,         # (H,W) float32 — authoritative beach.tif footprint (S102 BUG4: suppress trees on ANY beach cell, even where eco_gradients gap!=9).
 ) -> list[PlacementRecord]:
@@ -2064,7 +2065,9 @@ def place_schematics(
             # small-schematic substitution "wall").  ALL rng draws for this
             # candidate already happened and the exclusion marks below still
             # run, so the interior stream + packing state stay byte-identical.
-            _band_drop = (_BAND_ON and pass_type == "tree"
+            # S106: bushes join the band (SEMI_ARID carpet seams — the tree-only
+            # band left the bush anchor-starvation ramp at every far edge).
+            _band_drop = (_BAND_ON and pass_type in ("tree", "bush")
                           and (jittered_col >= W - _BAND_PX
                                or jittered_row >= H - _BAND_PX))
             if not _band_drop:
@@ -2235,8 +2238,8 @@ def place_schematics(
                     ("tree", exclusion, 0xA1, 0xE5, 0xB2, 0xB3, 0xF0),
                     ("bush", bush_exclusion, 0xA2, 0xE6, 0xB4, 0xB5, 0xF1),
                 ):
-                    if _BAND_ON and _ptype == "tree":
-                        continue  # S100: the seam-band pass owns seam TREES; rim keeps bushes
+                    if _BAND_ON and _ptype in ("tree", "bush"):
+                        continue  # S100/S106: the seam-band pass owns seam trees AND bushes
                     _es, _ws = _rim_entries(_biome_r, _ptype)
                     if not _es:
                         continue
@@ -2400,6 +2403,8 @@ def place_schematics(
                 _B = _BAND_PX
                 _LAT = max(2, int(_seam_cfg.get("band_lattice_px", 5)))
                 _BAND_BOOST = float(_seam_cfg.get("band_density_boost", 6.0))
+                # S106: bush per-pixel density cap (interior exclusion packing)
+                _BAND_BUSH_MAXD = float(_seam_cfg.get("band_bush_max_px_density", 0.27))
                 _FP_RANGE_B = {"sm": 4, "md": 3, "lg": 2}
                 _COFF_B = {"sm": 2, "md": 3, "lg": 4}
                 if _bg_pad >= _B and _sy_pad >= _B + 10:
@@ -2429,94 +2434,164 @@ def place_schematics(
                             _lr = bwz - py_off
                             if not _in_band(_lr, _lc):
                                 continue
-                            _biome_b = str(biome_grid_padded[_lr + _bg_pad,
-                                                             _lc + _bg_pad])
-                            _es_b, _ws_b = _rim_entries(_biome_b, "tree")
-                            if not _es_b:
-                                continue
-                            sy_b = int(_pc_pad[_lr + _sy_pad, _lc + _sy_pad])
-                            if sy_b < 63:
-                                continue
-                            # S102 BUG3a: clearing suppression for the band pass.
-                            # The band deliberately ignores tile-local gates, so it
-                            # was dropping trees INTO clearings at seams. The
-                            # clearing field is world-coord deterministic (noise ∧
-                            # DEM mask), so both adjacent tiles read the SAME value
-                            # at a shared cell → suppressing here stays symmetric.
-                            if clearing_field_padded is not None:
-                                _cfb = float(clearing_field_padded[_lr + _sy_pad,
-                                                                   _lc + _sy_pad])
-                                if _cfb < _CF_THR_BAND:
-                                    continue
-                            # S102 BUG4: no band tree on a beach (gap==9). The
-                            # beach footprint is world-symmetric (from beach.tif),
-                            # so both tiles agree at a shared cell.
-                            if beach_padded is not None and bool(
-                                    beach_padded[_lr + _sy_pad, _lc + _sy_pad]):
-                                continue
-                            # S102 BUG1: no band tree in the wetted river channel /
-                            # lake footprint (Step-9 water fill would drown the
-                            # trunk → floating leaves). river_flood_mask is inner
-                            # only; an in-bounds anchor is the ONLY thing this tile
-                            # stamps, so gating in-bounds cells removes every
-                            # rendered flooded band tree. (An OOB-anchor band cell
-                            # renders nothing on this tile — its owning neighbour
-                            # applies the same inner gate.)
-                            if (river_flood_mask is not None
-                                    and 0 <= _lr < H and 0 <= _lc < W
-                                    and bool(river_flood_mask[_lr, _lc])):
-                                continue
+                            # S106: bushes join the band (tree keeps position
+                            # salts 0xC2/0xC3 + gates at ITS position → the
+                            # S100-approved tree behaviour is preserved; bushes
+                            # get their own jitter + salts so types don't
+                            # stack). ALL positional gates evaluate at the
+                            # per-type candidate cell.
+                            _FP_OK_B = ("LUSH_RAINFOREST_COAST",
+                                        "RIPARIAN_WOODLAND", "FRESHWATER_FEN",
+                                        "TIDAL_JUNGLE_FRINGE", "MANGROVE_COAST")
                             _nz_b = _fbm(den_gen, bwx / _DEN_SCALE_R,
                                          bwz / _DEN_SCALE_R, _DEN_OCT_R)
                             _dm_b = _DEN_FLOOR_R + (1.0 - _DEN_FLOOR_R) * _nz_b
-                            final_db = BASE_DENSITY.get(_biome_b, 0.05) * _dm_b
-                            if _biome_b == "ARCTIC_TUNDRA":
-                                final_db *= 0.05
-                            if _biome_b == "FROZEN_FLATS":
-                                final_db *= 0.03
-                            final_db = min(final_db * _BAND_BOOST, 1.0)
-                            if _wc_u01s(bwx, bwz, 0xC1) >= final_db:
-                                continue
-                            entry_b = _rim_pick(_es_b, _ws_b,
-                                                _wc_u01s(bwx, bwz, 0xC5))
-                            # Symmetric footprint gates from the PRE-CARVE halo:
-                            # any-water reject + slope-range reject.  Both tiles
-                            # read identical halo values → identical verdicts
-                            # (no one-sided reject = no half-tree, S96 BUG 4).
-                            _co_b = _COFF_B.get(entry_b.size, 3)
-                            _br0 = _lr - 1 + _sy_pad
-                            _bc0 = _lc - 1 + _sy_pad
-                            _fpb = _pc_pad[_br0:_br0 + 2 * _co_b + 2,
-                                           _bc0:_bc0 + 2 * _co_b + 2]
-                            if _fpb.size == 0 or int(_fpb.min()) < 63:
-                                continue
-                            if int(_fpb.max() - _fpb.min()) > _FP_RANGE_B.get(
-                                    entry_b.size, 3):
-                                continue
-                            base_yb = sy_b - entry_b.anchor_y - entry_b.inset_depth
-                            extra_b = _compute_extra_inset_u(
-                                entry_b.size, entry_b.method, base_yb,
-                                entry_b.lowest_leaf_y, sy_b,
-                                _wc_u01s(bwx, bwz, 0xC7))
-                            if _rim_dbg_rows is not None:
-                                _rim_dbg_rows.append(
-                                    (bwx, bwz, "band", entry_b.species,
-                                     entry_b.path, 1))
-                            placements.append(PlacementRecord(
-                                schem_path  = entry_b.path,
-                                world_x     = bwx,
-                                world_z     = bwz,
-                                place_y     = base_yb - extra_b,
-                                anchor_y    = entry_b.anchor_y,
-                                inset_depth = entry_b.inset_depth,
-                                extra_inset = extra_b,
-                                size        = entry_b.size,
-                                schem_type  = "tree",
-                                biome       = _biome_b,
-                                rotation    = int(_wc_u01s(bwx, bwz, 0xC0) * 4) & 3,
-                                species     = entry_b.species,
-                                band        = True,
-                            ))
+                            # S106: trees keep ONE jittered candidate per cell
+                            # (S100 parity, salts 0xC0-0xC7). Bushes are PER
+                            # PIXEL — the interior treats every land pixel as a
+                            # bush candidate (BUSH_DENSITY_ABS is a per-pixel
+                            # probability; SEMI_ARID carpet ≈0.27 realized/px²),
+                            # so a 1-per-lattice-cell bush band saturates at
+                            # 1/LAT² = 0.04/px² -> a 7x-bare band lane.
+                            _cands_b = [("tree", 0xC1, 0xC5, 0xC7, 0xC0,
+                                         bwx, bwz)]
+                            for _pj in range(_LAT):
+                                for _pi in range(_LAT):
+                                    _cands_b.append(
+                                        ("bush", 0xD1, 0xD5, 0xD7, 0xD0,
+                                         _gx * _LAT + _pi, _gz * _LAT + _pj))
+                            for (_bt, _s_acc, _s_pick, _s_ins, _s_rot,
+                                 _bwx, _bwz) in _cands_b:
+                                _blc2 = _bwx - px_off
+                                _blr2 = _bwz - py_off
+                                if not _in_band(_blr2, _blc2):
+                                    continue
+                                _biome_b = str(biome_grid_padded[
+                                    _blr2 + _bg_pad, _blc2 + _bg_pad])
+                                # S106: mirror the interior full_suppress gap
+                                # gates (mask-derived → world-symmetric). The
+                                # band was planting ROWS of schematics across
+                                # floodplains/windthrow at every seam. Biome
+                                # exemptions match the interior `full_suppress`.
+                                if band_gap_padded is not None:
+                                    _gi = (_blr2 + _sy_pad, _blc2 + _sy_pad)
+                                    _g_fp = band_gap_padded.get("floodplain")
+                                    if (_g_fp is not None and bool(_g_fp[_gi])
+                                            and _biome_b not in _FP_OK_B):
+                                        continue
+                                    _g_wt = band_gap_padded.get("windthrow")
+                                    if _g_wt is not None and bool(_g_wt[_gi]):
+                                        continue
+                                    _g_sn = band_gap_padded.get("snow")
+                                    if (_g_sn is not None and bool(_g_sn[_gi])
+                                            and _biome_b != "ARCTIC_TUNDRA"):
+                                        continue
+                                    # NO dune gate: eco's S70 strict gate means
+                                    # gap==8 only fires inside SAND_DUNE_DESERT,
+                                    # and SDD is exempt from tree suppression —
+                                    # dunes never suppress interior schematics.
+                                    # (A raw sand_dunes>thr gate blanket-killed
+                                    # the band on 100%-covered SEMI_ARID tiles.)
+                                # S102 BUG4: no band schematic on a beach.
+                                if beach_padded is not None and bool(
+                                        beach_padded[_blr2 + _sy_pad,
+                                                     _blc2 + _sy_pad]):
+                                    continue
+                                # S102 BUG1: no band schematic in the wetted
+                                # river channel / lake footprint. Inner-only
+                                # mask; the owning neighbour applies the same
+                                # inner gate to its own portion.
+                                if (river_flood_mask is not None
+                                        and 0 <= _blr2 < H and 0 <= _blc2 < W
+                                        and bool(river_flood_mask[_blr2, _blc2])):
+                                    continue
+                                # S102 BUG3a: clearing suppression — TREES only
+                                # (interior clearing suppression is tree-gated;
+                                # bushes/shrubs are fine in a clearing).
+                                if (_bt == "tree"
+                                        and clearing_field_padded is not None):
+                                    _cfb = float(clearing_field_padded[
+                                        _blr2 + _sy_pad, _blc2 + _sy_pad])
+                                    if _cfb < _CF_THR_BAND:
+                                        continue
+                                _es_b, _ws_b = _rim_entries(_biome_b, _bt)
+                                if not _es_b:
+                                    continue
+                                final_db = BASE_DENSITY.get(_biome_b, 0.05) * _dm_b
+                                if _bt == "bush":
+                                    # mirror the RIM bush-density formula exactly
+                                    _abs_bb = BUSH_DENSITY_ABS.get(_biome_b)
+                                    _base_bb = BASE_DENSITY.get(_biome_b, 0.05)
+                                    if _abs_bb is not None:
+                                        final_db *= (_abs_bb / max(_base_bb, 1e-9))
+                                        if _biome_b in SPARSE_BUSH_BIOMES:
+                                            final_db *= 0.5
+                                    else:
+                                        final_db *= 0.4
+                                        if _biome_b in SPARSE_BUSH_BIOMES:
+                                            final_db *= 0.5
+                                        final_db *= BUSH_DENSITY_MULT.get(_biome_b, 1.0)
+                                        if _biome_b == "CONTINENTAL_STEPPE":
+                                            final_db *= 4.0
+                                else:
+                                    if _biome_b == "ARCTIC_TUNDRA":
+                                        final_db *= 0.05
+                                    if _biome_b == "FROZEN_FLATS":
+                                        final_db *= 0.03
+                                if _bt == "bush":
+                                    # per-pixel parity: same per-pixel coin as
+                                    # the interior, realized density capped at
+                                    # the exclusion packing limit (measured
+                                    # interior carpet ≈0.27/px²). NO lattice
+                                    # boost — that would double the carpet.
+                                    final_db = min(final_db, _BAND_BUSH_MAXD)
+                                else:
+                                    final_db = min(final_db * _BAND_BOOST, 1.0)
+                                if _wc_u01s(_bwx, _bwz, _s_acc) >= final_db:
+                                    continue
+                                entry_b = _rim_pick(_es_b, _ws_b,
+                                                    _wc_u01s(_bwx, _bwz, _s_pick))
+                                # Symmetric footprint gates from the PRE-CARVE
+                                # halo: any-water reject + slope-range reject.
+                                _co_b = _COFF_B.get(entry_b.size, 3)
+                                _br0 = _blr2 - 1 + _sy_pad
+                                _bc0 = _blc2 - 1 + _sy_pad
+                                _fpb = _pc_pad[_br0:_br0 + 2 * _co_b + 2,
+                                               _bc0:_bc0 + 2 * _co_b + 2]
+                                if _fpb.size == 0 or int(_fpb.min()) < 63:
+                                    continue
+                                if int(_fpb.max() - _fpb.min()) > _FP_RANGE_B.get(
+                                        entry_b.size, 3):
+                                    continue
+                                sy_bt = int(_pc_pad[_blr2 + _sy_pad,
+                                                    _blc2 + _sy_pad])
+                                if sy_bt < 63:
+                                    continue
+                                base_yb = sy_bt - entry_b.anchor_y - entry_b.inset_depth
+                                extra_b = _compute_extra_inset_u(
+                                    entry_b.size, entry_b.method, base_yb,
+                                    entry_b.lowest_leaf_y, sy_bt,
+                                    _wc_u01s(_bwx, _bwz, _s_ins))
+                                if _rim_dbg_rows is not None:
+                                    _rim_dbg_rows.append(
+                                        (_bwx, _bwz, f"band_{_bt}",
+                                         entry_b.species, entry_b.path, 1))
+                                placements.append(PlacementRecord(
+                                    schem_path  = entry_b.path,
+                                    world_x     = _bwx,
+                                    world_z     = _bwz,
+                                    place_y     = base_yb - extra_b,
+                                    anchor_y    = entry_b.anchor_y,
+                                    inset_depth = entry_b.inset_depth,
+                                    extra_inset = extra_b,
+                                    size        = entry_b.size,
+                                    schem_type  = _bt,
+                                    biome       = _biome_b,
+                                    rotation    = int(_wc_u01s(_bwx, _bwz,
+                                                               _s_rot) * 4) & 3,
+                                    species     = entry_b.species,
+                                    band        = True,
+                                ))
 
             if _rim_dbg_rows is not None:
                 try:

@@ -876,6 +876,7 @@ def _process_tile(args: dict) -> dict:
     # with the DEM clearing_mask, and the global beach.tif footprint.
     _clearing_field_padded = None
     _beach_padded = None
+    _band_gap_padded = None
     if surface_y_padded is not None and _SEAM_PAD_PX > 0:
         _pp = _SEAM_PAD_PX
         _Hs, _Ws = surface_y.shape
@@ -893,7 +894,9 @@ def _process_tile(args: dict) -> dict:
             _cm_pad_masks = core_tile_stream.read_tile(
                 masks_dir=masks_dir, col_off=col_off, row_off=row_off,
                 width=w, height=h, pad_px=_pp,
-                mask_subset=("clearing_mask", "beach"))
+                mask_subset=("clearing_mask", "beach",
+                             # S106: gap masks for the band-pass suppression gate
+                             "hydro_floodplain", "wind_windthrow", "snow_gap"))
             _cm_pad = _cm_pad_masks.get("clearing_mask")
             if _cm_pad is not None and _cm_pad.max() > 0:
                 _cf_pad = _np_cf.minimum(_cf_pad, (1.0 - _cm_pad).astype(_np_cf.float32))
@@ -901,11 +904,25 @@ def _process_tile(args: dict) -> dict:
             _beach_pad = _cm_pad_masks.get("beach")
             if _beach_pad is not None:
                 _beach_padded = (_beach_pad > 0.001)
+            # S106: world-symmetric padded gap masks so the seam-band pass can
+            # mirror the interior full_suppress (rows of band trees were crossing
+            # floodplains/windthrow at every seam — the band ignored gap_mask).
+            # Same thresholds eco_gradients uses on these mask-derived gaps.
+            _band_gap_padded = {}
+            for _gk, _gm, _gthr in (("floodplain", "hydro_floodplain", 0.001),
+                                    ("windthrow", "wind_windthrow", 0.001),
+                                    ("snow", "snow_gap", 0.0)):
+                _ga = _cm_pad_masks.get(_gm)
+                if _ga is not None:
+                    _band_gap_padded[_gk] = (_ga > _gthr)
+            if not _band_gap_padded:
+                _band_gap_padded = None
         except Exception as _cf_exc:  # noqa: BLE001
             print(f"[band_gates] WARN tile=({tile_x},{tile_y}): "
                   f"{type(_cf_exc).__name__}: {_cf_exc}")
             _clearing_field_padded = None
             _beach_padded = None
+            _band_gap_padded = None
 
     # SURF_DUMP seam-bisect hook: dump pre/post-decorate surface_y + the
     # pre-carve neighbour halo, then return early (no schematics, no chunk
@@ -962,6 +979,7 @@ def _process_tile(args: dict) -> dict:
                 clearing_field_padded = _clearing_field_padded,  # S102 BUG3a
                 beach_padded = _beach_padded,                    # S102 BUG4
                 beach_tile = masks.get("beach"),                 # S102 BUG4
+                band_gap_padded = _band_gap_padded,              # S106
             )
             _np_sd.save(f"{_surf_dump_dir}/plc_{tile_x}_{tile_y}.npy",
                         np.asarray([(p.world_x, p.world_z, p.place_y, p.size,
@@ -1009,6 +1027,7 @@ def _process_tile(args: dict) -> dict:
         clearing_field_padded = _clearing_field_padded,  # S102 BUG3a
         beach_padded = _beach_padded,                    # S102 BUG4
         beach_tile = masks.get("beach"),                 # S102 BUG4
+        band_gap_padded = _band_gap_padded,              # S106
     )
 
     # Island offset-render fix (S95): place_schematics returns world coords in
