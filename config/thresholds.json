@@ -7,7 +7,8 @@
     "band_pass": true,
     "band_px": 16,
     "band_lattice_px": 5,
-    "band_density_boost": 2.0
+    "band_density_boost": 2.0,
+    "band_bush_biomes": ["SEMI_ARID_SHRUBLAND"]
   },
   "noise_seeds": {
     "biome_patch": 42001,

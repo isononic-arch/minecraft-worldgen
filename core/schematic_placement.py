@@ -1558,6 +1558,11 @@ def place_schematics(
     # the low-edge rim alone cannot (col 0 has only one legal anchor column).
     _BAND_ON = _seam_on and bool(_seam_cfg.get("band_pass", False))
     _BAND_PX = int(_seam_cfg.get("band_px", 16))
+    # S107 (user): per-pixel bush band ONLY for carpet biomes; elsewhere the
+    # S106 band formed dense bush strips at seams and stamped into canopies.
+    # Non-listed biomes keep INTERIOR bushes to the seam (terrain-matched).
+    _BAND_BUSH_BIOMES = frozenset(_seam_cfg.get(
+        "band_bush_biomes", ["SEMI_ARID_SHRUBLAND"]))
     # S102 BUG3a: clearing-interior threshold for the band pass (matches the
     # interior tree-suppression threshold so band + interior agree on where a
     # clearing begins). Imported lazily; falls back to the module default.
@@ -2067,7 +2072,10 @@ def place_schematics(
             # run, so the interior stream + packing state stay byte-identical.
             # S106: bushes join the band (SEMI_ARID carpet seams — the tree-only
             # band left the bush anchor-starvation ramp at every far edge).
-            _band_drop = (_BAND_ON and pass_type in ("tree", "bush")
+            _band_drop = (_BAND_ON
+                          and (pass_type == "tree"
+                               or (pass_type == "bush"
+                                   and biome_str in _BAND_BUSH_BIOMES))
                           and (jittered_col >= W - _BAND_PX
                                or jittered_row >= H - _BAND_PX))
             if not _band_drop:
@@ -2238,8 +2246,10 @@ def place_schematics(
                     ("tree", exclusion, 0xA1, 0xE5, 0xB2, 0xB3, 0xF0),
                     ("bush", bush_exclusion, 0xA2, 0xE6, 0xB4, 0xB5, 0xF1),
                 ):
-                    if _BAND_ON and _ptype in ("tree", "bush"):
-                        continue  # S100/S106: the seam-band pass owns seam trees AND bushes
+                    if _BAND_ON and (_ptype == "tree"
+                                     or (_ptype == "bush"
+                                         and _biome_r in _BAND_BUSH_BIOMES)):
+                        continue  # band owns seam trees everywhere; bushes only in carpet biomes (S107)
                     _es, _ws = _rim_entries(_biome_r, _ptype)
                     if not _es:
                         continue
@@ -2468,6 +2478,9 @@ def place_schematics(
                                     continue
                                 _biome_b = str(biome_grid_padded[
                                     _blr2 + _bg_pad, _blc2 + _bg_pad])
+                                if (_bt == "bush"
+                                        and _biome_b not in _BAND_BUSH_BIOMES):
+                                    continue  # S107
                                 # S106: mirror the interior full_suppress gap
                                 # gates (mask-derived → world-symmetric). The
                                 # band was planting ROWS of schematics across
@@ -2508,8 +2521,7 @@ def place_schematics(
                                 # S102 BUG3a: clearing suppression — TREES only
                                 # (interior clearing suppression is tree-gated;
                                 # bushes/shrubs are fine in a clearing).
-                                if (_bt == "tree"
-                                        and clearing_field_padded is not None):
+                                if clearing_field_padded is not None:  # S107: bushes too — never in clearings
                                     _cfb = float(clearing_field_padded[
                                         _blr2 + _sy_pad, _blc2 + _sy_pad])
                                     if _cfb < _CF_THR_BAND:
