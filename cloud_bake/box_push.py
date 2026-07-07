@@ -219,17 +219,34 @@ def push_all(creds, files: dict):
 
 
 def verify_remote(creds, files: dict):
-    """One listdir of the region dir; return names missing or size-mismatched."""
+    """Return names genuinely missing or size-mismatched. A bulk listdir_attr of a
+    9k-file dir can read STALE sizes for files flushed moments earlier (server dir-
+    metadata lag) — so any candidate flagged by the bulk pass is re-STATed
+    individually (authoritative, forces a fresh metadata read), with one retry after
+    a short sleep, before being declared bad. This killed the S107 mainland false-
+    fail where freshly re-pushed regions were flagged despite landing correctly."""
     t, s = connect(creds)
     try:
         remote = {e.filename: e.st_size for e in s.listdir_attr(DEST_REGION)}
+        candidates = [n for n, p in files.items()
+                      if remote.get(n) != p.stat().st_size]
+        bad = []
+        for n in candidates:
+            want = files[n].stat().st_size
+            ok = False
+            for attempt in range(2):
+                try:
+                    if s.stat(f"{DEST_REGION}/{n}").st_size == want:
+                        ok = True
+                        break
+                except IOError:
+                    pass
+                time.sleep(1.5)
+            if not ok:
+                bad.append(n)
+        return bad
     finally:
         t.close()
-    bad = []
-    for name, p in files.items():
-        if remote.get(name) != p.stat().st_size:
-            bad.append(name)
-    return bad
 
 
 def main():
