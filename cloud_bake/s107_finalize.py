@@ -36,7 +36,10 @@ CONTESTED = ["r.95.103.mca", "r.96.103.mca", "r.97.122.mca", "r.97.123.mca",
              "r.97.124.mca", "r.60.101.mca", "r.60.102.mca", "r.60.103.mca",
              "r.60.104.mca", "r.100.114.mca"]
 COLLECT_DIRS = [ROOT / "islands" / "_collect_v18", ROOT / "islands" / "_collect_v18r"]
-INVENTORY = ROOT / "cloud_bake" / "_bloom_s106_regions.json"
+# render-derived EXACT expected set: (mainland grid - skip-list) U (island
+# ownership) = 10,572. NOT _bloom_s106_regions.json (mainland-only 9203) nor the
+# S106 remote snapshot (10,583 incl. ~11 runtime-gen spawn-frontier regions).
+INVENTORY = ROOT / "cloud_bake" / "_s107_expected_regions.json"
 
 
 def log(msg):
