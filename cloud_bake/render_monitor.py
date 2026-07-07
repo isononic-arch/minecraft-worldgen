@@ -71,7 +71,8 @@ SSHO = ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
         "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=30"]
 
 CRASH_PATTERNS = [r"Traceback \(most recent call last\)", r"FileNotFoundError",
-                  r"MemoryError", r"\bKilled\b", r"No space left", r"\bOOM\b"]
+                  r"MemoryError", r"\bKilled\b", r"No space left", r"\bOOM\b",
+                  r"PUSH_GATE_TIMEOUT", r"PUSH_FATAL"]
 # crash signatures worth ONE tmux restart before reaping (box-local flakes)
 TRANSIENT_PATTERNS = [r"Connection reset", r"BrokenPipeError", r"Errno 104"]
 
@@ -172,10 +173,42 @@ class Mon:
         except Exception as e:
             self.log(f"  !! could not save log for {box['name']}: {e}")
 
+    def _manifest_from_tgz(self, tgz: Path) -> dict | None:
+        """Extract push_manifest.json from a collect tarball (S107 push flow)."""
+        import tarfile
+        try:
+            with tarfile.open(tgz, "r:gz") as tf:
+                for m in tf.getmembers():
+                    if Path(m.name).name == "push_manifest.json":
+                        return json.loads(tf.extractfile(m).read().decode())
+        except Exception:
+            return None
+        return None
+
     def verify_tarball(self, box: dict, tgz: Path) -> str | None:
         """Return None if OK, else the reason string."""
         if not tgz.exists() or tgz.stat().st_size < 1024:
             return "tarball missing/empty"
+        if box.get("verify") == "push_manifest":
+            # S107 box-direct-to-Bloomhost flow: the tarball carries the push
+            # manifest (+ contested regions), not the world. Verify the PUSH.
+            man = self._manifest_from_tgz(tgz)
+            if man is None:
+                return "push_manifest.json not found in tarball"
+            if not man.get("remote_verified"):
+                return "manifest says remote_verified=false"
+            if man.get("failed"):
+                return f"manifest lists {len(man['failed'])} failed pushes"
+            need = int(box.get("min_regions", self.spec["min_regions"]))
+            pushed = set(man.get("pushed", []))
+            if len(pushed) < need:
+                return f"only {len(pushed)} pushed (< {need})"
+            exp = box.get("expected_regions")
+            if exp:
+                missing = sorted(set(exp) - pushed - set(man.get("excluded", [])))
+                if missing:
+                    return f"missing {len(missing)} expected regions e.g. {missing[:4]}"
+            return None
         r = subprocess.run(["tar", "tzf", str(tgz)], capture_output=True, text=True)
         if r.returncode != 0:
             return f"tar unreadable: {r.stderr[:120]}"
@@ -255,9 +288,14 @@ class Mon:
         skip_p = ROOT / "cloud_bake" / "mainland_skip_regions_s101.txt"
         collected = set()
         for tgz in self.cdir.glob("*.tgz"):
-            r = subprocess.run(["tar", "tzf", str(tgz)], capture_output=True, text=True)
-            collected |= {Path(l).name for l in r.stdout.splitlines() if l.endswith(".mca")}
-        self.log(f"collected {len(collected)} distinct region files")
+            man = self._manifest_from_tgz(tgz)
+            if man is not None:
+                # S107 push flow: pushed + excluded (contested, merged at home)
+                collected |= set(man.get("pushed", [])) | set(man.get("excluded", []))
+            else:
+                r = subprocess.run(["tar", "tzf", str(tgz)], capture_output=True, text=True)
+                collected |= {Path(l).name for l in r.stdout.splitlines() if l.endswith(".mca")}
+        self.log(f"collected {len(collected)} distinct region files (pushed+excluded for push-flow boxes)")
         if self.spec["kind"] == "islands" and own_p.exists():
             own = json.loads(own_p.read_text())
             # mainland_collisions == island-owned regions inside the mainland grid ==

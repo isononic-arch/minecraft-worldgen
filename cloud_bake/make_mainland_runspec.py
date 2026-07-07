@@ -36,7 +36,13 @@ def main():
     ap.add_argument("--nboxes", type=int, default=8)
     ap.add_argument("--ttl", type=int, default=330)
     ap.add_argument("--keep-alive", action="store_true")
+    ap.add_argument("--s107", action="store_true",
+                    help="box-direct-to-Bloomhost flow: /root/done means "
+                         "rendered+PUSHED; collect = small manifest tarball; "
+                         "verify = push_manifest")
     a = ap.parse_args()
+    if a.s107:
+        a.ttl = min(a.ttl, 240)
 
     skip_p = ROOT / "cloud_bake" / "mainland_skip_regions_s101.txt"
     skip = {tuple(map(int, l.split()))
@@ -57,7 +63,7 @@ def main():
         rows = [z for z in range(GRID) if z % a.nboxes == i]
         exp = [f"r.{x}.{z}.mca" for z in rows for x in range(GRID)
                if (x, z) not in skip]
-        boxes.append({
+        box = {
             "name": name, "id": s["id"],
             "ip": s["public_net"]["ipv4"]["ip"],
             "flag": "/root/done", "log": "/root/job.log",
@@ -66,13 +72,18 @@ def main():
             "work_units": [f"row_{z}" for z in rows],
             "expected_regions": exp,
             "min_regions": int(0.98 * len(exp)),
-        })
+        }
+        if a.s107:
+            box["collect"] = "/root/venv/bin/python /root/minecraft-worldgen/cloud_bake/box_collect_s107.py"
+            box["verify"] = "push_manifest"
+        boxes.append(box)
     spec = {
         "run_name": "vandir-50k", "kind": "mainland",
         "ttl_min": a.ttl, "wall_cap_min": a.ttl + 30,
         "stall_secs": 1800, "poll_secs": 60,
         "collect_retries": 3, "unreach_grace": 5,
-        "collect_dir": "D:/render_50k_final/_collect",
+        "collect_dir": ("D:/render_s107/_collect_mainland" if a.s107
+                        else "D:/render_50k_final/_collect"),
         "keep_alive": bool(a.keep_alive),
         "boxes": boxes,
     }

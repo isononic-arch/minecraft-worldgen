@@ -36,6 +36,11 @@ INCLUDE=(
   # masks. Ship them so cloud bakes reproduce the local bake bit-for-bit.
   islands/erase_masks
   islands/island_geo_data
+  # S107: box-direct-to-Bloomhost push + collect (NEW files, absent from the
+  # S93-era snapshot; islands get code via THIS tarball, not git — so ship them
+  # or the on-box `box_push.py`/`box_collect_s107.sh` calls FileNotFound).
+  cloud_bake/box_push.py
+  cloud_bake/box_collect_s107.py
 )
 # all islands/*.py (the render system) — globbed so new helpers are auto-included
 for f in islands/*.py; do INCLUDE+=("$f"); done
