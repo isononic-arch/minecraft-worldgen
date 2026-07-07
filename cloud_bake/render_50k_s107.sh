@@ -24,10 +24,12 @@ TOKEN_FILE="/c/Users/nicho/.hetzner_token"
 SNAPSHOT_ID="${SNAPSHOT_ID:-396927540}"; BRANCH="master"
 NBOXES="${NBOXES:-8}"; GRID=97
 THREADS="${THREADS:-40}"; OMP="${OMP:-1}"
-# render+push realistically ~75m/box; 200m TTL = generous margin AND bounds
-# worst-case all-hang billing (8 boxes x 200m x ~E1.35/h ~ E36). The monitor
-# reaps far earlier (stall 30m / ttl 190m); this is only the outer backstop.
-TTL_MIN="${TTL_MIN:-200}"
+# render+push realistically ~72m/box; 135m TTL = ~2x margin AND caps worst-case
+# all-hang billing: 8 boxes x 135m x E1.6138/h = ~E29 mainland (islands similar;
+# sequential => total worst-case < E60). ccx63 rounds UP to the hour, so this is
+# the real cost lever. Monitor reaps far earlier (stall 30m / ttl 120m); box
+# self-kill + box_guard sweeper are the outer backstops.
+TTL_MIN="${TTL_MIN:-135}"
 LOC="${LOC:-fsn1}"; OUT_ROOT="${OUT_ROOT:-/d/render_s107}"
 API="https://api.hetzner.cloud/v1"
 PY="C:/Users/nicho/AppData/Local/Python/pythoncore-3.14-64/python.exe"

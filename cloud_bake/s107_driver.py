@@ -29,8 +29,8 @@ PY = r"C:\Users\nicho\AppData\Local\Python\pythoncore-3.14-64\python.exe"
 BASH = r"C:\Program Files\Git\bin\bash.exe"
 TOKEN = Path(r"C:\Users\nicho\.hetzner_token").read_text().strip()
 API = "https://api.hetzner.cloud/v1"
-BUDGET_EUR = 55.0          # soft ceiling for authorizing refires (hard cap 60)
-RATE_EUR_H = 1.35          # ccx63 upper-bound estimate
+BUDGET_EUR = 58.0          # soft ceiling for authorizing refires (hard cap 60)
+RATE_EUR_H = 1.6138        # ccx63 gross hourly (fsn1/nbg1/hel1), rounds UP/hour
 
 
 def log(msg):
@@ -111,8 +111,11 @@ def fail(st, reason):
 
 
 def add_spend(st, boxes, minutes):
-    st["spend_est_eur"] += boxes * (minutes / 60.0) * RATE_EUR_H
-    log(f"spend estimate now €{st['spend_est_eur']:.1f}")
+    import math
+    # Hetzner rounds UP to the full hour — bill ceil(hours) per box, min 1h.
+    hours = max(1, math.ceil(minutes / 60.0))
+    st["spend_est_eur"] += boxes * hours * RATE_EUR_H
+    log(f"spend estimate now €{st['spend_est_eur']:.1f} (+{boxes}box x {hours}h)")
     save_state(st)
 
 
@@ -158,6 +161,8 @@ ISLAND_KEY_TO_BOX = {  # v18 allocation: key -> 1-based box index
 def main():
     st = load_state()
     ph = st["phases"]
+    STATUS.mkdir(exist_ok=True)
+    (STATUS / "driver.pid").write_text(str(os.getpid()))
 
     def done(name):
         return ph.get(name, {}).get("status") in ("done", "skipped")
@@ -180,7 +185,7 @@ def main():
     if not done("mainland_runspec"):
         rc = run_phase("mainland_runspec",
                        [PY, "cloud_bake/make_mainland_runspec.py", "--nboxes", "8",
-                        "--s107", "--ttl", "190"], 300)
+                        "--s107", "--ttl", "120"], 300)
         spec = json.loads((ROOT / "cloud_bake" / "runspec_mainland.json").read_text())
         if rc != 0 or len(spec["boxes"]) != 8:
             fail(st, f"runspec build rc={rc} boxes={len(spec.get('boxes', []))}")
@@ -200,7 +205,7 @@ def main():
         t0 = time.time()
         rc = run_phase("mainland_monitor",
                        [PY, "cloud_bake/render_monitor.py", "cloud_bake/runspec_mainland.json"],
-                       290 * 60, log_name="mainland_monitor.log")
+                       170 * 60, log_name="mainland_monitor.log")
         add_spend(st, 8, (time.time() - t0) / 60 + 20)   # +20m dispatch tail
         if rc != 0:
             fail(st, f"mainland monitor rc={rc}")
@@ -223,13 +228,13 @@ def main():
             rc = run_phase("mainland_refire_dispatch",
                            [BASH, "cloud_bake/render_50k_s107.sh"], 3600,
                            env_extra={"ROWS_OVERRIDE": " ".join(map(str, rows)),
-                                      "BOX_INDEX": "9", "TTL_MIN": "240"})
+                                      "BOX_INDEX": "9", "TTL_MIN": "90"})
             if rc != 0:
                 fail(st, f"refire dispatch rc={rc}")
             spec = build_mainland_refire_runspec(rows)
             t0 = time.time()
             rc = run_phase("mainland_refire_monitor",
-                           [PY, "cloud_bake/render_monitor.py", str(spec)], 280 * 60)
+                           [PY, "cloud_bake/render_monitor.py", str(spec)], 130 * 60)
             add_spend(st, 1, (time.time() - t0) / 60 + 15)
             rf2 = refire_list("D:/render_s107/_collect_mainland_r") or []
             if rc != 0 or rf2:
@@ -250,7 +255,7 @@ def main():
         t0 = time.time()
         rc = run_phase("islands_monitor",
                        [PY, "cloud_bake/render_monitor.py", "cloud_bake/runspec_v18.json"],
-                       190 * 60, log_name="islands_monitor.log")
+                       165 * 60, log_name="islands_monitor.log")
         add_spend(st, 8, (time.time() - t0) / 60 + 15)
         if rc != 0:
             fail(st, f"islands monitor rc={rc}")
@@ -267,7 +272,7 @@ def main():
                 fail(st, f"budget: €{st['spend_est_eur']:.0f} — islands refire would breach cap")
             log(f"REFIRE islands keys={rf} -> boxes {idxs}")
             rc = run_phase("islands_refire_dispatch", [BASH, "islands/_cloud_render_v18.sh"],
-                           3600, env_extra={"SUBSET": ",".join(map(str, idxs))})
+                           3600, env_extra={"SUBSET": ",".join(map(str, idxs)), "TTL_MIN": "90"})
             if rc != 0:
                 fail(st, f"islands refire dispatch rc={rc}")
             # the v18 script rewrote runspec_v18.json for the subset — move it,
@@ -279,7 +284,7 @@ def main():
             rp.write_text(json.dumps(spec, indent=1))
             t0 = time.time()
             rc = run_phase("islands_refire_monitor",
-                           [PY, "cloud_bake/render_monitor.py", str(rp)], 190 * 60)
+                           [PY, "cloud_bake/render_monitor.py", str(rp)], 130 * 60)
             add_spend(st, len(idxs), (time.time() - t0) / 60 + 15)
             rf2 = refire_list(str(ROOT / "islands" / "_collect_v18r")) or []
             if rc != 0 or rf2:

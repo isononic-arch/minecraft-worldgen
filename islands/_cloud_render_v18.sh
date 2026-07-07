@@ -23,9 +23,11 @@ COL="$ROOT/islands/_collect_v18"; mkdir -p "$COL"
 SSHO="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=4"
 KEYID=112518810
 IMG=396927540
-# Madre alone is bake ~68m + render + push; 195m TTL = margin. Monitor reaps at
-# ttl 165m (below this) so the monitor, not the box self-kill, is the reaper.
-TTL_MIN=195
+# Islands wall ~75m (Madre 68m long pole; gate already open so push is immediate).
+# 140m TTL = ~2x margin AND caps billing: 8 boxes x 140m x E1.6138/h = ~E30.
+# Monitor reaps at ttl 130m (below this). Env-overridable so the driver can pass
+# a tight TTL_MIN=90 for a surgical SUBSET refire.
+TTL_MIN="${TTL_MIN:-140}"
 CREDS_LOCAL="/c/Users/nicho/.bloom_creds.json"
 CONTESTED="r.95.103.mca,r.96.103.mca,r.97.122.mca,r.97.123.mca,r.97.124.mca,r.60.101.mca,r.60.102.mca,r.60.103.mca,r.60.104.mca,r.100.114.mca"
 START=$(date +%s)
@@ -205,7 +207,7 @@ for line in Path(sys.argv[1]).read_text().splitlines():
     })
 spec = {
     "run_name": "v18", "kind": "islands",
-    "ttl_min": 165, "wall_cap_min": 180,
+    "ttl_min": 130, "wall_cap_min": 145,
     "stall_secs": 900, "poll_secs": 45, "collect_retries": 3, "unreach_grace": 4,
     "collect_dir": "islands/_collect_v18",
     "boxes": boxes,
